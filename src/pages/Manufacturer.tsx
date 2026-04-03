@@ -1,85 +1,359 @@
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
-import { purchaseOrders, productionStatuses } from "@/data/mockData";
+import { useProductionStatuses, usePurchaseOrders } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useAuditLog } from "@/hooks/useAuditLog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Factory, CheckCircle, Clock, AlertTriangle } from "lucide-react";
-
-const stages = [
-  "PO Received", "Materials Secured", "Scheduled", "In Production",
-  "Bottled", "Labelled", "Packed", "Ready to Ship", "Shipped", "Delivered"
-];
-
-function getStageIndex(stage: string) {
-  const idx = stages.findIndex((s) => s.toLowerCase() === stage.toLowerCase());
-  return idx >= 0 ? idx : -1;
-}
+import { Factory, CheckCircle, Clock, AlertTriangle, Truck, Globe } from "lucide-react";
+import { MANUFACTURER_STAGE_PIPELINE, manufacturerStageIndex } from "@/data/mockData";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "@/components/ui/sonner";
+import { computeInventorySummary, deriveAlerts } from "@/lib/hajime-metrics";
+import { useAppData } from "@/contexts/AppDataContext";
 
 export default function Manufacturer() {
-  const activePOs = purchaseOrders.filter((po) => po.status !== "draft");
+  const { purchaseOrders } = usePurchaseOrders();
+  const { productionStatuses, addProductionStatus } = useProductionStatuses();
+  const { data } = useAppData();
+  const { user } = useAuth();
+  const logAudit = useAuditLog();
+
+  const invSummary = useMemo(() => computeInventorySummary(data.inventory), [data.inventory]);
+
+  const activePOs = useMemo(() => purchaseOrders.filter((po) => po.status !== "draft"), [purchaseOrders]);
+
+  const inboundQueue = useMemo(
+    () => data.shipments.filter((s) => s.type === "inbound" && s.status !== "delivered"),
+    [data.shipments],
+  );
+
+  const requestedByMarket = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const po of purchaseOrders) {
+      const k = po.marketDestination || "—";
+      m[k] = (m[k] ?? 0) + po.quantity;
+    }
+    return Object.entries(m)
+      .map(([market, bottles]) => ({ market, bottles }))
+      .sort((a, b) => b.bottles - a.bottles);
+  }, [purchaseOrders]);
+
+  const mfgAlerts = useMemo(() => deriveAlerts(data).slice(0, 5), [data]);
+
+  const leadDays = data.operationalSettings?.manufacturerLeadTimeDays ?? 45;
+
+  const kpi = useMemo(() => {
+    const delayed = activePOs.filter((p) => p.status === "delayed").length;
+    const pendingApproval = purchaseOrders.filter((p) => p.status === "draft").length;
+    const onTrack = activePOs.filter((p) => p.status !== "delayed").length;
+    return { delayed, pendingApproval, onTrack };
+  }, [activePOs, purchaseOrders]);
+
+  const [selectedPoId, setSelectedPoId] = useState<string>(() => activePOs[0]?.id ?? "");
+  const [stage, setStage] = useState<string>(MANUFACTURER_STAGE_PIPELINE[0]);
+  const [notes, setNotes] = useState("");
+
+  const selectedPo = activePOs.find((p) => p.id === selectedPoId) ?? activePOs[0];
+
+  const submitUpdate = () => {
+    if (!selectedPo) {
+      toast.error("No purchase order selected");
+      return;
+    }
+    const row = {
+      poId: selectedPo.id,
+      stage,
+      updatedAt: new Date().toISOString().slice(0, 10),
+      notes: notes.trim() || "Status update",
+    };
+    addProductionStatus(row);
+    logAudit("production_status_update", `${stage}: ${row.notes}`, { type: "purchase_order", id: selectedPo.id });
+    setNotes("");
+    toast.success("Production status recorded");
+  };
 
   return (
     <div>
       <PageHeader
-        title="Manufacturer Portal"
-        description="Production tracking and coordination with Kirin Brewery Co."
+        title="Manufacturer"
+        description="Production and export readiness — active requests, batch schedule, shipment queue, demand by market, lead times, and alerts (same demand signal as HQ)."
       />
 
-      <div className="grid gap-4 sm:grid-cols-3 mb-6">
-        <Card className="flex items-center gap-4 p-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-success/10"><CheckCircle className="h-5 w-5 text-success" /></div>
-          <div><p className="text-xs text-muted-foreground">On Track</p><p className="text-xl font-display font-semibold">2</p></div>
+      <div className="mb-6 grid gap-4 lg:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="font-display flex items-center gap-2 text-sm font-medium">
+              <Factory className="h-4 w-4" />
+              Active production requests
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-xs">
+            {activePOs.length === 0 ? (
+              <p className="text-muted-foreground">No active POs.</p>
+            ) : (
+              activePOs.slice(0, 5).map((po) => (
+                <div key={po.id} className="flex justify-between gap-2 border-b border-border/40 py-1.5 last:border-0">
+                  <span className="font-mono">{po.id}</span>
+                  <span className="text-muted-foreground">
+                    {po.sku} · {po.quantity.toLocaleString()} bt
+                  </span>
+                </div>
+              ))
+            )}
+            <Button variant="link" className="h-auto px-0 text-xs" asChild>
+              <Link to="/purchase-orders">All requests</Link>
+            </Button>
+          </CardContent>
         </Card>
-        <Card className="flex items-center gap-4 p-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10"><Clock className="h-5 w-5 text-accent" /></div>
-          <div><p className="text-xs text-muted-foreground">Pending Approval</p><p className="text-xl font-display font-semibold">1</p></div>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="font-display flex items-center gap-2 text-sm font-medium">
+              <Clock className="h-4 w-4" />
+              Scheduled batches
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-xs">
+            {activePOs.slice(0, 6).map((po) => (
+              <div key={po.id} className="flex justify-between gap-2 border-b border-border/40 py-1.5 last:border-0">
+                <span className="min-w-0 truncate font-mono">{po.id}</span>
+                <span className="shrink-0 text-muted-foreground">Req {po.requiredDate}</span>
+              </div>
+            ))}
+          </CardContent>
         </Card>
-        <Card className="flex items-center gap-4 p-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10"><AlertTriangle className="h-5 w-5 text-destructive" /></div>
-          <div><p className="text-xs text-muted-foreground">Delayed</p><p className="text-xl font-display font-semibold">1</p></div>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="font-display flex items-center gap-2 text-sm font-medium">
+              <Truck className="h-4 w-4" />
+              Shipment queue (inbound)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-xs">
+            {inboundQueue.length === 0 ? (
+              <p className="text-muted-foreground">No open inbound shipments.</p>
+            ) : (
+              inboundQueue.map((s) => (
+                <div key={s.id} className="border-b border-border/40 py-1.5 last:border-0">
+                  <p className="font-mono">{s.id}</p>
+                  <p className="text-muted-foreground">
+                    {s.origin} → {s.destination} · ETA {s.eta}
+                  </p>
+                </div>
+              ))
+            )}
+            <Button variant="link" className="h-auto px-0 text-xs" asChild>
+              <Link to="/shipments">Shipments</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="font-display flex items-center gap-2 text-sm font-medium">
+              <Globe className="h-4 w-4" />
+              Requested by market
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-xs">
+            {requestedByMarket.map((r) => (
+              <div key={r.market} className="flex justify-between gap-2 border-b border-border/40 py-1.5 last:border-0">
+                <span>{r.market}</span>
+                <span className="tabular-nums text-muted-foreground">{r.bottles.toLocaleString()} btl</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="font-display text-sm font-medium">Lead times</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            <p>
+              Planning lead time: <span className="font-semibold text-foreground">{leadDays} days</span> (HQ settings).
+            </p>
+            <p className="mt-2 text-xs">Use with open PO required dates to prioritize batches and materials.</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="font-display flex items-center gap-2 text-sm font-medium">
+              <AlertTriangle className="h-4 w-4" />
+              Alerts
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-xs">
+            {mfgAlerts.length === 0 ? (
+              <p className="text-muted-foreground">No operational alerts.</p>
+            ) : (
+              mfgAlerts.map((a) => (
+                <div key={a.id} className="rounded-md border border-border/50 px-2 py-1.5">
+                  {a.message}
+                </div>
+              ))
+            )}
+            <Button variant="link" className="h-auto px-0 text-xs" asChild>
+              <Link to="/alerts">Alerts hub</Link>
+            </Button>
+          </CardContent>
         </Card>
       </div>
 
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="flex items-center gap-4 p-5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
+            <Factory className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Total available (Hajime)</p>
+            <p className="text-xl font-display font-semibold">{invSummary.available.toLocaleString()}</p>
+            <p className="text-[10px] text-muted-foreground">bottles — context only</p>
+          </div>
+        </Card>
+        <Card className="flex items-center gap-4 p-5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-success/10">
+            <CheckCircle className="h-5 w-5 text-success" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Active POs on track</p>
+            <p className="text-xl font-display font-semibold">{kpi.onTrack}</p>
+          </div>
+        </Card>
+        <Card className="flex items-center gap-4 p-5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10">
+            <Clock className="h-5 w-5 text-accent" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Pending approval (draft)</p>
+            <p className="text-xl font-display font-semibold">{kpi.pendingApproval}</p>
+          </div>
+        </Card>
+        <Card className="flex items-center gap-4 p-5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10">
+            <AlertTriangle className="h-5 w-5 text-destructive" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Delayed POs</p>
+            <p className="text-xl font-display font-semibold">{kpi.delayed}</p>
+          </div>
+        </Card>
+      </div>
+
+      {user.role === "manufacturer" || user.role === "brand_operator" ? (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="font-display text-base">Post production update</CardTitle>
+            <p className="text-sm text-muted-foreground">Log stage changes for audit trail (brief §6, §8).</p>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="min-w-[200px] flex-1 space-y-2">
+              <Label>Purchase order</Label>
+              <Select value={selectedPo?.id ?? ""} onValueChange={setSelectedPoId}>
+                <SelectTrigger className="touch-manipulation">
+                  <SelectValue placeholder="Select PO" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activePOs.map((po) => (
+                    <SelectItem key={po.id} value={po.id}>
+                      {po.id} — {po.sku}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-[200px] flex-1 space-y-2">
+              <Label>Stage</Label>
+              <Select value={stage} onValueChange={setStage}>
+                <SelectTrigger className="touch-manipulation">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MANUFACTURER_STAGE_PIPELINE.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-[220px] flex-[2] space-y-2">
+              <Label htmlFor="mfg-notes">Notes</Label>
+              <Textarea id="mfg-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Materials, packaging, ETA…" />
+            </div>
+            <Button type="button" className="touch-manipulation" onClick={submitUpdate}>
+              Save update
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activePOs.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No approved or in-flight purchase orders yet.</p>
+      ) : null}
+
       <div className="space-y-4">
         {activePOs.map((po) => {
-          const updates = productionStatuses.filter((s) => s.poId === po.id);
-          const latestStage = updates[0]?.stage || "PO Received";
-          const currentIdx = getStageIndex(latestStage);
+          const updates = productionStatuses
+            .filter((s) => s.poId === po.id)
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+          const latestStage = updates[0]?.stage ?? "PO Received";
+          const currentIdx = manufacturerStageIndex(latestStage);
+          const isDelayedFlag = latestStage.toLowerCase().includes("delay") || po.status === "delayed";
 
           return (
             <Card key={po.id}>
               <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
                     <CardTitle className="font-display text-base">{po.id}</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">{po.sku} — {po.quantity.toLocaleString()} bottles for {po.marketDestination}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {po.sku} — {po.quantity.toLocaleString()} bottles · {po.marketDestination} · Label {po.labelVersion}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">{po.packagingInstructions}</p>
                   </div>
                   <StatusBadge status={po.status} />
                 </div>
               </CardHeader>
               <CardContent>
-                {/* Stage tracker */}
-                <div className="mb-4 flex items-center gap-1 overflow-x-auto pb-2">
-                  {stages.map((stage, idx) => (
-                    <div key={stage} className="flex items-center">
-                      <div className={`flex h-6 items-center rounded-full px-2.5 text-[10px] font-medium whitespace-nowrap ${
-                        idx <= currentIdx && latestStage !== "Delayed"
-                          ? "bg-success/10 text-success"
-                          : idx === currentIdx + 1 ? "bg-accent/10 text-accent" : "bg-muted text-muted-foreground"
-                      }`}>
-                        {stage}
+                <div className="mb-4 flex flex-wrap items-center gap-y-2 overflow-x-auto pb-2">
+                  {MANUFACTURER_STAGE_PIPELINE.filter((s) => s !== "Delayed / Issue").map((st, idx, arr) => {
+                    const pipeIdx = idx;
+                    const done = !isDelayedFlag && currentIdx >= pipeIdx;
+                    const current = currentIdx === pipeIdx;
+                    return (
+                      <div key={st} className="flex items-center">
+                        <div
+                          className={`flex h-6 items-center rounded-full px-2.5 text-[10px] font-medium whitespace-nowrap ${
+                            done ? "bg-success/10 text-success" : current ? "bg-accent/10 text-accent" : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {st}
+                        </div>
+                        {idx < arr.length - 1 && (
+                          <div className={`mx-1 h-px w-3 shrink-0 ${pipeIdx < currentIdx && !isDelayedFlag ? "bg-success" : "bg-border"}`} />
+                        )}
                       </div>
-                      {idx < stages.length - 1 && <div className={`mx-1 h-px w-3 ${idx < currentIdx ? "bg-success" : "bg-border"}`} />}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+                {isDelayedFlag && (
+                  <p className="mb-3 text-sm font-medium text-destructive">Delayed / issue flagged — see notes below.</p>
+                )}
 
-                {/* Update log */}
                 {updates.length > 0 && (
                   <div className="border-t pt-3">
-                    <p className="mb-2 text-xs font-medium text-muted-foreground">Recent Updates</p>
+                    <p className="mb-2 text-xs font-medium text-muted-foreground">Recent updates</p>
                     <div className="space-y-2">
                       {updates.map((u, i) => (
-                        <div key={i} className="flex items-start gap-3 text-sm">
+                        <div key={`${u.updatedAt}-${i}`} className="flex flex-col gap-0.5 text-sm sm:flex-row sm:items-start sm:gap-3">
                           <span className="shrink-0 text-xs text-muted-foreground">{u.updatedAt}</span>
                           <span className="font-medium">{u.stage}</span>
                           <span className="text-muted-foreground">— {u.notes}</span>

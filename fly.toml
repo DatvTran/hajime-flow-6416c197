@@ -1,0 +1,25 @@
+# Fly.io — https://fly.io/docs/
+# 1) fly auth login
+# 2) fly launch --no-deploy   (set app name, region; merge or replace this file)
+# 3) fly secrets set STRIPE_SECRET_KEY=sk_live_...
+# 4) fly deploy --build-arg VITE_STRIPE_PUBLISHABLE_KEY=pk_live_...
+#
+# Optional persistence for server/data (same region as the app):
+#   fly volumes create hajime_data --region <your-region> --size 1
+# Then add a [mounts] section (see Fly docs) pointing destination = "/app/server/data"
+
+app = "hajime-app"
+primary_region = "nrt"
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

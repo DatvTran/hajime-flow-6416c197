@@ -1,3 +1,5 @@
+import accountsJson from "./hajime-accounts.json";
+
 // Mock data for Hajime B2B Operations App
 
 export const inventorySummary = {
@@ -54,7 +56,14 @@ export const inventoryItems: InventoryItem[] = [
   { id: "INV-005", sku: "HJM-OG-375", productName: "Hajime Original 375ml", batchLot: "B2024-120", productionDate: "2024-12-15", quantityBottles: 960, quantityCases: 80, warehouse: "Toronto Main", status: "available", labelVersion: "v3.1", notes: "" },
   { id: "INV-006", sku: "HJM-SP-750", productName: "Hajime Sparkling 750ml", batchLot: "B2024-121", productionDate: "2025-01-05", quantityBottles: 1200, quantityCases: 100, warehouse: "Production", status: "in-production", labelVersion: "v1.0", notes: "New SKU launch batch" },
   { id: "INV-007", sku: "HJM-OG-750", productName: "Hajime Original 750ml", batchLot: "B2024-107", productionDate: "2024-10-01", quantityBottles: 48, quantityCases: 4, warehouse: "Toronto Main", status: "damaged", labelVersion: "v3.0", notes: "Water damage during storage" },
+  { id: "INV-FP-01", sku: "HJM-FP-750", productName: "Hajime First Press Coffee Rhum 750ml", batchLot: "B2025-201", productionDate: "2025-03-01", quantityBottles: 360, quantityCases: 30, warehouse: "Toronto Main", status: "available", labelVersion: "v1.0", notes: "" },
 ];
+
+export type SalesOrderLine = {
+  sku: string;
+  quantityBottles: number;
+  lineTotal: number;
+};
 
 export type SalesOrder = {
   id: string;
@@ -68,15 +77,92 @@ export type SalesOrder = {
   salesRep: string;
   status: "draft" | "confirmed" | "packed" | "shipped" | "delivered" | "cancelled";
   paymentStatus: "pending" | "paid" | "overdue";
+  /** Multi-SKU retail checkout — when set, sku/quantity/price remain rollup for legacy views */
+  lines?: SalesOrderLine[];
+  customerPoReference?: string;
+  orderNotes?: string;
+  deliveryAddress?: string;
+  invoiceStatus?: "not_invoiced" | "invoiced" | "paid";
+  /** Sell-through (depletion) — optional Phase 1 field for account-level consumer movement */
+  sellThroughUnits?: number;
+  /** Actual delivery when known */
+  actualDeliveryDate?: string;
 };
 
 export const salesOrders: SalesOrder[] = [
-  { id: "SO-2025-001", account: "LCBO Ontario", market: "Ontario", orderDate: "2025-01-15", requestedDelivery: "2025-01-25", sku: "HJM-OG-750", quantity: 240, price: 18500, salesRep: "Marcus Chen", status: "confirmed", paymentStatus: "pending" },
-  { id: "SO-2025-002", account: "Eataly Toronto", market: "Toronto", orderDate: "2025-01-18", requestedDelivery: "2025-01-28", sku: "HJM-YZ-750", quantity: 60, price: 5400, salesRep: "Sarah Kim", status: "packed", paymentStatus: "pending" },
-  { id: "SO-2025-003", account: "Bar Basso", market: "Milan", orderDate: "2025-01-10", requestedDelivery: "2025-02-01", sku: "HJM-OG-750", quantity: 120, price: 9200, salesRep: "Luca Moretti", status: "shipped", paymentStatus: "paid" },
-  { id: "SO-2025-004", account: "The Drake Hotel", market: "Toronto", orderDate: "2025-01-20", requestedDelivery: "2025-02-05", sku: "HJM-OG-375", quantity: 48, price: 2160, salesRep: "Marcus Chen", status: "draft", paymentStatus: "pending" },
-  { id: "SO-2025-005", account: "Rinascente Milano", market: "Milan", orderDate: "2025-01-12", requestedDelivery: "2025-01-22", sku: "HJM-YZ-750", quantity: 96, price: 8640, salesRep: "Luca Moretti", status: "delivered", paymentStatus: "paid" },
-  { id: "SO-2025-006", account: "Pusateri's", market: "Toronto", orderDate: "2025-01-22", requestedDelivery: "2025-02-10", sku: "HJM-OG-750", quantity: 36, price: 2770, salesRep: "Sarah Kim", status: "confirmed", paymentStatus: "pending" },
+  { id: "SO-2025-001", account: "LCBO Ontario", market: "Ontario", orderDate: "2026-03-28", requestedDelivery: "2026-04-07", sku: "HJM-OG-750", quantity: 240, price: 18500, salesRep: "Marcus Chen", status: "confirmed", paymentStatus: "pending" },
+  { id: "SO-2025-002", account: "Eataly Toronto", market: "Toronto", orderDate: "2026-03-20", requestedDelivery: "2026-03-30", sku: "HJM-YZ-750", quantity: 60, price: 5400, salesRep: "Sarah Kim", status: "packed", paymentStatus: "pending" },
+  { id: "SO-2025-003", account: "Bar Basso", market: "Milan", orderDate: "2026-03-18", requestedDelivery: "2026-03-28", sku: "HJM-OG-750", quantity: 120, price: 9200, salesRep: "Luca Moretti", status: "shipped", paymentStatus: "paid" },
+  { id: "SO-2025-004", account: "The Drake Hotel", market: "Toronto", orderDate: "2026-03-25", requestedDelivery: "2026-04-05", sku: "HJM-OG-375", quantity: 48, price: 2160, salesRep: "Marcus Chen", status: "draft", paymentStatus: "pending" },
+  { id: "SO-2025-005", account: "Rinascente Milano", market: "Milan", orderDate: "2026-03-12", requestedDelivery: "2026-03-22", sku: "HJM-YZ-750", quantity: 96, price: 8640, salesRep: "Luca Moretti", status: "delivered", paymentStatus: "paid" },
+  { id: "SO-2025-006", account: "Pusateri's", market: "Toronto", orderDate: "2026-03-22", requestedDelivery: "2026-04-02", sku: "HJM-OG-750", quantity: 36, price: 2770, salesRep: "Sarah Kim", status: "confirmed", paymentStatus: "pending" },
+  { id: "SO-2025-007", account: "Galeries Lafayette Paris", market: "Paris", orderDate: "2026-03-10", requestedDelivery: "2026-03-22", sku: "HJM-OG-750", quantity: 72, price: 6480, salesRep: "Luca Moretti", status: "packed", paymentStatus: "pending" },
+  {
+    id: "SO-2025-008",
+    account: "The Drake Hotel",
+    market: "Toronto",
+    orderDate: "2026-03-29",
+    requestedDelivery: "2026-04-05",
+    sku: "HJM-FP-750",
+    quantity: 72,
+    price: 8640,
+    salesRep: "Marcus Chen",
+    status: "shipped",
+    paymentStatus: "pending",
+    lines: [{ sku: "HJM-FP-750", quantityBottles: 72, lineTotal: 8640 }],
+    customerPoReference: "DRK-Q1-14",
+    invoiceStatus: "not_invoiced",
+  },
+  {
+    id: "SO-2025-009",
+    account: "The Drake Hotel",
+    market: "Toronto",
+    orderDate: "2026-03-15",
+    requestedDelivery: "2026-03-22",
+    sku: "HJM-OG-750",
+    quantity: 120,
+    price: 9480,
+    salesRep: "Marcus Chen",
+    status: "delivered",
+    paymentStatus: "paid",
+    lines: [
+      { sku: "HJM-OG-750", quantityBottles: 48, lineTotal: 3840 },
+      { sku: "HJM-FP-750", quantityBottles: 72, lineTotal: 5640 },
+    ],
+    actualDeliveryDate: "2026-03-21",
+    invoiceStatus: "paid",
+  },
+  {
+    id: "SO-2025-010",
+    account: "Convoy Supply Ontario",
+    market: "Ontario",
+    orderDate: "2026-03-26",
+    requestedDelivery: "2026-04-02",
+    sku: "HJM-OG-750",
+    quantity: 480,
+    price: 37000,
+    salesRep: "Marcus Chen",
+    status: "confirmed",
+    paymentStatus: "pending",
+    customerPoReference: "CVY-ONT-Q1-02",
+    deliveryAddress: "Convoy Supply DC, 2200 Meadowpine Blvd, Mississauga, ON L5N 0A4, Canada",
+    orderNotes: "Pallet release for LCBO lane — coordinate with SH-1043 timing.",
+  },
+  {
+    id: "SO-2025-011",
+    account: "Otto Atelier",
+    market: "Toronto",
+    orderDate: "2026-03-24",
+    requestedDelivery: "2026-03-30",
+    sku: "HJM-YZ-750",
+    quantity: 24,
+    price: 2160,
+    salesRep: "Sarah Kim",
+    status: "delivered",
+    paymentStatus: "paid",
+    actualDeliveryDate: "2026-03-28",
+    invoiceStatus: "paid",
+  },
 ];
 
 export type Account = {
@@ -97,17 +183,30 @@ export type Account = {
   avgOrderSize: number;
   status: "active" | "prospect" | "inactive";
   tags: string[];
+  /** Default card on file (Stripe) — last four digits */
+  cardOnFileLast4?: string;
+  /** Estimated consumer depletion in last reporting period (bottles) */
+  sellThroughLastPeriod?: number;
+  lastContactDate?: string;
+  nextActionDate?: string;
+  listingStatus?: string;
+  /** ISO 4217 — primary invoicing currency for this partner */
+  defaultCurrency?: string;
+  /** IANA timezone for scheduling and cutoffs */
+  timezone?: string;
+  /** Wholesale credit ceiling in CAD (reference) */
+  creditLimitCad?: number;
+  /** How this account prefers to place orders */
+  orderChannelPreference?: string;
+  /** One paragraph: role in Hajime network (production → DC → retail) */
+  networkRole?: string;
+  deliveryAddress?: string;
+  billingAddress?: string;
+  /** CRM / ops narrative for demos */
+  internalNotes?: string;
 };
 
-export const accounts: Account[] = [
-  { id: "ACC-001", legalName: "Liquor Control Board of Ontario", tradingName: "LCBO Ontario", country: "Canada", city: "Toronto", type: "retail", contactName: "James Park", contactRole: "Category Manager", phone: "+1 416-555-0101", email: "jpark@lcbo.com", salesOwner: "Marcus Chen", paymentTerms: "Net 30", firstOrderDate: "2024-03-15", lastOrderDate: "2025-01-15", avgOrderSize: 20400, status: "active", tags: ["key-account", "ontario"] },
-  { id: "ACC-002", legalName: "Eataly SPA - Toronto", tradingName: "Eataly Toronto", country: "Canada", city: "Toronto", type: "retail", contactName: "Maria Rossi", contactRole: "Beverage Buyer", phone: "+1 416-555-0202", email: "mrossi@eataly.com", salesOwner: "Sarah Kim", paymentTerms: "Net 15", firstOrderDate: "2024-06-01", lastOrderDate: "2025-01-18", avgOrderSize: 5800, status: "active", tags: ["premium", "toronto"] },
-  { id: "ACC-003", legalName: "La Rinascente SPA", tradingName: "Rinascente Milano", country: "Italy", city: "Milan", type: "retail", contactName: "Alessandro Bianchi", contactRole: "F&B Director", phone: "+39 02-555-0303", email: "abianchi@rinascente.it", salesOwner: "Luca Moretti", paymentTerms: "Net 45", firstOrderDate: "2024-09-10", lastOrderDate: "2025-01-12", avgOrderSize: 8200, status: "active", tags: ["luxury", "milan", "export"] },
-  { id: "ACC-004", legalName: "Bar Basso SRL", tradingName: "Bar Basso", country: "Italy", city: "Milan", type: "bar", contactName: "Mirko Stocchetto", contactRole: "Owner", phone: "+39 02-555-0404", email: "mirko@barbasso.it", salesOwner: "Luca Moretti", paymentTerms: "Net 30", firstOrderDate: "2024-07-20", lastOrderDate: "2025-01-10", avgOrderSize: 6000, status: "active", tags: ["iconic", "milan", "bar"] },
-  { id: "ACC-005", legalName: "The Drake Hotel Inc", tradingName: "The Drake Hotel", country: "Canada", city: "Toronto", type: "hotel", contactName: "Jeff Guignard", contactRole: "Beverage Director", phone: "+1 416-555-0505", email: "jeff@thedrake.ca", salesOwner: "Marcus Chen", paymentTerms: "Net 30", firstOrderDate: "2024-08-15", lastOrderDate: "2025-01-20", avgOrderSize: 2400, status: "active", tags: ["hotel", "toronto"] },
-  { id: "ACC-006", legalName: "Pusateri's Fine Foods", tradingName: "Pusateri's", country: "Canada", city: "Toronto", type: "retail", contactName: "Frank Luchetta", contactRole: "Grocery Manager", phone: "+1 416-555-0606", email: "frank@pusateris.com", salesOwner: "Sarah Kim", paymentTerms: "Net 15", firstOrderDate: "2024-11-01", lastOrderDate: "2025-01-22", avgOrderSize: 2800, status: "active", tags: ["gourmet", "toronto"] },
-  { id: "ACC-007", legalName: "Nobu Toronto", tradingName: "Nobu Toronto", country: "Canada", city: "Toronto", type: "restaurant", contactName: "Yuki Tanaka", contactRole: "GM", phone: "+1 416-555-0707", email: "yuki@nobu.com", salesOwner: "Marcus Chen", paymentTerms: "Net 30", firstOrderDate: "", lastOrderDate: "", avgOrderSize: 0, status: "prospect", tags: ["prospect", "restaurant", "toronto"] },
-];
+export const accounts: Account[] = accountsJson as Account[];
 
 export type PurchaseOrder = {
   id: string;
@@ -122,13 +221,15 @@ export type PurchaseOrder = {
   marketDestination: string;
   status: "draft" | "approved" | "in-production" | "completed" | "shipped" | "delivered" | "delayed";
   notes: string;
+  /** Set once inventory has been reduced for this PO (shipped/delivered). */
+  inventoryConsumed?: boolean;
 };
 
 export const purchaseOrders: PurchaseOrder[] = [
-  { id: "PO-2025-001", manufacturer: "Kirin Brewery Co.", issueDate: "2025-01-05", requiredDate: "2025-02-15", requestedShipDate: "2025-02-20", sku: "HJM-OG-750", quantity: 2400, packagingInstructions: "Standard 12-bottle case", labelVersion: "v3.1", marketDestination: "Ontario", status: "in-production", notes: "Priority order for LCBO restock" },
-  { id: "PO-2025-002", manufacturer: "Kirin Brewery Co.", issueDate: "2025-01-10", requiredDate: "2025-03-01", requestedShipDate: "2025-03-05", sku: "HJM-YZ-750", quantity: 1200, packagingInstructions: "Standard 12-bottle case", labelVersion: "v2.0", marketDestination: "Milan", status: "approved", notes: "For European market" },
-  { id: "PO-2025-003", manufacturer: "Kirin Brewery Co.", issueDate: "2025-01-15", requiredDate: "2025-03-15", requestedShipDate: "2025-03-20", sku: "HJM-SP-750", quantity: 1800, packagingInstructions: "6-bottle premium case", labelVersion: "v1.0", marketDestination: "Toronto", status: "draft", notes: "New SKU launch batch — confirm specs" },
-  { id: "PO-2024-047", manufacturer: "Kirin Brewery Co.", issueDate: "2024-12-01", requiredDate: "2025-01-15", requestedShipDate: "2025-01-20", sku: "HJM-OG-375", quantity: 960, packagingInstructions: "24-bottle case", labelVersion: "v3.1", marketDestination: "Ontario", status: "delayed", notes: "Label supply issue — estimated 3-day delay" },
+  { id: "PO-2025-001", manufacturer: "Kirin Brewery Co.", issueDate: "2026-03-01", requiredDate: "2026-03-25", requestedShipDate: "2026-03-28", sku: "HJM-OG-750", quantity: 2400, packagingInstructions: "Standard 12-bottle case", labelVersion: "v3.1", marketDestination: "Ontario", status: "in-production", notes: "Priority order for LCBO restock" },
+  { id: "PO-2025-002", manufacturer: "Kirin Brewery Co.", issueDate: "2026-02-10", requiredDate: "2026-03-28", requestedShipDate: "2026-04-02", sku: "HJM-YZ-750", quantity: 1200, packagingInstructions: "Standard 12-bottle case", labelVersion: "v2.0", marketDestination: "Milan", status: "approved", notes: "For European market" },
+  { id: "PO-2025-003", manufacturer: "Kirin Brewery Co.", issueDate: "2026-03-05", requiredDate: "2026-03-28", requestedShipDate: "2026-04-08", sku: "HJM-SP-750", quantity: 1800, packagingInstructions: "6-bottle premium case", labelVersion: "v1.0", marketDestination: "Toronto", status: "draft", notes: "New SKU launch batch — confirm specs" },
+  { id: "PO-2024-047", manufacturer: "Kirin Brewery Co.", issueDate: "2026-03-01", requiredDate: "2026-04-10", requestedShipDate: "2026-04-15", sku: "HJM-OG-375", quantity: 960, packagingInstructions: "24-bottle case", labelVersion: "v3.1", marketDestination: "Ontario", status: "delayed", notes: "Label supply issue — estimated 3-day delay" },
 ];
 
 export type ProductionStatus = {
@@ -138,12 +239,52 @@ export type ProductionStatus = {
   notes: string;
 };
 
+/** Canonical manufacturer pipeline (developer brief §5.C) */
+export const MANUFACTURER_STAGE_PIPELINE = [
+  "PO Received",
+  "Raw Materials Secured",
+  "Scheduled",
+  "In Production",
+  "Bottled",
+  "Labelled",
+  "Packed",
+  "Ready to Ship",
+  "Shipped",
+  "Delivered",
+  "Delayed / Issue",
+] as const;
+
+/** Map legacy / alternate labels to pipeline index */
+export function manufacturerStageIndex(stage: string): number {
+  const s = stage.trim().toLowerCase();
+  const aliases: [string, number][] = [
+    ["po received", 0],
+    ["materials secured", 1],
+    ["raw materials secured", 1],
+    ["scheduled", 2],
+    ["in production", 3],
+    ["bottled", 4],
+    ["labelled", 5],
+    ["labeled", 5],
+    ["packed", 6],
+    ["ready to ship", 7],
+    ["shipped", 8],
+    ["delivered", 9],
+    ["delayed", 10],
+    ["delayed / issue", 10],
+  ];
+  for (const [needle, idx] of aliases) {
+    if (s === needle || s.includes(needle)) return idx;
+  }
+  return -1;
+}
+
 export const productionStatuses: ProductionStatus[] = [
-  { poId: "PO-2025-001", stage: "In Production", updatedAt: "2025-01-25", notes: "Brewing phase complete, moving to bottling" },
-  { poId: "PO-2025-001", stage: "Materials Secured", updatedAt: "2025-01-15", notes: "All ingredients received" },
-  { poId: "PO-2025-002", stage: "PO Received", updatedAt: "2025-01-12", notes: "Acknowledged and scheduled" },
-  { poId: "PO-2024-047", stage: "Delayed", updatedAt: "2025-01-18", notes: "Label supplier delayed — new ETA Jan 21" },
-  { poId: "PO-2024-047", stage: "Bottled", updatedAt: "2025-01-14", notes: "Bottling complete, awaiting labels" },
+  { poId: "PO-2025-001", stage: "In Production", updatedAt: "2026-03-20", notes: "Brewing phase complete, moving to bottling" },
+  { poId: "PO-2025-001", stage: "Materials Secured", updatedAt: "2026-03-08", notes: "All ingredients received" },
+  { poId: "PO-2025-002", stage: "PO Received", updatedAt: "2026-02-15", notes: "Acknowledged and scheduled" },
+  { poId: "PO-2024-047", stage: "Delayed", updatedAt: "2026-03-18", notes: "Label supplier delayed — new ETA Apr 12" },
+  { poId: "PO-2024-047", stage: "Bottled", updatedAt: "2026-03-12", notes: "Bottling complete, awaiting labels" },
 ];
 
 export type Shipment = {
@@ -161,17 +302,114 @@ export type Shipment = {
 };
 
 export const shipments: Shipment[] = [
-  { id: "SH-1042", origin: "Kirin Facility", destination: "Toronto Main Warehouse", carrier: "Nippon Express", shipDate: "2025-01-10", eta: "2025-01-24", actualDelivery: "2025-01-24", linkedOrder: "PO-2024-045", type: "inbound", status: "delivered", notes: "Arrived on time" },
-  { id: "SH-1043", origin: "Toronto Main Warehouse", destination: "LCBO Distribution", carrier: "Day & Ross", shipDate: "2025-01-20", eta: "2025-01-22", actualDelivery: "", linkedOrder: "SO-2025-001", type: "outbound", status: "in-transit", notes: "" },
-  { id: "SH-1044", origin: "Kirin Facility", destination: "Milan Depot", carrier: "DHL Global", shipDate: "2025-01-15", eta: "2025-02-01", actualDelivery: "", linkedOrder: "PO-2025-002", type: "inbound", status: "in-transit", notes: "Customs clearance pending" },
-  { id: "SH-1045", origin: "Toronto Main Warehouse", destination: "Eataly Toronto", carrier: "Local Courier", shipDate: "2025-01-26", eta: "2025-01-26", actualDelivery: "", linkedOrder: "SO-2025-002", type: "outbound", status: "preparing", notes: "Packing today" },
+  { id: "SH-1042", origin: "Kirin Facility", destination: "Toronto Main Warehouse", carrier: "Nippon Express", shipDate: "2026-03-05", eta: "2026-03-18", actualDelivery: "2026-03-18", linkedOrder: "PO-2024-045", type: "inbound", status: "delivered", notes: "Arrived on time" },
+  { id: "SH-1043", origin: "Toronto Main Warehouse", destination: "LCBO Distribution", carrier: "Day & Ross", shipDate: "2026-03-20", eta: "2026-03-22", actualDelivery: "", linkedOrder: "SO-2025-001", type: "outbound", status: "in-transit", notes: "" },
+  { id: "SH-1044", origin: "Kirin Facility", destination: "Milan Depot", carrier: "DHL Global", shipDate: "2026-03-08", eta: "2026-03-18", actualDelivery: "", linkedOrder: "PO-2025-002", type: "inbound", status: "in-transit", notes: "Customs clearance pending" },
+  { id: "SH-1045", origin: "Toronto Main Warehouse", destination: "Eataly Toronto", carrier: "Local Courier", shipDate: "2026-03-24", eta: "2026-03-26", actualDelivery: "", linkedOrder: "SO-2025-002", type: "outbound", status: "preparing", notes: "Packing today" },
+  {
+    id: "SH-1046",
+    origin: "Toronto Main Warehouse",
+    destination: "The Drake Hotel — 1150 Queen St W",
+    carrier: "Metro Logistics",
+    shipDate: "2026-03-28",
+    eta: "2026-04-05",
+    actualDelivery: "",
+    linkedOrder: "SO-2025-008",
+    type: "outbound",
+    status: "in-transit",
+    notes: "",
+  },
+  {
+    id: "SH-1047",
+    origin: "Toronto Main Warehouse",
+    destination: "Convoy Supply DC — Mississauga",
+    carrier: "Day & Ross LTL",
+    shipDate: "2026-03-22",
+    eta: "2026-03-23",
+    actualDelivery: "",
+    linkedOrder: "SO-2025-010",
+    type: "outbound",
+    status: "preparing",
+    notes: "Staging pallets for Convoy wholesale release",
+  },
 ];
 
-export const products = [
-  { sku: "HJM-OG-750", name: "Hajime Original", size: "750ml", caseSize: 12, status: "active" as const },
-  { sku: "HJM-OG-375", name: "Hajime Original", size: "375ml", caseSize: 24, status: "active" as const },
-  { sku: "HJM-YZ-750", name: "Hajime Yuzu", size: "750ml", caseSize: 12, status: "active" as const },
-  { sku: "HJM-SP-750", name: "Hajime Sparkling", size: "750ml", caseSize: 6, status: "development" as const },
+export type Product = {
+  sku: string;
+  name: string;
+  size: string;
+  caseSize: number;
+  status: "active" | "development";
+  shortDescription?: string;
+  abv?: string;
+  /** Placeholder image for retail cards */
+  imageUrl?: string;
+  minOrderCases?: number;
+  /** Estimated wholesale per case (CAD) for retail cart display */
+  wholesaleCasePrice?: number;
+};
+
+export const products: Product[] = [
+  {
+    sku: "HJM-FP-750",
+    name: "Hajime First Press Coffee Rhum Liqueur",
+    size: "750ml",
+    caseSize: 12,
+    status: "active",
+    shortDescription: "Small-batch coffee rum — rich, smooth, bar-ready.",
+    abv: "28%",
+    minOrderCases: 1,
+    wholesaleCasePrice: 1440,
+    imageUrl: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&h=400&fit=crop",
+  },
+  {
+    sku: "HJM-OG-750",
+    name: "Hajime Original",
+    size: "750ml",
+    caseSize: 12,
+    status: "active",
+    shortDescription: "Signature Japanese-style spirit. Versatile for cocktails and by the glass.",
+    abv: "24%",
+    minOrderCases: 1,
+    wholesaleCasePrice: 920,
+    imageUrl: "https://images.unsplash.com/photo-1569529465840-d8fa6c4f4e85?w=400&h=400&fit=crop",
+  },
+  {
+    sku: "HJM-OG-375",
+    name: "Hajime Original",
+    size: "375ml",
+    caseSize: 24,
+    status: "active",
+    shortDescription: "Half bottle format for programs and tastings.",
+    abv: "24%",
+    minOrderCases: 1,
+    wholesaleCasePrice: 780,
+    imageUrl: "https://images.unsplash.com/photo-1546171753-97d7676e4602?w=400&h=400&fit=crop",
+  },
+  {
+    sku: "HJM-YZ-750",
+    name: "Hajime Yuzu",
+    size: "750ml",
+    caseSize: 12,
+    status: "active",
+    shortDescription: "Bright yuzu citrus — premium back bar staple.",
+    abv: "22%",
+    minOrderCases: 1,
+    wholesaleCasePrice: 980,
+    imageUrl: "https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?w=400&h=400&fit=crop",
+  },
+  {
+    sku: "HJM-SP-750",
+    name: "Hajime Sparkling",
+    size: "750ml",
+    caseSize: 6,
+    status: "development",
+    shortDescription: "Limited sparkling release — ask your rep for allocation.",
+    abv: "11%",
+    minOrderCases: 2,
+    wholesaleCasePrice: 1320,
+    imageUrl: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=400&h=400&fit=crop",
+  },
 ];
 
 export const salesByMonth = [
