@@ -31,3 +31,8 @@ dist-ssr
 # Stripe API (secrets + local customer map)
 server/.env
 server/data/
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useAppData } from "@/contexts/AppDataContext";
 import { useAuth } from "@/contexts/AuthContext";
+import type { VisitNoteEntry } from "@/types/app-data";
 import {
   Users,
   FileEdit,
@@ -15,19 +16,17 @@ import {
   Sparkles,
   Plus,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/sonner";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
 
 const VISIT_STORAGE = "hajime_rep_visit_notes";
 
-type VisitNote = { id: string; at: string; account: string; body: string };
-
-function loadVisits(): VisitNote[] {
+function loadLegacyVisits(): Omit<VisitNoteEntry, "authorRep">[] {
   try {
     const raw = localStorage.getItem(VISIT_STORAGE);
     if (!raw) return [];
-    const p = JSON.parse(raw) as VisitNote[];
+    const p = JSON.parse(raw) as { id: string; at: string; account: string; body: string }[];
     return Array.isArray(p) ? p : [];
   } catch {
     return [];
@@ -35,7 +34,7 @@ function loadVisits(): VisitNote[] {
 }
 
 export default function SalesRepHomePage() {
-  const { data } = useAppData();
+  const { data, updateData } = useAppData();
   const { user } = useAuth();
   const rep = useMemo(
     () => resolveSalesRepLabelForSession(user?.email, user?.displayName ?? ""),
@@ -64,14 +63,56 @@ export default function SalesRepHomePage() {
     });
   }, [myAccounts]);
 
-  const [visits, setVisits] = useState<VisitNote[]>(() => loadVisits());
   const [visitAccount, setVisitAccount] = useState("");
   const [visitBody, setVisitBody] = useState("");
+  const legacyMigrated = useRef(false);
 
-  const persistVisits = useCallback((next: VisitNote[]) => {
-    setVisits(next);
-    localStorage.setItem(VISIT_STORAGE, JSON.stringify(next));
-  }, []);
+  const visits = useMemo(() => {
+    const all = data.visitNotes ?? [];
+    return all
+      .filter((v) => v.authorRep.trim() === rep.trim())
+      .sort((a, b) => b.at.localeCompare(a.at));
+  }, [data.visitNotes, rep]);
+
+  useEffect(() => {
+    if (legacyMigrated.current) return;
+    if ((data.visitNotes?.length ?? 0) > 0) {
+      legacyMigrated.current = true;
+      return;
+    }
+    const legacy = loadLegacyVisits();
+    if (legacy.length === 0) {
+      legacyMigrated.current = true;
+      return;
+    }
+    legacyMigrated.current = true;
+    updateData((d) => ({
+      ...d,
+      visitNotes: legacy.map((v) => ({ ...v, authorRep: rep })),
+    }));
+    try {
+      localStorage.removeItem(VISIT_STORAGE);
+    } catch {
+      /* ignore */
+    }
+  }, [data.visitNotes, rep, updateData]);
+
+  const schedule = useMemo(() => {
+    const days = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+    const sorted = [...myAccounts].sort((a, b) => {
+      const na = a.nextActionDate || a.lastOrderDate || "";
+      const nb = b.nextActionDate || b.lastOrderDate || "";
+      return na.localeCompare(nb);
+    });
+    return days.map((day, i) => {
+      const acc = sorted[i];
+      return {
+        day,
+        focus: acc ? `${acc.city} · ${acc.type}` : "Open slot",
+        accounts: acc?.tradingName ?? "No account assigned — add touchpoints in Accounts",
+      };
+    });
+  }, [myAccounts]);
 
   const addVisit = () => {
     const account = visitAccount.trim() || (myAccounts[0]?.tradingName ?? "");
@@ -80,24 +121,20 @@ export default function SalesRepHomePage() {
       toast.error("Add account and note");
       return;
     }
-    const row: VisitNote = {
+    const row: VisitNoteEntry = {
       id: `v-${Date.now()}`,
       at: new Date().toISOString().slice(0, 16).replace("T", " "),
       account,
       body,
+      authorRep: rep,
     };
-    persistVisits([row, ...visits]);
+    updateData((d) => ({
+      ...d,
+      visitNotes: [row, ...(d.visitNotes ?? [])],
+    }));
     setVisitBody("");
-    toast.success("Visit logged", { description: "Tied to your pipeline — create a draft order when ready." });
+    toast.success("Visit logged", { description: "Synced to AppData — visible when HQ uses shared data." });
   };
-
-  const schedule = [
-    { day: "Mon", focus: "Toronto on-premise", accounts: "Eataly, Pusateri's" },
-    { day: "Tue", focus: "Follow-ups & samples", accounts: "Confirm LCBO timing" },
-    { day: "Wed", focus: "Hotel programs", accounts: "The Drake check-in" },
-    { day: "Thu", focus: "Prospects", accounts: "Nobu Toronto" },
-    { day: "Fri", focus: "Admin & drafts", accounts: "Close open drafts" },
-  ];
 
   return (
     <div className="space-y-6">
@@ -189,7 +226,7 @@ export default function SalesRepHomePage() {
               <Calendar className="h-4 w-4" />
               Visit schedule
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Example week — replace with your calendar integration later.</p>
+            <p className="text-xs text-muted-foreground">Built from your assigned accounts (next action / last order).</p>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             {schedule.map((s) => (
@@ -211,7 +248,7 @@ export default function SalesRepHomePage() {
               Visit notes
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Example: “Reorder next week”, “Gift box interest”, “Low inventory on bar” — then open a draft for the account.
+              Stored in shared AppData (not only this browser) when the API or local snapshot saves — HQ can read the same ledger.
             </p>
           </CardHeader>
           <CardContent className="space-y-3">

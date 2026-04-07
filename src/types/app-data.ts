@@ -69,4 +69,16 @@ export type AppData = {
   retailerShelfStock?: Record<string, Record<string, number>>;
   /** AR/AP style entries across nodes (Brand sees all). */
   financingLedger?: FinancingLedgerEntry[];
+  /** Field visit notes — synced across roles via AppData (replaces localStorage-only). */
+  visitNotes?: VisitNoteEntry[];
+};
+
+export type VisitNoteEntry = {
+  id: string;
+  /** ISO or display timestamp */
+  at: string;
+  account: string;
+  body: string;
+  /** Matches `salesRep` / team roster name */
+  authorRep: string;
 };

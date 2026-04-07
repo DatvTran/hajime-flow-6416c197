@@ -22,6 +22,7 @@ import type { ProductionStatus } from "@/data/mockData";
 import seedJson from "@/data/seed-app.json";
 import { toast } from "@/components/ui/sonner";
 import { normalizeAppData } from "@/lib/normalize-app-data";
+import { loadLocalAppData, saveLocalAppData } from "@/lib/local-app-data";
 
 const FALLBACK_SEED = normalizeAppData(seedJson as AppData);
 
@@ -59,11 +60,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         }
       } catch (e) {
         if (!cancelled) {
-          setData(FALLBACK_SEED);
-          setError(String(e));
-          toast.info("API unavailable — using local seed data", {
-            description: "Start the server (npm run dev:api) to load and save persisted data.",
-          });
+          const local = loadLocalAppData();
+          if (local) {
+            setData(normalizeAppData(local));
+            setError(String(e));
+            toast.info("API unavailable — loaded data from this browser", {
+              description: "Your last saved session is restored. Start npm run dev:api to sync with the server.",
+            });
+          } else {
+            setData(FALLBACK_SEED);
+            setError(String(e));
+            toast.info("API unavailable — using local seed data", {
+              description: "Start the server (npm run dev:api) to load and save persisted data. Edits save in-browser until then.",
+            });
+          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -88,8 +98,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       return;
     }
     const id = window.setTimeout(() => {
+      saveLocalAppData(data);
       putAppData(data).catch(() => {
-        toast.error("Could not save to server", { description: "Check that the API is running on port 4242." });
+        toast.error("Could not save to server", { description: "Data is saved in this browser — start the API to sync." });
       });
     }, 700);
     return () => window.clearTimeout(id);

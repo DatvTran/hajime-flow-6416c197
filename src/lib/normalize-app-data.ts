@@ -75,5 +75,6 @@ export function normalizeAppData(raw: AppData): AppData {
     teamMembers,
     financingLedger: Array.isArray(raw.financingLedger) ? raw.financingLedger : [],
     retailerShelfStock,
+    visitNotes: Array.isArray(raw.visitNotes) ? raw.visitNotes : [],
   };
 }

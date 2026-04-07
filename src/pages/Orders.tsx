@@ -5,7 +5,7 @@ import { SalesOrderDetailDialog } from "@/components/SalesOrderDetailDialog";
 import type { SalesOrder } from "@/data/mockData";
 import { isRetailChannelOrder } from "@/lib/hajime-metrics";
 import { effectiveRepApprovalStatus, routingTargetLabel } from "@/lib/order-routing";
-import { useAccounts, useFinancingLedger, useSalesOrders } from "@/contexts/AppDataContext";
+import { useAccounts, useAppData, useFinancingLedger, useSalesOrders } from "@/contexts/AppDataContext";
 import {
   computeOrderTabCounts,
   isOrderTabId,
@@ -26,12 +26,16 @@ import { mapRoleToSalesOrderFormVariant } from "@/lib/sales-order-form-variants"
 import { toast } from "@/components/ui/sonner";
 import { apiListCardLast4s, apiVerifyCheckoutSession } from "@/lib/stripe-api";
 import { setStoredCardLast4, setStoredCustomerId } from "@/lib/stripe-local";
+import { buildOutboundShipmentForOrder } from "@/lib/order-shipment";
+import { downloadSalesOrdersCsv } from "@/lib/export-orders-csv";
 
 export default function Orders() {
   const { user } = useAuth();
   const { salesOrders: orders, addSalesOrder, patchSalesOrder } = useSalesOrders();
   const { accounts } = useAccounts();
   const { appendEntry } = useFinancingLedger();
+  const { updateData } = useAppData();
+  const canApproveDraftQueue = user.role === "brand_operator";
   const newOrderVariant = useMemo(() => mapRoleToSalesOrderFormVariant(user.role), [user.role]);
   const [searchParams, setSearchParams] = useSearchParams();
   const accountFromUrl = searchParams.get("account");
@@ -247,6 +251,16 @@ export default function Orders() {
     }
 
     patchSalesOrder(id, merged);
+
+    if (merged.status === "shipped" && o.status !== "shipped") {
+      updateData((d) => {
+        const ord = d.salesOrders.find((x) => x.id === id);
+        if (!ord || ord.status !== "shipped") return d;
+        const sh = buildOutboundShipmentForOrder(ord, d.accounts, d.shipments);
+        if (!sh) return d;
+        return { ...d, shipments: [sh, ...d.shipments] };
+      });
+    }
   };
 
   return (
@@ -266,7 +280,16 @@ export default function Orders() {
         }
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <Button variant="outline" size="sm" className="w-full justify-center touch-manipulation sm:w-auto">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-center touch-manipulation sm:w-auto"
+              onClick={() => {
+                downloadSalesOrdersCsv(filtered, `hajime-orders-${orderTab}-${new Date().toISOString().slice(0, 10)}.csv`);
+                toast.success("Export ready", { description: `${filtered.length} order row(s) in this tab.` });
+              }}
+            >
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
@@ -339,31 +362,37 @@ export default function Orders() {
                       <span className="text-muted-foreground"> · {o.market}</span>
                       <span className="block text-xs text-muted-foreground">${o.price.toLocaleString()} · {o.quantity} bottles</span>
                     </div>
-                    <div className="flex shrink-0 flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="touch-manipulation"
-                        onClick={() => {
-                          patchOrder(o.id, { status: "confirmed" });
-                          toast.success("Approved", { description: `${o.id} → confirmed` });
-                        }}
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="touch-manipulation"
-                        onClick={() => {
-                          patchOrder(o.id, { status: "cancelled" });
-                          toast.info("Rejected", { description: `${o.id} → cancelled` });
-                        }}
-                      >
-                        Reject
-                      </Button>
-                    </div>
+                    {canApproveDraftQueue ? (
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="touch-manipulation"
+                          onClick={() => {
+                            patchOrder(o.id, { status: "confirmed" });
+                            toast.success("Approved", { description: `${o.id} → confirmed` });
+                          }}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="touch-manipulation"
+                          onClick={() => {
+                            patchOrder(o.id, { status: "cancelled" });
+                            toast.info("Rejected", { description: `${o.id} → cancelled` });
+                          }}
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="max-w-[220px] text-right text-xs text-muted-foreground sm:max-w-none">
+                        HQ allocation approval is limited to Brand Operator — use Command center or ask HQ.
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>
