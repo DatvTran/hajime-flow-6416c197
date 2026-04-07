@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { Package, Plus, Search, Download, Factory } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +66,10 @@ export default function Inventory() {
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = parseStatusParam(searchParams.get("status"));
   const [search, setSearch] = useState("");
+  useEffect(() => {
+    const sku = searchParams.get("sku");
+    if (sku) setSearch(sku);
+  }, [searchParams]);
   const [receiveOpen, setReceiveOpen] = useState(false);
 
   const summary = useMemo(() => computeInventorySummary(items), [items]);

@@ -16,12 +16,6 @@ const SECTIONS: Record<string, { title: string; description: string; body: strin
     body:
       "Wire-up: append notes to Account records with timestamps and rep attribution. Today: use Accounts detail and order drafts as a lightweight trail.",
   },
-  targets: {
-    title: "Targets",
-    description: "Sales goals vs sell-in (spec §2.E).",
-    body:
-      "Wire-up: quarterly targets by rep or region vs revenue from Sales Orders. Simple reporting already lives under Analytics for HQ.",
-  },
 };
 
 export default function SalesSectionPage() {

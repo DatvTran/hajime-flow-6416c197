@@ -12,9 +12,20 @@ type Props = {
   inCartCases: number;
   onAddToCart: (cases: number) => void;
   disabled?: boolean;
+  /** On-premise bottles for this venue (optional — drives low-shelf messaging). */
+  shelfBottles?: number;
+  shelfThresholdBottles?: number;
 };
 
-export function RetailProductCard({ product, inventory, inCartCases, onAddToCart, disabled }: Props) {
+export function RetailProductCard({
+  product,
+  inventory,
+  inCartCases,
+  onAddToCart,
+  disabled,
+  shelfBottles,
+  shelfThresholdBottles = 48,
+}: Props) {
   const min = product.minOrderCases ?? 1;
   const [qty, setQty] = useState(() => Math.max(min, inCartCases || min));
   useEffect(() => {
@@ -65,7 +76,7 @@ export function RetailProductCard({ product, inventory, inCartCases, onAddToCart
             </div>
           ) : null}
           <div className="flex justify-between gap-2">
-            <dt>Availability</dt>
+            <dt>DC supply</dt>
             <dd
               className={cn(
                 "font-medium",
@@ -77,6 +88,22 @@ export function RetailProductCard({ product, inventory, inCartCases, onAddToCart
               {availLabel}
             </dd>
           </div>
+          {shelfBottles !== undefined ? (
+            <div className="flex justify-between gap-2">
+              <dt>Your shelf</dt>
+              <dd
+                className={cn(
+                  "font-medium",
+                  shelfBottles < shelfThresholdBottles
+                    ? "text-amber-700 dark:text-amber-400"
+                    : "text-emerald-700 dark:text-emerald-400",
+                )}
+              >
+                {shelfBottles} bt
+                {shelfBottles < shelfThresholdBottles ? " · reorder" : ""}
+              </dd>
+            </div>
+          ) : null}
           <div className="flex justify-between gap-2">
             <dt>Minimum order</dt>
             <dd className="font-medium text-foreground">

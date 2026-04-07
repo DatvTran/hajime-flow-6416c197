@@ -65,6 +65,10 @@ export type SalesOrderLine = {
   lineTotal: number;
 };
 
+export type OrderRoutingTarget = "manufacturer" | "wholesaler" | "sales_rep" | "retail";
+export type OrderCreatedByRole = "brand_operator" | "distributor" | "sales_rep" | "retail" | "manufacturer";
+export type RepApprovalStatus = "not_required" | "pending" | "approved";
+
 export type SalesOrder = {
   id: string;
   account: string;
@@ -77,6 +81,14 @@ export type SalesOrder = {
   salesRep: string;
   status: "draft" | "confirmed" | "packed" | "shipped" | "delivered" | "cancelled";
   paymentStatus: "pending" | "paid" | "overdue";
+  /** Intended pathway (Brand HQ / B2B creator). */
+  orderRoutingTarget?: OrderRoutingTarget;
+  /** Portal role that created the order. */
+  orderCreatedByRole?: OrderCreatedByRole;
+  /** Retail portal: sales rep must approve before payment; then wholesaler ships. */
+  repApprovalStatus?: RepApprovalStatus;
+  /** Wholesaler ordering on behalf of a field rep’s territory. */
+  assignedSalesRep?: string;
   /** Multi-SKU retail checkout — when set, sku/quantity/price remain rollup for legacy views */
   lines?: SalesOrderLine[];
   customerPoReference?: string;
@@ -87,6 +99,10 @@ export type SalesOrder = {
   sellThroughUnits?: number;
   /** Actual delivery when known */
   actualDeliveryDate?: string;
+  /** After retail pays — wholesaler must acknowledge before packing (demo workflow). */
+  wholesalerFulfillmentStatus?: "pending_ack" | "acknowledged" | "in_fulfillment";
+  /** Sales rep created this B2B order for a retail account (on behalf of retailer). */
+  placedOnBehalfByRep?: boolean;
 };
 
 export const salesOrders: SalesOrder[] = [
@@ -163,6 +179,58 @@ export const salesOrders: SalesOrder[] = [
     actualDeliveryDate: "2026-03-28",
     invoiceStatus: "paid",
   },
+  {
+    id: "SO-2026-REG-01",
+    account: "Nobu Toronto",
+    market: "Toronto",
+    orderDate: "2026-03-28",
+    requestedDelivery: "2026-04-08",
+    sku: "HJM-OG-750",
+    quantity: 48,
+    price: 4320,
+    salesRep: "Jordan Lee",
+    status: "confirmed",
+    paymentStatus: "pending",
+  },
+  {
+    id: "SO-2026-REG-02",
+    account: "Otto Atelier",
+    market: "Toronto",
+    orderDate: "2026-03-30",
+    requestedDelivery: "2026-04-06",
+    sku: "HJM-YZ-750",
+    quantity: 36,
+    price: 2880,
+    salesRep: "Jordan Lee",
+    status: "packed",
+    paymentStatus: "pending",
+  },
+  {
+    id: "SO-2026-REG-03",
+    account: "Bar Basso",
+    market: "Milan",
+    orderDate: "2026-03-26",
+    requestedDelivery: "2026-04-02",
+    sku: "HJM-OG-750",
+    quantity: 72,
+    price: 7200,
+    salesRep: "Jordan Lee",
+    status: "shipped",
+    paymentStatus: "paid",
+  },
+  {
+    id: "SO-2026-REG-04",
+    account: "Rinascente Milano",
+    market: "Milan",
+    orderDate: "2026-03-29",
+    requestedDelivery: "2026-04-05",
+    sku: "HJM-YZ-750",
+    quantity: 48,
+    price: 5120,
+    salesRep: "Jordan Lee",
+    status: "confirmed",
+    paymentStatus: "pending",
+  },
 ];
 
 export type Account = {
@@ -204,6 +272,18 @@ export type Account = {
   billingAddress?: string;
   /** CRM / ops narrative for demos */
   internalNotes?: string;
+  /** New retailer onboarding — multi-step pipeline (sales → wholesaler → brand). */
+  onboardingPipeline?: "none" | "sales_intake" | "brand_review" | "complete";
+  /** Set when brand completes onboarding (standard / premium / key). */
+  pricingTier?: "standard" | "premium" | "key";
+  /** Sales rep narrative when submitting a new retailer application. */
+  applicationBusinessSummary?: string;
+  /** Wholesaler verification notes before HQ approval. */
+  wholesalerReviewNotes?: string;
+  /** ISO timestamp when sales submitted intake. */
+  applicationSubmittedAt?: string;
+  /** Portal login email communicated on approval (demo). */
+  portalLoginEmail?: string;
 };
 
 export const accounts: Account[] = accountsJson as Account[];

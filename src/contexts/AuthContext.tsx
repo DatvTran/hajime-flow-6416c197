@@ -128,8 +128,8 @@ function pathMatches(pathname: string, base: string): boolean {
 
 /**
  * Role permissions — same AppData, different surfaces (spec §6).
- * Brand Operator: full HQ tower. Manufacturer: production + aggregated demand, no retailer pricing detail on alerts.
- * Distributor: fulfillment, no PO authoring or HQ settings. Retail: orders + catalog + tracking, no other accounts.
+ * Brand Operator: full HQ tower; creates production requests (POs). Manufacturer: executes POs, inventory, shipments — no PO creation in V1 UI.
+ * Distributor: fulfillment; read-only production requests (inbound context), no PO authoring or HQ settings. Retail: orders + catalog + tracking, no other accounts.
  * Sales Rep: accounts + drafts + field tools, no manufacturer or PO.
  */
 export function canAccessPath(role: HajimeRole, pathname: string): boolean {
@@ -146,7 +146,9 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
       pathMatches(p, "/inventory") ||
       p === "/shipments" ||
       pathMatches(p, "/shipments") ||
-      p === "/alerts"
+      p === "/alerts" ||
+      p === "/finance" ||
+      pathMatches(p, "/finance")
     );
   }
 
@@ -160,7 +162,7 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
   }
 
   if (role === "distributor") {
-    if (pathMatches(p, "/settings") || pathMatches(p, "/manufacturer") || pathMatches(p, "/purchase-orders") || pathMatches(p, "/markets") || pathMatches(p, "/retail") || pathMatches(p, "/sales")) {
+    if (pathMatches(p, "/settings") || pathMatches(p, "/manufacturer") || pathMatches(p, "/markets") || pathMatches(p, "/retail") || pathMatches(p, "/sales")) {
       return false;
     }
     return true;

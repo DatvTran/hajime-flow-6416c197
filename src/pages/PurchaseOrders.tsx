@@ -7,8 +7,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 import { useInventory, usePurchaseOrders } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { simulateLedgerCommit } from "@/lib/ledger";
 
 function shouldConsumeInventoryForTransition(p: PurchaseOrder, nextStatus: PurchaseOrder["status"]): boolean {
@@ -19,10 +21,16 @@ function shouldConsumeInventoryForTransition(p: PurchaseOrder, nextStatus: Purch
 }
 
 export default function PurchaseOrders() {
+  const { user } = useAuth();
+  const canCreateProductionRequest = user.role === "brand_operator";
+  /** Only HQ may change PO workflow status on this screen; manufacturer uses the Manufacturer portal for execution. */
+  const canEditPoStatus = user.role === "brand_operator";
   const { consumeForPo } = useInventory();
   const { purchaseOrders, addPurchaseOrder, patchPurchaseOrder } = usePurchaseOrders();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedPoId, setSelectedPoId] = useState<string | null>(null);
   const [newPoOpen, setNewPoOpen] = useState(false);
+  const [newPoPrefill, setNewPoPrefill] = useState<{ sku?: string; quantity?: string } | null>(null);
 
   const detailPo = useMemo(
     () => (selectedPoId ? purchaseOrders.find((p) => p.id === selectedPoId) ?? null : null),
@@ -33,7 +41,72 @@ export default function PurchaseOrders() {
     if (selectedPoId && !detailPo) setSelectedPoId(null);
   }, [selectedPoId, detailPo]);
 
+  useEffect(() => {
+    const po = searchParams.get("po");
+    if (!po || purchaseOrders.length === 0) return;
+    if (!purchaseOrders.some((p) => p.id === po)) return;
+    setSelectedPoId(po);
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.delete("po");
+        return n;
+      },
+      { replace: true },
+    );
+  }, [searchParams, purchaseOrders, setSearchParams]);
+
+  useEffect(() => {
+    const sku = searchParams.get("sku");
+    if (!sku) return;
+    if (!canCreateProductionRequest) {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.delete("sku");
+          n.delete("qty");
+          return n;
+        },
+        { replace: true },
+      );
+      return;
+    }
+    const qty = searchParams.get("qty");
+    setNewPoPrefill({ sku, quantity: qty ?? undefined });
+    setNewPoOpen(true);
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.delete("sku");
+        n.delete("qty");
+        return n;
+      },
+      { replace: true },
+    );
+  }, [searchParams, canCreateProductionRequest, setSearchParams]);
+
+  const pageDescription = useMemo(() => {
+    switch (user.role) {
+      case "brand_operator":
+        return "Create replenishment requests to the manufacturer — quantity, region, SKU, and target dates. Execution status and shipping handoff update here and tie to inventory when stock ships.";
+      case "distributor":
+        return "Read-only view of HQ production requests — use for inbound timing, receiving, and coordination with Shipments. You cannot create or edit requests.";
+      case "manufacturer":
+        return "Read-only view of requests from Hajime HQ. Record production stages and notes on the Manufacturer portal; PO status is updated here by Brand Operator only.";
+      default:
+        return "Production requests are created by Hajime HQ.";
+    }
+  }, [user.role]);
+
+  const poReadOnlyHint =
+    user.role === "manufacturer"
+      ? "Read-only — log production stages on the Manufacturer overview. PO status changes are HQ-only on this screen."
+      : user.role === "distributor"
+        ? "Read-only — planning reference for inbound stock; receiving lives under Shipments and Inventory."
+        : undefined;
+
   const patchPo = async (id: string, patch: Partial<Pick<PurchaseOrder, "status">>) => {
+    if (!canEditPoStatus) return;
     const p = purchaseOrders.find((x) => x.id === id);
     if (!p) return;
     const merged = { ...p, ...patch };
@@ -85,22 +158,35 @@ export default function PurchaseOrders() {
     <div>
       <PageHeader
         title="Production requests"
-        description="Request quantity, target region, manufacturer, status, and expected ship date — aligned with inventory and ledger when POs ship."
+        description={pageDescription}
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <Button variant="outline" size="sm" className="w-full justify-center touch-manipulation sm:w-auto">
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
-            <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setNewPoOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              New PO
-            </Button>
+            {canCreateProductionRequest ? (
+              <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setNewPoOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                New production request
+              </Button>
+            ) : null}
           </div>
         }
       />
 
-      <NewPurchaseOrderDialog open={newPoOpen} onOpenChange={setNewPoOpen} existing={purchaseOrders} onCreate={handleCreate} />
+      {canCreateProductionRequest ? (
+        <NewPurchaseOrderDialog
+          open={newPoOpen}
+          onOpenChange={(o) => {
+            setNewPoOpen(o);
+            if (!o) setNewPoPrefill(null);
+          }}
+          existing={purchaseOrders}
+          onCreate={handleCreate}
+          prefill={newPoPrefill}
+        />
+      ) : null}
 
       <PurchaseOrderDetailDialog
         purchaseOrder={detailPo}
@@ -109,6 +195,8 @@ export default function PurchaseOrders() {
           if (!o) setSelectedPoId(null);
         }}
         onPatch={patchPo}
+        readOnly={!canEditPoStatus}
+        readOnlyHint={poReadOnlyHint}
       />
 
       <Card>

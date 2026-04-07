@@ -9,6 +9,19 @@ import { orderLineEntries } from "@/lib/order-lines";
 
 const MS_DAY = 86400000;
 
+/**
+ * Anchor “today” for analytics windows: max(real now, latest order date).
+ * Keeps seeded orders (e.g. dated next year) inside trailing 30/90d charts when the browser clock lags the demo timeline.
+ */
+export function analyticsAsOfDateFromOrders(orders: SalesOrder[]): Date {
+  let maxT = Date.now();
+  for (const o of orders) {
+    const t = Date.parse(o.orderDate);
+    if (!Number.isNaN(t)) maxT = Math.max(maxT, t);
+  }
+  return new Date(maxT);
+}
+
 function sumBottles(items: InventoryItem[], pred: (i: InventoryItem) => boolean): number {
   let s = 0;
   for (const i of items) {
@@ -163,6 +176,25 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
         message: `${sku} — available ${avail.toLocaleString()} bottles (below threshold ${th})`,
         time: "now",
         severity: avail < th * 0.5 ? "high" : "medium",
+      });
+    }
+  }
+
+  const shelfTh = settings?.retailerStockThresholdBottles ?? 48;
+  const shelfMap = data.retailerShelfStock ?? {};
+  const retailTypes = new Set(["retail", "bar", "restaurant", "hotel", "lifestyle"]);
+  for (const acc of data.accounts) {
+    if (!retailTypes.has(acc.type)) continue;
+    const perSku = shelfMap[acc.id];
+    if (!perSku) continue;
+    for (const [sku, bottles] of Object.entries(perSku)) {
+      if (bottles >= shelfTh) continue;
+      alerts.push({
+        id: `retail-shelf-${acc.id}-${sku}`,
+        type: "low-stock",
+        message: `${acc.tradingName} — on-premise ${sku}: ${bottles} bottles (below retail threshold ${shelfTh}) — reorder or escalate`,
+        time: "now",
+        severity: bottles < shelfTh * 0.5 ? "high" : "medium",
       });
     }
   }
@@ -403,6 +435,52 @@ export function computeTorontoMilanSnapshot(orders: SalesOrder[], windowDays = 3
   return [rows[0], rows[1]] as const;
 }
 
+export type LocalAccountPerfRow = {
+  account: string;
+  revenue: number;
+  orderCount: number;
+  bottles: number;
+  /** Relative to top account in the same city (0–100). */
+  barPct: number;
+};
+
+/**
+ * Ranked account sell-in within each anchor city (Ontario+Toronto → Toronto; Milan).
+ * Bars are normalized within that city only (for single-market views, not city-vs-city).
+ */
+export function computeLocalAccountPerformanceByCity(
+  orders: SalesOrder[],
+  windowDays = 30,
+  now = new Date(),
+): { Toronto: LocalAccountPerfRow[]; Milan: LocalAccountPerfRow[] } {
+  const cutoff = now.getTime() - windowDays * MS_DAY;
+  const agg: Record<"Toronto" | "Milan", Record<string, { revenue: number; orderCount: number; bottles: number }>> = {
+    Toronto: {},
+    Milan: {},
+  };
+  for (const o of orders) {
+    if (o.status === "cancelled" || o.status === "draft") continue;
+    const t = Date.parse(o.orderDate);
+    if (Number.isNaN(t) || t < cutoff) continue;
+    const c = cityKeyFromMarket(o.market);
+    if (c !== "Toronto" && c !== "Milan") continue;
+    const name = o.account.trim() || "—";
+    const bucket = agg[c];
+    if (!bucket[name]) bucket[name] = { revenue: 0, orderCount: 0, bottles: 0 };
+    bucket[name].revenue += o.price;
+    bucket[name].orderCount += 1;
+    bucket[name].bottles += o.quantity;
+  }
+  const finalize = (city: "Toronto" | "Milan"): LocalAccountPerfRow[] => {
+    const rows = Object.entries(agg[city])
+      .map(([account, v]) => ({ account, ...v }))
+      .sort((a, b) => b.revenue - a.revenue);
+    const maxRev = Math.max(...rows.map((r) => r.revenue), 1);
+    return rows.map((r) => ({ ...r, barPct: Math.round((r.revenue / maxRev) * 100) }));
+  };
+  return { Toronto: finalize("Toronto"), Milan: finalize("Milan") };
+}
+
 export function revenueInWindow(orders: SalesOrder[], windowDays: number, now = new Date()): number {
   const cutoff = now.getTime() - windowDays * MS_DAY;
   let s = 0;
@@ -492,11 +570,13 @@ function accountByTradingName(accounts: AppData["accounts"], tradingName: string
   return accounts.find((a) => a.tradingName === tradingName || a.legalName === tradingName);
 }
 
-/** Retail-channel orders: account type retail (or unknown → include). */
+/** Retail-channel orders: on-premise venue types (hotel, bar, …) or explicit retail routing. */
 export function isRetailChannelOrder(order: SalesOrder, accounts: AppData["accounts"]): boolean {
+  if (order.orderRoutingTarget === "retail") return true;
   const acc = accountByTradingName(accounts, order.account);
   if (!acc) return true;
-  return acc.type === "retail";
+  const venueTypes = new Set(["retail", "bar", "restaurant", "hotel", "lifestyle"]);
+  return venueTypes.has(acc.type);
 }
 
 export type RetailOrderPipeline = {

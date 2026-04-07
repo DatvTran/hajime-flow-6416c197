@@ -3,13 +3,18 @@ import type { TeamMember } from "@/types/app-data";
 /**
  * Canonical portal roster — matches:
  * - `accounts` contact emails / salesOwner names (mockData + hajime-accounts.json)
- * - `salesOrders.salesRep` (Sarah Kim, Marcus Chen, Luca Moretti)
+ * - `salesOrders.salesRep` (Sarah Kim, Marcus Chen, Luca Moretti, Jordan Lee)
  * - Sign-in personas (Auth) — use exact `displayName` for sales rep so rep home filters work
  */
+/** When a rep session has no matching `salesRep` on orders, Analytics falls back to this book (seed data). */
+export const ANALYTICS_DEMO_REP_BOOK = "Jordan Lee";
+
 export const TEAM_ROSTER: TeamMember[] = [
   { id: "tm-seed-1", displayName: "Sarah Kim", email: "sarah.kim@hajime.jp", role: "sales_rep", createdAt: "2026-01-08" },
   { id: "tm-seed-2", displayName: "Marcus Chen", email: "marcus.chen@hajime.jp", role: "sales_rep", createdAt: "2026-01-08" },
   { id: "tm-seed-3", displayName: "Luca Moretti", email: "luca.moretti@hajime.jp", role: "sales_rep", createdAt: "2026-01-10" },
+  /** Cross-anchor demo: attributed orders in both Toronto and Milan (Analytics Toronto vs Milan card). */
+  { id: "tm-seed-regional", displayName: "Jordan Lee", email: "jordan.lee@hajime.jp", role: "sales_rep", createdAt: "2026-01-09" },
   {
     id: "tm-seed-4",
     displayName: "Jeff Guignard",

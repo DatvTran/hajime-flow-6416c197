@@ -22,6 +22,22 @@ export type OperationalSettings = {
   manufacturerLeadTimeDays: number;
   /** Per-SKU low-stock / reorder safety floor in bottles */
   safetyStockBySku: Record<string, number>;
+  /** Retail shelf — alert when on-premise bottles fall below this (per SKU line). */
+  retailerStockThresholdBottles?: number;
+};
+
+/** Multi-node cash visibility: retailer → wholesaler → manufacturer (demo ledger). */
+export type FinancingLedgerEntry = {
+  id: string;
+  at: string;
+  kind: "retailer_to_wholesaler" | "wholesaler_to_manufacturer" | "manufacturer_receipt";
+  fromLabel: string;
+  toLabel: string;
+  amountCad: number;
+  description: string;
+  orderId?: string;
+  purchaseOrderId?: string;
+  status: "recorded" | "pending";
 };
 
 /** Partner / field roles invitable from HQ (maps to `HajimeRole` at login, excluding `brand_operator`). */
@@ -49,4 +65,8 @@ export type AppData = {
   auditLogs?: AuditLogEntry[];
   /** Directory of invited portal users (V1: roster + intended role; auth remains demo). */
   teamMembers?: TeamMember[];
+  /** Retailer venue shelf / back-bar stock (account id → sku → bottles). */
+  retailerShelfStock?: Record<string, Record<string, number>>;
+  /** AR/AP style entries across nodes (Brand sees all). */
+  financingLedger?: FinancingLedgerEntry[];
 };

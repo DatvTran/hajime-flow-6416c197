@@ -1,5 +1,13 @@
 import { type Account, type SalesOrder } from "@/data/mockData";
-import { isRetailChannelOrder } from "@/lib/hajime-metrics";
+import { useAuth } from "@/contexts/AuthContext";
+import { resolveSalesRepLabelForSession } from "@/data/team-roster";
+import {
+  canCollectPaymentForOrder,
+  canSalesRepApproveOrder,
+  createdByLabel,
+  effectiveRepApprovalStatus,
+  routingTargetLabel,
+} from "@/lib/order-routing";
 import { orderLineEntries } from "@/lib/order-lines";
 import {
   Dialog,
@@ -34,7 +42,7 @@ type Props = {
   order: SalesOrder | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onPatch: (id: string, patch: Partial<Pick<SalesOrder, "status" | "paymentStatus">>) => void;
+  onPatch: (id: string, patch: Partial<SalesOrder>) => void;
   /** Used to detect retail-channel drafts for approval actions. */
   accounts?: Account[];
   onStripeBillingUpdated?: () => void;
@@ -51,6 +59,9 @@ export function SalesOrderDetailDialog({
   onStripeBillingUpdated,
   billingRefresh = 0,
 }: Props) {
+  const { user } = useAuth();
+  const sessionRep = resolveSalesRepLabelForSession(user?.email, user?.displayName ?? "");
+
   const handleStatus = (value: string) => {
     if (!order) return;
     const status = value as SalesOrder["status"];
@@ -71,19 +82,21 @@ export function SalesOrderDetailDialog({
     toast.success("Payment status updated", { description: `${order.id} → ${paymentStatus}` });
   };
 
-  const needsRetailApproval = Boolean(
-    order && order.status === "draft" && isRetailChannelOrder(order, accounts),
+  const showRepApprovalPanel = Boolean(
+    order && user.role === "sales_rep" && canSalesRepApproveOrder(order, accounts, sessionRep),
   );
+
+  const paymentAllowed = order ? canCollectPaymentForOrder(order, accounts) : false;
 
   const approveRetailOrder = () => {
     if (!order) return;
-    onPatch(order.id, { status: "confirmed" });
-    toast.success("Order approved", { description: `${order.id} is confirmed for fulfillment.` });
+    onPatch(order.id, { repApprovalStatus: "approved" });
+    toast.success("Order approved", { description: `${order.id} — capture payment next, then wholesaler fulfillment.` });
   };
 
   const rejectRetailOrder = () => {
     if (!order) return;
-    onPatch(order.id, { status: "cancelled" });
+    onPatch(order.id, { status: "cancelled", repApprovalStatus: "not_required" });
     toast.info("Order rejected", { description: `${order.id} marked cancelled.` });
   };
 
@@ -167,22 +180,81 @@ export function SalesOrderDetailDialog({
                   <span className="text-muted-foreground">Sales rep</span>
                   <span className="font-medium">{order.salesRep}</span>
                 </div>
+                {order.orderRoutingTarget ? (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Pathway</span>
+                    <span className="text-right font-medium">{routingTargetLabel(order.orderRoutingTarget)}</span>
+                  </div>
+                ) : null}
+                {order.orderCreatedByRole ? (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Created as</span>
+                    <span className="font-medium">{createdByLabel(order.orderCreatedByRole)}</span>
+                  </div>
+                ) : null}
+                {order.placedOnBehalfByRep ? (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Placement</span>
+                    <span className="text-right font-medium">Sales rep submitted on behalf of retailer</span>
+                  </div>
+                ) : null}
+                {order.wholesalerFulfillmentStatus ? (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">DC fulfillment</span>
+                    <span className="font-medium capitalize">{order.wholesalerFulfillmentStatus.replace(/_/g, " ")}</span>
+                  </div>
+                ) : null}
+                {order.assignedSalesRep ? (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Routed rep</span>
+                    <span className="font-medium">{order.assignedSalesRep}</span>
+                  </div>
+                ) : null}
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Rep approval</span>
+                  <span className="font-medium capitalize">{effectiveRepApprovalStatus(order, accounts)}</span>
+                </div>
               </div>
 
               <Separator />
 
-              {needsRetailApproval ? (
-                <div className="rounded-lg border border-accent/30 bg-accent/5 p-4">
-                  <p className="text-sm font-medium text-foreground">Retail order approval</p>
+              {user.role === "distributor" &&
+              order.wholesalerFulfillmentStatus === "pending_ack" &&
+              order.paymentStatus === "paid" &&
+              order.status === "confirmed" ? (
+                <div className="rounded-lg border border-primary/25 bg-primary/5 p-4">
+                  <p className="text-sm font-medium text-foreground">Wholesaler — confirm availability</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    This draft is from a retail account — confirm to release for fulfillment or decline.
+                    Acknowledge this paid order before packing. Manufacturer replenishment runs from Production requests when DC stock is low.
+                  </p>
+                  <div className="mt-3">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="touch-manipulation"
+                      onClick={() => {
+                        onPatch(order.id, { wholesalerFulfillmentStatus: "acknowledged" });
+                        toast.success("Acknowledged", { description: `${order.id} — proceed to pack & ship.` });
+                      }}
+                    >
+                      Confirm availability & acknowledge
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {showRepApprovalPanel ? (
+                <div className="rounded-lg border border-accent/30 bg-accent/5 p-4">
+                  <p className="text-sm font-medium text-foreground">Retail order — your approval</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Approve to allow payment. After the card is charged, this order goes to the wholesaler for delivery and shipping.
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button type="button" size="sm" className="touch-manipulation" onClick={approveRetailOrder}>
-                      Approve (confirm)
+                      Approve for payment
                     </Button>
                     <Button type="button" size="sm" variant="outline" className="touch-manipulation" onClick={rejectRetailOrder}>
-                      Reject (cancel)
+                      Reject
                     </Button>
                   </div>
                 </div>
@@ -228,6 +300,7 @@ export function SalesOrderDetailDialog({
                 order={order}
                 onPatch={onPatch}
                 onStripeBillingUpdated={onStripeBillingUpdated}
+                paymentAllowed={paymentAllowed}
               />
             </div>
           </>

@@ -15,6 +15,16 @@ export function isOrderTabId(v: string | null): v is OrderTabId {
   return ORDER_TABS.some((t) => t.id === v);
 }
 
+/** Tab that contains this order (for deep links from alerts / accounts). */
+export function orderTabForOrder(o: SalesOrder): OrderTabId {
+  if (o.status === "draft") return "pending-review";
+  if (o.status === "confirmed" || o.status === "packed") return "approved";
+  if (o.status === "shipped") return "distributor";
+  if (o.status === "delivered") return "delivered";
+  if (o.status === "cancelled") return "rejected";
+  return "approved";
+}
+
 export function matchesOrderTab(o: SalesOrder, tab: OrderTabId): boolean {
   switch (tab) {
     case "pending-review":

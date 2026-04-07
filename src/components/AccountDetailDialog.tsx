@@ -18,6 +18,24 @@ import { toast } from "@/components/ui/sonner";
 import { Link } from "react-router-dom";
 import { CreditCard, ExternalLink, MapPin, Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+
+function onboardingPipelineLabel(p: Account["onboardingPipeline"] | undefined): string {
+  switch (p) {
+    case "sales_intake":
+      return "Sales submitted — wholesaler review";
+    case "brand_review":
+      return "Brand HQ approval pending";
+    case "complete":
+      return "Onboarding complete";
+    default:
+      return "—";
+  }
+}
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 const ACCOUNT_TYPES: Account["type"][] = ["retail", "bar", "restaurant", "hotel", "distributor", "lifestyle"];
 const ACCOUNT_STATUSES: Account["status"][] = ["active", "prospect", "inactive"];
@@ -37,15 +55,24 @@ function parseTags(s: string): string[] {
 }
 
 export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Props) {
+  const { user } = useAuth();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Account | null>(null);
   const [tagsInput, setTagsInput] = useState("");
+  const [whVerifyNotes, setWhVerifyNotes] = useState("");
+  const [brandTier, setBrandTier] = useState<NonNullable<Account["pricingTier"]>>("standard");
+  const [brandCredit, setBrandCredit] = useState("");
+  const [portalEmail, setPortalEmail] = useState("");
 
   useEffect(() => {
     if (account) {
       setDraft({ ...account });
       setTagsInput(account.tags.join(", "));
       setEditing(false);
+      setWhVerifyNotes(account.wholesalerReviewNotes ?? "");
+      setBrandTier(account.pricingTier ?? "standard");
+      setBrandCredit(account.creditLimitCad != null ? String(account.creditLimitCad) : "25000");
+      setPortalEmail(account.portalLoginEmail ?? account.email);
     }
   }, [account]);
 
@@ -555,6 +582,141 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
                         </span>
                       ))}
                     </div>
+                  </div>
+                </>
+              ) : null}
+
+              {draft.onboardingPipeline && draft.onboardingPipeline !== "none" && draft.onboardingPipeline !== "complete" ? (
+                <>
+                  <Separator />
+                  <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Retailer onboarding</p>
+                    <p className="mt-1 text-sm font-medium text-foreground">{onboardingPipelineLabel(draft.onboardingPipeline)}</p>
+                    {draft.applicationSubmittedAt ? (
+                      <p className="mt-1 text-xs text-muted-foreground">Submitted {draft.applicationSubmittedAt.slice(0, 10)}</p>
+                    ) : null}
+                    {draft.applicationBusinessSummary ? (
+                      <p className="mt-2 text-sm leading-snug text-foreground">{draft.applicationBusinessSummary}</p>
+                    ) : null}
+                    {draft.wholesalerReviewNotes ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">Wholesaler notes:</span> {draft.wholesalerReviewNotes}
+                      </p>
+                    ) : null}
+
+                    {user.role === "distributor" && draft.onboardingPipeline === "sales_intake" ? (
+                      <div className="mt-3 space-y-2">
+                        <Label htmlFor="wh-verify">Verification notes for HQ</Label>
+                        <Textarea
+                          id="wh-verify"
+                          rows={3}
+                          value={whVerifyNotes}
+                          onChange={(e) => setWhVerifyNotes(e.target.value)}
+                          className="touch-manipulation resize-none"
+                          placeholder="License check, trade references, delivery constraints…"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="touch-manipulation"
+                          onClick={() => {
+                            const next: Account = {
+                              ...draft,
+                              onboardingPipeline: "brand_review",
+                              wholesalerReviewNotes: whVerifyNotes.trim() || undefined,
+                            };
+                            onSave(next);
+                            setDraft(next);
+                            toast.success("Forwarded to brand HQ", { description: draft.tradingName });
+                          }}
+                        >
+                          Verify & forward to brand
+                        </Button>
+                      </div>
+                    ) : null}
+
+                    {user.role === "brand_operator" && draft.onboardingPipeline === "brand_review" ? (
+                      <div className="mt-3 space-y-3">
+                        <div className="space-y-2">
+                          <Label>Pricing tier</Label>
+                          <Select value={brandTier} onValueChange={(v) => setBrandTier(v as NonNullable<Account["pricingTier"]>)}>
+                            <SelectTrigger className="touch-manipulation">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="standard">Standard</SelectItem>
+                              <SelectItem value="premium">Premium</SelectItem>
+                              <SelectItem value="key">Key account</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="brand-credit">Credit limit (CAD)</Label>
+                          <Input
+                            id="brand-credit"
+                            inputMode="numeric"
+                            value={brandCredit}
+                            onChange={(e) => setBrandCredit(e.target.value)}
+                            className="touch-manipulation tabular-nums"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="portal-em">Portal login email</Label>
+                          <Input
+                            id="portal-em"
+                            type="email"
+                            value={portalEmail}
+                            onChange={(e) => setPortalEmail(e.target.value)}
+                            className="touch-manipulation"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Demo: add this email to Team roster as retail role — user signs in with that email and selects this trading name.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="touch-manipulation"
+                          onClick={() => {
+                            const cred = Math.max(0, parseFloat(brandCredit.replace(/,/g, "")) || 0);
+                            const next: Account = {
+                              ...draft,
+                              onboardingPipeline: "complete",
+                              status: "active",
+                              pricingTier: brandTier,
+                              creditLimitCad: cred,
+                              portalLoginEmail: portalEmail.trim() || draft.email,
+                              firstOrderDate: draft.firstOrderDate || todayISO(),
+                            };
+                            onSave(next);
+                            setDraft(next);
+                            toast.success("Retailer approved", {
+                              description: `${draft.tradingName} — tier ${brandTier}, credit $${cred.toLocaleString()} CAD`,
+                            });
+                          }}
+                        >
+                          Approve & activate account
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
+
+              {draft.onboardingPipeline === "complete" && draft.pricingTier ? (
+                <>
+                  <Separator />
+                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm">
+                    <p className="font-medium text-foreground">Onboarding complete</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Tier <span className="capitalize text-foreground">{draft.pricingTier}</span>
+                      {draft.portalLoginEmail ? (
+                        <>
+                          {" "}
+                          · Portal email <span className="font-mono text-foreground">{draft.portalLoginEmail}</span>
+                        </>
+                      ) : null}
+                    </p>
                   </div>
                 </>
               ) : null}

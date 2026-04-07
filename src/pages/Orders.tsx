@@ -3,8 +3,17 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { NewSalesOrderDialog } from "@/components/NewSalesOrderDialog";
 import { SalesOrderDetailDialog } from "@/components/SalesOrderDetailDialog";
 import type { SalesOrder } from "@/data/mockData";
-import { useAccounts, useSalesOrders } from "@/contexts/AppDataContext";
-import { computeOrderTabCounts, isOrderTabId, matchesOrderTab, ORDER_TABS, type OrderTabId } from "@/lib/order-lifecycle";
+import { isRetailChannelOrder } from "@/lib/hajime-metrics";
+import { effectiveRepApprovalStatus, routingTargetLabel } from "@/lib/order-routing";
+import { useAccounts, useFinancingLedger, useSalesOrders } from "@/contexts/AppDataContext";
+import {
+  computeOrderTabCounts,
+  isOrderTabId,
+  matchesOrderTab,
+  orderTabForOrder,
+  ORDER_TABS,
+  type OrderTabId,
+} from "@/lib/order-lifecycle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,13 +21,18 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Search, Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { mapRoleToSalesOrderFormVariant } from "@/lib/sales-order-form-variants";
 import { toast } from "@/components/ui/sonner";
 import { apiListCardLast4s, apiVerifyCheckoutSession } from "@/lib/stripe-api";
 import { setStoredCardLast4, setStoredCustomerId } from "@/lib/stripe-local";
 
 export default function Orders() {
+  const { user } = useAuth();
   const { salesOrders: orders, addSalesOrder, patchSalesOrder } = useSalesOrders();
   const { accounts } = useAccounts();
+  const { appendEntry } = useFinancingLedger();
+  const newOrderVariant = useMemo(() => mapRoleToSalesOrderFormVariant(user.role), [user.role]);
   const [searchParams, setSearchParams] = useSearchParams();
   const accountFromUrl = searchParams.get("account");
 
@@ -55,6 +69,28 @@ export default function Orders() {
   useEffect(() => {
     if (selectedOrderId && !detailOrder) setSelectedOrderId(null);
   }, [selectedOrderId, detailOrder]);
+
+  /** Deep link from Alerts — open order detail on the correct lifecycle tab. */
+  useEffect(() => {
+    const oid = searchParams.get("order");
+    if (!oid || orders.length === 0) return;
+    const o = orders.find((x) => x.id === oid);
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.delete("order");
+        if (o) n.set("tab", orderTabForOrder(o));
+        return n;
+      },
+      { replace: true },
+    );
+    if (o) {
+      setSearch(oid);
+      setSelectedOrderId(oid);
+    } else {
+      setSearch(oid);
+    }
+  }, [searchParams, orders, setSearchParams]);
 
   /** Deep link from Accounts page — pre-fill order search by trading name. */
   useEffect(() => {
@@ -172,15 +208,62 @@ export default function Orders() {
     addSalesOrder(order);
   };
 
-  const patchOrder = (id: string, patch: Partial<Pick<SalesOrder, "status" | "paymentStatus">>) => {
-    patchSalesOrder(id, patch);
+  const patchOrder = (id: string, patch: Partial<SalesOrder>) => {
+    const o = orders.find((x) => x.id === id);
+    if (!o) {
+      patchSalesOrder(id, patch);
+      return;
+    }
+    let merged: Partial<SalesOrder> = { ...patch };
+    if (patch.paymentStatus === "paid" && o.status === "draft" && isRetailChannelOrder(o, accounts)) {
+      const rep = effectiveRepApprovalStatus(o, accounts);
+      if (rep === "approved" || rep === "not_required") {
+        merged = { ...merged, status: "confirmed" };
+      }
+    }
+
+    const paymentJustPaid = patch.paymentStatus === "paid" && o.paymentStatus !== "paid";
+    if (paymentJustPaid && isRetailChannelOrder(o, accounts)) {
+      appendEntry({
+        kind: "retailer_to_wholesaler",
+        fromLabel: o.account,
+        toLabel: "Wholesaler / DC",
+        amountCad: o.price,
+        description: `Payment captured — ${o.id}`,
+        orderId: o.id,
+        status: "recorded",
+        at: new Date().toISOString(),
+      });
+    }
+
+    const interim: SalesOrder = { ...o, ...merged };
+    if (
+      interim.paymentStatus === "paid" &&
+      interim.status === "confirmed" &&
+      isRetailChannelOrder(interim, accounts) &&
+      !o.wholesalerFulfillmentStatus
+    ) {
+      merged = { ...merged, wholesalerFulfillmentStatus: "pending_ack" };
+    }
+
+    patchSalesOrder(id, merged);
   };
 
   return (
     <div>
       <PageHeader
         title="Orders"
-        description="Lifecycle tabs from pending review through distributor processing — same records as retail, field teams, and the Command center (HQ)."
+        description={
+          user.role === "brand_operator"
+            ? "Brand HQ — monitor every pathway (manufacturer, wholesaler, rep, retail) and all payment states in one list."
+            : user.role === "distributor"
+              ? "Wholesaler — after retail pays, create delivery and process shipping (confirmed + paid orders)."
+              : user.role === "manufacturer"
+                ? "Sell-in visibility — mirror lines for planning alongside Production orders."
+                : user.role === "sales_rep"
+                  ? "Approve retail drafts, then payment releases the order to the wholesaler for delivery."
+                  : "Order lifecycle and fulfillment."
+        }
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <Button variant="outline" size="sm" className="w-full justify-center touch-manipulation sm:w-auto">
@@ -205,6 +288,7 @@ export default function Orders() {
         onOpenChange={setNewOrderOpen}
         existingOrders={orders}
         onCreate={handleCreateOrder}
+        variant={newOrderVariant}
       />
 
       <SalesOrderDetailDialog
@@ -316,6 +400,8 @@ export default function Orders() {
                   <th className="pb-3 font-medium text-muted-foreground">Qty</th>
                   <th className="pb-3 font-medium text-muted-foreground">Value</th>
                   <th className="pb-3 font-medium text-muted-foreground">Sales Rep</th>
+                  <th className="pb-3 font-medium text-muted-foreground">Path</th>
+                  <th className="pb-3 font-medium text-muted-foreground">Rep OK</th>
                   <th className="pb-3 font-medium text-muted-foreground">Approval</th>
                   <th className="pb-3 font-medium text-muted-foreground">Status</th>
                   <th className="pb-3 font-medium text-muted-foreground">Payment</th>
@@ -324,7 +410,7 @@ export default function Orders() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-sm text-muted-foreground">
+                    <td colSpan={12} className="py-12 text-center text-sm text-muted-foreground">
                       No orders in this stage. Try another tab or clear search.
                     </td>
                   </tr>
@@ -346,6 +432,12 @@ export default function Orders() {
                     <td className="py-3">{order.quantity}</td>
                     <td className="py-3">${order.price.toLocaleString()}</td>
                     <td className="py-3">{order.salesRep}</td>
+                    <td className="py-3 max-w-[100px] truncate text-xs text-muted-foreground" title={order.orderRoutingTarget ?? ""}>
+                      {order.orderRoutingTarget ? routingTargetLabel(order.orderRoutingTarget) : "—"}
+                    </td>
+                    <td className="py-3 text-xs capitalize text-muted-foreground">
+                      {effectiveRepApprovalStatus(order, accounts)}
+                    </td>
                     <td className="py-3">
                       {order.status === "draft" ? (
                         <span className="inline-flex rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium text-accent-foreground">

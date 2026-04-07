@@ -685,6 +685,58 @@
       "paymentStatus": "paid",
       "actualDeliveryDate": "2026-03-28",
       "invoiceStatus": "paid"
+    },
+    {
+      "id": "SO-2026-REG-01",
+      "account": "Nobu Toronto",
+      "market": "Toronto",
+      "orderDate": "2026-03-28",
+      "requestedDelivery": "2026-04-08",
+      "sku": "HJM-OG-750",
+      "quantity": 48,
+      "price": 4320,
+      "salesRep": "Jordan Lee",
+      "status": "confirmed",
+      "paymentStatus": "pending"
+    },
+    {
+      "id": "SO-2026-REG-02",
+      "account": "Otto Atelier",
+      "market": "Toronto",
+      "orderDate": "2026-03-30",
+      "requestedDelivery": "2026-04-06",
+      "sku": "HJM-YZ-750",
+      "quantity": 36,
+      "price": 2880,
+      "salesRep": "Jordan Lee",
+      "status": "packed",
+      "paymentStatus": "pending"
+    },
+    {
+      "id": "SO-2026-REG-03",
+      "account": "Bar Basso",
+      "market": "Milan",
+      "orderDate": "2026-03-26",
+      "requestedDelivery": "2026-04-02",
+      "sku": "HJM-OG-750",
+      "quantity": 72,
+      "price": 7200,
+      "salesRep": "Jordan Lee",
+      "status": "shipped",
+      "paymentStatus": "paid"
+    },
+    {
+      "id": "SO-2026-REG-04",
+      "account": "Rinascente Milano",
+      "market": "Milan",
+      "orderDate": "2026-03-29",
+      "requestedDelivery": "2026-04-05",
+      "sku": "HJM-YZ-750",
+      "quantity": 48,
+      "price": 5120,
+      "salesRep": "Jordan Lee",
+      "status": "confirmed",
+      "paymentStatus": "pending"
     }
   ],
   "purchaseOrders": [
@@ -889,6 +941,13 @@
       "email": "luca.moretti@hajime.jp",
       "role": "sales_rep",
       "createdAt": "2026-01-10"
+    },
+    {
+      "id": "tm-seed-regional",
+      "displayName": "Jordan Lee",
+      "email": "jordan.lee@hajime.jp",
+      "role": "sales_rep",
+      "createdAt": "2026-01-09"
     },
     {
       "id": "tm-seed-4",

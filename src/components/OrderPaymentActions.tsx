@@ -29,11 +29,13 @@ import { StripeSaveCardDialog } from "@/components/StripeSaveCardDialog";
 
 type Props = {
   order: SalesOrder;
-  onPatch: (id: string, patch: Partial<Pick<SalesOrder, "status" | "paymentStatus">>) => void;
+  onPatch: (id: string, patch: Partial<SalesOrder>) => void;
   onStripeBillingUpdated?: () => void;
+  /** When false, payment actions are disabled (e.g. retail order awaiting rep approval). */
+  paymentAllowed?: boolean;
 };
 
-export function OrderPaymentActions({ order, onPatch, onStripeBillingUpdated }: Props) {
+export function OrderPaymentActions({ order, onPatch, onStripeBillingUpdated, paymentAllowed = true }: Props) {
   const { accounts } = useAccounts();
   const [chargeOpen, setChargeOpen] = useState(false);
   const [payCardOpen, setPayCardOpen] = useState(false);
@@ -146,6 +148,15 @@ export function OrderPaymentActions({ order, onPatch, onStripeBillingUpdated }: 
     return (
       <p className="rounded-lg border border-success/30 bg-success/5 px-3 py-2 text-sm text-muted-foreground">
         <span className="font-medium text-foreground">Paid.</span> No balance due on this order.
+      </p>
+    );
+  }
+
+  if (!paymentAllowed) {
+    return (
+      <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-muted-foreground">
+        <span className="font-medium text-foreground">Awaiting field rep approval.</span> The assigned sales rep must approve this retail
+        order before payment can be captured. After the card is charged, the order moves to the wholesaler for delivery.
       </p>
     );
   }

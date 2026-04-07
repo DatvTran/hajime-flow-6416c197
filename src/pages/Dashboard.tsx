@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { useAppData, useSalesOrders } from "@/contexts/AppDataContext";
@@ -48,7 +49,9 @@ import {
   countActiveMarkets,
   deriveAlerts,
   computeManufacturerDashboardStatus,
+  isRetailChannelOrder,
 } from "@/lib/hajime-metrics";
+import { effectiveRepApprovalStatus } from "@/lib/order-routing";
 import { computeOrderTabCounts, ORDER_TABS } from "@/lib/order-lifecycle";
 import {
   buildPendingApprovalItems,
@@ -67,6 +70,7 @@ import {
   mapShipmentStatusLabel,
   type MarketPanelRow,
 } from "@/lib/brand-operator-metrics";
+import { resolveAlertHref } from "@/lib/alert-links";
 
 const MARKET_FILTERS = [
   { id: "all", label: "All markets" },
@@ -187,10 +191,22 @@ export default function Dashboard() {
 
   const onApprove = useCallback(
     (orderId: string) => {
+      const o = data.salesOrders.find((x) => x.id === orderId);
+      if (
+        o &&
+        isRetailChannelOrder(o, data.accounts) &&
+        o.lines &&
+        o.lines.length > 0 &&
+        effectiveRepApprovalStatus(o, data.accounts) === "pending"
+      ) {
+        patchSalesOrder(orderId, { repApprovalStatus: "approved" });
+        toast.success("Rep approval recorded", { description: `${orderId} — capture payment in Orders, then wholesaler ships.` });
+        return;
+      }
       patchSalesOrder(orderId, { status: "confirmed" });
       toast.success("Order approved", { description: `${orderId} is confirmed for fulfillment.` });
     },
-    [patchSalesOrder],
+    [patchSalesOrder, data.salesOrders, data.accounts],
   );
 
   const onReject = useCallback(
@@ -256,16 +272,63 @@ export default function Dashboard() {
                 className="h-9 border-border/60 bg-background/80 pl-8"
               />
             </div>
-            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 touch-manipulation" asChild>
-              <Link to="/alerts" className="relative">
-                <Bell className="h-4 w-4" />
-                {alertBadgeCount > 0 ? (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
-                    {alertBadgeCount}
-                  </span>
-                ) : null}
-              </Link>
-            </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="relative h-9 w-9 shrink-0 touch-manipulation"
+                  aria-label="Open alerts"
+                >
+                  <Bell className="h-4 w-4" />
+                  {alertBadgeCount > 0 ? (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
+                      {alertBadgeCount}
+                    </span>
+                  ) : null}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[min(100vw-2rem,380px)] p-0" align="end">
+                <div className="border-b px-4 py-3">
+                  <p className="font-display text-sm font-semibold tracking-tight">Notifications</p>
+                  <Link
+                    to="/alerts#active-queue"
+                    className="mt-1 inline-flex text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                  >
+                    Active queue
+                  </Link>
+                  <p className="mt-1 text-xs text-muted-foreground">Same list as Alerts hub — inventory, PO, logistics, demand, AR.</p>
+                </div>
+                <ScrollArea className="max-h-[min(50vh,280px)]">
+                  <div className="space-y-0 p-2">
+                    {hubAlerts.length === 0 ? (
+                      <p className="px-2 py-6 text-center text-sm text-muted-foreground">No alerts right now.</p>
+                    ) : (
+                      hubAlerts.slice(0, 8).map((a) => (
+                        <Link
+                          key={a.id}
+                          to={resolveAlertHref(a, "brand_operator")}
+                          className="block rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-xs no-underline transition-colors last:mb-0 hover:border-primary/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className={cn("h-2 w-2 shrink-0 rounded-full", severityDot(a.severity))} />
+                            <span className="font-medium capitalize text-foreground">{a.severity}</span>
+                            <span className="text-muted-foreground">· {a.type.replace(/-/g, " ")}</span>
+                          </div>
+                          <p className="mt-1 leading-snug text-foreground">{a.message}</p>
+                        </Link>
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+                <div className="border-t p-2">
+                  <Button variant="secondary" size="sm" className="w-full touch-manipulation" asChild>
+                    <Link to="/alerts#active-queue">Open Alerts hub</Link>
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
             <Button
               variant="ghost"
               size="sm"

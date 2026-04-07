@@ -79,5 +79,8 @@ export function buildRetailCheckoutOrder(params: {
     orderNotes: params.orderNotes?.trim() || undefined,
     deliveryAddress: params.deliveryAddress?.trim() || undefined,
     invoiceStatus: "not_invoiced",
+    orderRoutingTarget: "retail",
+    orderCreatedByRole: "retail",
+    repApprovalStatus: "pending",
   };
 }

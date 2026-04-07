@@ -17,7 +17,7 @@ import type {
 } from "@/data/mockData";
 import { deductFifoAvailableBottles } from "@/lib/inventory-deduct";
 import { fetchAppData, putAppData } from "@/lib/api-app";
-import type { AppData } from "@/types/app-data";
+import type { AppData, FinancingLedgerEntry } from "@/types/app-data";
 import type { ProductionStatus } from "@/data/mockData";
 import seedJson from "@/data/seed-app.json";
 import { toast } from "@/components/ui/sonner";
@@ -127,6 +127,11 @@ export function useProducts() {
           if (d.products.some((x) => x.sku.toLowerCase() === p.sku.toLowerCase())) return d;
           return { ...d, products: [...d.products, p] };
         }),
+      patchProduct: (sku: string, patch: Partial<Product>) =>
+        updateData((d) => ({
+          ...d,
+          products: d.products.map((x) => (x.sku === sku ? { ...x, ...patch } : x)),
+        })),
       removeProduct: (sku: string) =>
         updateData((d) => ({
           ...d,
@@ -134,6 +139,46 @@ export function useProducts() {
         })),
     }),
     [data.products, updateData],
+  );
+}
+
+export function useRetailerShelfStock() {
+  const { data, updateData } = useAppData();
+  const shelf = data.retailerShelfStock ?? {};
+  return useMemo(
+    () => ({
+      shelf,
+      setShelfBottles: (accountId: string, sku: string, bottles: number) =>
+        updateData((d) => {
+          const cur = d.retailerShelfStock ?? {};
+          const nextAcc = { ...cur[accountId], [sku]: Math.max(0, bottles) };
+          return { ...d, retailerShelfStock: { ...cur, [accountId]: nextAcc } };
+        }),
+    }),
+    [shelf, updateData],
+  );
+}
+
+function nextFinancingLedgerId(): string {
+  return `FL-${new Date().toISOString().slice(0, 10)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function useFinancingLedger() {
+  const { data, updateData } = useAppData();
+  const entries = data.financingLedger ?? [];
+  return useMemo(
+    () => ({
+      entries,
+      appendEntry: (entry: Omit<FinancingLedgerEntry, "id"> & { id?: string }) =>
+        updateData((d) => {
+          const row: FinancingLedgerEntry = {
+            ...entry,
+            id: entry.id ?? nextFinancingLedgerId(),
+          };
+          return { ...d, financingLedger: [...(d.financingLedger ?? []), row] };
+        }),
+    }),
+    [entries, updateData],
   );
 }
 
@@ -216,7 +261,7 @@ export function useSalesOrders() {
     () => ({
       salesOrders: data.salesOrders,
       addSalesOrder: (o: SalesOrder) => updateData((d) => ({ ...d, salesOrders: [o, ...d.salesOrders] })),
-      patchSalesOrder: (id: string, patch: Partial<Pick<SalesOrder, "status" | "paymentStatus">>) =>
+      patchSalesOrder: (id: string, patch: Partial<SalesOrder>) =>
         updateData((d) => ({
           ...d,
           salesOrders: d.salesOrders.map((x) => (x.id === id ? { ...x, ...patch } : x)),

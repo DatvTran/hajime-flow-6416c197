@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { StatusBadge } from "@/components/StatusBadge";
 import { NewProductDialog } from "@/components/NewProductDialog";
+import { EditProductDialog } from "@/components/EditProductDialog";
 import { useProducts, useAppData } from "@/contexts/AppDataContext";
+import type { Product } from "@/data/mockData";
 import { Trash2, UserPlus, Users } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import {
@@ -32,9 +34,10 @@ const TEAM_ROLE_LABELS: Record<TeamMemberPortalRole, string> = {
 const TEAM_ROLE_ORDER: TeamMemberPortalRole[] = ["sales_rep", "retail", "distributor", "manufacturer"];
 
 export default function SettingsPage() {
-  const { products, addProduct, removeProduct } = useProducts();
+  const { products, addProduct, removeProduct, patchProduct } = useProducts();
   const { data, updateData } = useAppData();
   const [newProductOpen, setNewProductOpen] = useState(false);
+  const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
@@ -45,14 +48,20 @@ export default function SettingsPage() {
   const os = data.operationalSettings!;
   const [leadDays, setLeadDays] = useState(String(os.manufacturerLeadTimeDays));
   const [safetyDefault, setSafetyDefault] = useState("500");
+  const [retailShelfThreshold, setRetailShelfThreshold] = useState(String(os.retailerStockThresholdBottles ?? 48));
 
   useEffect(() => {
     setLeadDays(String(data.operationalSettings!.manufacturerLeadTimeDays));
   }, [data.operationalSettings]);
 
+  useEffect(() => {
+    setRetailShelfThreshold(String(data.operationalSettings?.retailerStockThresholdBottles ?? 48));
+  }, [data.operationalSettings?.retailerStockThresholdBottles]);
+
   const saveReplenishment = () => {
     const lead = Math.max(7, Number(leadDays) || 45);
     const safety = Math.max(0, Number(safetyDefault) || 200);
+    const shelfTh = Math.max(12, Number(retailShelfThreshold) || 48);
     const safetyStockBySku = { ...data.operationalSettings!.safetyStockBySku };
     for (const p of data.products) {
       safetyStockBySku[p.sku] = safety;
@@ -60,11 +69,15 @@ export default function SettingsPage() {
     updateData((d) => ({
       ...d,
       operationalSettings: {
+        ...d.operationalSettings!,
         manufacturerLeadTimeDays: lead,
         safetyStockBySku,
+        retailerStockThresholdBottles: shelfTh,
       },
     }));
-    toast.success("Replenishment settings saved", { description: `Lead ${lead}d · default safety ${safety} bottles/SKU` });
+    toast.success("Replenishment settings saved", {
+      description: `Lead ${lead}d · DC safety ${safety} bottles/SKU · retail shelf alert below ${shelfTh} bottles`,
+    });
   };
 
   const addTeamMember = () => {
@@ -282,6 +295,20 @@ export default function SettingsPage() {
               />
               <p className="text-xs text-muted-foreground">Saving applies this target to every catalog SKU for low-stock alerts and reorder math (brief §5.E).</p>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="retail-shelf-th">Retail on-premise low-stock threshold (bottles per SKU)</Label>
+              <Input
+                id="retail-shelf-th"
+                type="number"
+                min={12}
+                value={retailShelfThreshold}
+                onChange={(e) => setRetailShelfThreshold(e.target.value)}
+                className="touch-manipulation"
+              />
+              <p className="text-xs text-muted-foreground">
+                When a venue&apos;s shelf count for a SKU falls below this, Alerts and the command center flag a retailer reorder (cascade to wholesaler and production planning).
+              </p>
+            </div>
             <Button type="button" className="mt-2 touch-manipulation" onClick={saveReplenishment}>
               Save replenishment settings
             </Button>
@@ -313,15 +340,32 @@ export default function SettingsPage() {
               existingSkus={products.map((p) => p.sku)}
               onCreate={addProduct}
             />
+            <EditProductDialog
+              open={editProduct !== null}
+              onOpenChange={(o) => {
+                if (!o) setEditProduct(null);
+              }}
+              product={editProduct}
+              onSave={(sku, patch) => {
+                patchProduct(sku, patch);
+                setEditProduct(null);
+              }}
+            />
             <div className="space-y-3">
               {products.map((p) => (
                 <div key={p.sku} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{p.name} — {p.size}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{p.sku} · {p.caseSize} per case</p>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {p.sku} · {p.caseSize} per case
+                      {p.wholesaleCasePrice != null ? ` · $${p.wholesaleCasePrice.toLocaleString()} CAD / case` : ""}
+                    </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <StatusBadge status={p.status} />
+                    <Button type="button" variant="outline" size="sm" className="touch-manipulation" onClick={() => setEditProduct(p)}>
+                      Edit pricing
+                    </Button>
                     <Button
                       type="button"
                       variant="ghost"

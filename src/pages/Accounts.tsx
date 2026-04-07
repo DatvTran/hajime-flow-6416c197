@@ -3,6 +3,8 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { AccountDetailDialog } from "@/components/AccountDetailDialog";
 import { NewAccountDialog } from "@/components/NewAccountDialog";
 import { useAccounts, useSalesOrders } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { RetailerApplicationDialog } from "@/components/RetailerApplicationDialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,14 +25,17 @@ function marketAssignment(account: Account): string {
 }
 
 export default function Accounts() {
+  const { user } = useAuth();
   const { accounts, updateAccount, addAccount } = useAccounts();
   const { salesOrders } = useSalesOrders();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeOnly = searchParams.get("status") === "active";
+  const pipelineOnboarding = searchParams.get("pipeline") === "onboarding";
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"table" | "cards">("cards");
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [newAccountOpen, setNewAccountOpen] = useState(false);
+  const [applicationOpen, setApplicationOpen] = useState(false);
 
   const detailAccount = useMemo(
     () => (selectedAccountId ? accounts.find((a) => a.id === selectedAccountId) ?? null : null),
@@ -52,9 +57,13 @@ export default function Accounts() {
     const q = search.toLowerCase();
     return accounts.filter((a) => {
       if (activeOnly && a.status !== "active") return false;
+      if (pipelineOnboarding) {
+        const p = a.onboardingPipeline ?? "none";
+        if (p !== "sales_intake" && p !== "brand_review") return false;
+      }
       return a.tradingName.toLowerCase().includes(q) || a.city.toLowerCase().includes(q);
     });
-  }, [search, activeOnly, accounts]);
+  }, [search, activeOnly, accounts, pipelineOnboarding]);
 
   const clearStatusFilter = () => {
     const next = new URLSearchParams(searchParams);
@@ -62,23 +71,51 @@ export default function Accounts() {
     setSearchParams(next, { replace: true });
   };
 
+  const toggleOnboardingFilter = () => {
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        if (n.get("pipeline") === "onboarding") n.delete("pipeline");
+        else n.set("pipeline", "onboarding");
+        return n;
+      },
+      { replace: true },
+    );
+  };
+
   return (
     <div>
       <PageHeader
         title="Accounts"
-        description="Retailers and distributors — market assignment, sell-in history, and account managers on one ledger."
+        description={
+          user.role === "sales_rep"
+            ? "Submit new retailer applications — wholesaler verifies, then brand HQ approves pricing tier and credit."
+            : "Retailers and distributors — market assignment, sell-in history, onboarding pipeline, and account managers."
+        }
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <Button variant="outline" size="sm" className="w-full justify-center touch-manipulation sm:w-auto">
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
+            {user.role === "sales_rep" ? (
+              <Button type="button" size="sm" variant="secondary" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setApplicationOpen(true)}>
+                Submit retailer application
+              </Button>
+            ) : null}
             <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setNewAccountOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               New Account
             </Button>
           </div>
         }
+      />
+
+      <RetailerApplicationDialog
+        open={applicationOpen}
+        onOpenChange={setApplicationOpen}
+        accounts={accounts}
+        onCreate={addAccount}
       />
 
       <NewAccountDialog
@@ -105,6 +142,23 @@ export default function Accounts() {
           <Button type="button" variant="ghost" size="sm" className="h-8 shrink-0 touch-manipulation" onClick={clearStatusFilter}>
             Show all accounts
           </Button>
+        </div>
+      )}
+
+      {(user.role === "brand_operator" || user.role === "distributor" || user.role === "sales_rep") && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={pipelineOnboarding ? "default" : "outline"}
+            className="touch-manipulation"
+            onClick={toggleOnboardingFilter}
+          >
+            Onboarding queue
+          </Button>
+          {pipelineOnboarding ? (
+            <span className="text-xs text-muted-foreground">Sales intake + brand review only — open a row to advance the pipeline.</span>
+          ) : null}
         </div>
       )}
 
@@ -140,6 +194,11 @@ export default function Accounts() {
                   <div>
                     <h3 className="font-display font-semibold underline-offset-2 group-hover:underline">{account.tradingName}</h3>
                     <p className="text-xs text-muted-foreground">{account.legalName}</p>
+                    {account.onboardingPipeline === "sales_intake" || account.onboardingPipeline === "brand_review" ? (
+                      <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                        Onboarding: {account.onboardingPipeline === "sales_intake" ? "Wholesaler review" : "Brand approval"}
+                      </p>
+                    ) : null}
                   </div>
                   <StatusBadge status={account.status} />
                 </div>

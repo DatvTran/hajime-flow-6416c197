@@ -23,6 +23,7 @@ import {
   ClipboardList,
   TrendingUp,
   LineChart,
+  Receipt,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -63,10 +64,12 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           items: [
             { title: "Overview", url: "/manufacturer", icon: LayoutDashboard },
             { title: "Production orders", url: "/purchase-orders", icon: FileText },
+            { title: "Sell-in orders", url: "/orders", icon: ShoppingCart },
             { title: "Shipments", url: "/shipments", icon: Truck },
             { title: "Batch history", url: "/inventory", icon: Package },
             { title: "Market demand", url: "/manufacturer/market-demand", icon: Globe },
             { title: "Alerts", url: "/alerts", icon: AlertTriangle },
+            { title: "Payments & receipts", url: "/finance", icon: Receipt },
           ],
         },
         {
@@ -99,6 +102,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           items: [
             { title: "Analytics", url: "/reports", icon: BarChart3 },
             { title: "Alerts", url: "/alerts", icon: AlertTriangle },
+            { title: "Payments & AR/AP", url: "/finance", icon: Receipt },
           ],
         },
         {
@@ -114,9 +118,11 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
             { title: "Overview", url: "/", icon: LayoutDashboard },
             { title: "Warehouse inventory", url: "/inventory", icon: Warehouse },
             { title: "Orders to fulfill", url: "/orders?tab=approved", icon: ShoppingCart },
+            { title: "Production requests", url: "/purchase-orders", icon: FileText },
             { title: "Deliveries", url: "/shipments", icon: Truck },
             { title: "Retail accounts", url: "/accounts", icon: Users },
             { title: "Backorders", url: "/distributor/backorders", icon: ClipboardList },
+            { title: "Payments & remits", url: "/finance", icon: Receipt },
           ],
         },
         {
@@ -263,7 +269,7 @@ export function AppSidebar() {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="gap-2 p-4">
+      <SidebarFooter className={cn("gap-2 p-4", collapsed && "items-center gap-0 px-0 py-2")}>
         {!collapsed && (
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-medium text-sidebar-accent-foreground">
@@ -279,7 +285,10 @@ export function AppSidebar() {
           type="button"
           variant="outline"
           size="sm"
-          className={cn("w-full touch-manipulation", collapsed && "size-8 shrink-0 p-0")}
+          className={cn(
+            "w-full touch-manipulation",
+            collapsed && "mx-auto size-8 shrink-0 justify-center p-0 !px-0",
+          )}
           onClick={() => signOut()}
         >
           <LogOut className={cn("h-4 w-4", !collapsed && "mr-2")} />

@@ -32,6 +32,8 @@ import RetailNewOrderPage from "./pages/RetailNewOrderPage";
 import RetailMyOrdersPage from "./pages/RetailMyOrdersPage";
 import RetailOrderDetailPage from "./pages/RetailOrderDetailPage";
 import SalesSectionPage from "./pages/SalesSectionPage";
+import SalesTargetsPage from "./pages/SalesTargetsPage";
+import FinancePaymentsPage from "./pages/FinancePaymentsPage";
 
 const queryClient = new QueryClient();
 
@@ -81,8 +83,10 @@ const App = () => (
                 <Route path="/retail/reorder" element={<RetailReorderPage />} />
                 <Route path="/retail/account" element={<RetailAccountPage />} />
                 <Route path="/retail/support" element={<RetailSupportPage />} />
+                <Route path="/sales/targets" element={<SalesTargetsPage />} />
                 <Route path="/sales/:section" element={<SalesSectionPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/finance" element={<FinancePaymentsPage />} />
                 <Route path="*" element={<NotFound />} />
               </Route>
             </Route>

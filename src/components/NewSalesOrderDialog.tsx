@@ -1,6 +1,14 @@
-import { useEffect, useState } from "react";
-import type { Account, SalesOrder } from "@/data/mockData";
+import { useEffect, useMemo, useState } from "react";
+import type { Account, OrderRoutingTarget, SalesOrder } from "@/data/mockData";
+import { orderCreatedByFromRole } from "@/lib/order-routing";
 import { useAccounts, useProducts } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { resolveSalesRepLabelForSession } from "@/data/team-roster";
+import {
+  accountsForSalesOrderVariant,
+  getSalesOrderFormVariantConfig,
+  type NewSalesOrderFormVariant,
+} from "@/lib/sales-order-form-variants";
 import {
   Dialog,
   DialogContent,
@@ -9,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "@/components/ui/sonner";
 import { Link } from "react-router-dom";
 
-const SALES_REPS = ["Marcus Chen", "Sarah Kim", "Luca Moretti"] as const;
+const SALES_REPS = ["Marcus Chen", "Sarah Kim", "Luca Moretti", "Jordan Lee"] as const;
 
 const ORDER_STATUSES: SalesOrder["status"][] = [
   "draft",
@@ -65,11 +74,18 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   existingOrders: SalesOrder[];
   onCreate: (order: SalesOrder) => void;
+  variant: NewSalesOrderFormVariant;
 };
 
-export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCreate }: Props) {
-  const { accounts } = useAccounts();
+export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCreate, variant }: Props) {
+  const { accounts: allAccounts } = useAccounts();
   const { products } = useProducts();
+  const { user } = useAuth();
+  const sessionRep = resolveSalesRepLabelForSession(user?.email, user?.displayName ?? "");
+
+  const cfg = getSalesOrderFormVariantConfig(variant);
+  const accounts = useMemo(() => accountsForSalesOrderVariant(allAccounts, variant), [allAccounts, variant]);
+
   const [account, setAccount] = useState("");
   const [market, setMarket] = useState("");
   const [orderDate, setOrderDate] = useState(todayISO());
@@ -77,10 +93,15 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   const [sku, setSku] = useState("");
   const [quantity, setQuantity] = useState("12");
   const [price, setPrice] = useState("");
-  const [salesRep, setSalesRep] = useState<(typeof SALES_REPS)[number]>(SALES_REPS[0]);
+  const [salesRep, setSalesRep] = useState<string>(SALES_REPS[0]);
   const [status, setStatus] = useState<SalesOrder["status"]>("draft");
   const [paymentStatus, setPaymentStatus] = useState<SalesOrder["paymentStatus"]>("pending");
   const [error, setError] = useState<string | null>(null);
+  /** Brand HQ: who this order is for. */
+  const [brandPath, setBrandPath] = useState<OrderRoutingTarget>("wholesaler");
+  /** Wholesaler: route via rep vs direct to retail. */
+  const [wholesalerPath, setWholesalerPath] = useState<"rep" | "retail">("retail");
+  const [wholesaleRep, setWholesaleRep] = useState<string>(SALES_REPS[0]);
 
   useEffect(() => {
     if (!open) return;
@@ -92,14 +113,24 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     setQuantity("12");
     setPrice("");
     setSalesRep(SALES_REPS[0]);
-    setStatus("draft");
+    setStatus(variant === "manufacturer" ? "draft" : "draft");
     setPaymentStatus("pending");
     setError(null);
-  }, [open]);
+    setBrandPath("wholesaler");
+    setWholesalerPath("retail");
+    setWholesaleRep(SALES_REPS[0]);
+  }, [open, variant]);
 
   useEffect(() => {
-    if (account) setMarket(defaultMarketForAccount(account, accounts));
-  }, [account, accounts]);
+    if (account) setMarket(defaultMarketForAccount(account, allAccounts));
+  }, [account, allAccounts]);
+
+  useEffect(() => {
+    if (!open || variant !== "sales_rep") return;
+    setSalesRep(sessionRep);
+  }, [open, variant, sessionRep]);
+
+  const effectiveSalesRep = variant === "sales_rep" ? sessionRep : salesRep;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,6 +171,33 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       return;
     }
 
+    if (variant === "distributor" && wholesalerPath === "rep" && !wholesaleRep.trim()) {
+      setError("Select the field rep this route is for.");
+      return;
+    }
+
+    let repLine = effectiveSalesRep;
+    let routingTarget: OrderRoutingTarget | undefined;
+    let assignedSalesRep: string | undefined;
+
+    if (variant === "brand") {
+      routingTarget = brandPath;
+    } else if (variant === "distributor") {
+      routingTarget = wholesalerPath === "rep" ? "sales_rep" : "retail";
+      if (wholesalerPath === "rep") {
+        repLine = wholesaleRep;
+        assignedSalesRep = wholesaleRep;
+      } else {
+        const acc = allAccounts.find((a) => a.tradingName === account);
+        repLine = acc?.salesOwner ?? salesRep;
+      }
+    } else if (variant === "sales_rep") {
+      routingTarget = "retail";
+      repLine = sessionRep;
+    } else if (variant === "manufacturer") {
+      routingTarget = "manufacturer";
+    }
+
     const order: SalesOrder = {
       id: nextOrderId(existingOrders),
       account,
@@ -149,31 +207,93 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       sku,
       quantity: qty,
       price: Math.round(priceNum * 100) / 100,
-      salesRep,
+      salesRep: repLine,
       status,
       paymentStatus,
+      orderRoutingTarget: routingTarget,
+      orderCreatedByRole: orderCreatedByFromRole(user.role),
+      repApprovalStatus: "not_required",
+      assignedSalesRep,
+      placedOnBehalfByRep: variant === "sales_rep",
     };
 
     onCreate(order);
-    toast.success("Sales order created", { description: `${order.id} · ${order.account}` });
+    toast.success(cfg.badge + " — order saved", { description: `${order.id} · ${order.account}` });
     onOpenChange(false);
   };
 
   const skuOptions = products.filter((p) => p.status === "active" || p.status === "development");
 
+  const showLifecycleDetails = variant !== "manufacturer";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(90vh,800px)] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="font-display">New sales order</DialogTitle>
-          <DialogDescription>
-            Enter customer, dates, line item, and fulfillment details. The order is saved to this session&apos;s list.
-          </DialogDescription>
+      <DialogContent className={`max-h-[min(90vh,800px)] overflow-y-auto sm:max-w-2xl ${cfg.accent}`}>
+        <DialogHeader className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary" className="font-normal">
+              {cfg.badge}
+            </Badge>
+          </div>
+          <DialogTitle className="font-display text-xl">{cfg.title}</DialogTitle>
+          <DialogDescription className="text-pretty">{cfg.description}</DialogDescription>
+          {cfg.contextNote ? <p className="text-xs text-muted-foreground">{cfg.contextNote}</p> : null}
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {variant === "brand" ? (
+            <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-4">
+              <Label htmlFor="so-brand-path">Order pathway *</Label>
+              <p className="text-xs text-muted-foreground">Choose who this sell-in is for — Brand HQ can route across the network.</p>
+              <Select value={brandPath} onValueChange={(v) => setBrandPath(v as OrderRoutingTarget)}>
+                <SelectTrigger id="so-brand-path" className="touch-manipulation">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manufacturer">Manufacturer / production</SelectItem>
+                  <SelectItem value="wholesaler">Wholesaler / distributor (DC)</SelectItem>
+                  <SelectItem value="sales_rep">Field sales rep</SelectItem>
+                  <SelectItem value="retail">Retail store</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+
+          {variant === "distributor" ? (
+            <div className="space-y-3 rounded-lg border border-border/80 bg-muted/20 p-4">
+              <Label htmlFor="so-wh-path">Place order for *</Label>
+              <p className="text-xs text-muted-foreground">Wholesalers route to a rep’s book or direct to a retail account.</p>
+              <Select value={wholesalerPath} onValueChange={(v) => setWholesalerPath(v as "rep" | "retail")}>
+                <SelectTrigger id="so-wh-path" className="touch-manipulation">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rep">Retail account (attributed to a field rep)</SelectItem>
+                  <SelectItem value="retail">Retail store (direct)</SelectItem>
+                </SelectContent>
+              </Select>
+              {wholesalerPath === "rep" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="so-wh-rep">Field rep *</Label>
+                  <Select value={wholesaleRep} onValueChange={setWholesaleRep}>
+                    <SelectTrigger id="so-wh-rep" className="touch-manipulation">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SALES_REPS.map((r) => (
+                        <SelectItem key={r} value={r}>
+                          {r}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="space-y-4">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Customer</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{cfg.customerSectionLabel}</p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="so-account">Account *</Label>
@@ -225,7 +345,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
           </div>
 
           <div className="space-y-4">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Line item</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{cfg.lineItemSectionLabel}</p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="so-sku">SKU / product *</Label>
@@ -282,53 +402,71 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
           </div>
 
           <div className="space-y-4">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Assignment & status</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{cfg.assignmentSectionLabel}</p>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="so-rep">Sales rep *</Label>
-                <Select value={salesRep} onValueChange={(v) => setSalesRep(v as (typeof SALES_REPS)[number])}>
-                  <SelectTrigger id="so-rep" className="touch-manipulation">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SALES_REPS.map((r) => (
-                      <SelectItem key={r} value={r}>
-                        {r}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="so-status">Order status</Label>
-                <Select value={status} onValueChange={(v) => setStatus(v as SalesOrder["status"])}>
-                  <SelectTrigger id="so-status" className="touch-manipulation">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ORDER_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s} className="capitalize">
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="so-pay">Payment status</Label>
-                <Select value={paymentStatus} onValueChange={(v) => setPaymentStatus(v as SalesOrder["paymentStatus"])}>
-                  <SelectTrigger id="so-pay" className="touch-manipulation">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PAYMENT_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s} className="capitalize">
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {variant === "sales_rep" ? (
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Sales rep (attributed)</Label>
+                  <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
+                    <span className="text-muted-foreground">You</span>
+                    <p className="font-medium text-foreground">{sessionRep}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="so-rep">Sales rep *</Label>
+                  <Select value={salesRep} onValueChange={setSalesRep}>
+                    <SelectTrigger id="so-rep" className="touch-manipulation">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SALES_REPS.map((r) => (
+                        <SelectItem key={r} value={r}>
+                          {r}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {showLifecycleDetails ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="so-status">Order status</Label>
+                    <Select value={status} onValueChange={(v) => setStatus(v as SalesOrder["status"])}>
+                      <SelectTrigger id="so-status" className="touch-manipulation">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ORDER_STATUSES.map((s) => (
+                          <SelectItem key={s} value={s} className="capitalize">
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="so-pay">Payment status</Label>
+                    <Select value={paymentStatus} onValueChange={(v) => setPaymentStatus(v as SalesOrder["paymentStatus"])}>
+                      <SelectTrigger id="so-pay" className="touch-manipulation">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAYMENT_STATUSES.map((s) => (
+                          <SelectItem key={s} value={s} className="capitalize">
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground sm:col-span-2">
+                  Order stays <strong>draft</strong> until confirmed in Orders; payment pending by default.
+                </p>
+              )}
             </div>
           </div>
 
@@ -339,7 +477,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
               Cancel
             </Button>
             <Button type="submit" className="touch-manipulation">
-              Create order
+              {cfg.submitLabel}
             </Button>
           </DialogFooter>
         </form>

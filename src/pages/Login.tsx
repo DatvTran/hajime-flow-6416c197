@@ -142,7 +142,9 @@ export default function Login() {
                     <SelectItem value="custom">Custom (edit fields below)</SelectItem>
                     {rosterForRole.map((m) => (
                       <SelectItem key={m.id} value={m.id}>
-                        {m.displayName} · {m.email}
+                        {m.id === "tm-seed-regional"
+                          ? `${m.displayName} (regional · Toronto + Milan) · ${m.email}`
+                          : `${m.displayName} · ${m.email}`}
                       </SelectItem>
                     ))}
                   </SelectContent>

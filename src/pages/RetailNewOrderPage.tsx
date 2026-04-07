@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { buildRetailCheckoutOrder, addDaysISO, todayISO, marketForRetailAccount } from "@/lib/sales-order-utils";
 import { retailOrderDisplayId } from "@/lib/order-lines";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, ChevronRight, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, ChevronRight, Store, Trash2 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
 export default function RetailNewOrderPage() {
@@ -28,6 +29,9 @@ export default function RetailNewOrderPage() {
   const [successId, setSuccessId] = useState<string | null>(null);
 
   const accountRecord = useMemo(() => accounts.find((a) => a.tradingName === accountName), [accounts, accountName]);
+
+  const shelfForAccount = accountRecord ? data.retailerShelfStock?.[accountRecord.id] : undefined;
+  const shelfThreshold = data.operationalSettings?.retailerStockThresholdBottles ?? 48;
 
   useEffect(() => {
     const sku = searchParams.get("sku");
@@ -114,9 +118,11 @@ export default function RetailNewOrderPage() {
         <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-600" aria-hidden />
         <h1 className="mt-6 font-display text-2xl font-semibold">Request received</h1>
         <p className="mt-2 text-muted-foreground">
-          Order {retailOrderDisplayId(successId)} is <strong>pending review</strong>. Hajime HQ will confirm allocation and delivery.
+          Order {retailOrderDisplayId(successId)} is <strong>pending your field rep&apos;s approval</strong>. After they approve and your card is charged, your wholesaler will arrange delivery and shipping.
         </p>
-        <p className="mt-4 text-sm text-muted-foreground">Next step: you’ll get a confirmation when the order is approved for fulfillment.</p>
+        <p className="mt-4 text-sm text-muted-foreground">
+          You&apos;ll see status updates under <strong>My orders</strong> as the request moves through rep approval → payment → fulfillment.
+        </p>
         <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:justify-center">
           <Button asChild variant="secondary">
             <Link to="/retail/orders">View my orders</Link>
@@ -139,12 +145,24 @@ export default function RetailNewOrderPage() {
         <span className="text-foreground">New order</span>
       </nav>
 
-      <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">Place order</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Wholesale checkout — requests are reviewed before fulfillment.</p>
+      <div className="rounded-xl border border-violet-500/25 bg-gradient-to-br from-violet-500/5 to-transparent p-4 sm:p-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary" className="gap-1 font-normal">
+            <Store className="h-3 w-3" aria-hidden />
+            Retail store
+          </Badge>
+        </div>
+        <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight sm:text-3xl">Place order</h1>
+        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+          Submit a request from the catalog (retail stores don&apos;t pick manufacturer vs wholesaler). Your assigned sales rep approves the
+          order, then payment is collected; after that, the wholesaler handles delivery and shipping. Brand operators can monitor the full
+          pipeline in Orders.
+        </p>
+      </div>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_340px]">
         <section>
-          <h2 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-muted-foreground">Product selection</h2>
+          <h2 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-muted-foreground">Catalog & cases</h2>
           <div className="grid gap-6 sm:grid-cols-2">
             {catalog.map((p) => (
               <RetailProductCard
@@ -153,6 +171,8 @@ export default function RetailNewOrderPage() {
                 inventory={data.inventory}
                 inCartCases={cart.casesBySku[p.sku] ?? 0}
                 disabled={p.status !== "active"}
+                shelfBottles={shelfForAccount?.[p.sku]}
+                shelfThresholdBottles={shelfThreshold}
                 onAddToCart={(cases) => {
                   const min = p.minOrderCases ?? 1;
                   cart.setCasesForSku(p.sku, cases, min);
@@ -236,7 +256,7 @@ export default function RetailNewOrderPage() {
               Submit order request
             </Button>
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              Send for approval — not a final purchase until Hajime confirms allocation and delivery.
+              Rep approval → card charge → wholesaler ships. Not final until your rep approves and payment succeeds.
             </p>
           </div>
         </div>

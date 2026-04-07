@@ -45,9 +45,11 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   existing: PurchaseOrder[];
   onCreate: (po: PurchaseOrder) => void;
+  /** Deep link from manufacturer / alerts — pre-fill SKU and bottle quantity. */
+  prefill?: { sku?: string; quantity?: string } | null;
 };
 
-export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate }: Props) {
+export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate, prefill }: Props) {
   const { products } = useProducts();
   const { availableBottlesForSku } = useInventory();
   const [submitting, setSubmitting] = useState(false);
@@ -69,14 +71,15 @@ export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate 
     setIssueDate(todayISO());
     setRequiredDate(addDaysISO(30));
     setRequestedShipDate(addDaysISO(35));
-    setSku(products[0]?.sku ?? "HJM-OG-750");
-    setQuantity("1200");
+    const defaultSku = products[0]?.sku ?? "HJM-OG-750";
+    setSku(prefill?.sku && products.some((p) => p.sku === prefill.sku) ? prefill.sku : defaultSku);
+    setQuantity(prefill?.quantity ?? "1200");
     setPackagingInstructions("Standard 12-bottle case");
     setLabelVersion("v3.1");
     setMarketDestination("Ontario");
     setStatus("draft");
-    setNotes("");
-  }, [open, products]);
+    setNotes(prefill?.sku ? `Replenishment suggestion for ${prefill.sku}` : "");
+  }, [open, products, prefill]);
 
   const availableForSku = useMemo(() => availableBottlesForSku(sku), [availableBottlesForSku, sku]);
 

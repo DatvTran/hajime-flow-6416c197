@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
-import { computeInventorySummary, deriveAlerts } from "@/lib/hajime-metrics";
+import { computeInventorySummary, computeReorderRecommendations, deriveAlerts } from "@/lib/hajime-metrics";
 import { useAppData } from "@/contexts/AppDataContext";
 
 export default function Manufacturer() {
@@ -44,6 +44,11 @@ export default function Manufacturer() {
   }, [purchaseOrders]);
 
   const mfgAlerts = useMemo(() => deriveAlerts(data).slice(0, 5), [data]);
+
+  const replenishmentSuggestions = useMemo(
+    () => computeReorderRecommendations(data).filter((r) => r.suggestedBottles > 0).slice(0, 6),
+    [data],
+  );
 
   const leadDays = data.operationalSettings?.manufacturerLeadTimeDays ?? 45;
 
@@ -81,7 +86,7 @@ export default function Manufacturer() {
     <div>
       <PageHeader
         title="Manufacturer"
-        description="Production and export readiness — active requests, batch schedule, shipment queue, demand by market, lead times, and alerts (same demand signal as HQ)."
+        description="Fulfillment view for open production requests raised by Hajime HQ — batch schedule, inbound shipment queue, demand by market, and alerts. Logistics can record carrier and ETA on Shipments."
       />
 
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
@@ -206,6 +211,29 @@ export default function Manufacturer() {
           </CardContent>
         </Card>
       </div>
+
+      {replenishmentSuggestions.length > 0 ? (
+        <Card className="mb-6">
+          <CardHeader className="pb-2">
+            <CardTitle className="font-display text-sm font-medium">When wholesaler / DC stock is low</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              HQ opens a production request — links pre-fill SKU and suggested bottle quantity from the same reorder model as the command center.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {replenishmentSuggestions.map((r) => (
+              <div key={r.sku} className="flex flex-col gap-2 rounded-md border border-border/60 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-foreground">{r.summary}</p>
+                <Button size="sm" variant="outline" className="shrink-0 touch-manipulation" asChild>
+                  <Link to={`/purchase-orders?sku=${encodeURIComponent(r.sku)}&qty=${encodeURIComponent(String(r.suggestedBottles))}`}>
+                    Draft production request
+                  </Link>
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="flex items-center gap-4 p-5">

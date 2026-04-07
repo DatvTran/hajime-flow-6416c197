@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useShipments } from "@/contexts/AppDataContext";
@@ -8,7 +9,11 @@ import { ArrowRight, Package, Search, Truck } from "lucide-react";
 
 export default function Shipments() {
   const { shipments } = useShipments();
-  const [q, setQ] = useState("");
+  const [searchParams] = useSearchParams();
+  const [q, setQ] = useState(() => searchParams.get("q") ?? "");
+  useEffect(() => {
+    setQ(searchParams.get("q") ?? "");
+  }, [searchParams]);
 
   const stats = useMemo(() => {
     const active = shipments.filter((s) => s.status !== "delivered");
