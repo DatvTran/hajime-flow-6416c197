@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { HajimeLogo } from "@/components/HajimeLogo";
 import { useAuth, type HajimeRole } from "@/contexts/AuthContext";
 
 export type NavItem = { title: string; url: string; icon: LucideIcon };
@@ -251,8 +252,8 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className={cn("p-4", collapsed && "items-center gap-0 px-0 py-2")}>
         <div className={cn("flex items-center gap-2", collapsed && "w-full justify-center")}>
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary">
-            <span className="text-sm font-bold text-sidebar-primary-foreground">H</span>
+          <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-sidebar-accent/60">
+            <HajimeLogo variant="dark" className="h-7 w-7 object-contain" alt="" />
           </div>
           {!collapsed && (
             <div>

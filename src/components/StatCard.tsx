@@ -9,19 +9,26 @@ interface StatCardProps {
   icon?: LucideIcon;
   trend?: number;
   variant?: "default" | "accent" | "warning" | "success";
-  /** When set, the card navigates to this path (e.g. from Dashboard). */
   to?: string;
-  /** When set (e.g. on Inventory), uses a button so filters always update without relying on same-route Link behavior. */
   onClick?: () => void;
-  /** Highlights the tile when its filter matches the current view. */
   isActive?: boolean;
 }
 
 const variantStyles = {
-  default: "bg-card border",
-  accent: "bg-accent/10 border border-accent/20",
-  warning: "bg-warning/10 border border-warning/20",
-  success: "bg-success/10 border border-success/20",
+  default: "bg-card border border-border/60",
+  accent:
+    "bg-gradient-to-br from-amber-50/80 to-amber-100/40 dark:from-amber-950/20 dark:to-amber-900/10 border border-amber-200/50 dark:border-amber-800/30",
+  warning:
+    "bg-gradient-to-br from-orange-50/80 to-orange-100/40 dark:from-orange-950/20 dark:to-orange-900/10 border border-orange-200/50 dark:border-orange-800/30",
+  success:
+    "bg-gradient-to-br from-emerald-50/80 to-emerald-100/40 dark:from-emerald-950/20 dark:to-emerald-900/10 border border-emerald-200/50 dark:border-emerald-800/30",
+};
+
+const iconStyles = {
+  default: "bg-muted/80 text-muted-foreground",
+  accent: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400",
+  warning: "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400",
+  success: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400",
 };
 
 export function StatCard({
@@ -37,32 +44,49 @@ export function StatCard({
 }: StatCardProps) {
   const inner = (
     <>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-          <p className="mt-2 font-display text-2xl font-semibold text-foreground">{value}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-muted-foreground">{label}</p>
+          <p className="mt-2 font-display text-2xl font-semibold tracking-tight text-foreground animate-count-up">{value}</p>
           {subtitle && <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>}
           {trend !== undefined && (
-            <p className={cn("mt-1 text-xs font-medium", trend >= 0 ? "text-success" : "text-destructive")}>
-              {trend >= 0 ? "+" : ""}
-              {trend}%
-            </p>
+            <div className="mt-1.5 inline-flex items-center gap-1">
+              <svg
+                className={cn("h-3 w-3", trend >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d={trend >= 0 ? "M7 17l5-5 5 5" : "M7 7l5 5 5-5"} />
+              </svg>
+              <span
+                className={cn(
+                  "text-xs font-semibold tabular-nums",
+                  trend >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400",
+                )}
+              >
+                {trend >= 0 ? "+" : ""}
+                {trend}%
+              </span>
+            </div>
           )}
         </div>
         {Icon && (
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
-            <Icon className="h-4 w-4 text-muted-foreground" />
+          <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors", iconStyles[variant])}>
+            <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
           </div>
         )}
       </div>
     </>
   );
 
-  const interactiveRing = "touch-manipulation outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+  const interactiveRing = "touch-manipulation focus-ring";
   const shellClass = cn(
-    "min-w-0 rounded-xl p-5 transition-shadow hover:shadow-md",
+    "min-w-0 rounded-2xl p-5 transition-all duration-300 ease-out-expo",
+    "shadow-soft hover:shadow-lifted",
     variantStyles[variant],
-    isActive && "ring-2 ring-accent shadow-md",
+    isActive && "ring-2 ring-accent ring-offset-2 ring-offset-background shadow-lifted",
     (to || onClick) && interactiveRing,
   );
 
@@ -71,7 +95,7 @@ export function StatCard({
       <button
         type="button"
         onClick={onClick}
-        className={cn(shellClass, "w-full cursor-pointer text-left font-sans")}
+        className={cn(shellClass, "w-full cursor-pointer text-left font-sans active:scale-[0.98]")}
         aria-pressed={isActive}
         aria-label={`Filter by ${label}`}
       >
@@ -82,7 +106,7 @@ export function StatCard({
 
   if (to) {
     return (
-      <Link to={to} className={cn(shellClass, "block text-inherit no-underline")} aria-label={`Open ${label}`}>
+      <Link to={to} className={cn(shellClass, "block text-inherit no-underline active:scale-[0.98]")} aria-label={`Open ${label}`}>
         {inner}
       </Link>
     );
