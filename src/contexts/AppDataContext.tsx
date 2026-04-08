@@ -66,12 +66,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
+        console.log("[AppDataContext] Fetching app data...");
         const d = await fetchAppData();
+        console.log("[AppDataContext] Data received:", { hasProducts: !!(d as any)?.products?.length });
         if (!cancelled) {
           setData(normalizeAppData(d as AppData));
           setError(null);
         }
       } catch (e) {
+        console.error("[AppDataContext] Fetch error:", e);
         if (!cancelled) {
           const local = loadLocalAppData();
           if (local) {

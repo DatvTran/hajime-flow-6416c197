@@ -121,12 +121,26 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     }
   });
   
+  console.log("[DataService] Raw API responses:", {
+    products: productsRes?.data?.length,
+    accounts: accountsRes?.data?.length,
+    orders: ordersRes?.data?.length,
+    inventory: inventoryRes?.data?.length,
+  });
+  
   const data = transformToAppData(
-    productsRes.data,
-    accountsRes.data,
-    ordersRes.data,
-    inventoryRes.data
+    productsRes.data || [],
+    accountsRes.data || [],
+    ordersRes.data || [],
+    inventoryRes.data || []
   );
+  
+  console.log("[DataService] Transformed data:", {
+    products: data.products?.length,
+    accounts: data.accounts?.length,
+    salesOrders: data.salesOrders?.length,
+    inventory: data.inventory?.length,
+  });
   
   return data as AppData;
 }
