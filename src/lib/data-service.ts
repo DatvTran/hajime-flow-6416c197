@@ -97,21 +97,29 @@ function transformToAppData(
 
 /**
  * Fetch data using granular APIs
+ * Uses Promise.allSettled to handle partial failures gracefully
  */
 export async function fetchAppDataGranular(): Promise<AppData> {
   console.log("[DataService] Using granular APIs (Stage 3)");
   
-  const [
-    productsRes,
-    accountsRes,
-    ordersRes,
-    inventoryRes,
-  ] = await Promise.all([
+  const results = await Promise.allSettled([
     getProducts({ limit: 100 }),
     getAccounts({ limit: 100 }),
     getOrders({ limit: 100 }),
     getInventory({ limit: 100 }),
   ]);
+  
+  const productsRes = results[0].status === 'fulfilled' ? results[0].value : { data: [] };
+  const accountsRes = results[1].status === 'fulfilled' ? results[1].value : { data: [] };
+  const ordersRes = results[2].status === 'fulfilled' ? results[2].value : { data: [] };
+  const inventoryRes = results[3].status === 'fulfilled' ? results[3].value : { data: [] };
+  
+  // Log any failures
+  results.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      console.error(`[DataService] API ${index} failed:`, result.reason);
+    }
+  });
   
   const data = transformToAppData(
     productsRes.data,
@@ -124,11 +132,17 @@ export async function fetchAppDataGranular(): Promise<AppData> {
 }
 
 /**
- * Fetch data - Stage 3: Always use granular APIs
+ * Fetch data - Stage 3: Use granular APIs with fallback to legacy
  */
 export async function fetchAppData(): Promise<AppData> {
-  // Stage 3: Always use granular APIs, no fallback
-  return fetchAppDataGranular();
+  try {
+    // Stage 3: Try granular APIs first
+    return await fetchAppDataGranular();
+  } catch (err) {
+    console.warn("[DataService] Granular APIs failed, falling back to legacy:", err);
+    // Fallback to legacy API
+    return fetchLegacyAppData();
+  }
 }
 
 /**
