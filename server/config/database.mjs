@@ -11,13 +11,22 @@ function parseDatabaseUrl(url) {
   if (!url) return null;
   try {
     const parsed = new URL(url);
+    const sslmode = parsed.searchParams.get('sslmode');
+    
+    // For Fly.io internal networking, use .internal instead of .flycast if needed
+    let host = parsed.hostname;
+    if (host.endsWith('.flycast')) {
+      // Try both .flycast and .internal
+      host = host.replace('.flycast', '.internal');
+    }
+    
     return {
-      host: parsed.hostname,
+      host: host,
       port: Number(parsed.port) || 5432,
       database: parsed.pathname.slice(1), // Remove leading /
       user: parsed.username,
       password: parsed.password,
-      ssl: parsed.searchParams.get('sslmode') === 'disable' ? false : { rejectUnauthorized: false },
+      ssl: sslmode === 'disable' ? false : { rejectUnauthorized: false },
     };
   } catch {
     return null;
@@ -26,9 +35,24 @@ function parseDatabaseUrl(url) {
 
 const dbUrlConfig = parseDatabaseUrl(process.env.DATABASE_URL);
 
+const baseConfig = {
+  client: 'postgresql',
+  migrations: {
+    directory: path.join(__dirname, '..', 'migrations'),
+    tableName: 'knex_migrations',
+  },
+  seeds: {
+    directory: path.join(__dirname, '..', 'seeds'),
+  },
+  pool: {
+    min: 2,
+    max: 10,
+  },
+};
+
 const config = {
   development: {
-    client: 'postgresql',
+    ...baseConfig,
     connection: {
       host: process.env.DB_HOST || 'localhost',
       port: Number(process.env.DB_PORT) || 5432,
@@ -36,20 +60,9 @@ const config = {
       user: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
     },
-    migrations: {
-      directory: path.join(__dirname, '..', 'migrations'),
-      tableName: 'knex_migrations',
-    },
-    seeds: {
-      directory: path.join(__dirname, '..', 'seeds'),
-    },
-    pool: {
-      min: 2,
-      max: 10,
-    },
   },
   production: {
-    client: 'postgresql',
+    ...baseConfig,
     connection: dbUrlConfig || {
       host: process.env.DB_HOST,
       port: Number(process.env.DB_PORT) || 5432,
@@ -57,13 +70,6 @@ const config = {
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       ssl: { rejectUnauthorized: false },
-    },
-    migrations: {
-      directory: path.join(__dirname, '..', 'migrations'),
-      tableName: 'knex_migrations',
-    },
-    seeds: {
-      directory: path.join(__dirname, '..', 'seeds'),
     },
     pool: {
       min: 2,
@@ -71,7 +77,7 @@ const config = {
     },
   },
   staging: {
-    client: 'postgresql',
+    ...baseConfig,
     connection: dbUrlConfig || {
       host: process.env.DB_HOST,
       port: Number(process.env.DB_PORT) || 5432,
@@ -79,10 +85,6 @@ const config = {
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       ssl: { rejectUnauthorized: false },
-    },
-    migrations: {
-      directory: path.join(__dirname, '..', 'migrations'),
-      tableName: 'knex_migrations',
     },
     pool: {
       min: 2,
