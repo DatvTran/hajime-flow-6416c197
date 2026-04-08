@@ -52,10 +52,11 @@ function AppDataShell() {
   const { user } = useAuth();
   console.log("[AppDataShell] user:", user?.email, "role:", user?.role);
   
-  useEffect(() => {
-    const el = document.getElementById('debug-step');
-    if (el) el.textContent = 'AppDataShell mounted';
-  }, []);
+  // Update debug indicator
+  const debugEl = document.getElementById('debug-step');
+  if (debugEl) {
+    debugEl.textContent = `AppDataShell: user=${user?.email ?? 'null'}`;
+  }
   
   if (!user) {
     return (
