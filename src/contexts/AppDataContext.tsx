@@ -23,6 +23,7 @@ import seedJson from "@/data/seed-app.json";
 import { toast } from "@/components/ui/sonner";
 import { normalizeAppData } from "@/lib/normalize-app-data";
 import { loadLocalAppData, saveLocalAppData } from "@/lib/local-app-data";
+import { useAuth } from "./AuthContext";
 
 const FALLBACK_SEED = normalizeAppData(seedJson as AppData);
 
@@ -44,12 +45,24 @@ type AppDataContextValue = {
 const AppDataStateContext = createContext<AppDataContextValue | null>(null);
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [data, setData] = useState<AppData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const skipSaveRef = useRef(true);
+  const hasAttemptedFetch = useRef(false);
 
   useEffect(() => {
+    // Only fetch when user is authenticated
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    // Prevent duplicate fetches
+    if (hasAttemptedFetch.current) return;
+    hasAttemptedFetch.current = true;
+
     let cancelled = false;
     (async () => {
       try {
@@ -82,7 +95,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user]);
 
   const updateData = useCallback((fn: (prev: AppData) => AppData) => {
     setData((prev) => {
