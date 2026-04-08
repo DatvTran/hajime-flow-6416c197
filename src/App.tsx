@@ -39,6 +39,26 @@ const queryClient = new QueryClient();
 
 function AppDataShell() {
   const { user } = useAuth();
+  console.log("[AppDataShell] user:", user?.email, "role:", user?.role);
+  
+  if (!user) {
+    return (
+      <div style={{ 
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+        background: '#1a1a2e', color: '#fff', 
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'system-ui', zIndex: 99999 
+      }}>
+        <div>
+          <div style={{ fontSize: '20px' }}>⏳ Waiting for auth...</div>
+          <div style={{ fontSize: '12px', opacity: 0.6, marginTop: '10px' }}>
+            user: {user?.email ?? 'null'}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <AppDataProvider>
       {user?.role === "retail" ? (
@@ -52,14 +72,16 @@ function AppDataShell() {
   );
 }
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
+const App = () => {
+  console.log("[App] Rendering started");
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
             <Route path="/login" element={<Login />} />
             <Route element={<RequireAuth />}>
               <Route element={<AppDataShell />}>
@@ -95,6 +117,5 @@ const App = () => (
       </TooltipProvider>
     </AuthProvider>
   </QueryClientProvider>
-);
-
-export default App;
+  );
+};
