@@ -16,7 +16,7 @@ import type {
   SalesOrder,
 } from "@/data/mockData";
 import { deductFifoAvailableBottles } from "@/lib/inventory-deduct";
-import { fetchAppData, putAppData } from "@/lib/api-app";
+import { fetchAppData, putAppData } from "@/lib/data-service";
 import type { AppData, FinancingLedgerEntry } from "@/types/app-data";
 import type { ProductionStatus } from "@/data/mockData";
 import seedJson from "@/data/seed-app.json";

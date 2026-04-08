@@ -21,6 +21,7 @@ import { authenticateToken } from './middleware/auth.mjs';
 // Routes
 import authRoutes from './routes/auth.mjs';
 import csvRoutes from './routes/csv.mjs';
+import apiV1Routes from './routes/api-v1.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -116,6 +117,10 @@ if (FEATURE_FLAG_CSV_ENABLED) {
   app.use('/api/csv', csvRoutes);
   console.log('[hajime-api] CSV routes enabled');
 }
+
+// ===== GRANULAR API v1 =====
+app.use('/api/v1', apiV1Routes);
+console.log('[hajime-api] Granular API v1 enabled');
 
 // ===== APP DATA API (with migration stages) =====
 app.get('/api/app', authenticateToken, async (req, res) => {

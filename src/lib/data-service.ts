@@ -1,0 +1,151 @@
+/**
+ * Hybrid Data Service
+ * Uses granular APIs when available, falls back to /api/app
+ */
+import { 
+  getProducts, 
+  getAccounts, 
+  getOrders, 
+  getInventory,
+  getDashboardStats 
+} from "./api-v1";
+import { fetchAppData as fetchLegacyAppData } from "./api-app";
+import type { AppData } from "@/types/app-data";
+
+// Feature flag to control granular API usage
+const USE_GRANULAR_API = import.meta.env.VITE_USE_GRANULAR_API === "true" || true;
+
+/**
+ * Transform API v1 data to AppData format
+ */
+function transformToAppData(
+  products: any[],
+  accounts: any[],
+  orders: any[],
+  inventory: any[]
+): Partial<AppData> {
+  return {
+    products: products.map(p => ({
+      id: p.id,
+      sku: p.sku,
+      name: p.name,
+      description: p.description,
+      category: p.category,
+      unitSize: p.unit_size,
+      caseSize: p.metadata?.caseSize || 12,
+      bottleSizeMl: p.metadata?.bottleSizeMl || 750,
+      abv: p.metadata?.abv || 25,
+      wholesalePriceCase: p.metadata?.wholesalePriceCase || 0,
+      retailPriceCase: p.metadata?.retailPriceCase || 0,
+      launchDate: p.metadata?.launchDate,
+      status: p.metadata?.status || "active",
+      image: p.metadata?.image,
+    })),
+    accounts: accounts.map(a => ({
+      id: a.id,
+      accountNumber: a.account_number,
+      name: a.name,
+      type: a.type,
+      market: a.market,
+      status: a.status,
+      email: a.email,
+      phone: a.phone,
+      billingAddress: a.billing_address,
+      shippingAddress: a.shipping_address,
+      paymentTerms: a.payment_terms,
+      creditLimit: a.credit_limit,
+      notes: a.notes,
+    })),
+    salesOrders: orders.map(o => ({
+      id: o.id,
+      orderNumber: o.order_number,
+      accountNumber: o.account_number,
+      accountId: o.account_id,
+      items: o.items?.map((i: any) => ({
+        sku: i.sku,
+        name: i.product_name,
+        quantity: i.quantity_ordered,
+        unitPrice: i.unit_price,
+      })) || [],
+      status: o.status,
+      orderDate: o.order_date,
+      subtotal: o.subtotal,
+      taxAmount: o.tax_amount,
+      shippingCost: o.shipping_cost,
+      totalAmount: o.total_amount,
+    })),
+    inventory: inventory.map(i => ({
+      id: i.id,
+      sku: i.sku,
+      productName: i.product_name,
+      location: i.location,
+      quantityBottles: i.quantity_on_hand,
+      reservedQuantity: i.reserved_quantity,
+      availableQuantity: i.available_quantity,
+      reorderPoint: i.reorder_point,
+      reorderQuantity: i.reorder_quantity,
+      status: i.available_quantity <= (i.reorder_point || 0) ? "low" : "available",
+    })),
+    // Empty arrays for entities not yet migrated
+    purchaseOrders: [],
+    shipments: [],
+    productionStatuses: [],
+    retailerShelfStock: {},
+    financingLedger: [],
+  };
+}
+
+/**
+ * Fetch data using granular APIs
+ */
+export async function fetchAppDataGranular(): Promise<AppData> {
+  console.log("[DataService] Using granular APIs");
+  
+  const [
+    productsRes,
+    accountsRes,
+    ordersRes,
+    inventoryRes,
+  ] = await Promise.all([
+    getProducts({ limit: 100 }),
+    getAccounts({ limit: 100 }),
+    getOrders({ limit: 100 }),
+    getInventory({ limit: 100 }),
+  ]);
+  
+  const data = transformToAppData(
+    productsRes.data,
+    accountsRes.data,
+    ordersRes.data,
+    inventoryRes.data
+  );
+  
+  return data as AppData;
+}
+
+/**
+ * Fetch data - uses granular APIs if enabled, otherwise legacy
+ */
+export async function fetchAppData(): Promise<AppData> {
+  if (USE_GRANULAR_API) {
+    try {
+      return await fetchAppDataGranular();
+    } catch (err) {
+      console.warn("[DataService] Granular API failed, falling back to legacy:", err);
+      return fetchLegacyAppData();
+    }
+  }
+  return fetchLegacyAppData();
+}
+
+/**
+ * Save data - currently uses legacy API
+ * TODO: Implement granular save when backend supports it
+ */
+export async function putAppData(data: AppData): Promise<void> {
+  const { putAppData: putLegacyAppData } = await import("./api-app");
+  return putLegacyAppData(data);
+}
+
+// Re-export API v1 functions for direct use
+export * from "./api-v1";
