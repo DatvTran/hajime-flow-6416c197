@@ -42,7 +42,10 @@ function pickOrSeed<T>(fromPayload: T[] | undefined, seed: T[]): T[] {
  * sales reps / retail / etc. that match login personas and mock orders.
  */
 function mergeTeamMembersWithRoster(fromPayload: TeamMember[]): TeamMember[] {
-  const extras = fromPayload.filter((m) => !ROSTER_EMAILS.has(m.email.toLowerCase()));
+  const extras = fromPayload.filter((m) => {
+    if (!m.email) return true; // Keep members without email (they're not in roster)
+    return !ROSTER_EMAILS.has(m.email.toLowerCase());
+  });
   return [...TEAM_ROSTER, ...extras];
 }
 
