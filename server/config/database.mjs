@@ -4,7 +4,27 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, '.env') });
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
+
+// Parse DATABASE_URL if available (Fly.io format)
+function parseDatabaseUrl(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname,
+      port: Number(parsed.port) || 5432,
+      database: parsed.pathname.slice(1), // Remove leading /
+      user: parsed.username,
+      password: parsed.password,
+      ssl: parsed.searchParams.get('sslmode') === 'disable' ? false : { rejectUnauthorized: false },
+    };
+  } catch {
+    return null;
+  }
+}
+
+const dbUrlConfig = parseDatabaseUrl(process.env.DATABASE_URL);
 
 const config = {
   development: {
@@ -17,11 +37,11 @@ const config = {
       password: process.env.DB_PASSWORD || 'postgres',
     },
     migrations: {
-      directory: './migrations',
+      directory: path.join(__dirname, '..', 'migrations'),
       tableName: 'knex_migrations',
     },
     seeds: {
-      directory: './seeds',
+      directory: path.join(__dirname, '..', 'seeds'),
     },
     pool: {
       min: 2,
@@ -30,16 +50,38 @@ const config = {
   },
   production: {
     client: 'postgresql',
-    connection: {
+    connection: dbUrlConfig || {
       host: process.env.DB_HOST,
       port: Number(process.env.DB_PORT) || 5432,
       database: process.env.DB_NAME,
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
-      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+      ssl: { rejectUnauthorized: false },
     },
     migrations: {
-      directory: './migrations',
+      directory: path.join(__dirname, '..', 'migrations'),
+      tableName: 'knex_migrations',
+    },
+    seeds: {
+      directory: path.join(__dirname, '..', 'seeds'),
+    },
+    pool: {
+      min: 2,
+      max: 20,
+    },
+  },
+  staging: {
+    client: 'postgresql',
+    connection: dbUrlConfig || {
+      host: process.env.DB_HOST,
+      port: Number(process.env.DB_PORT) || 5432,
+      database: process.env.DB_NAME,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      ssl: { rejectUnauthorized: false },
+    },
+    migrations: {
+      directory: path.join(__dirname, '..', 'migrations'),
       tableName: 'knex_migrations',
     },
     pool: {
