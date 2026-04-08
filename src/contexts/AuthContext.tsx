@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4242";
+// Use relative URL in production (same origin), or fallback to localhost for dev
+const API_URL = import.meta.env.VITE_API_URL || "";
 
 /**
  * App roles (API / DB naming: manufacturer, brand_operator, distributor, retail_account, sales_rep).
