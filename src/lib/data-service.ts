@@ -12,8 +12,8 @@ import {
 import { fetchAppData as fetchLegacyAppData } from "./api-app";
 import type { AppData } from "@/types/app-data";
 
-// Feature flag to control granular API usage
-const USE_GRANULAR_API = import.meta.env.VITE_USE_GRANULAR_API === "true" || true;
+// Feature flag to control granular API usage - Stage 3: Always use granular
+const USE_GRANULAR_API = true;
 
 /**
  * Transform API v1 data to AppData format
@@ -99,7 +99,7 @@ function transformToAppData(
  * Fetch data using granular APIs
  */
 export async function fetchAppDataGranular(): Promise<AppData> {
-  console.log("[DataService] Using granular APIs");
+  console.log("[DataService] Using granular APIs (Stage 3)");
   
   const [
     productsRes,
@@ -124,25 +124,20 @@ export async function fetchAppDataGranular(): Promise<AppData> {
 }
 
 /**
- * Fetch data - uses granular APIs if enabled, otherwise legacy
+ * Fetch data - Stage 3: Always use granular APIs
  */
 export async function fetchAppData(): Promise<AppData> {
-  if (USE_GRANULAR_API) {
-    try {
-      return await fetchAppDataGranular();
-    } catch (err) {
-      console.warn("[DataService] Granular API failed, falling back to legacy:", err);
-      return fetchLegacyAppData();
-    }
-  }
-  return fetchLegacyAppData();
+  // Stage 3: Always use granular APIs, no fallback
+  return fetchAppDataGranular();
 }
 
 /**
- * Save data - currently uses legacy API
- * TODO: Implement granular save when backend supports it
+ * Save data - Stage 3: Use granular APIs for saves
+ * TODO: Implement granular save endpoints
  */
 export async function putAppData(data: AppData): Promise<void> {
+  // Stage 3: Data mutations should use granular endpoints
+  // For now, still use legacy for writes until granular save endpoints are built
   const { putAppData: putLegacyAppData } = await import("./api-app");
   return putLegacyAppData(data);
 }
