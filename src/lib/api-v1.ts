@@ -2,21 +2,29 @@
  * Granular API Client - v1
  * RESTful API wrapper for products, orders, accounts, inventory
  */
-import { getStoredTokens } from "./api-app";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 
+// Helper to get auth token from localStorage
+function getAuthToken(): string | null {
+  try {
+    return localStorage.getItem("hajime_access_token");
+  } catch {
+    return null;
+  }
+}
+
 // Generic fetch wrapper with auth
 async function apiFetch(endpoint: string, options: RequestInit = {}) {
-  const tokens = getStoredTokens();
+  const token = getAuthToken();
   
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...((options.headers as Record<string, string>) || {}),
   };
   
-  if (tokens?.accessToken) {
-    headers["Authorization"] = `Bearer ${tokens.accessToken}`;
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
   
   const response = await fetch(`${API_URL}${endpoint}`, {
