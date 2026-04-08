@@ -193,7 +193,7 @@ export default function Orders() {
     const q = search.toLowerCase();
     return orders.filter((o) => {
       if (!matchesOrderTab(o, orderTab)) return false;
-      return o.account.toLowerCase().includes(q) || o.id.toLowerCase().includes(q);
+      return (o.account?.toLowerCase() || "").includes(q) || (o.id?.toLowerCase() || "").includes(q);
     });
   }, [search, orderTab, orders]);
 

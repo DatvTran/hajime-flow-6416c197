@@ -88,9 +88,9 @@ export default function Inventory() {
     return items.filter((i) => {
       if (statusFilter && i.status !== statusFilter) return false;
       return (
-        i.productName.toLowerCase().includes(q) ||
-        i.sku.toLowerCase().includes(q) ||
-        i.batchLot.toLowerCase().includes(q)
+        (i.productName?.toLowerCase() || "").includes(q) ||
+        (i.sku?.toLowerCase() || "").includes(q) ||
+        (i.batchLot?.toLowerCase() || "").includes(q)
       );
     });
   }, [search, statusFilter, items]);

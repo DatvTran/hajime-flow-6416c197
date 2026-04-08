@@ -61,7 +61,7 @@ export default function Accounts() {
         const p = a.onboardingPipeline ?? "none";
         if (p !== "sales_intake" && p !== "brand_review") return false;
       }
-      return a.tradingName.toLowerCase().includes(q) || a.city.toLowerCase().includes(q);
+      return (a.tradingName?.toLowerCase() || "").includes(q) || (a.city?.toLowerCase() || "").includes(q);
     });
   }, [search, activeOnly, accounts, pipelineOnboarding]);
 

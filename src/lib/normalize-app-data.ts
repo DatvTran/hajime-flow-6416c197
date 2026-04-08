@@ -4,7 +4,7 @@ import seedJson from "@/data/seed-app.json";
 import type { Product } from "@/data/mockData";
 import { products as PRODUCT_DEFAULTS } from "@/data/mockData";
 
-const ROSTER_EMAILS = new Set(TEAM_ROSTER.map((m) => m.email.toLowerCase()));
+const ROSTER_EMAILS = new Set(TEAM_ROSTER.map((m) => m.email?.toLowerCase()).filter(Boolean));
 
 const SEED = seedJson as AppData;
 

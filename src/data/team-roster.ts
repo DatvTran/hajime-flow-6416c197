@@ -76,7 +76,7 @@ export const RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL: Record<string, string> = {
 export function findTeamMemberByEmail(email: string | undefined): TeamMember | undefined {
   if (!email?.trim()) return undefined;
   const e = email.trim().toLowerCase();
-  return TEAM_ROSTER.find((m) => m.email.toLowerCase() === e);
+  return TEAM_ROSTER.find((m) => m.email?.toLowerCase() === e);
 }
 
 /** Sales rep / HQ name used on accounts & orders — prefer roster when email matches. */

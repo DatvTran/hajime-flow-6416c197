@@ -82,6 +82,7 @@ const MARKET_FILTERS = [
 
 function orderInMarketFilter(orderMarket: string, filter: (typeof MARKET_FILTERS)[number]["id"]): boolean {
   if (filter === "all") return true;
+  if (!orderMarket) return false; // Guard against undefined
   const m = orderMarket.toLowerCase();
   if (filter === "toronto") return cityKeyFromMarket(orderMarket) === "Toronto";
   if (filter === "milan") return cityKeyFromMarket(orderMarket) === "Milan";
@@ -136,9 +137,9 @@ export default function Dashboard() {
     if (!q) return pendingItems;
     return pendingItems.filter(
       (p) =>
-        p.order.account.toLowerCase().includes(q) ||
-        p.order.id.toLowerCase().includes(q) ||
-        p.city.toLowerCase().includes(q),
+        (p.order?.account?.toLowerCase() || "").includes(q) ||
+        (p.order?.id?.toLowerCase() || "").includes(q) ||
+        (p.city?.toLowerCase() || "").includes(q),
     );
   }, [pendingItems, search]);
 
