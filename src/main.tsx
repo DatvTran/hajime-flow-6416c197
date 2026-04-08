@@ -5,6 +5,13 @@ import "./App.css";
 
 console.log("[main.tsx] Starting React app...");
 
+// Remove initial HTML loader - React is taking over
+const initialLoader = document.getElementById("initial-loader");
+if (initialLoader) {
+  initialLoader.remove();
+  console.log("[main.tsx] Initial loader removed");
+}
+
 try {
   const rootElement = document.getElementById("root");
   if (!rootElement) {
