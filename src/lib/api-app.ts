@@ -5,8 +5,27 @@ function apiUrl(path: string): string {
   return `${base}${path}`;
 }
 
+function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  
+  try {
+    const token = localStorage.getItem("hajime_access_token");
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+  } catch {
+    // Ignore localStorage errors
+  }
+  
+  return headers;
+}
+
 export async function fetchAppData(): Promise<AppData> {
-  const res = await fetch(apiUrl("/api/app"));
+  const res = await fetch(apiUrl("/api/app"), {
+    headers: getAuthHeaders(),
+  });
   if (!res.ok) throw new Error(await res.text());
   return res.json() as Promise<AppData>;
 }
@@ -14,7 +33,7 @@ export async function fetchAppData(): Promise<AppData> {
 export async function putAppData(data: AppData): Promise<void> {
   const res = await fetch(apiUrl("/api/app"), {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(await res.text());
