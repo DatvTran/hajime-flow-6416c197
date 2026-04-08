@@ -27,8 +27,12 @@ export async function fetchAppData(): Promise<AppData> {
   const headers = getAuthHeaders();
   console.log("[api-app] Headers:", { ...headers, Authorization: headers.Authorization ? "Bearer ***" : "missing" });
   
-  const res = await fetch(apiUrl("/api/app"), {
+  // Add cache-busting query param to prevent 304 caching issues
+  const cacheBuster = `?_cb=${Date.now()}`;
+  
+  const res = await fetch(apiUrl(`/api/app${cacheBuster}`), {
     headers,
+    cache: "no-store",
   });
   
   console.log("[api-app] Response status:", res.status);

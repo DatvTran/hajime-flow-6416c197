@@ -92,6 +92,14 @@ setupSecurityMiddleware(app);
 // Body parsing
 app.use(express.json({ limit: '2mb' }));
 
+// Disable caching for API routes
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
+
 // Apply rate limiting
 app.use('/api/auth', rateLimiters.auth);
 app.use('/api/csv', rateLimiters.csvExport);
