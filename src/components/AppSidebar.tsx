@@ -48,16 +48,54 @@ export type NavItem = { title: string; url: string; icon: LucideIcon };
 export type NavGroupDef = { label: string; items: NavItem[] };
 
 const ROLE_BADGE: Record<HajimeRole, string> = {
+  founder_admin: "Founder Admin",
   brand_operator: "Brand Operator (HQ)",
   manufacturer: "Manufacturer",
   distributor: "Distributor / Wholesaler",
   retail: "Retail Store / Account",
   sales_rep: "Sales Rep",
+  sales: "Sales",
+  operations: "Operations",
+  finance: "Finance",
 };
 
 /** Spec §4 — focused sidebar per role; URLs map to shared AppData routes. */
 function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
   switch (role) {
+    case "founder_admin":
+    case "brand_operator":
+      return [
+        {
+          label: "Operations",
+          items: [
+            { title: "Command center", url: "/", icon: LayoutDashboard },
+            { title: "Inventory", url: "/inventory", icon: Package },
+            { title: "Orders", url: "/orders", icon: ShoppingCart },
+            { title: "Markets", url: "/markets", icon: Globe },
+            { title: "Accounts", url: "/accounts", icon: Users },
+            { title: "Shipments", url: "/shipments", icon: Truck },
+          ],
+        },
+        {
+          label: "Supply chain",
+          items: [
+            { title: "Production requests", url: "/purchase-orders", icon: FileText },
+            { title: "Manufacturer portal", url: "/manufacturer", icon: Factory },
+          ],
+        },
+        {
+          label: "Insights",
+          items: [
+            { title: "Analytics", url: "/reports", icon: BarChart3 },
+            { title: "Alerts", url: "/alerts", icon: AlertTriangle },
+            { title: "Payments & AR/AP", url: "/finance", icon: Receipt },
+          ],
+        },
+        {
+          label: "HQ",
+          items: [{ title: "Team / settings", url: "/settings", icon: Settings }],
+        },
+      ];
     case "manufacturer":
       return [
         {
@@ -177,6 +215,64 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           label: "Performance",
           items: [
             { title: "Targets", url: "/sales/targets", icon: Target },
+            { title: "Analytics", url: "/reports", icon: BarChart3 },
+            { title: "Alerts", url: "/alerts", icon: AlertTriangle },
+          ],
+        },
+      ];
+    case "sales":
+      return [
+        {
+          label: "Sales",
+          items: [
+            { title: "Overview", url: "/", icon: LayoutDashboard },
+            { title: "Accounts", url: "/accounts", icon: Users },
+            { title: "Orders", url: "/orders", icon: ShoppingCart },
+            { title: "Targets", url: "/sales/targets", icon: Target },
+          ],
+        },
+        {
+          label: "Performance",
+          items: [
+            { title: "Analytics", url: "/reports", icon: BarChart3 },
+            { title: "Alerts", url: "/alerts", icon: AlertTriangle },
+          ],
+        },
+      ];
+    case "operations":
+      return [
+        {
+          label: "Operations",
+          items: [
+            { title: "Overview", url: "/", icon: LayoutDashboard },
+            { title: "Inventory", url: "/inventory", icon: Package },
+            { title: "Orders", url: "/orders", icon: ShoppingCart },
+            { title: "Shipments", url: "/shipments", icon: Truck },
+            { title: "Production", url: "/purchase-orders", icon: FileText },
+          ],
+        },
+        {
+          label: "Insights",
+          items: [
+            { title: "Analytics", url: "/reports", icon: BarChart3 },
+            { title: "Alerts", url: "/alerts", icon: AlertTriangle },
+          ],
+        },
+      ];
+    case "finance":
+      return [
+        {
+          label: "Finance",
+          items: [
+            { title: "Overview", url: "/", icon: LayoutDashboard },
+            { title: "Payments", url: "/finance", icon: Receipt },
+            { title: "Orders", url: "/orders", icon: ShoppingCart },
+            { title: "Accounts", url: "/accounts", icon: Users },
+          ],
+        },
+        {
+          label: "Insights",
+          items: [
             { title: "Analytics", url: "/reports", icon: BarChart3 },
             { title: "Alerts", url: "/alerts", icon: AlertTriangle },
           ],
