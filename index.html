@@ -11,90 +11,62 @@
     <meta property="og:description" content="Real-time B2B operations for Hajime: inventory, orders, CRM, production, and logistics in one system." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    
+    <!-- Cache control -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   </head>
 
   <body>
+    <!-- Immediate test -->
+    <script>
+      console.log('[HTML] Body script executing');
+      window.HTML_LOADED = true;
+    </script>
+    
     <div id="root">
-      <!-- Initial loading state - visible before React mounts -->
+      <!-- Loading state visible before React mounts -->
       <div id="initial-loader" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #1a1a2e; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: system-ui, sans-serif; z-index: 99999;">
         <div style="font-size: 28px; margin-bottom: 16px;">⏳</div>
         <div style="font-size: 20px; font-weight: 500;">Hajime Loading...</div>
-        <div style="font-size: 14px; opacity: 0.6; margin-top: 12px;">If this persists, check console (F12)</div>
-        <div id="loader-status" style="font-size: 12px; opacity: 0.4; margin-top: 20px; font-family: monospace;">HTML loaded</div>
+        <div id="loader-status" style="font-size: 12px; opacity: 0.5; margin-top: 16px; font-family: monospace;">Waiting for JS...</div>
       </div>
     </div>
-    <div id="debug-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; color: #0f0; font-family: monospace; font-size: 14px; padding: 20px; z-index: 99999; overflow: auto; display: none;">
-      <h2>Debug Console</h2>
-      <pre id="debug-log"></pre>
-    </div>
-    <script>
-      // Debug logging
-      window.DEBUG_LOG = [];
-      const originalLog = console.log;
-      const originalError = console.error;
-      
-      function showDebug(msg) {
-        window.DEBUG_LOG.push(msg);
-        const overlay = document.getElementById('debug-overlay');
-        const log = document.getElementById('debug-log');
-        if (overlay && log) {
-          overlay.style.display = 'block';
-          log.textContent = window.DEBUG_LOG.join('\n');
-        }
-      }
-      
-      console.log = function(...args) {
-        originalLog.apply(console, args);
-        showDebug('[LOG] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
-      };
-      
-      console.error = function(...args) {
-        originalError.apply(console, args);
-        showDebug('[ERROR] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
-      };
-      
-      window.onerror = function(msg, url, line, col, error) {
-        showDebug('[FATAL] ' + msg + ' at ' + url + ':' + line + ':' + col);
-        showDebug(error?.stack || 'No stack trace');
-      };
-      
-      showDebug('Page loaded at ' + new Date().toISOString());
-      showDebug('User agent: ' + navigator.userAgent);
-      
-      // Update visible loader status
-      const statusEl = document.getElementById('loader-status');
-      if (statusEl) statusEl.textContent = 'JS executing...';
-      
-      // Check if React will mount
-      setTimeout(function() {
-        const root = document.getElementById('root');
-        if (root && root.children.length <= 1) {
-          if (statusEl) statusEl.textContent = 'React not mounting - check console';
-          showDebug('WARNING: React appears not to have mounted after 3s');
-        }
-      }, 3000);
-      
-      // Detect if React crashes after mounting
-      let lastChildCount = 0;
-      setInterval(function() {
-        const root = document.getElementById('root');
-        if (root) {
-          if (root.children.length > 0 && root.children.length !== lastChildCount) {
-            lastChildCount = root.children.length;
-            if (statusEl) statusEl.textContent = 'React mounted (' + root.children.length + ' children)';
-          }
-          // If root becomes empty after having content, React crashed
-          if (lastChildCount > 0 && root.children.length === 0) {
-            if (statusEl) {
-              statusEl.textContent = 'REACT CRASHED - Check console for errors';
-              statusEl.style.color = '#ff4444';
-              statusEl.style.fontWeight = 'bold';
-            }
-            showDebug('FATAL: React appears to have crashed - root is empty');
-          }
-        }
-      }, 500);
-    </script>
+    
+    <!-- Vite will inject the app script here -->
     <script type="module" src="/src/main.tsx"></script>
+    
+    <script>
+      // Monitor loader status
+      const statusEl = document.getElementById('loader-status');
+      if (statusEl) statusEl.textContent = 'Script tag found';
+      
+      // Detect React mounting
+      setTimeout(function checkMount() {
+        const root = document.getElementById('root');
+        const loader = document.getElementById('initial-loader');
+        
+        if (!loader) {
+          console.log('[HTML] Loader removed - React mounted');
+          return;
+        }
+        
+        if (statusEl) {
+          if (window.HTML_LOADED) {
+            statusEl.textContent = 'JS running but React not mounting';
+          } else {
+            statusEl.textContent = 'JS not executing - check console for errors';
+          }
+        }
+      }, 2000);
+      
+      // Catch any errors
+      window.addEventListener('error', function(e) {
+        console.error('[HTML] Error:', e.message);
+        if (statusEl) {
+          statusEl.textContent = 'ERROR: ' + e.message;
+          statusEl.style.color = '#ff4444';
+        }
+      });
+    </script>
   </body>
 </html>
