@@ -12,18 +12,18 @@ export default function RoleHomeEntry() {
   switch (user.role) {
     case "founder_admin":
     case "brand_operator":
-    case "sales":
     case "operations":
     case "finance":
       return <Dashboard />;
     case "manufacturer":
       return <Navigate to="/manufacturer" replace />;
     case "distributor":
-      return <DistributorHomePage />;
+      return <Navigate to="/distributor" replace />;
     case "retail":
       return <RetailHomePage />;
+    case "sales":
     case "sales_rep":
-      return <SalesRepHomePage />;
+      return <Navigate to="/sales" replace />;
     default:
       return <Dashboard />;
   }

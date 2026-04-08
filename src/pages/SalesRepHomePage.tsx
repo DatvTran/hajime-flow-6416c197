@@ -163,7 +163,7 @@ export default function SalesRepHomePage() {
               ))
             )}
             <Button variant="link" className="h-auto px-0 text-xs" asChild>
-              <Link to="/accounts">Full directory</Link>
+              <Link to="/sales/accounts">Full directory</Link>
             </Button>
           </CardContent>
         </Card>
@@ -184,7 +184,7 @@ export default function SalesRepHomePage() {
                   <p className="font-medium">{a.tradingName}</p>
                   <p className="text-xs text-muted-foreground">Last order {a.lastOrderDate || "—"}</p>
                   <Button variant="link" className="mt-1 h-auto px-0 text-xs" asChild>
-                    <Link to={`/orders?new=1`}>Draft order</Link>
+                    <Link to="/sales/orders?new=1">Draft order</Link>
                   </Button>
                 </div>
               ))
@@ -209,10 +209,10 @@ export default function SalesRepHomePage() {
             ))}
             <div className="flex flex-wrap gap-2 pt-2">
               <Button size="sm" className="touch-manipulation" asChild>
-                <Link to="/orders?tab=pending-review">Open drafts</Link>
+                <Link to="/sales/orders?tab=pending-review">Open drafts</Link>
               </Button>
               <Button size="sm" variant="outline" className="touch-manipulation" asChild>
-                <Link to="/orders?new=1">New draft</Link>
+                <Link to="/sales/orders?new=1">New draft</Link>
               </Button>
             </div>
           </CardContent>

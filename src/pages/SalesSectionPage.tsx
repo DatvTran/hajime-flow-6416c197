@@ -31,13 +31,13 @@ export default function SalesSectionPage() {
           <p>{s.body}</p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="secondary" asChild>
-              <Link to="/accounts">Accounts</Link>
+              <Link to="/sales/accounts">Accounts</Link>
             </Button>
             <Button size="sm" variant="outline" asChild>
-              <Link to="/orders">Orders</Link>
+              <Link to="/sales/orders">Orders</Link>
             </Button>
             <Button size="sm" variant="outline" asChild>
-              <Link to="/reports">Analytics</Link>
+              <Link to="/sales/reports">Analytics</Link>
             </Button>
           </div>
         </CardContent>

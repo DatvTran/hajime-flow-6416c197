@@ -42,7 +42,7 @@ export default function AlertsHubPage() {
         <CardHeader>
           <CardTitle className="font-display text-lg">
             <Link
-              to="/alerts#active-queue"
+              to="#active-queue"
               className="text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Active queue

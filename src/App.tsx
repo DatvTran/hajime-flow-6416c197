@@ -34,6 +34,7 @@ import RetailMyOrdersPage from "./pages/RetailMyOrdersPage";
 import RetailOrderDetailPage from "./pages/RetailOrderDetailPage";
 import SalesSectionPage from "./pages/SalesSectionPage";
 import SalesTargetsPage from "./pages/SalesTargetsPage";
+import SalesRepHomePage from "./pages/SalesRepHomePage";
 import FinancePaymentsPage from "./pages/FinancePaymentsPage";
 
 const queryClient = new QueryClient();
@@ -141,6 +142,26 @@ const App = () => {
                     <Route path="/alerts" element={<AlertsHubPage />} />
                     <Route path="/finance" element={<FinancePaymentsPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
+                    {/* Distributor namespaced routes */}
+                    <Route path="/distributor" element={<DebugWrapper step="Distributor Dashboard"><RoleHomeEntry /></DebugWrapper>} />
+                    <Route path="/distributor/inventory" element={<Inventory />} />
+                    <Route path="/distributor/orders" element={<Orders />} />
+                    <Route path="/distributor/accounts" element={<Accounts />} />
+                    <Route path="/distributor/purchase-orders" element={<PurchaseOrders />} />
+                    <Route path="/distributor/shipments" element={<Shipments />} />
+                    <Route path="/distributor/backorders" element={<BackordersPage />} />
+                    <Route path="/distributor/alerts" element={<AlertsHubPage />} />
+                    <Route path="/distributor/finance" element={<FinancePaymentsPage />} />
+                    <Route path="/distributor/reports" element={<Reports />} />
+                    {/* Sales namespaced routes */}
+                    <Route path="/sales" element={<DebugWrapper step="Sales Dashboard"><SalesRepHomePage /></DebugWrapper>} />
+                    <Route path="/sales/accounts" element={<Accounts />} />
+                    <Route path="/sales/orders" element={<Orders />} />
+                    <Route path="/sales/opportunities" element={<SalesSectionPage />} />
+                    <Route path="/sales/visits" element={<SalesSectionPage />} />
+                    <Route path="/sales/targets" element={<SalesTargetsPage />} />
+                    <Route path="/sales/reports" element={<Reports />} />
+                    <Route path="/sales/alerts" element={<AlertsHubPage />} />
                     <Route path="*" element={<NotFound />} />
                   </Route>
                 </Route>

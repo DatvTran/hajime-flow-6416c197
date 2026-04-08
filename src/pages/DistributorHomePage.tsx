@@ -46,7 +46,7 @@ export default function DistributorHomePage() {
             <p className="font-display text-2xl font-semibold tabular-nums">{inv.available.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground">available bottles</p>
             <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-              <Link to="/inventory">Stock positions</Link>
+              <Link to="/distributor/inventory">Stock positions</Link>
             </Button>
           </CardContent>
         </Card>
@@ -59,7 +59,7 @@ export default function DistributorHomePage() {
             <p className="font-display text-2xl font-semibold tabular-nums">{awaitingFulfillment.length}</p>
             <p className="text-xs text-muted-foreground">approved / ready to pick</p>
             <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-              <Link to="/orders?tab=approved">Open queue</Link>
+              <Link to="/distributor/orders?tab=approved">Open queue</Link>
             </Button>
           </CardContent>
         </Card>
@@ -72,7 +72,7 @@ export default function DistributorHomePage() {
             <p className="font-display text-2xl font-semibold tabular-nums">{activeShipments.length}</p>
             <p className="text-xs text-muted-foreground">active shipments</p>
             <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-              <Link to="/orders?tab=distributor">Distributor processing</Link>
+              <Link to="/distributor/orders?tab=distributor">Distributor processing</Link>
             </Button>
           </CardContent>
         </Card>
@@ -85,7 +85,7 @@ export default function DistributorHomePage() {
             <p className="font-display text-2xl font-semibold tabular-nums">{retailAccounts.length}</p>
             <p className="text-xs text-muted-foreground">active (non-distributor)</p>
             <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-              <Link to="/accounts">Directory</Link>
+              <Link to="/distributor/accounts">Directory</Link>
             </Button>
           </CardContent>
         </Card>
@@ -141,7 +141,7 @@ export default function DistributorHomePage() {
               </div>
             ))}
             <Button variant="link" className="h-auto px-0 text-xs" asChild>
-              <Link to="/shipments">Full tracker</Link>
+              <Link to="/distributor/shipments">Full tracker</Link>
             </Button>
           </CardContent>
         </Card>

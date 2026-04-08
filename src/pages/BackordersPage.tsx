@@ -52,7 +52,7 @@ export default function BackordersPage() {
                   {o.account} · {line.sku} — need {line.quantityBottles} bottles, ~{avail.toLocaleString()} available
                 </p>
                 <Button className="mt-2" size="sm" variant="outline" asChild>
-                  <Link to="/orders">Open orders</Link>
+                  <Link to="/distributor/orders">Open orders</Link>
                 </Button>
               </div>
             ))

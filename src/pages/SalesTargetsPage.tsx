@@ -141,12 +141,12 @@ export default function SalesTargetsPage() {
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" className="touch-manipulation" asChild>
-              <Link to="/orders?tab=pending-review">
+              <Link to="/sales/orders?tab=pending-review">
                 Draft orders <ArrowRight className="ml-1 h-3.5 w-3.5" />
               </Link>
             </Button>
             <Button variant="secondary" size="sm" className="touch-manipulation" asChild>
-              <Link to="/reports">Open analytics</Link>
+              <Link to="/sales/reports">Open analytics</Link>
             </Button>
           </div>
         }

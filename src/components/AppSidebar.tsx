@@ -154,21 +154,21 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
         {
           label: "Operations",
           items: [
-            { title: "Overview", url: "/", icon: LayoutDashboard },
-            { title: "Warehouse inventory", url: "/inventory", icon: Warehouse },
-            { title: "Orders to fulfill", url: "/orders?tab=approved", icon: ShoppingCart },
-            { title: "Production requests", url: "/purchase-orders", icon: FileText },
-            { title: "Deliveries", url: "/shipments", icon: Truck },
-            { title: "Retail accounts", url: "/accounts", icon: Users },
+            { title: "Overview", url: "/distributor", icon: LayoutDashboard },
+            { title: "Warehouse inventory", url: "/distributor/inventory", icon: Warehouse },
+            { title: "Orders to fulfill", url: "/distributor/orders?tab=approved", icon: ShoppingCart },
+            { title: "Production requests", url: "/distributor/purchase-orders", icon: FileText },
+            { title: "Deliveries", url: "/distributor/shipments", icon: Truck },
+            { title: "Retail accounts", url: "/distributor/accounts", icon: Users },
             { title: "Backorders", url: "/distributor/backorders", icon: ClipboardList },
-            { title: "Payments & remits", url: "/finance", icon: Receipt },
+            { title: "Payments & remits", url: "/distributor/finance", icon: Receipt },
           ],
         },
         {
           label: "Service",
           items: [
-            { title: "Alerts", url: "/alerts", icon: AlertTriangle },
-            { title: "Analytics", url: "/reports", icon: LineChart },
+            { title: "Alerts", url: "/distributor/alerts", icon: AlertTriangle },
+            { title: "Analytics", url: "/distributor/reports", icon: LineChart },
           ],
         },
       ];
@@ -204,19 +204,19 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
         {
           label: "Field",
           items: [
-            { title: "Overview", url: "/", icon: LayoutDashboard },
-            { title: "My accounts", url: "/accounts", icon: Users },
+            { title: "Overview", url: "/sales", icon: LayoutDashboard },
+            { title: "My accounts", url: "/sales/accounts", icon: Users },
             { title: "Opportunities", url: "/sales/opportunities", icon: TrendingUp },
             { title: "Visit notes", url: "/sales/visits", icon: ClipboardList },
-            { title: "Draft orders", url: "/orders?tab=pending-review", icon: FileText },
+            { title: "Draft orders", url: "/sales/orders?tab=pending-review", icon: FileText },
           ],
         },
         {
           label: "Performance",
           items: [
             { title: "Targets", url: "/sales/targets", icon: Target },
-            { title: "Analytics", url: "/reports", icon: BarChart3 },
-            { title: "Alerts", url: "/alerts", icon: AlertTriangle },
+            { title: "Analytics", url: "/sales/reports", icon: BarChart3 },
+            { title: "Alerts", url: "/sales/alerts", icon: AlertTriangle },
           ],
         },
       ];
@@ -225,17 +225,17 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
         {
           label: "Sales",
           items: [
-            { title: "Overview", url: "/", icon: LayoutDashboard },
-            { title: "Accounts", url: "/accounts", icon: Users },
-            { title: "Orders", url: "/orders", icon: ShoppingCart },
+            { title: "Overview", url: "/sales", icon: LayoutDashboard },
+            { title: "Accounts", url: "/sales/accounts", icon: Users },
+            { title: "Orders", url: "/sales/orders", icon: ShoppingCart },
             { title: "Targets", url: "/sales/targets", icon: Target },
           ],
         },
         {
           label: "Performance",
           items: [
-            { title: "Analytics", url: "/reports", icon: BarChart3 },
-            { title: "Alerts", url: "/alerts", icon: AlertTriangle },
+            { title: "Analytics", url: "/sales/reports", icon: BarChart3 },
+            { title: "Alerts", url: "/sales/alerts", icon: AlertTriangle },
           ],
         },
       ];
@@ -307,7 +307,7 @@ function NavSection({
               <SidebarMenuButton asChild>
                 <NavLink
                   to={item.url}
-                  end={item.url === "/" || item.url === "/manufacturer"}
+                  end={item.url === "/" || item.url === "/manufacturer" || item.url === "/distributor" || item.url === "/sales"}
                   onClick={onNavigate}
                   className={cn(
                     "flex items-center rounded-md text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",

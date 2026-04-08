@@ -25,7 +25,7 @@ export function resolveAlertHref(alert: DerivedAlert, role: HajimeRole): string 
   }
 
   if (type === "delay" && id.startsWith("po-delay-")) {
-    if (role === "sales_rep" || role === "retail") return "/alerts";
+    if (role === "sales_rep" || role === "retail") return "/sales/alerts";
     const poId = id.slice("po-delay-".length);
     return `/purchase-orders?po=${encodeURIComponent(poId)}`;
   }
@@ -44,13 +44,15 @@ export function resolveAlertHref(alert: DerivedAlert, role: HajimeRole): string 
   }
 
   if (type === "demand-spike") {
-    if (role === "retail" || role === "sales_rep") return "/alerts";
+    if (role === "retail" || role === "sales_rep") return "/sales/alerts";
     return "/markets";
   }
 
   if (type === "account") {
+    if (role === "sales_rep") return "/sales/accounts";
     return "/accounts";
   }
 
+  if (role === "sales_rep") return "/sales/alerts";
   return "/alerts";
 }
