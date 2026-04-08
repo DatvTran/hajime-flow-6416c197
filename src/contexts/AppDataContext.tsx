@@ -124,10 +124,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     return { data, loading, error, updateData };
   }, [data, loading, error, updateData]);
 
+  console.log("[AppDataContext] Render state:", { hasData: !!data, hasValue: !!value, loading, error, user: user?.email });
+
   if (!data || !value) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-2 px-4">
-        <p className="text-sm text-muted-foreground">{loading ? "Loading data…" : error ?? "No data"}</p>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-2 px-4" style={{ background: 'red', color: 'white', padding: '20px' }}>
+        <p className="text-sm" style={{ color: 'white' }}>{loading ? "Loading data…" : error ?? "No data"}</p>
+        <p style={{ color: 'white', fontSize: '12px' }}>Debug: user={user?.email ?? 'none'}, loading={String(loading)}</p>
       </div>
     );
   }

@@ -43,7 +43,9 @@ export async function fetchAppData(): Promise<AppData> {
     throw new Error(text || `HTTP ${res.status}`);
   }
   
-  return res.json() as Promise<AppData>;
+  const data = await res.json();
+  console.log("[api-app] Data received, products:", data.products?.length || 0);
+  return data as AppData;
 }
 
 export async function putAppData(data: AppData): Promise<void> {
