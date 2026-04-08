@@ -116,39 +116,6 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           items: [{ title: "Profile", url: "/manufacturer/profile", icon: User }],
         },
       ];
-    case "brand_operator":
-      return [
-        {
-          label: "Operations",
-          items: [
-            { title: "Command center", url: "/", icon: LayoutDashboard },
-            { title: "Inventory", url: "/inventory", icon: Package },
-            { title: "Orders", url: "/orders", icon: ShoppingCart },
-            { title: "Markets", url: "/markets", icon: Globe },
-            { title: "Accounts", url: "/accounts", icon: Users },
-            { title: "Shipments", url: "/shipments", icon: Truck },
-          ],
-        },
-        {
-          label: "Supply chain",
-          items: [
-            { title: "Production requests", url: "/purchase-orders", icon: FileText },
-            { title: "Manufacturer portal", url: "/manufacturer", icon: Factory },
-          ],
-        },
-        {
-          label: "Insights",
-          items: [
-            { title: "Analytics", url: "/reports", icon: BarChart3 },
-            { title: "Alerts", url: "/alerts", icon: AlertTriangle },
-            { title: "Payments & AR/AP", url: "/finance", icon: Receipt },
-          ],
-        },
-        {
-          label: "HQ",
-          items: [{ title: "Team / settings", url: "/settings", icon: Settings }],
-        },
-      ];
     case "distributor":
       return [
         {

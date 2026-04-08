@@ -2,6 +2,7 @@ app = "hajime-app"
 primary_region = "nrt"
 
 [build]
+  dockerfile = "Dockerfile"
 
 [deploy]
   release_command = "sh -c 'cd /app/server && npx knex migrate:latest'"
