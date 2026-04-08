@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -74,8 +75,23 @@ function AppDataShell() {
 
 const App = () => {
   console.log("[App] Rendering started");
+  
+  // Heartbeat to detect if React dies
+  useEffect(() => {
+    console.log("[App] Heartbeat started");
+    const interval = setInterval(() => {
+      console.log("[App] Heartbeat - still alive");
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+  
   return (
-    <QueryClientProvider client={queryClient}>
+    <>
+      {/* Debug div - always visible if React renders */}
+      <div id="react-mounted" style={{position: 'fixed', top: 0, left: 0, background: '#0f0', color: '#000', padding: '4px 8px', fontSize: '12px', zIndex: 99999, fontFamily: 'monospace'}}>
+        React OK
+      </div>
+      <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <TooltipProvider>
           <Toaster />
@@ -117,6 +133,7 @@ const App = () => {
       </TooltipProvider>
     </AuthProvider>
   </QueryClientProvider>
+  </>
   );
 };
 

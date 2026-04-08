@@ -73,6 +73,27 @@
           showDebug('WARNING: React appears not to have mounted after 3s');
         }
       }, 3000);
+      
+      // Detect if React crashes after mounting
+      let lastChildCount = 0;
+      setInterval(function() {
+        const root = document.getElementById('root');
+        if (root) {
+          if (root.children.length > 0 && root.children.length !== lastChildCount) {
+            lastChildCount = root.children.length;
+            if (statusEl) statusEl.textContent = 'React mounted (' + root.children.length + ' children)';
+          }
+          // If root becomes empty after having content, React crashed
+          if (lastChildCount > 0 && root.children.length === 0) {
+            if (statusEl) {
+              statusEl.textContent = 'REACT CRASHED - Check console for errors';
+              statusEl.style.color = '#ff4444';
+              statusEl.style.fontWeight = 'bold';
+            }
+            showDebug('FATAL: React appears to have crashed - root is empty');
+          }
+        }
+      }, 500);
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
