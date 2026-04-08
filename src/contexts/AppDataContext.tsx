@@ -128,9 +128,28 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   if (!data || !value) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-2 px-4" style={{ background: 'red', color: 'white', padding: '20px' }}>
-        <p className="text-sm" style={{ color: 'white' }}>{loading ? "Loading data…" : error ?? "No data"}</p>
-        <p style={{ color: 'white', fontSize: '12px' }}>Debug: user={user?.email ?? 'none'}, loading={String(loading)}</p>
+      <div style={{ 
+        position: 'fixed', 
+        top: 0, 
+        left: 0, 
+        right: 0, 
+        bottom: 0, 
+        background: '#1a1a2e', 
+        color: '#fff', 
+        display: 'flex', 
+        flexDirection: 'column',
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        zIndex: 99999,
+        fontFamily: 'system-ui, sans-serif'
+      }}>
+        <div style={{ fontSize: '24px', marginBottom: '20px' }}>⏳ Hajime Loading...</div>
+        <div style={{ fontSize: '16px', opacity: 0.8 }}>
+          {loading ? "Loading data…" : error ?? "No data"}
+        </div>
+        <div style={{ fontSize: '12px', opacity: 0.6, marginTop: '20px' }}>
+          Debug: user={user?.email ?? 'none'}, loading={String(loading)}, error={error ? 'yes' : 'no'}
+        </div>
       </div>
     );
   }
