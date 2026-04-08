@@ -21,6 +21,8 @@ router.get('/products', authenticateToken, async (req, res) => {
     const tenantId = getTenantId(req);
     const { page = 1, limit = 50, category, search } = req.query;
     
+    console.log(`[API v1] GET /products - tenantId: ${tenantId}`);
+    
     let query = db('products')
       .where({ tenant_id: tenantId })
       .whereNull('deleted_at')
@@ -42,6 +44,8 @@ router.get('/products', authenticateToken, async (req, res) => {
       query.clone().count('id as count').first(),
       query.clone().limit(Number(limit)).offset(offset)
     ]);
+    
+    console.log(`[API v1] Products found: ${products.length}, count: ${countResult.count}`);
     
     res.json({
       data: products,
