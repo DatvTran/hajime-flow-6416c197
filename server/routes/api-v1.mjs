@@ -332,25 +332,25 @@ router.get('/orders', authenticateToken, async (req, res) => {
       date_to 
     } = req.query;
     
-    // Build base query (without orderBy for count)
+    // Build base query (without orderBy for count) - use explicit table names
     let baseQuery = db('sales_orders')
-      .where({ tenant_id: tenantId })
-      .whereNull('deleted_at');
+      .where('sales_orders.tenant_id', tenantId)
+      .whereNull('sales_orders.deleted_at');
     
-    if (status) baseQuery = baseQuery.where('status', status);
-    if (account_id) baseQuery = baseQuery.where('account_id', account_id);
-    if (date_from) baseQuery = baseQuery.where('order_date', '>=', date_from);
-    if (date_to) baseQuery = baseQuery.where('order_date', '<=', date_to);
+    if (status) baseQuery = baseQuery.where('sales_orders.status', status);
+    if (account_id) baseQuery = baseQuery.where('sales_orders.account_id', account_id);
+    if (date_from) baseQuery = baseQuery.where('sales_orders.order_date', '>=', date_from);
+    if (date_to) baseQuery = baseQuery.where('sales_orders.order_date', '<=', date_to);
     
     const offset = (Number(page) - 1) * Number(limit);
     
-    // Count query (no orderBy)
-    const countQuery = baseQuery.clone().count('id as count').first();
+    // Count query (no orderBy, no joins)
+    const countQuery = baseQuery.clone().count('sales_orders.id as count').first();
     
     // Data query (with orderBy and joins)
     const dataQuery = baseQuery
       .clone()
-      .orderBy('created_at', 'desc')
+      .orderBy('sales_orders.created_at', 'desc')
       .leftJoin('accounts', 'sales_orders.account_id', 'accounts.id')
       .select(
         'sales_orders.*',
@@ -519,8 +519,22 @@ router.get('/inventory', authenticateToken, async (req, res) => {
     const tenantId = getTenantId(req);
     const { page = 1, limit = 50, location, low_stock } = req.query;
     
-    // Build base query (without orderBy for count)
-    let baseQuery = db('inventory')
+    // Build filter conditions for count query (simpler, no joins)
+    let countQuery = db('inventory')
+      .where('inventory.tenant_id', tenantId)
+      .join('products', 'inventory.product_id', 'products.id')
+      .whereNull('products.deleted_at');
+    
+    if (location) countQuery = countQuery.where('inventory.location', location);
+    if (low_stock === 'true') {
+      countQuery = countQuery.whereRaw('inventory.available_quantity <= inventory.reorder_point');
+    }
+    
+    // Count query (just count, no select columns)
+    const countResultPromise = countQuery.clone().count('inventory.id as count').first();
+    
+    // Build data query (with select columns and orderBy)
+    let dataQuery = db('inventory')
       .where('inventory.tenant_id', tenantId)
       .join('products', 'inventory.product_id', 'products.id')
       .whereNull('products.deleted_at')
@@ -531,24 +545,20 @@ router.get('/inventory', authenticateToken, async (req, res) => {
         'products.category'
       );
     
-    if (location) baseQuery = baseQuery.where('inventory.location', location);
+    if (location) dataQuery = dataQuery.where('inventory.location', location);
     if (low_stock === 'true') {
-      baseQuery = baseQuery.whereRaw('inventory.available_quantity <= inventory.reorder_point');
+      dataQuery = dataQuery.whereRaw('inventory.available_quantity <= inventory.reorder_point');
     }
     
     const offset = (Number(page) - 1) * Number(limit);
     
-    // Count query (no orderBy)
-    const countQuery = baseQuery.clone().count('inventory.id as count').first();
-    
     // Data query (with orderBy)
-    const dataQuery = baseQuery
-      .clone()
+    const dataResultPromise = dataQuery
       .orderBy('products.name')
       .limit(Number(limit))
       .offset(offset);
     
-    const [countResult, inventory] = await Promise.all([countQuery, dataQuery]);
+    const [countResult, inventory] = await Promise.all([countResultPromise, dataResultPromise]);
     
     res.json({
       data: inventory,
