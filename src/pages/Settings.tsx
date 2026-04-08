@@ -91,7 +91,7 @@ export default function SettingsPage() {
       toast.error("Enter a valid email address");
       return;
     }
-    if (teamMembers.some((m) => m.email.toLowerCase() === email)) {
+    if (teamMembers.some((m) => (m.email?.toLowerCase() || "") === email)) {
       toast.error("This email is already on the team");
       return;
     }
@@ -229,7 +229,7 @@ export default function SettingsPage() {
                         <td className="py-3">{TEAM_ROLE_LABELS[m.role]}</td>
                         <td className="py-3 text-muted-foreground">
                           {m.role === "retail"
-                            ? RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL[m.email.toLowerCase()] ?? "—"
+                            ? RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL[m.email?.toLowerCase() || ""] ?? "—"
                             : "—"}
                         </td>
                         <td className="py-3 tabular-nums text-muted-foreground">{m.createdAt}</td>

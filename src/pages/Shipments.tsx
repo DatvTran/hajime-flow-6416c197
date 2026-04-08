@@ -27,11 +27,11 @@ export default function Shipments() {
     if (!n) return shipments;
     return shipments.filter(
       (s) =>
-        s.id.toLowerCase().includes(n) ||
-        s.origin.toLowerCase().includes(n) ||
-        s.destination.toLowerCase().includes(n) ||
-        s.carrier.toLowerCase().includes(n) ||
-        s.linkedOrder.toLowerCase().includes(n),
+        (s.id?.toLowerCase() || "").includes(n) ||
+        (s.origin?.toLowerCase() || "").includes(n) ||
+        (s.destination?.toLowerCase() || "").includes(n) ||
+        (s.carrier?.toLowerCase() || "").includes(n) ||
+        (s.linkedOrder?.toLowerCase() || "").includes(n),
     );
   }, [shipments, q]);
 

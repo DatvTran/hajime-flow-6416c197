@@ -65,7 +65,7 @@ function addDaysISO(days: number): string {
 function defaultMarketForAccount(tradingName: string, accountList: Account[]): string {
   const acc = accountList.find((a) => a.tradingName === tradingName);
   if (!acc) return "";
-  if (acc.tradingName === "LCBO Ontario" || acc.legalName.toLowerCase().includes("liquor control")) return "Ontario";
+  if (acc.tradingName === "LCBO Ontario" || (acc.legalName?.toLowerCase() || "").includes("liquor control")) return "Ontario";
   return acc.city;
 }
 

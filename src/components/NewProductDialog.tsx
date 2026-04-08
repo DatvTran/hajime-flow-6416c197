@@ -47,7 +47,7 @@ export function NewProductDialog({ open, onOpenChange, existingSkus, onCreate }:
       toast.error("SKU and product name are required");
       return;
     }
-    if (existingSkus.some((s) => s.toLowerCase() === skuNorm.toLowerCase())) {
+    if (existingSkus.some((s) => (s?.toLowerCase() || "") === skuNorm.toLowerCase())) {
       toast.error("This SKU already exists");
       return;
     }

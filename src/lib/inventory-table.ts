@@ -2,6 +2,7 @@ import type { InventoryItem } from "@/data/mockData";
 
 /** Demand region inferred from warehouse location (V1 heuristic). */
 export function marketFromWarehouse(warehouse: string): string {
+  if (!warehouse) return "Regional pool";
   const w = warehouse.toLowerCase();
   if (w.includes("toronto")) return "Toronto / Ontario";
   if (w.includes("milan")) return "Milan";

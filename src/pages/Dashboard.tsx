@@ -83,7 +83,7 @@ const MARKET_FILTERS = [
 function orderInMarketFilter(orderMarket: string, filter: (typeof MARKET_FILTERS)[number]["id"]): boolean {
   if (filter === "all") return true;
   if (!orderMarket) return false; // Guard against undefined
-  const m = orderMarket.toLowerCase();
+  const m = orderMarket?.toLowerCase() || "";
   if (filter === "toronto") return cityKeyFromMarket(orderMarket) === "Toronto";
   if (filter === "milan") return cityKeyFromMarket(orderMarket) === "Milan";
   if (filter === "paris") return cityKeyFromMarket(orderMarket) === "Paris";

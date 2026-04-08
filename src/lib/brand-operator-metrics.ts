@@ -149,7 +149,7 @@ function sumWarehouseAvailable(inv: InventoryItem[], pred: (w: string) => boolea
   let s = 0;
   for (const row of inv) {
     if (row.status !== "available") continue;
-    if (pred(row.warehouse.toLowerCase())) s += row.quantityBottles;
+    if (pred(row.warehouse?.toLowerCase() || "")) s += row.quantityBottles;
   }
   return s;
 }
@@ -158,14 +158,14 @@ function sumInTransitTo(inv: InventoryItem[], pred: (w: string) => boolean): num
   let s = 0;
   for (const row of inv) {
     if (row.status !== "in-transit") continue;
-    if (pred(row.warehouse.toLowerCase())) s += row.quantityBottles;
+    if (pred(row.warehouse?.toLowerCase() || "")) s += row.quantityBottles;
   }
   return s;
 }
 
 /** Approximate sellable pool addressable for a demand market (V1 heuristic). */
 function stockBottlesForDemandMarket(inv: InventoryItem[], marketKey: string): number {
-  const m = marketKey.toLowerCase();
+  const m = marketKey?.toLowerCase() || "";
   if (m === "toronto") {
     return sumWarehouseAvailable(inv, (w) => w.includes("toronto")) + sumInTransitTo(inv, (w) => w.includes("toronto"));
   }
@@ -237,13 +237,13 @@ export function computeMarketPanelRows(data: AppData, windowDays: number, now = 
     {
       id: "ontario",
       label: "Ontario LCBO",
-      marketPred: (m) => m.toLowerCase().includes("ontario"),
+      marketPred: (m) => (m?.toLowerCase() || "").includes("ontario"),
       stockKey: "ontario",
     },
     {
       id: "spain",
       label: "Spain",
-      marketPred: (m) => m.toLowerCase().includes("spain") || m.toLowerCase().includes("madrid"),
+      marketPred: (m) => (m?.toLowerCase() || "").includes("spain") || (m?.toLowerCase() || "").includes("madrid"),
       stockKey: "spain",
     },
   ];
@@ -289,7 +289,7 @@ export function buildPendingApprovalItems(
     const cs = caseSizeForSku(products, sku);
     const reqBottles = lines.reduce((a, l) => a + l.quantityBottles, o.quantity);
     const requestedCases = bottlesToCases(reqBottles, cs);
-    const mk = o.market.toLowerCase();
+    const mk = o.market?.toLowerCase() || "";
     let stockKey = "toronto";
     if (mk.includes("milan") || mk.includes("milano")) stockKey = "milan";
     if (mk.includes("paris")) stockKey = "paris";
@@ -297,7 +297,7 @@ export function buildPendingApprovalItems(
     let skuAvail = 0;
     for (const row of inventory) {
       if (row.sku !== sku || row.status !== "available") continue;
-      const w = row.warehouse.toLowerCase();
+      const w = row.warehouse?.toLowerCase() || "";
       if (stockKey === "toronto" && w.includes("toronto")) skuAvail += row.quantityBottles;
       else if (stockKey === "milan" && w.includes("milan")) skuAvail += row.quantityBottles;
       else if (stockKey === "paris" && w.includes("paris")) skuAvail += row.quantityBottles;

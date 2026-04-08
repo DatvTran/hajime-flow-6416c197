@@ -64,7 +64,7 @@ export function RetailerApplicationDialog({ open, onOpenChange, accounts, onCrea
       toast.error("Trading name, legal name, city, contact, and email are required.");
       return;
     }
-    if (accounts.some((a) => a.tradingName.toLowerCase() === tradingName.trim().toLowerCase())) {
+    if (accounts.some((a) => (a.tradingName?.toLowerCase() || "") === tradingName.trim().toLowerCase())) {
       toast.error("An account with this trading name already exists.");
       return;
     }

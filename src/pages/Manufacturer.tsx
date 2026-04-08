@@ -334,7 +334,7 @@ export default function Manufacturer() {
             .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
           const latestStage = updates[0]?.stage ?? "PO Received";
           const currentIdx = manufacturerStageIndex(latestStage);
-          const isDelayedFlag = latestStage.toLowerCase().includes("delay") || po.status === "delayed";
+          const isDelayedFlag = (latestStage?.toLowerCase() || "").includes("delay") || po.status === "delayed";
 
           return (
             <Card key={po.id}>

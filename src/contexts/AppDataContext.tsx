@@ -185,7 +185,7 @@ export function useProducts() {
       products: data.products,
       addProduct: (p: Product) =>
         updateData((d) => {
-          if (d.products.some((x) => x.sku.toLowerCase() === p.sku.toLowerCase())) return d;
+          if (d.products.some((x) => (x.sku?.toLowerCase() || "") === (p.sku?.toLowerCase() || ""))) return d;
           return { ...d, products: [...d.products, p] };
         }),
       patchProduct: (sku: string, patch: Partial<Product>) =>

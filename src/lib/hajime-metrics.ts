@@ -111,7 +111,7 @@ function segmentSellIn(
     if (o.status === "cancelled" || o.status === "draft") continue;
     const t = Date.parse(o.orderDate);
     if (Number.isNaN(t) || t < startMs || t >= endMs) continue;
-    const m = o.market.trim().toLowerCase();
+    const m = o.market?.trim().toLowerCase() || "";
     if (city === "Toronto" && !m.includes("toronto") && !m.includes("ontario")) continue;
     if (city === "Milan" && !m.includes("milan") && !m.includes("milano")) continue;
     revenue += o.price;
@@ -389,6 +389,7 @@ export function countDelayedShipments(shipments: AppData["shipments"]) {
 
 /** Map order market / region labels to anchor cities for executive view. */
 export function cityKeyFromMarket(market: string): "Toronto" | "Milan" | "Paris" | null {
+  if (!market) return null;
   const m = market.trim().toLowerCase();
   if (m.includes("toronto") || m.includes("ontario")) return "Toronto";
   if (m.includes("milan") || m.includes("milano")) return "Milan";
@@ -627,11 +628,11 @@ export function computeSpotlightAlerts(data: AppData, now = new Date()): Spotlig
   const out: SpotlightAlert[] = [];
   const milanAvail = sumBottles(
     data.inventory,
-    (i) => i.status === "available" && i.warehouse.toLowerCase().includes("milan"),
+    (i) => i.status === "available" && (i.warehouse?.toLowerCase() || "").includes("milan"),
   );
   const torontoAvail = sumBottles(
     data.inventory,
-    (i) => i.status === "available" && i.warehouse.toLowerCase().includes("toronto"),
+    (i) => i.status === "available" && (i.warehouse?.toLowerCase() || "").includes("toronto"),
   );
   if (milanAvail < 400) {
     out.push({

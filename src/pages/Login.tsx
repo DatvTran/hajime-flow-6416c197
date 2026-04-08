@@ -189,7 +189,7 @@ export default function Login() {
                       setEmail(m.email);
                       setDisplayName(m.displayName);
                       if (m.role === "retail") {
-                        const acct = RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL[m.email.toLowerCase()];
+                        const acct = RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL[m.email?.toLowerCase() || ""];
                         if (acct) setRetailAccount(acct);
                       }
                     }}

@@ -84,7 +84,7 @@ export function NewAccountDialog({ open, onOpenChange, accounts, onCreate }: Pro
       toast.error("Trading name, legal name, and email are required");
       return;
     }
-    const dup = accounts.some((a) => a.tradingName.toLowerCase() === tn.toLowerCase());
+    const dup = accounts.some((a) => (a.tradingName?.toLowerCase() || "") === tn.toLowerCase());
     if (dup) {
       toast.error("An account with this trading name already exists");
       return;
