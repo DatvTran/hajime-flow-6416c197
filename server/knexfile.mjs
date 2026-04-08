@@ -16,11 +16,13 @@ const config = {
       password: process.env.DB_PASSWORD || 'postgres',
     },
     migrations: {
-      directory: './migrations',
+      directory: path.join(__dirname, 'migrations'),
       tableName: 'knex_migrations',
+      loadExtensions: ['.mjs', '.js'],
     },
     seeds: {
-      directory: './seeds',
+      directory: path.join(__dirname, 'seeds'),
+      loadExtensions: ['.mjs', '.js'],
     },
   },
 
@@ -35,11 +37,13 @@ const config = {
       ssl: { rejectUnauthorized: false },
     },
     migrations: {
-      directory: './migrations',
+      directory: path.join(__dirname, 'migrations'),
       tableName: 'knex_migrations',
+      loadExtensions: ['.mjs', '.js'],
     },
     seeds: {
-      directory: './seeds',
+      directory: path.join(__dirname, 'seeds'),
+      loadExtensions: ['.mjs', '.js'],
     },
   },
 
@@ -54,11 +58,13 @@ const config = {
       ssl: { rejectUnauthorized: false },
     },
     migrations: {
-      directory: './migrations',
+      directory: path.join(__dirname, 'migrations'),
       tableName: 'knex_migrations',
+      loadExtensions: ['.mjs', '.js'],
     },
     seeds: {
-      directory: './seeds',
+      directory: path.join(__dirname, 'seeds'),
+      loadExtensions: ['.mjs', '.js'],
     },
   },
 };

@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
-import { flushSync } from "react-dom";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { homePathForRole, postLoginDestination, type HajimeRole, useAuth } from "@/contexts/AuthContext";
 import { accounts as seedAccounts } from "@/data/mockData";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -30,7 +30,7 @@ function authRoleToTeamRole(r: HajimeRole): TeamMemberPortalRole | null {
 }
 
 export default function Login() {
-  const { user, signIn } = useAuth();
+  const { user, signIn, isLoading, error, clearError } = useAuth();
   const navigate = useNavigate();
   const loc = useLocation();
   const from = (loc.state as { from?: string } | null)?.from;
@@ -59,6 +59,7 @@ export default function Login() {
   const selectRole = (r: HajimeRole) => {
     setRole(r);
     setPersonaId("");
+    clearError();
     if (r === "brand_operator") {
       setEmail("admin@hajime.jp");
       setDisplayName("Admin");
@@ -66,13 +67,20 @@ export default function Login() {
     setStep("credentials");
   };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const pw = password.trim();
-    flushSync(() => {
-      signIn(email, pw || "demo", role, displayName, role === "retail" ? retailAccount : undefined);
-    });
-    navigate(postLoginDestination(role, from), { replace: true });
+    clearError();
+
+    if (!email.trim() || !password.trim()) {
+      return;
+    }
+
+    try {
+      await signIn(email.trim(), password.trim());
+      navigate(postLoginDestination(role, from), { replace: true });
+    } catch {
+      // Error is handled by AuthContext
+    }
   };
 
   const selectedConfig = ROLE_CONFIG.find((r) => r.id === role)!;
@@ -155,6 +163,12 @@ export default function Login() {
                 <p className="text-xs text-[hsl(35,12%,45%)]">{selectedConfig.sublabel}</p>
               </div>
             </div>
+
+            {error && (
+              <Alert variant="destructive" className="mb-4 bg-red-900/20 border-red-900/30">
+                <AlertDescription className="text-red-200 text-sm">{error}</AlertDescription>
+              </Alert>
+            )}
 
             <form onSubmit={submit} className="space-y-4">
               {rosterForRole.length > 0 && (
@@ -252,16 +266,18 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
-                  placeholder="Optional for demo"
+                  placeholder="Enter your password"
+                  required
                   className="touch-manipulation border-white/[0.1] bg-white/[0.04] text-[hsl(35,14%,88%)] placeholder:text-[hsl(35,12%,30%)] focus:border-amber-600/40 focus:ring-amber-600/20"
                 />
               </div>
 
               <Button
                 type="submit"
-                className="mt-2 h-12 w-full touch-manipulation bg-amber-600 text-sm font-semibold tracking-wide text-white transition-all hover:bg-amber-500 active:scale-[0.98]"
+                disabled={isLoading}
+                className="mt-2 h-12 w-full touch-manipulation bg-amber-600 text-sm font-semibold tracking-wide text-white transition-all hover:bg-amber-500 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Continue as {selectedConfig.label}
+                {isLoading ? "Signing in..." : `Continue as ${selectedConfig.label}`}
               </Button>
             </form>
           </div>

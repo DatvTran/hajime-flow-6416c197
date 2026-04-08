@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-const STORAGE_KEY = "hajime-b2b-session";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4242";
 
 /**
  * App roles (API / DB naming: manufacturer, brand_operator, distributor, retail_account, sales_rep).
@@ -11,9 +11,23 @@ export type HajimeRole =
   | "brand_operator"
   | "distributor"
   | "retail"
-  | "sales_rep";
+  | "sales_rep"
+  | "founder_admin"
+  | "sales"
+  | "operations"
+  | "finance";
 
-const ROLES: HajimeRole[] = ["manufacturer", "brand_operator", "distributor", "retail", "sales_rep"];
+const ROLES: HajimeRole[] = [
+  "manufacturer",
+  "brand_operator",
+  "distributor",
+  "retail",
+  "sales_rep",
+  "founder_admin",
+  "sales",
+  "operations",
+  "finance",
+];
 
 function isRole(v: unknown): v is HajimeRole {
   return typeof v === "string" && (ROLES as string[]).includes(v);
@@ -32,78 +46,198 @@ function normalizeStoredRole(role: unknown): HajimeRole | null {
 }
 
 export type HajimeUser = {
+  id: string;
   email: string;
   displayName: string;
   role: HajimeRole;
+  tenantId: string;
   /** Retail login: which trading name orders belong to (demo ACL). */
   retailAccountTradingName?: string;
 };
 
+type AuthTokens = {
+  accessToken: string;
+  refreshToken: string;
+};
+
 type AuthContextValue = {
   user: HajimeUser | null;
-  signIn: (email: string, _password: string, role: HajimeRole, displayName: string, retailAccountTradingName?: string) => void;
+  isLoading: boolean;
+  error: string | null;
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => void;
+  clearError: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function loadSession(): HajimeUser | null {
+// Token storage
+function getStoredTokens(): AuthTokens | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const p = JSON.parse(raw) as Partial<HajimeUser>;
-    const role = normalizeStoredRole(p.role);
-    if (typeof p?.email !== "string" || !role) {
-      localStorage.removeItem(STORAGE_KEY);
-      return null;
+    const accessToken = localStorage.getItem("hajime_access_token");
+    const refreshToken = localStorage.getItem("hajime_refresh_token");
+    if (accessToken && refreshToken) {
+      return { accessToken, refreshToken };
     }
-    const displayName = typeof p.displayName === "string" && p.displayName.trim() ? p.displayName.trim() : p.email;
-    const retailAccountTradingName =
-      typeof p.retailAccountTradingName === "string" && p.retailAccountTradingName.trim()
-        ? p.retailAccountTradingName.trim()
-        : undefined;
-    const user: HajimeUser = { email: p.email, role, displayName, retailAccountTradingName };
-    if (role === "retail" && !user.retailAccountTradingName) {
-      user.retailAccountTradingName = "The Drake Hotel";
-    }
-    if (p.role !== role) {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-      } catch {
-        /* ignore quota */
-      }
-    }
-    return user;
   } catch {
-    localStorage.removeItem(STORAGE_KEY);
+    // Ignore storage errors
   }
   return null;
 }
 
+function storeTokens(tokens: AuthTokens | null) {
+  try {
+    if (tokens) {
+      localStorage.setItem("hajime_access_token", tokens.accessToken);
+      localStorage.setItem("hajime_refresh_token", tokens.refreshToken);
+    } else {
+      localStorage.removeItem("hajime_access_token");
+      localStorage.removeItem("hajime_refresh_token");
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+// API helper with auth
+async function apiFetch(path: string, options: RequestInit = {}) {
+  const tokens = getStoredTokens();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((options.headers as Record<string, string>) || {}),
+  };
+
+  if (tokens?.accessToken) {
+    headers["Authorization"] = `Bearer ${tokens.accessToken}`;
+  }
+
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (response.status === 401) {
+    // Token expired - could implement refresh here
+    storeTokens(null);
+    throw new Error("Session expired. Please sign in again.");
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(error.error || `Request failed: ${response.status}`);
+  }
+
+  return response;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<HajimeUser | null>(() => loadSession());
+  const [user, setUser] = useState<HajimeUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const signIn = useCallback(
-    (email: string, _password: string, role: HajimeRole, displayName: string, retailAccountTradingName?: string) => {
-      const u: HajimeUser = {
-        email: email.trim(),
-        displayName: displayName.trim() || email.trim(),
-        role,
-        retailAccountTradingName:
-          role === "retail" && retailAccountTradingName?.trim() ? retailAccountTradingName.trim() : undefined,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
-      setUser(u);
-    },
-    [],
-  );
+  // Check for existing session on mount
+  useEffect(() => {
+    const checkSession = async () => {
+      const tokens = getStoredTokens();
+      if (!tokens) {
+        setIsLoading(false);
+        return;
+      }
 
-  const signOut = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
-    setUser(null);
+      try {
+        const response = await apiFetch("/api/auth/me");
+        const userData = await response.json();
+        setUser({
+          id: userData.id,
+          email: userData.email,
+          displayName: userData.displayName,
+          role: normalizeStoredRole(userData.role) || userData.role,
+          tenantId: userData.tenantId,
+        });
+      } catch (err) {
+        // Session invalid, clear tokens
+        storeTokens(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkSession();
   }, []);
 
-  const value = useMemo(() => ({ user, signIn, signOut }), [user, signIn, signOut]);
+  const signIn = useCallback(async (email: string, password: string) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: "Login failed" }));
+        throw new Error(error.error || "Invalid email or password");
+      }
+
+      const data = await response.json();
+
+      storeTokens({
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+      });
+
+      setUser({
+        id: data.user.id,
+        email: data.user.email,
+        displayName: data.user.displayName,
+        role: normalizeStoredRole(data.user.role) || data.user.role,
+        tenantId: data.user.tenantId,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const signOut = useCallback(async () => {
+    const tokens = getStoredTokens();
+    if (tokens?.refreshToken) {
+      try {
+        // Notify server to revoke refresh token
+        await fetch(`${API_URL}/api/auth/logout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+        });
+      } catch {
+        // Ignore logout errors
+      }
+    }
+
+    storeTokens(null);
+    setUser(null);
+    setError(null);
+  }, []);
+
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      user,
+      isLoading,
+      error,
+      signIn,
+      signOut,
+      clearError,
+    }),
+    [user, isLoading, error, signIn, signOut, clearError]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -112,6 +246,22 @@ export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
+}
+
+/** Get API fetch helper with auth */
+export function useApi() {
+  const { signOut } = useAuth();
+
+  return useMemo(
+    () => ({
+      fetch: apiFetch,
+      fetchJson: async (path: string, options?: RequestInit) => {
+        const response = await apiFetch(path, options);
+        return response.json();
+      },
+    }),
+    [signOut]
+  );
 }
 
 /** Trading name used to filter retail orders (demo). */
@@ -131,10 +281,12 @@ function pathMatches(pathname: string, base: string): boolean {
  * Brand Operator: full HQ tower; creates production requests (POs). Manufacturer: executes POs, inventory, shipments — no PO creation in V1 UI.
  * Distributor: fulfillment; read-only production requests (inbound context), no PO authoring or HQ settings. Retail: orders + catalog + tracking, no other accounts.
  * Sales Rep: accounts + drafts + field tools, no manufacturer or PO.
+ * Founder Admin: full access to everything.
  */
 export function canAccessPath(role: HajimeRole, pathname: string): boolean {
   const p = pathname.split("?")[0];
 
+  if (role === "founder_admin") return true;
   if (role === "brand_operator") return true;
 
   if (role === "manufacturer") {
@@ -168,8 +320,16 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
     return true;
   }
 
-  if (role === "sales_rep") {
+  if (role === "sales_rep" || role === "sales") {
     if (pathMatches(p, "/settings") || pathMatches(p, "/manufacturer") || pathMatches(p, "/purchase-orders") || pathMatches(p, "/markets") || pathMatches(p, "/retail")) {
+      return false;
+    }
+    return true;
+  }
+
+  if (role === "operations" || role === "finance") {
+    // Operations and finance have read access to most areas
+    if (pathMatches(p, "/settings")) {
       return false;
     }
     return true;
@@ -179,7 +339,9 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
 }
 
 export function homePathForRole(role: HajimeRole): string {
-  return role === "manufacturer" ? "/manufacturer" : "/";
+  if (role === "manufacturer") return "/manufacturer";
+  if (role === "founder_admin") return "/";
+  return "/";
 }
 
 /** After login, avoid sending users to routes their role cannot open (e.g. manufacturer + `/`). */
