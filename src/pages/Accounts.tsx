@@ -19,7 +19,7 @@ function channelLabel(type: Account["type"]): string {
 }
 
 function marketAssignment(account: Account): string {
-  const t = account.tags.find((x) => ["toronto", "milan", "paris", "ontario", "export"].includes(x));
+  const t = account.tags?.find((x) => ["toronto", "milan", "paris", "ontario", "export"].includes(x));
   if (t) return `${account.city} · ${t}`;
   return `${account.city}, ${account.country}`;
 }
@@ -223,7 +223,7 @@ export default function Accounts() {
                   <div className="text-xs"><span className="text-muted-foreground">Manager:</span> <span className="font-medium">{account.salesOwner}</span></div>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1">
-                  {account.tags.map((tag) => (
+                  {(account.tags || []).map((tag) => (
                     <span key={tag} className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{tag}</span>
                   ))}
                 </div>
