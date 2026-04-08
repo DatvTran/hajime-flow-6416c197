@@ -23,37 +23,45 @@ router.get('/products', authenticateToken, async (req, res) => {
     
     console.log(`[API v1] GET /products - tenantId: ${tenantId}`);
     
-    let query = db('products')
+    // Build base query (without orderBy for count)
+    let baseQuery = db('products')
       .where({ tenant_id: tenantId })
-      .whereNull('deleted_at')
-      .orderBy('created_at', 'desc');
+      .whereNull('deleted_at');
     
     if (category) {
-      query = query.where('category', category);
+      baseQuery = baseQuery.where('category', category);
     }
     
     if (search) {
-      query = query.where(function() {
+      baseQuery = baseQuery.where(function() {
         this.where('name', 'ilike', `%${search}%`)
           .orWhere('sku', 'ilike', `%${search}%`);
       });
     }
     
     const offset = (Number(page) - 1) * Number(limit);
-    const [countResult, products] = await Promise.all([
-      query.clone().count('id as count').first(),
-      query.clone().limit(Number(limit)).offset(offset)
-    ]);
     
-    console.log(`[API v1] Products found: ${products.length}, count: ${countResult.count}`);
+    // Count query (no orderBy)
+    const countQuery = baseQuery.clone().count('id as count').first();
+    
+    // Data query (with orderBy)
+    const dataQuery = baseQuery
+      .clone()
+      .orderBy('created_at', 'desc')
+      .limit(Number(limit))
+      .offset(offset);
+    
+    const [countResult, products] = await Promise.all([countQuery, dataQuery]);
+    
+    console.log(`[API v1] Products found: ${products.length}, count: ${countResult?.count}`);
     
     res.json({
       data: products,
       pagination: {
         page: Number(page),
         limit: Number(limit),
-        total: Number(countResult.count),
-        totalPages: Math.ceil(Number(countResult.count) / Number(limit))
+        total: Number(countResult?.count || 0),
+        totalPages: Math.ceil(Number(countResult?.count || 0) / Number(limit))
       }
     });
   } catch (err) {
@@ -181,28 +189,36 @@ router.get('/accounts', authenticateToken, async (req, res) => {
     const tenantId = getTenantId(req);
     const { page = 1, limit = 50, type, market, status = 'active' } = req.query;
     
-    let query = db('accounts')
+    // Build base query (without orderBy for count)
+    let baseQuery = db('accounts')
       .where({ tenant_id: tenantId })
-      .whereNull('deleted_at')
-      .orderBy('created_at', 'desc');
+      .whereNull('deleted_at');
     
-    if (type) query = query.where('type', type);
-    if (market) query = query.where('market', market);
-    if (status) query = query.where('status', status);
+    if (type) baseQuery = baseQuery.where('type', type);
+    if (market) baseQuery = baseQuery.where('market', market);
+    if (status) baseQuery = baseQuery.where('status', status);
     
     const offset = (Number(page) - 1) * Number(limit);
-    const [countResult, accounts] = await Promise.all([
-      query.clone().count('id as count').first(),
-      query.clone().limit(Number(limit)).offset(offset)
-    ]);
+    
+    // Count query (no orderBy)
+    const countQuery = baseQuery.clone().count('id as count').first();
+    
+    // Data query (with orderBy)
+    const dataQuery = baseQuery
+      .clone()
+      .orderBy('created_at', 'desc')
+      .limit(Number(limit))
+      .offset(offset);
+    
+    const [countResult, accounts] = await Promise.all([countQuery, dataQuery]);
     
     res.json({
       data: accounts,
       pagination: {
         page: Number(page),
         limit: Number(limit),
-        total: Number(countResult.count),
-        totalPages: Math.ceil(Number(countResult.count) / Number(limit))
+        total: Number(countResult?.count || 0),
+        totalPages: Math.ceil(Number(countResult?.count || 0) / Number(limit))
       }
     });
   } catch (err) {
@@ -316,37 +332,43 @@ router.get('/orders', authenticateToken, async (req, res) => {
       date_to 
     } = req.query;
     
-    let query = db('sales_orders')
+    // Build base query (without orderBy for count)
+    let baseQuery = db('sales_orders')
       .where({ tenant_id: tenantId })
-      .whereNull('deleted_at')
-      .orderBy('created_at', 'desc');
+      .whereNull('deleted_at');
     
-    if (status) query = query.where('status', status);
-    if (account_id) query = query.where('account_id', account_id);
-    if (date_from) query = query.where('order_date', '>=', date_from);
-    if (date_to) query = query.where('order_date', '<=', date_to);
+    if (status) baseQuery = baseQuery.where('status', status);
+    if (account_id) baseQuery = baseQuery.where('account_id', account_id);
+    if (date_from) baseQuery = baseQuery.where('order_date', '>=', date_from);
+    if (date_to) baseQuery = baseQuery.where('order_date', '<=', date_to);
     
     const offset = (Number(page) - 1) * Number(limit);
-    const [countResult, orders] = await Promise.all([
-      query.clone().count('id as count').first(),
-      query.clone()
-        .leftJoin('accounts', 'sales_orders.account_id', 'accounts.id')
-        .select(
-          'sales_orders.*',
-          'accounts.name as account_name',
-          'accounts.account_number'
-        )
-        .limit(Number(limit))
-        .offset(offset)
-    ]);
+    
+    // Count query (no orderBy)
+    const countQuery = baseQuery.clone().count('id as count').first();
+    
+    // Data query (with orderBy and joins)
+    const dataQuery = baseQuery
+      .clone()
+      .orderBy('created_at', 'desc')
+      .leftJoin('accounts', 'sales_orders.account_id', 'accounts.id')
+      .select(
+        'sales_orders.*',
+        'accounts.name as account_name',
+        'accounts.account_number'
+      )
+      .limit(Number(limit))
+      .offset(offset);
+    
+    const [countResult, orders] = await Promise.all([countQuery, dataQuery]);
     
     res.json({
       data: orders,
       pagination: {
         page: Number(page),
         limit: Number(limit),
-        total: Number(countResult.count),
-        totalPages: Math.ceil(Number(countResult.count) / Number(limit))
+        total: Number(countResult?.count || 0),
+        totalPages: Math.ceil(Number(countResult?.count || 0) / Number(limit))
       }
     });
   } catch (err) {
@@ -496,7 +518,8 @@ router.get('/inventory', authenticateToken, async (req, res) => {
     const tenantId = getTenantId(req);
     const { page = 1, limit = 50, location, low_stock } = req.query;
     
-    let query = db('inventory')
+    // Build base query (without orderBy for count)
+    let baseQuery = db('inventory')
       .where('inventory.tenant_id', tenantId)
       .join('products', 'inventory.product_id', 'products.id')
       .whereNull('products.deleted_at')
@@ -505,27 +528,34 @@ router.get('/inventory', authenticateToken, async (req, res) => {
         'products.sku',
         'products.name as product_name',
         'products.category'
-      )
-      .orderBy('products.name');
+      );
     
-    if (location) query = query.where('inventory.location', location);
+    if (location) baseQuery = baseQuery.where('inventory.location', location);
     if (low_stock === 'true') {
-      query = query.whereRaw('inventory.available_quantity <= inventory.reorder_point');
+      baseQuery = baseQuery.whereRaw('inventory.available_quantity <= inventory.reorder_point');
     }
     
     const offset = (Number(page) - 1) * Number(limit);
-    const [countResult, inventory] = await Promise.all([
-      query.clone().count('inventory.id as count').first(),
-      query.clone().limit(Number(limit)).offset(offset)
-    ]);
+    
+    // Count query (no orderBy)
+    const countQuery = baseQuery.clone().count('inventory.id as count').first();
+    
+    // Data query (with orderBy)
+    const dataQuery = baseQuery
+      .clone()
+      .orderBy('products.name')
+      .limit(Number(limit))
+      .offset(offset);
+    
+    const [countResult, inventory] = await Promise.all([countQuery, dataQuery]);
     
     res.json({
       data: inventory,
       pagination: {
         page: Number(page),
         limit: Number(limit),
-        total: Number(countResult.count),
-        totalPages: Math.ceil(Number(countResult.count) / Number(limit))
+        total: Number(countResult?.count || 0),
+        totalPages: Math.ceil(Number(countResult?.count || 0) / Number(limit))
       }
     });
   } catch (err) {
