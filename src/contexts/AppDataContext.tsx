@@ -127,7 +127,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     return { data, loading, error, updateData };
   }, [data, loading, error, updateData]);
 
-  console.log("[AppDataContext] Render state:", { hasData: !!data, hasValue: !!value, loading, error, user: user?.email });
+  console.log("[AppDataContext] Render state:", { hasData: !!data, hasValue: !!value, loading, error: error?.slice(0, 100), user: user?.email, role: user?.role });
 
   if (!data || !value) {
     return (
@@ -144,15 +144,27 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         alignItems: 'center', 
         justifyContent: 'center', 
         zIndex: 99999,
-        fontFamily: 'system-ui, sans-serif'
+        fontFamily: 'system-ui, sans-serif',
+        padding: '20px'
       }}>
         <div style={{ fontSize: '24px', marginBottom: '20px' }}>⏳ Hajime Loading...</div>
-        <div style={{ fontSize: '16px', opacity: 0.8 }}>
-          {loading ? "Loading data…" : error ?? "No data"}
+        <div style={{ fontSize: '16px', opacity: 0.8, marginBottom: '10px' }}>
+          {loading ? "Loading data…" : error ? "Error loading data" : "Waiting for data..."}
         </div>
-        <div style={{ fontSize: '12px', opacity: 0.6, marginTop: '20px' }}>
-          Debug: user={user?.email ?? 'none'}, loading={String(loading)}, error={error ? 'yes' : 'no'}
+        {error && (
+          <div style={{ fontSize: '12px', opacity: 0.7, maxWidth: '500px', wordBreak: 'break-word', textAlign: 'center', marginBottom: '10px' }}>
+            {error}
+          </div>
+        )}
+        <div style={{ fontSize: '12px', opacity: 0.6, marginTop: '10px' }}>
+          user: {user?.email ?? 'none'} | role: {user?.role ?? 'none'} | loading: {String(loading)}
         </div>
+        <button 
+          onClick={() => window.location.reload()} 
+          style={{ marginTop: '20px', padding: '8px 16px', background: '#333', border: '1px solid #555', color: '#fff', borderRadius: '4px', cursor: 'pointer' }}
+        >
+          Reload Page
+        </button>
       </div>
     );
   }
