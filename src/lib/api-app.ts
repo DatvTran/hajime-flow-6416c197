@@ -23,10 +23,22 @@ function getAuthHeaders(): Record<string, string> {
 }
 
 export async function fetchAppData(): Promise<AppData> {
+  console.log("[api-app] Fetching app data...");
+  const headers = getAuthHeaders();
+  console.log("[api-app] Headers:", { ...headers, Authorization: headers.Authorization ? "Bearer ***" : "missing" });
+  
   const res = await fetch(apiUrl("/api/app"), {
-    headers: getAuthHeaders(),
+    headers,
   });
-  if (!res.ok) throw new Error(await res.text());
+  
+  console.log("[api-app] Response status:", res.status);
+  
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("[api-app] Error response:", text);
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+  
   return res.json() as Promise<AppData>;
 }
 
