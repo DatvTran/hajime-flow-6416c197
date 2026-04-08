@@ -74,22 +74,22 @@ function AppDataShell() {
 }
 
 const App = () => {
-  console.log("[App] Rendering started");
+  console.log("[App] Component executing");
   
-  // Heartbeat to detect if React dies
   useEffect(() => {
-    console.log("[App] Heartbeat started");
-    const interval = setInterval(() => {
-      console.log("[App] Heartbeat - still alive");
-    }, 1000);
-    return () => clearInterval(interval);
+    console.log("[App] useEffect running");
+    // Update debug indicator
+    const indicator = document.getElementById('react-debug');
+    if (indicator) {
+      indicator.textContent = 'App mounted ✓';
+    }
   }, []);
   
   return (
     <>
-      {/* Debug div - always visible if React renders */}
-      <div id="react-mounted" style={{position: 'fixed', top: 0, left: 0, background: '#0f0', color: '#000', padding: '4px 8px', fontSize: '12px', zIndex: 99999, fontFamily: 'monospace'}}>
-        React OK
+      {/* Visual confirmation App rendered */}
+      <div style={{position:'fixed',top:20,left:0,background:'#00f',color:'#fff',padding:'4px 8px',fontSize:'12px',zIndex:99998}}>
+        App component ✓
       </div>
       <QueryClientProvider client={queryClient}>
       <AuthProvider>
