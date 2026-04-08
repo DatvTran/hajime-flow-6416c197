@@ -10,7 +10,11 @@ export default function RoleHomeEntry() {
   const { user } = useAuth();
   if (!user) return null;
   switch (user.role) {
+    case "founder_admin":
     case "brand_operator":
+    case "sales":
+    case "operations":
+    case "finance":
       return <Dashboard />;
     case "manufacturer":
       return <Navigate to="/manufacturer" replace />;
@@ -20,5 +24,7 @@ export default function RoleHomeEntry() {
       return <RetailHomePage />;
     case "sales_rep":
       return <SalesRepHomePage />;
+    default:
+      return <Dashboard />;
   }
 }
