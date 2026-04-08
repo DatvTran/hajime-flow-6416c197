@@ -372,8 +372,9 @@ router.get('/orders', authenticateToken, async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('[API v1] Error fetching orders:', err);
-    res.status(500).json({ error: 'Failed to fetch orders' });
+    console.error('[API v1] Error fetching orders:', err.message);
+    console.error('[API v1] Full error:', err);
+    res.status(500).json({ error: 'Failed to fetch orders', details: err.message });
   }
 });
 
@@ -559,8 +560,9 @@ router.get('/inventory', authenticateToken, async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('[API v1] Error fetching inventory:', err);
-    res.status(500).json({ error: 'Failed to fetch inventory' });
+    console.error('[API v1] Error fetching inventory:', err.message);
+    console.error('[API v1] Full error:', err);
+    res.status(500).json({ error: 'Failed to fetch inventory', details: err.message });
   }
 });
 
