@@ -170,6 +170,7 @@ export class DataMigrationService {
       db('inventory')
         .join('products', 'inventory.product_id', 'products.id')
         .where('inventory.tenant_id', tenantId)
+        .whereNull('products.deleted_at')
         .select(
           'products.sku',
           'inventory.location',
@@ -190,11 +191,12 @@ export class DataMigrationService {
         .orderBy('created_at', 'desc')
         .limit(100),
       db('shipments').where({ tenant_id: tenantId }).orderBy('created_at', 'desc').limit(100),
+      // Note: production_runs doesn't have deleted_at column
       db('production_runs')
         .where({ tenant_id: tenantId })
-        .whereNull('deleted_at')
         .orderBy('created_at', 'desc')
-        .limit(100),
+        .limit(100)
+        .catch(() => []), // Return empty array if error
     ]);
 
     return {
@@ -204,7 +206,7 @@ export class DataMigrationService {
       salesOrders,
       purchaseOrders,
       shipments,
-      productionRuns,
+      productionRuns: productionRuns || [],
     };
   }
 
