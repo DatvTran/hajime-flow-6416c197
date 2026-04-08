@@ -38,9 +38,24 @@ import FinancePaymentsPage from "./pages/FinancePaymentsPage";
 
 const queryClient = new QueryClient();
 
+// Debug wrapper component
+function DebugWrapper({ step, children }: { step: string; children: React.ReactNode }) {
+  useEffect(() => {
+    console.log(`[Debug] ${step} mounted`);
+    const el = document.getElementById('debug-step');
+    if (el) el.textContent = step;
+  }, [step]);
+  return <>{children}</>;
+}
+
 function AppDataShell() {
   const { user } = useAuth();
   console.log("[AppDataShell] user:", user?.email, "role:", user?.role);
+  
+  useEffect(() => {
+    const el = document.getElementById('debug-step');
+    if (el) el.textContent = 'AppDataShell mounted';
+  }, []);
   
   if (!user) {
     return (
@@ -78,7 +93,6 @@ const App = () => {
   
   useEffect(() => {
     console.log("[App] useEffect running");
-    // Update debug indicator
     const indicator = document.getElementById('react-debug');
     if (indicator) {
       indicator.textContent = 'App mounted ✓';
@@ -87,53 +101,49 @@ const App = () => {
   
   return (
     <>
-      {/* Visual confirmation App rendered */}
+      {/* Debug indicators */}
+      <div style={{position:'fixed',top:0,left:0,background:'#0f0',color:'#000',padding:'4px 8px',fontSize:'12px',zIndex:99999,fontFamily:'monospace'}}>
+        React OK
+      </div>
       <div style={{position:'fixed',top:20,left:0,background:'#00f',color:'#fff',padding:'4px 8px',fontSize:'12px',zIndex:99998}}>
         App component ✓
       </div>
+      
+      <div style={{position:'fixed',top:40,left:0,background:'#f90',color:'#000',padding:'4px 8px',fontSize:'12px',zIndex:99997,fontFamily:'monospace'}} id="debug-step">
+        Starting...
+      </div>
+      
       <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route element={<RequireAuth />}>
-              <Route element={<AppDataShell />}>
-                <Route path="/" element={<RoleHomeEntry />} />
-                <Route path="/inventory" element={<Inventory />} />
-                <Route path="/orders" element={<Orders />} />
-                <Route path="/accounts" element={<Accounts />} />
-                <Route path="/purchase-orders" element={<PurchaseOrders />} />
-                <Route path="/manufacturer/market-demand" element={<ManufacturerMarketDemandPage />} />
-                <Route path="/manufacturer/profile" element={<ManufacturerProfilePage />} />
-                <Route path="/manufacturer" element={<Manufacturer />} />
-                <Route path="/shipments" element={<Shipments />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/markets" element={<MarketsPage />} />
-                <Route path="/alerts" element={<AlertsHubPage />} />
-                <Route path="/distributor/backorders" element={<BackordersPage />} />
-                <Route path="/retail/new-order" element={<RetailNewOrderPage />} />
-                <Route path="/retail/orders/:orderId" element={<RetailOrderDetailPage />} />
-                <Route path="/retail/orders" element={<RetailMyOrdersPage />} />
-                <Route path="/retail/products" element={<Navigate to="/retail/new-order" replace />} />
-                <Route path="/retail/reorder" element={<RetailReorderPage />} />
-                <Route path="/retail/account" element={<RetailAccountPage />} />
-                <Route path="/retail/support" element={<RetailSupportPage />} />
-                <Route path="/sales/targets" element={<SalesTargetsPage />} />
-                <Route path="/sales/:section" element={<SalesSectionPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/finance" element={<FinancePaymentsPage />} />
-                <Route path="*" element={<NotFound />} />
-              </Route>
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
-  </QueryClientProvider>
-  </>
+        <DebugWrapper step="QueryClientProvider">
+        <AuthProvider>
+          <DebugWrapper step="AuthProvider">
+          <TooltipProvider>
+            <DebugWrapper step="TooltipProvider">
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <DebugWrapper step="BrowserRouter">
+              <Routes>
+                <Route path="/login" element={<DebugWrapper step="Login route"><Login /></DebugWrapper>} />
+                <Route element={<DebugWrapper step="RequireAuth"><RequireAuth /></DebugWrapper>}>
+                  <Route element={<DebugWrapper step="AppDataShell"><AppDataShell /></DebugWrapper>}>
+                    <Route path="/" element={<DebugWrapper step="Dashboard"><RoleHomeEntry /></DebugWrapper>} />
+                    <Route path="/inventory" element={<Inventory />} />
+                    <Route path="/orders" element={<Orders />} />
+                    <Route path="/accounts" element={<Accounts />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Route>
+                </Route>
+              </Routes>
+              </DebugWrapper>
+            </BrowserRouter>
+            </DebugWrapper>
+          </TooltipProvider>
+          </DebugWrapper>
+        </AuthProvider>
+        </DebugWrapper>
+      </QueryClientProvider>
+    </>
   );
 };
 
