@@ -23,6 +23,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL } from "@/data/team-roster";
 import type { TeamMember, TeamMemberPortalRole } from "@/types/app-data";
+import { CSVImportButton } from "@/components/CSVImportButton";
 
 const TEAM_ROLE_LABELS: Record<TeamMemberPortalRole, string> = {
   sales_rep: "Sales rep",
@@ -319,15 +320,23 @@ export default function SettingsPage() {
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="font-display text-lg">Product Catalog</CardTitle>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="w-full touch-manipulation sm:w-auto"
-                onClick={() => setNewProductOpen(true)}
-              >
-                Add SKU
-              </Button>
+              <div className="flex gap-2">
+                <CSVImportButton
+                  defaultType="products"
+                  variant="outline"
+                  size="sm"
+                  onSuccess={() => toast.success("Products imported", { description: "Refresh to see changes" })}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="w-full touch-manipulation sm:w-auto"
+                  onClick={() => setNewProductOpen(true)}
+                >
+                  Add SKU
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>

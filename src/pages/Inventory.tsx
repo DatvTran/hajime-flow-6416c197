@@ -14,10 +14,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
-import { Package, Plus, Search, Download, Factory } from "lucide-react";
+import { Package, Plus, Search, Factory } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { CSVExportInventoryButton } from "@/components/CSVExportButtons";
+import { CSVImportButton } from "@/components/CSVImportButton";
 
 const STATUS_VALUES: InventoryItem["status"][] = ["available", "reserved", "damaged", "in-transit", "in-production"];
 
@@ -132,10 +134,13 @@ export default function Inventory() {
         description="SKU-level positions by market hub — available, allocated, reserved, and incoming pipeline with health vs safety stock."
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <Button variant="outline" size="sm" className="w-full justify-center touch-manipulation sm:w-auto">
-              <Download className="mr-2 h-4 w-4" />
-              Export
-            </Button>
+            <CSVImportButton
+              defaultType="inventory"
+              variant="outline"
+              size="sm"
+              onSuccess={() => toast.success("Inventory updated", { description: "Refresh to see changes" })}
+            />
+            <CSVExportInventoryButton variant="outline" size="sm" />
             <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setReceiveOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Receive Stock

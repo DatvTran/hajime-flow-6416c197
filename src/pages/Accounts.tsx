@@ -9,9 +9,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Account } from "@/data/mockData";
-import { Plus, Search, Download, MapPin, Mail, Phone } from "lucide-react";
+import { Plus, Search, MapPin, Mail, Phone } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { CSVImportButton } from "@/components/CSVImportButton";
+import { toast } from "@/components/ui/sonner";
 
 function channelLabel(type: Account["type"]): string {
   if (type === "distributor") return "Distributor";
@@ -94,10 +96,12 @@ export default function Accounts() {
         }
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <Button variant="outline" size="sm" className="w-full justify-center touch-manipulation sm:w-auto">
-              <Download className="mr-2 h-4 w-4" />
-              Export
-            </Button>
+            <CSVImportButton
+              defaultType="accounts"
+              variant="outline"
+              size="sm"
+              onSuccess={() => toast.success("Accounts imported", { description: "Refresh to see changes" })}
+            />
             {user.role === "sales_rep" ? (
               <Button type="button" size="sm" variant="secondary" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setApplicationOpen(true)}>
                 Submit retailer application

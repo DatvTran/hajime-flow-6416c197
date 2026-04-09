@@ -23,6 +23,7 @@ import {
   Cell,
 } from "recharts";
 import { useSearchParams } from "react-router-dom";
+import { CSVExportSalesReportButton } from "@/components/CSVExportButtons";
 import { useAppData } from "@/contexts/AppDataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ANALYTICS_DEMO_REP_BOOK, resolveSalesRepLabelForSession } from "@/data/team-roster";
@@ -229,20 +230,12 @@ export default function Reports() {
           </Badge>
         }
         actions={
-          <Button
-            type="button"
+          <CSVExportSalesReportButton
             variant="outline"
             size="sm"
-            className="w-full justify-center touch-manipulation sm:w-auto"
-            onClick={() =>
-              toast.info("Export preview", {
-                description: "CSV / PDF export is not wired in this demo build.",
-              })
-            }
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
+            dateFrom={analyticsAsOf ? new Date(analyticsAsOf.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : undefined}
+            dateTo={analyticsAsOf ? analyticsAsOf.toISOString().split('T')[0] : undefined}
+          />
         }
       />
 
