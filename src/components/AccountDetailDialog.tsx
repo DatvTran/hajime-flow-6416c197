@@ -67,12 +67,12 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
   useEffect(() => {
     if (account) {
       setDraft({ ...account });
-      setTagsInput(account.tags.join(", "));
+      setTagsInput((account.tags || []).join(", "));
       setEditing(false);
       setWhVerifyNotes(account.wholesalerReviewNotes ?? "");
       setBrandTier(account.pricingTier ?? "standard");
       setBrandCredit(account.creditLimitCad != null ? String(account.creditLimitCad) : "25000");
-      setPortalEmail(account.portalLoginEmail ?? account.email);
+      setPortalEmail(account.portalLoginEmail ?? account.email ?? "");
     }
   }, [account]);
 
@@ -84,7 +84,7 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
   const cancelEdit = () => {
     if (account) {
       setDraft({ ...account });
-      setTagsInput(account.tags.join(", "));
+      setTagsInput((account.tags || []).join(", "));
     }
     setEditing(false);
   };
@@ -453,8 +453,8 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
                   </div>
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Phone</span>
-                    <a href={`tel:${draft.phone.replace(/\s/g, "")}`} className="text-right font-medium text-primary hover:underline">
-                      {draft.phone}
+                    <a href={`tel:${(draft.phone || "").replace(/\s/g, "")}`} className="text-right font-medium text-primary hover:underline">
+                      {draft.phone || "—"}
                     </a>
                   </div>
                   <div className="flex justify-between gap-4">
@@ -467,7 +467,7 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
                   </div>
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Avg order</span>
-                    <span className="font-medium tabular-nums">${draft.avgOrderSize.toLocaleString()}</span>
+                    <span className="font-medium tabular-nums">${(draft.avgOrderSize || 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">First / last order</span>
@@ -570,13 +570,13 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
                 </div>
               )}
 
-              {!editing && draft.tags.length > 0 ? (
+              {!editing && (draft.tags || []).length > 0 ? (
                 <>
                   <Separator />
                   <div>
                     <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Tags</p>
                     <div className="flex flex-wrap gap-1">
-                      {draft.tags.map((tag) => (
+                      {(draft.tags || []).map((tag) => (
                         <span key={tag} className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                           {tag}
                         </span>

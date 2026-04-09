@@ -20,8 +20,8 @@ function channelLabel(type: Account["type"]): string {
 
 function marketAssignment(account: Account): string {
   const t = account.tags?.find((x) => ["toronto", "milan", "paris", "ontario", "export"].includes(x));
-  if (t) return `${account.city} · ${t}`;
-  return `${account.city}, ${account.country}`;
+  if (t) return `${account.city || "—"} · ${t}`;
+  return `${account.city || "—"}, ${account.country || "—"}`;
 }
 
 export default function Accounts() {
@@ -203,9 +203,9 @@ export default function Accounts() {
                   <StatusBadge status={account.status} />
                 </div>
                 <div className="space-y-1.5 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5" />{account.city}, {account.country}</div>
-                  <div className="flex items-center gap-2"><Mail className="h-3.5 w-3.5" />{account.email}</div>
-                  <div className="flex items-center gap-2"><Phone className="h-3.5 w-3.5" />{account.phone}</div>
+                  <div className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5" />{account.city || "—"}, {account.country || "—"}</div>
+                  <div className="flex items-center gap-2"><Mail className="h-3.5 w-3.5" />{account.email || "—"}</div>
+                  <div className="flex items-center gap-2"><Phone className="h-3.5 w-3.5" />{account.phone || "—"}</div>
                 </div>
                 <div className="mt-2 text-xs text-muted-foreground">
                   <span className="text-muted-foreground">Market:</span>{" "}
@@ -219,8 +219,8 @@ export default function Accounts() {
                   </span>
                 </div>
                 <div className="mt-4 flex items-center justify-between border-t pt-3">
-                  <div className="text-xs"><span className="text-muted-foreground">Avg order:</span> <span className="font-medium">${account.avgOrderSize.toLocaleString()}</span></div>
-                  <div className="text-xs"><span className="text-muted-foreground">Manager:</span> <span className="font-medium">{account.salesOwner}</span></div>
+                  <div className="text-xs"><span className="text-muted-foreground">Avg order:</span> <span className="font-medium">${(account.avgOrderSize || 0).toLocaleString()}</span></div>
+                  <div className="text-xs"><span className="text-muted-foreground">Manager:</span> <span className="font-medium">{account.salesOwner || "—"}</span></div>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1">
                   {(account.tags || []).map((tag) => (
