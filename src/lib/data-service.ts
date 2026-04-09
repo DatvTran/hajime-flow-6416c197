@@ -49,30 +49,45 @@ function transformToAppData(
         status: p.metadata?.status || "active",
         image: p.metadata?.image,
       })),
-      accounts: (accounts || []).map(a => ({
-        id: a.id,
-        accountNumber: a.account_number,
-        name: a.name,
-        legalName: a.legal_name || a.name,
-        tradingName: a.trading_name || a.name,
-        type: a.type || "retail",
-        market: a.market,
-        status: a.status || "active",
-        email: a.email || "",
-        phone: a.phone || "",
-        city: a.city || "",
-        country: a.country || "Canada",
-        billingAddress: a.billing_address,
-        shippingAddress: a.shipping_address,
-        paymentTerms: a.payment_terms || "Net 30",
-        creditLimit: a.credit_limit,
-        notes: a.notes,
-        salesOwner: a.sales_owner || "Unassigned",
-        tags: a.tags || [],
-        avgOrderSize: a.avg_order_size || 0,
-        firstOrderDate: a.first_order_date || new Date().toISOString(),
-        lastOrderDate: a.last_order_date || new Date().toISOString(),
-      })),
+      accounts: (accounts || []).map(a => {
+        // Convert address objects to strings if needed
+        const formatAddress = (addr: any): string | undefined => {
+          if (!addr) return undefined;
+          if (typeof addr === "string") return addr;
+          // Handle object format: {street, city, province, postal}
+          if (typeof addr === "object") {
+            const parts = [addr.street, addr.city, addr.province, addr.postal].filter(Boolean);
+            return parts.join(", ");
+          }
+          return String(addr);
+        };
+        
+        return {
+          id: a.id,
+          accountNumber: a.account_number,
+          name: a.name,
+          legalName: a.legal_name || a.name,
+          tradingName: a.trading_name || a.name,
+          type: a.type || "retail",
+          market: a.market,
+          status: a.status || "active",
+          email: a.email || "",
+          phone: a.phone || "",
+          city: a.city || "",
+          country: a.country || "Canada",
+          billingAddress: formatAddress(a.billing_address),
+          shippingAddress: formatAddress(a.shipping_address),
+          deliveryAddress: formatAddress(a.shipping_address),
+          paymentTerms: a.payment_terms || "Net 30",
+          creditLimit: a.credit_limit,
+          notes: a.notes,
+          salesOwner: a.sales_owner || "Unassigned",
+          tags: a.tags || [],
+          avgOrderSize: a.avg_order_size || 0,
+          firstOrderDate: a.first_order_date || new Date().toISOString(),
+          lastOrderDate: a.last_order_date || new Date().toISOString(),
+        };
+      }),
       salesOrders: (orders || []).map(o => ({
         id: o.id,
         orderNumber: o.order_number,
