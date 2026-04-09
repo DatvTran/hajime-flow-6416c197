@@ -111,7 +111,7 @@ export default function Manufacturer() {
               ))
             )}
             <Button variant="link" className="h-auto px-0 text-xs" asChild>
-              <Link to="/purchase-orders">All requests</Link>
+              <Link to="/manufacturer/purchase-orders">All requests</Link>
             </Button>
           </CardContent>
         </Card>
@@ -154,7 +154,7 @@ export default function Manufacturer() {
               ))
             )}
             <Button variant="link" className="h-auto px-0 text-xs" asChild>
-              <Link to="/shipments">Shipments</Link>
+              <Link to="/manufacturer/shipments">Shipments</Link>
             </Button>
           </CardContent>
         </Card>
@@ -206,7 +206,7 @@ export default function Manufacturer() {
               ))
             )}
             <Button variant="link" className="h-auto px-0 text-xs" asChild>
-              <Link to="/alerts">Alerts hub</Link>
+              <Link to="/manufacturer/alerts">Alerts hub</Link>
             </Button>
           </CardContent>
         </Card>
@@ -225,7 +225,7 @@ export default function Manufacturer() {
               <div key={r.sku} className="flex flex-col gap-2 rounded-md border border-border/60 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-foreground">{r.summary}</p>
                 <Button size="sm" variant="outline" className="shrink-0 touch-manipulation" asChild>
-                  <Link to={`/purchase-orders?sku=${encodeURIComponent(r.sku)}&qty=${encodeURIComponent(String(r.suggestedBottles))}`}>
+                  <Link to={`/manufacturer/purchase-orders?sku=${encodeURIComponent(r.sku)}&qty=${encodeURIComponent(String(r.suggestedBottles))}`}>
                     Draft production request
                   </Link>
                 </Button>

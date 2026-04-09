@@ -13,6 +13,9 @@ export function resolveAlertHref(alert: DerivedAlert, role: HajimeRole): string 
     if (role === "retail") {
       return `/retail/new-order?sku=${encodeURIComponent(sku)}&cases=1`;
     }
+    if (role === "manufacturer") {
+      return `/manufacturer/inventory?sku=${encodeURIComponent(sku)}`;
+    }
     return `/inventory?sku=${encodeURIComponent(sku)}`;
   }
 
@@ -21,11 +24,18 @@ export function resolveAlertHref(alert: DerivedAlert, role: HajimeRole): string 
     if (role === "retail") {
       return `/retail/new-order?sku=${encodeURIComponent(sku)}&cases=1`;
     }
+    if (role === "manufacturer") {
+      return `/manufacturer/inventory?sku=${encodeURIComponent(sku)}`;
+    }
     return `/inventory?sku=${encodeURIComponent(sku)}`;
   }
 
   if (type === "delay" && id.startsWith("po-delay-")) {
     if (role === "sales_rep" || role === "retail") return "/sales/alerts";
+    if (role === "manufacturer") {
+      const poId = id.slice("po-delay-".length);
+      return `/manufacturer/purchase-orders?po=${encodeURIComponent(poId)}`;
+    }
     const poId = id.slice("po-delay-".length);
     return `/purchase-orders?po=${encodeURIComponent(poId)}`;
   }
@@ -34,17 +44,26 @@ export function resolveAlertHref(alert: DerivedAlert, role: HajimeRole): string 
     let shId: string | null = null;
     if (id.startsWith("sh-late-")) shId = id.slice("sh-late-".length);
     else if (id.startsWith("sh-")) shId = id.slice("sh-".length);
-    if (shId) return `/shipments?q=${encodeURIComponent(shId)}`;
+    if (shId) {
+      if (role === "manufacturer") {
+        return `/manufacturer/shipments?q=${encodeURIComponent(shId)}`;
+      }
+      return `/shipments?q=${encodeURIComponent(shId)}`;
+    }
   }
 
   if (type === "payment" && id.startsWith("pay-")) {
     const orderId = id.slice("pay-".length);
     if (role === "retail") return `/retail/orders/${encodeURIComponent(orderId)}`;
+    if (role === "manufacturer") {
+      return `/manufacturer/orders?order=${encodeURIComponent(orderId)}`;
+    }
     return `/orders?order=${encodeURIComponent(orderId)}`;
   }
 
   if (type === "demand-spike") {
     if (role === "retail" || role === "sales_rep") return "/sales/alerts";
+    if (role === "manufacturer") return "/manufacturer/alerts";
     return "/markets";
   }
 
@@ -54,5 +73,6 @@ export function resolveAlertHref(alert: DerivedAlert, role: HajimeRole): string 
   }
 
   if (role === "sales_rep") return "/sales/alerts";
+  if (role === "manufacturer") return "/manufacturer/alerts";
   return "/alerts";
 }
