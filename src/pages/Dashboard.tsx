@@ -115,6 +115,7 @@ export default function Dashboard() {
   const { patchSalesOrder } = useSalesOrders();
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const canApproveDraftQueue = user?.role === "brand_operator";
 
   const [marketFilter, setMarketFilter] = useState<(typeof MARKET_FILTERS)[number]["id"]>("all");
   const [rangeDays, setRangeDays] = useState<7 | 30 | 90>(30);
@@ -477,30 +478,47 @@ export default function Dashboard() {
                           </p>
                           <p className="text-xs text-muted-foreground">Submitted: {item.orderDateLabel}</p>
                           <div className="mt-3 flex flex-wrap gap-1.5">
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="h-8 touch-manipulation text-xs"
-                              onClick={() => onApprove(item.order.id)}
-                            >
-                              Approve
-                            </Button>
-                            {partial >= 1 && partial < item.requestedCases ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                className="h-8 touch-manipulation text-xs"
-                                onClick={() => {
-                                  onApprove(item.order.id);
-                                  toast.message("Partial allocation", {
-                                    description: `Recorded up to ${partial} cases from regional pool — adjust lines in Orders if needed.`,
-                                  });
-                                }}
-                              >
-                                Approve {partial}
-                              </Button>
-                            ) : null}
+                            {canApproveDraftQueue ? (
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="h-8 touch-manipulation text-xs"
+                                  onClick={() => onApprove(item.order.id)}
+                                >
+                                  Approve
+                                </Button>
+                                {partial >= 1 && partial < item.requestedCases ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    className="h-8 touch-manipulation text-xs"
+                                    onClick={() => {
+                                      onApprove(item.order.id);
+                                      toast.message("Partial allocation", {
+                                        description: `Recorded up to ${partial} cases from regional pool — adjust lines in Orders if needed.`,
+                                      });
+                                    }}
+                                  >
+                                    Approve {partial}
+                                  </Button>
+                                ) : null}
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 touch-manipulation text-xs text-destructive hover:text-destructive"
+                                  onClick={() => onReject(item.order.id)}
+                                >
+                                  Reject
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                Awaiting HQ review
+                              </span>
+                            )}
                             <Button
                               type="button"
                               size="sm"
@@ -522,15 +540,6 @@ export default function Dashboard() {
                               asChild
                             >
                               <Link to="/markets">Reallocate</Link>
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 touch-manipulation text-xs text-destructive hover:text-destructive"
-                              onClick={() => onReject(item.order.id)}
-                            >
-                              Reject
                             </Button>
                             <Button
                               type="button"

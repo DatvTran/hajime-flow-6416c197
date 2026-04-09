@@ -99,17 +99,62 @@ export default function SalesRepHomePage() {
 
   const schedule = useMemo(() => {
     const days = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
-    const sorted = [...myAccounts].sort((a, b) => {
-      const na = a.nextActionDate || a.lastOrderDate || "";
-      const nb = b.nextActionDate || b.lastOrderDate || "";
-      return na.localeCompare(nb);
+    
+    // Priority: accounts needing reorder (40d+ no order) first, then by next action date
+    const prioritized = [...myAccounts].sort((a, b) => {
+      const now = Date.now();
+      const MS_DAY = 86400000;
+      
+      // Check if account needs reorder (40+ days)
+      const aLastOrder = a.lastOrderDate ? Date.parse(a.lastOrderDate) : 0;
+      const bLastOrder = b.lastOrderDate ? Date.parse(b.lastOrderDate) : 0;
+      const aNeedsReorder = aLastOrder ? (now - aLastOrder) > 40 * MS_DAY : true;
+      const bNeedsReorder = bLastOrder ? (now - bLastOrder) > 40 * MS_DAY : true;
+      
+      // Priority 1: Needs reorder
+      if (aNeedsReorder && !bNeedsReorder) return -1;
+      if (!aNeedsReorder && bNeedsReorder) return 1;
+      
+      // Priority 2: Next action date
+      const aNext = a.nextActionDate || "";
+      const bNext = b.nextActionDate || "";
+      if (aNext && bNext) return aNext.localeCompare(bNext);
+      if (aNext) return -1;
+      if (bNext) return 1;
+      
+      // Priority 3: Last order date (oldest first)
+      if (aLastOrder && bLastOrder) return aLastOrder - bLastOrder;
+      if (aLastOrder) return -1;
+      if (bLastOrder) return -1;
+      
+      return 0;
     });
+    
     return days.map((day, i) => {
-      const acc = sorted[i];
+      const acc = prioritized[i];
+      if (!acc) {
+        return {
+          day,
+          focus: "Open slot",
+          accounts: "No account assigned — add accounts in Sales",
+          accountId: null,
+          needsReorder: false,
+        };
+      }
+      
+      const now = Date.now();
+      const MS_DAY = 86400000;
+      const lastOrder = acc.lastOrderDate ? Date.parse(acc.lastOrderDate) : 0;
+      const needsReorder = lastOrder ? (now - lastOrder) > 40 * MS_DAY : true;
+      const daysSince = lastOrder ? Math.floor((now - lastOrder) / MS_DAY) : null;
+      
       return {
         day,
-        focus: acc ? `${acc.city} · ${acc.type}` : "Open slot",
-        accounts: acc?.tradingName ?? "No account assigned — add touchpoints in Accounts",
+        focus: `${acc.city} · ${acc.type}${needsReorder ? " · ⚠️ Needs reorder" : ""}`,
+        accounts: acc.tradingName,
+        accountId: acc.id,
+        needsReorder,
+        daysSince,
       };
     });
   }, [myAccounts]);
@@ -232,9 +277,25 @@ export default function SalesRepHomePage() {
             {schedule.map((s) => (
               <div key={s.day} className="flex gap-3 rounded-lg border border-border/40 px-3 py-2">
                 <span className="w-10 shrink-0 font-display font-semibold">{s.day}</span>
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="font-medium">{s.focus}</p>
-                  <p className="text-xs text-muted-foreground">{s.accounts}</p>
+                  {s.accountId ? (
+                    <div className="flex items-center gap-2">
+                      <Link 
+                        to={`/sales/accounts`}
+                        className="text-xs text-primary hover:underline truncate"
+                      >
+                        {s.accounts}
+                      </Link>
+                      {s.needsReorder && s.daysSince && (
+                        <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                          {s.daysSince}d
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{s.accounts}</p>
+                  )}
                 </div>
               </div>
             ))}
