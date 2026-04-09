@@ -169,7 +169,7 @@ const App = () => {
                     <Route path="/sales/targets" element={<SalesTargetsPage />} />
                     <Route path="/sales/reports" element={<Reports />} />
                     <Route path="/sales/alerts" element={<AlertsHubPage />} />
-                    {/* Retail namespaced routes */}
+                    {/* Retail namespaced routes - v2 */}
                     <Route path="/retail" element={<RetailHomePage />} />
                     <Route path="/retail/new-order" element={<RetailNewOrderPage />} />
                     <Route path="/retail/orders" element={<RetailMyOrdersPage />} />
