@@ -91,13 +91,21 @@ export function CSVImportDialog({
 
     try {
       const token = localStorage.getItem("hajime_access_token");
+      
+      // Create an AbortController for timeout handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+      
       const response = await fetch(`${API_URL}/api/csv/import/preview/${importType}`, {
         method: "POST",
         headers: {
           Authorization: token ? `Bearer ${token}` : "",
         },
         body: formData,
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: "Upload failed" }));
@@ -108,7 +116,11 @@ export function CSVImportDialog({
       setPreview(data);
       setStep("preview");
     } catch (err: any) {
-      toast.error("Upload failed", { description: err.message });
+      if (err.name === 'AbortError') {
+        toast.error("Upload timeout", { description: "The upload took too long. Please try a smaller file or check your connection." });
+      } else {
+        toast.error("Upload failed", { description: err.message });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -122,6 +134,11 @@ export function CSVImportDialog({
 
     try {
       const token = localStorage.getItem("hajime_access_token");
+      
+      // Create an AbortController for timeout handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout for commit
+      
       const response = await fetch(`${API_URL}/api/csv/import/commit/${importType}`, {
         method: "POST",
         headers: {
@@ -131,7 +148,10 @@ export function CSVImportDialog({
         body: JSON.stringify({
           allRows: preview.allRows,
         }),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: "Import failed" }));
@@ -143,7 +163,11 @@ export function CSVImportDialog({
       setStep("complete");
       onSuccess?.();
     } catch (err: any) {
-      toast.error("Import failed", { description: err.message });
+      if (err.name === 'AbortError') {
+        toast.error("Import timeout", { description: "The import took too long. Please try with fewer rows or contact support." });
+      } else {
+        toast.error("Import failed", { description: err.message });
+      }
       setStep("preview");
     } finally {
       setIsLoading(false);

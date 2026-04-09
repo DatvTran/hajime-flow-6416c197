@@ -31,11 +31,18 @@ export function CSVExportInventoryButton({ variant = "outline", size = "sm", cla
       if (filters?.lowStock) params.set("lowStock", "true");
       if (filters?.location) params.set("location", filters.location);
 
+      // Create an AbortController for timeout handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
       const response = await fetch(`${API_URL}/api/csv/export/inventory?${params.toString()}`, {
         headers: {
           Authorization: token ? `Bearer ${token}` : "",
         },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error("Export failed");
@@ -55,7 +62,11 @@ export function CSVExportInventoryButton({ variant = "outline", size = "sm", cla
         description: "Your CSV file has been downloaded",
       });
     } catch (err: any) {
-      toast.error("Export failed", { description: err.message });
+      if (err.name === 'AbortError') {
+        toast.error("Export timeout", { description: "The export took too long. Please try with filters or contact support." });
+      } else {
+        toast.error("Export failed", { description: err.message });
+      }
     } finally {
       setIsExporting(false);
     }
@@ -102,11 +113,18 @@ export function CSVExportOrdersButton({ variant = "outline", size = "sm", classN
       if (filters?.dateFrom) params.set("dateFrom", filters.dateFrom);
       if (filters?.dateTo) params.set("dateTo", filters.dateTo);
 
+      // Create an AbortController for timeout handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
       const response = await fetch(`${API_URL}/api/csv/export/orders?${params.toString()}`, {
         headers: {
           Authorization: token ? `Bearer ${token}` : "",
         },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error("Export failed");
@@ -126,7 +144,11 @@ export function CSVExportOrdersButton({ variant = "outline", size = "sm", classN
         description: "Your CSV file has been downloaded",
       });
     } catch (err: any) {
-      toast.error("Export failed", { description: err.message });
+      if (err.name === 'AbortError') {
+        toast.error("Export timeout", { description: "The export took too long. Please try with filters or contact support." });
+      } else {
+        toast.error("Export failed", { description: err.message });
+      }
     } finally {
       setIsExporting(false);
     }
@@ -182,11 +204,18 @@ export function CSVExportSalesReportButton({
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
 
+      // Create an AbortController for timeout handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
       const response = await fetch(`${API_URL}/api/csv/export/sales-by-account?${params.toString()}`, {
         headers: {
           Authorization: token ? `Bearer ${token}` : "",
         },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error("Export failed");
@@ -208,7 +237,11 @@ export function CSVExportSalesReportButton({
         description: "Your CSV file has been downloaded",
       });
     } catch (err: any) {
-      toast.error("Export failed", { description: err.message });
+      if (err.name === 'AbortError') {
+        toast.error("Export timeout", { description: "The export took too long. Please try with a shorter date range or contact support." });
+      } else {
+        toast.error("Export failed", { description: err.message });
+      }
     } finally {
       setIsExporting(false);
     }
