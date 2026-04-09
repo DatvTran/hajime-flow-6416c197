@@ -32,6 +32,7 @@ import RetailSupportPage from "./pages/RetailSupportPage";
 import RetailNewOrderPage from "./pages/RetailNewOrderPage";
 import RetailMyOrdersPage from "./pages/RetailMyOrdersPage";
 import RetailOrderDetailPage from "./pages/RetailOrderDetailPage";
+import RetailHomePage from "./pages/RetailHomePage";
 import SalesSectionPage from "./pages/SalesSectionPage";
 import SalesTargetsPage from "./pages/SalesTargetsPage";
 import SalesRepHomePage from "./pages/SalesRepHomePage";
@@ -168,6 +169,14 @@ const App = () => {
                     <Route path="/sales/targets" element={<SalesTargetsPage />} />
                     <Route path="/sales/reports" element={<Reports />} />
                     <Route path="/sales/alerts" element={<AlertsHubPage />} />
+                    {/* Retail namespaced routes */}
+                    <Route path="/retail" element={<RetailHomePage />} />
+                    <Route path="/retail/new-order" element={<RetailNewOrderPage />} />
+                    <Route path="/retail/orders" element={<RetailMyOrdersPage />} />
+                    <Route path="/retail/orders/:orderId" element={<RetailOrderDetailPage />} />
+                    <Route path="/retail/account" element={<RetailAccountPage />} />
+                    <Route path="/retail/support" element={<RetailSupportPage />} />
+                    <Route path="/retail/reorder" element={<RetailReorderPage />} />
                     <Route path="*" element={<NotFound />} />
                   </Route>
                 </Route>
