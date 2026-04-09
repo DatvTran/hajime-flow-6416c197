@@ -15,8 +15,8 @@ export default function RetailReorderPage() {
   const fromOrderId = searchParams.get("from");
 
   const myOrders = useMemo(
-    () => data.salesOrders.filter((o) => o.account === accountName && o.status !== "cancelled"),
-    [data.salesOrders, accountName],
+    () => (data?.salesOrders || []).filter((o) => o.account === accountName && o.status !== "cancelled"),
+    [data?.salesOrders, accountName],
   );
 
   const fromOrder = useMemo(() => {
@@ -30,7 +30,7 @@ export default function RetailReorderPage() {
     for (const o of sorted) {
       for (const line of orderLineEntries(o)) {
         if (map.has(line.sku)) continue;
-        const product = data.products.find((p) => p.sku === line.sku);
+        const product = (data?.products || []).find((p) => p.sku === line.sku);
         if (!product || product.status !== "active") continue;
         const cases = Math.round(line.quantityBottles / product.caseSize);
         const daysAgo = Math.max(0, Math.round((Date.now() - Date.parse(o.orderDate)) / 86400000));
@@ -38,7 +38,7 @@ export default function RetailReorderPage() {
       }
     }
     return [...map.values()].sort((a, b) => a.daysAgo - b.daysAgo);
-  }, [myOrders, data.products]);
+  }, [myOrders, data?.products]);
 
   return (
     <div>
@@ -51,7 +51,7 @@ export default function RetailReorderPage() {
           <p className="mt-1 font-medium">{retailOrderDisplayId(fromOrder.id)} · {fromOrder.orderDate}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {orderLineEntries(fromOrder).map((line) => {
-              const p = data.products.find((x) => x.sku === line.sku);
+              const p = (data?.products || []).find((x) => x.sku === line.sku);
               const cases = p ? Math.round(line.quantityBottles / p.caseSize) : 0;
               return (
                 <Button key={line.sku} asChild variant="secondary" className="touch-manipulation">

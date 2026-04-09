@@ -14,9 +14,9 @@ export default function RetailAccountPage() {
   const { shelf, setShelfBottles } = useRetailerShelfStock();
   const acc = useMemo(() => accounts.find((a) => a.tradingName === tradingName), [accounts, tradingName]);
 
-  const accShelf = acc ? shelf[acc.id] ?? {} : {};
-  const activeProducts = useMemo(() => data.products.filter((p) => p.status === "active"), [data.products]);
-  const shelfTh = data.operationalSettings?.retailerStockThresholdBottles ?? 48;
+  const accShelf = acc && shelf ? shelf[acc.id] ?? {} : {};
+  const activeProducts = useMemo(() => (data?.products || []).filter((p) => p.status === "active"), [data?.products]);
+  const shelfTh = data?.operationalSettings?.retailerStockThresholdBottles ?? 48;
 
   return (
     <div>
