@@ -286,12 +286,13 @@ function pathMatches(pathname: string, base: string): boolean {
  */
 export function canAccessPath(role: HajimeRole, pathname: string): boolean {
   const p = pathname.split("?")[0];
+  console.log(`[canAccessPath] role=${role}, path=${pathname}, cleanPath=${p}`);
 
   if (role === "founder_admin") return true;
   if (role === "brand_operator") return true;
 
   if (role === "manufacturer") {
-    return (
+    const allowed = (
       pathMatches(p, "/manufacturer") ||
       p === "/purchase-orders" ||
       pathMatches(p, "/purchase-orders") ||
@@ -303,15 +304,19 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
       p === "/finance" ||
       pathMatches(p, "/finance")
     );
+    console.log(`[canAccessPath] manufacturer check: ${allowed}`);
+    return allowed;
   }
 
   if (role === "retail") {
-    return (
+    const allowed = (
       p === "/" ||
       pathMatches(p, "/shipments") ||
       pathMatches(p, "/retail") ||
       p === "/alerts"
     );
+    console.log(`[canAccessPath] retail check: ${allowed}, pathMatches(/retail)=${pathMatches(p, "/retail")}`);
+    return allowed;
   }
 
   if (role === "distributor") {
