@@ -37,6 +37,13 @@ export const TEAM_ROSTER: TeamMember[] = [
     createdAt: "2026-01-16",
   },
   {
+    id: "tm-seed-demo-retail",
+    displayName: "Demo Retailer",
+    email: "retail@hajime.jp",
+    role: "retail",
+    createdAt: "2026-04-10",
+  },
+  {
     id: "tm-seed-7",
     displayName: "Metro Logistics Ops",
     email: "fulfillment@metrologistics.example",
@@ -71,6 +78,7 @@ export const RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL: Record<string, string> = {
   "jeff@thedrake.ca": "The Drake Hotel",
   "mrossi@eataly.com": "Eataly Toronto",
   "jpark@lcbo.com": "LCBO Ontario",
+  "retail@hajime.jp": "The Drake Hotel", // Demo retail account
 };
 
 export function findTeamMemberByEmail(email: string | undefined): TeamMember | undefined {

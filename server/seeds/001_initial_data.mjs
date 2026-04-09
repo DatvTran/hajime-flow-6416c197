@@ -57,6 +57,22 @@ export async function seed(knex) {
 
   console.log(`[seed] Created admin user: ${adminUser.id}`);
 
+  // Create demo retail user
+  const retailPasswordHash = await authService.hashPassword('retail123!');
+  const [retailUser] = await knex('users')
+    .insert({
+      tenant_id: tenantId,
+      email: 'retail@hajime.jp',
+      password_hash: retailPasswordHash,
+      role: 'retail',
+      display_name: 'Demo Retailer',
+      is_active: true,
+      email_verified: true,
+    })
+    .returning('id');
+
+  console.log(`[seed] Created retail user: ${retailUser.id}`);
+
   // Create sample products (Hajime Coffee Rhum)
   const products = await knex('products')
     .insert([
@@ -253,5 +269,7 @@ export async function seed(knex) {
   console.log('[seed] Created sample purchase order');
 
   console.log('[seed] Database seed completed successfully!');
-  console.log('[seed] Login credentials: admin@hajime.jp / admin123!');
+  console.log('[seed] Login credentials:');
+  console.log('  Admin:    admin@hajime.jp / admin123!');
+  console.log('  Retail:   retail@hajime.jp / retail123!');
 }
