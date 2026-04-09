@@ -103,7 +103,6 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           items: [
             { title: "Overview", url: "/manufacturer", icon: LayoutDashboard },
             { title: "Production orders", url: "/manufacturer/purchase-orders", icon: FileText },
-            { title: "Sell-in orders", url: "/manufacturer/orders", icon: ShoppingCart },
             { title: "Shipments", url: "/manufacturer/shipments", icon: Truck },
             { title: "Batch history", url: "/manufacturer/inventory", icon: Package },
             { title: "Market demand", url: "/manufacturer/market-demand", icon: Globe },
