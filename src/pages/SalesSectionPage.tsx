@@ -26,9 +26,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAppData } from "@/contexts/AppDataContext";
-import { useSalesOrders } from "@/contexts/SalesContext";
 import { toast } from "@/components/ui/sonner";
 import type { Account, SalesRepNote } from "@/data/accounts";
+import { resolveSalesRepLabelForSession } from "@/data/team-roster";
 
 interface Opportunity {
   id: string;
@@ -80,7 +80,6 @@ export default function SalesSectionPage() {
   const { section } = useParams<{ section: string }>();
   const { user } = useAuth();
   const { data, updateData } = useAppData();
-  const { myAccounts } = useSalesOrders();
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<Opportunity["type"] | "all">("all");
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -91,6 +90,16 @@ export default function SalesSectionPage() {
     dueDate: new Date().toISOString().split("T")[0],
     notes: "",
   });
+
+  const rep = useMemo(
+    () => resolveSalesRepLabelForSession(user?.email, user?.displayName ?? ""),
+    [user?.email, user?.displayName]
+  );
+
+  const myAccounts = useMemo(
+    () => data.accounts.filter((a) => a.salesOwner === rep),
+    [data.accounts, rep]
+  );
 
   if (!section || !["opportunities", "visits"].includes(section)) {
     return <Navigate to="/" replace />;
