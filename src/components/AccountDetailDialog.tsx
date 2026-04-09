@@ -112,8 +112,8 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
             <DialogHeader>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <DialogTitle className="font-display text-lg">{draft.tradingName}</DialogTitle>
-                  <DialogDescription className="text-base text-foreground">{draft.legalName}</DialogDescription>
+                  <DialogTitle className="font-display text-lg">{draft.tradingName || "Unnamed Account"}</DialogTitle>
+                  <DialogDescription className="text-base text-foreground">{draft.legalName || "—"}</DialogDescription>
                 </div>
                 {!editing ? (
                   <Button type="button" variant="outline" size="sm" className="touch-manipulation shrink-0" onClick={() => setEditing(true)}>
@@ -435,20 +435,20 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
                     <span className="text-muted-foreground">Location</span>
                     <span className="max-w-[60%] text-right font-medium">
                       <MapPin className="mr-1 inline h-3.5 w-3.5 align-text-bottom text-muted-foreground" aria-hidden />
-                      {draft.city}, {draft.country}
+                      {draft.city || "—"}, {draft.country || "—"}
                     </span>
                   </div>
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Contact</span>
                     <span className="text-right font-medium">
-                      {draft.contactName}
-                      <span className="block text-xs font-normal text-muted-foreground">{draft.contactRole}</span>
+                      {draft.contactName || "—"}
+                      <span className="block text-xs font-normal text-muted-foreground">{draft.contactRole || "—"}</span>
                     </span>
                   </div>
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Email</span>
-                    <a href={`mailto:${draft.email}`} className="break-all text-right font-medium text-primary hover:underline">
-                      {draft.email}
+                    <a href={`mailto:${draft.email || ""}`} className="break-all text-right font-medium text-primary hover:underline">
+                      {draft.email || "—"}
                     </a>
                   </div>
                   <div className="flex justify-between gap-4">
@@ -459,11 +459,11 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
                   </div>
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Payment terms</span>
-                    <span className="font-medium">{draft.paymentTerms}</span>
+                    <span className="font-medium">{draft.paymentTerms || "—"}</span>
                   </div>
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Sales owner</span>
-                    <span className="font-medium">{draft.salesOwner}</span>
+                    <span className="font-medium">{draft.salesOwner || "—"}</span>
                   </div>
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Avg order</span>
