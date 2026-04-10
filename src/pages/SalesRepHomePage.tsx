@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { useAppData } from "@/contexts/AppDataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { VisitNoteEntry } from "@/types/app-data";
@@ -16,6 +17,11 @@ import {
   Sparkles,
   Plus,
   Gift,
+  ChevronLeft,
+  ChevronRight,
+  MapPin,
+  Clock,
+  AlertCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/sonner";
@@ -34,6 +40,43 @@ function loadLegacyVisits(): Omit<VisitNoteEntry, "authorRep">[] {
   }
 }
 
+// Generate next 5 business days from a given date
+function getNextBusinessDays(startDate: Date, count: number): Date[] {
+  const days: Date[] = [];
+  const current = new Date(startDate);
+  
+  while (days.length < count) {
+    const dayOfWeek = current.getDay();
+    // Skip weekends (0 = Sunday, 6 = Saturday)
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      days.push(new Date(current));
+    }
+    current.setDate(current.getDate() + 1);
+  }
+  
+  return days;
+}
+
+// Format date as YYYY-MM-DD for comparison
+function formatDateKey(date: Date): string {
+  return date.toISOString().split('T')[0];
+}
+
+// Format date for display
+function formatDateDisplay(date: Date): string {
+  return new Intl.DateTimeFormat('en-US', { 
+    weekday: 'short', 
+    month: 'short', 
+    day: 'numeric' 
+  }).format(date);
+}
+
+// Check if date is today
+function isToday(date: Date): boolean {
+  const today = new Date();
+  return formatDateKey(date) === formatDateKey(today);
+}
+
 export default function SalesRepHomePage() {
   const { data, updateData } = useAppData();
   const { user } = useAuth();
@@ -41,6 +84,9 @@ export default function SalesRepHomePage() {
     () => resolveSalesRepLabelForSession(user?.email, user?.displayName ?? ""),
     [user?.email, user?.displayName],
   );
+
+  // Week navigation state
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const myAccounts = useMemo(
     () => data.accounts.filter((a) => a.salesOwner === rep),
@@ -98,32 +144,52 @@ export default function SalesRepHomePage() {
     }
   }, [data.visitNotes, rep, updateData]);
 
+  // Generate dynamic schedule based on actual dates and account data
   const schedule = useMemo(() => {
-    const days = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+    const now = new Date();
+    // Start from current week + offset, but start on Monday
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay() + 1 + (weekOffset * 7)); // Monday of target week
     
-    // Priority: accounts needing reorder (40d+ no order) first, then by next action date
-    const prioritized = [...myAccounts].sort((a, b) => {
-      const now = Date.now();
-      const MS_DAY = 86400000;
-      
-      // Check if account needs reorder (40+ days)
+    const businessDays = getNextBusinessDays(startOfWeek, 5);
+    const MS_DAY = 86400000;
+    
+    // Create a map of date -> accounts scheduled for that date
+    const dateToAccounts = new Map<string, typeof myAccounts>();
+    
+    for (const account of myAccounts) {
+      // Check if account has a scheduled next action date
+      if (account.nextActionDate) {
+        const actionDate = new Date(account.nextActionDate);
+        const dateKey = formatDateKey(actionDate);
+        
+        // Only include if it's within our visible week
+        if (businessDays.some(d => formatDateKey(d) === dateKey)) {
+          if (!dateToAccounts.has(dateKey)) {
+            dateToAccounts.set(dateKey, []);
+          }
+          dateToAccounts.get(dateKey)!.push(account);
+        }
+      }
+    }
+    
+    // Priority queue for unscheduled accounts
+    const unscheduledAccounts = myAccounts.filter(a => {
+      if (!a.nextActionDate) return true;
+      const actionDate = new Date(a.nextActionDate);
+      return !businessDays.some(d => formatDateKey(d) === formatDateKey(actionDate));
+    });
+    
+    // Sort unscheduled by priority (needs reorder first, then by last order date)
+    const prioritizedUnscheduled = [...unscheduledAccounts].sort((a, b) => {
       const aLastOrder = a.lastOrderDate ? Date.parse(a.lastOrderDate) : 0;
       const bLastOrder = b.lastOrderDate ? Date.parse(b.lastOrderDate) : 0;
-      const aNeedsReorder = aLastOrder ? (now - aLastOrder) > 40 * MS_DAY : true;
-      const bNeedsReorder = bLastOrder ? (now - bLastOrder) > 40 * MS_DAY : true;
+      const aNeedsReorder = aLastOrder ? (Date.now() - aLastOrder) > 40 * MS_DAY : true;
+      const bNeedsReorder = bLastOrder ? (Date.now() - bLastOrder) > 40 * MS_DAY : true;
       
-      // Priority 1: Needs reorder
       if (aNeedsReorder && !bNeedsReorder) return -1;
       if (!aNeedsReorder && bNeedsReorder) return 1;
       
-      // Priority 2: Next action date
-      const aNext = a.nextActionDate || "";
-      const bNext = b.nextActionDate || "";
-      if (aNext && bNext) return aNext.localeCompare(bNext);
-      if (aNext) return -1;
-      if (bNext) return 1;
-      
-      // Priority 3: Last order date (oldest first)
       if (aLastOrder && bLastOrder) return aLastOrder - bLastOrder;
       if (aLastOrder) return -1;
       if (bLastOrder) return -1;
@@ -131,34 +197,76 @@ export default function SalesRepHomePage() {
       return 0;
     });
     
-    return days.map((day, i) => {
-      const acc = prioritized[i];
-      if (!acc) {
+    // Build schedule for each business day
+    let unscheduledIndex = 0;
+    
+    return businessDays.map((date) => {
+      const dateKey = formatDateKey(date);
+      const scheduledAccounts = dateToAccounts.get(dateKey) || [];
+      
+      // If no scheduled accounts, fill with high-priority unscheduled account
+      let fillAccount: typeof myAccounts[0] | null = null;
+      if (scheduledAccounts.length === 0 && unscheduledIndex < prioritizedUnscheduled.length) {
+        fillAccount = prioritizedUnscheduled[unscheduledIndex++];
+      }
+      
+      const accountsToShow = scheduledAccounts.length > 0 ? scheduledAccounts : fillAccount ? [fillAccount] : [];
+      
+      if (accountsToShow.length === 0) {
         return {
-          day,
+          date,
+          dateKey,
+          dateDisplay: formatDateDisplay(date),
+          isToday: isToday(date),
           focus: "Open slot",
-          accounts: "No account assigned — add accounts in Sales",
-          accountId: null,
-          needsReorder: false,
+          accounts: "No account scheduled — use Opportunities to find prospects",
+          accountList: [],
+          hasOpenSlot: true,
         };
       }
       
-      const now = Date.now();
-      const MS_DAY = 86400000;
-      const lastOrder = acc.lastOrderDate ? Date.parse(acc.lastOrderDate) : 0;
-      const needsReorder = lastOrder ? (now - lastOrder) > 40 * MS_DAY : true;
-      const daysSince = lastOrder ? Math.floor((now - lastOrder) / MS_DAY) : null;
+      // Build focus string from accounts
+      const cities = [...new Set(accountsToShow.map(a => a.city).filter(Boolean))];
+      const types = [...new Set(accountsToShow.map(a => a.type).filter(Boolean))];
+      
+      const needsReorderCount = accountsToShow.filter(a => {
+        const lastOrder = a.lastOrderDate ? Date.parse(a.lastOrderDate) : 0;
+        return lastOrder ? (Date.now() - lastOrder) > 40 * MS_DAY : true;
+      }).length;
+      
+      const focusParts: string[] = [];
+      if (cities.length > 0) focusParts.push(cities.join(", "));
+      if (types.length > 0) focusParts.push(types.join(", "));
+      if (needsReorderCount > 0) focusParts.push(`⚠️ ${needsReorderCount} need reorder`);
       
       return {
-        day,
-        focus: `${acc.city} · ${acc.type}${needsReorder ? " · ⚠️ Needs reorder" : ""}`,
-        accounts: acc.tradingName,
-        accountId: acc.id,
-        needsReorder,
-        daysSince,
+        date,
+        dateKey,
+        dateDisplay: formatDateDisplay(date),
+        isToday: isToday(date),
+        focus: focusParts.join(" · ") || "Account visits",
+        accounts: accountsToShow.length === 1 
+          ? accountsToShow[0].tradingName 
+          : `${accountsToShow.length} accounts scheduled`,
+        accountList: accountsToShow,
+        hasOpenSlot: false,
       };
     });
-  }, [myAccounts]);
+  }, [myAccounts, weekOffset]);
+
+  // Stats for the schedule
+  const scheduleStats = useMemo(() => {
+    const totalAccounts = schedule.reduce((sum, s) => sum + s.accountList.length, 0);
+    const openSlots = schedule.filter(s => s.hasOpenSlot).length;
+    const needsReorderCount = schedule.reduce((sum, s) => {
+      return sum + s.accountList.filter(a => {
+        const lastOrder = a.lastOrderDate ? Date.parse(a.lastOrderDate) : 0;
+        return lastOrder ? (Date.now() - lastOrder) > 40 * MS_DAY : true;
+      }).length;
+    }, 0);
+    
+    return { totalAccounts, openSlots, needsReorderCount };
+  }, [schedule]);
 
   const addVisit = () => {
     const account = visitAccount.trim() || (myAccounts[0]?.tradingName ?? "");
@@ -268,34 +376,120 @@ export default function SalesRepHomePage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="border-border/70">
           <CardHeader className="pb-2">
-            <CardTitle className="font-display flex items-center gap-2 text-base">
-              <Calendar className="h-4 w-4" />
-              Visit schedule
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Built from your assigned accounts (next action / last order).</p>
+            <div className="flex items-center justify-between">
+              <CardTitle className="font-display flex items-center gap-2 text-base">
+                <Calendar className="h-4 w-4" />
+                Visit schedule
+              </CardTitle>
+              <div className="flex items-center gap-1">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-7 w-7"
+                  onClick={() => setWeekOffset(prev => prev - 1)}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs text-muted-foreground w-20 text-center">
+                  {weekOffset === 0 ? "This week" : weekOffset === 1 ? "Next week" : `Week +${weekOffset}`}
+                </span>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-7 w-7"
+                  onClick={() => setWeekOffset(prev => prev + 1)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                {weekOffset !== 0 && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-7 text-xs"
+                    onClick={() => setWeekOffset(0)}
+                  >
+                    Today
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Users className="h-3 w-3" />
+                {scheduleStats.totalAccounts} accounts
+              </span>
+              {scheduleStats.needsReorderCount > 0 && (
+                <span className="flex items-center gap-1 text-amber-600">
+                  <AlertCircle className="h-3 w-3" />
+                  {scheduleStats.needsReorderCount} need reorder
+                </span>
+              )}
+              {scheduleStats.openSlots > 0 && (
+                <span className="flex items-center gap-1 text-blue-600">
+                  <Clock className="h-3 w-3" />
+                  {scheduleStats.openSlots} open slots
+                </span>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             {schedule.map((s) => (
-              <div key={s.day} className="flex gap-3 rounded-lg border border-border/40 px-3 py-2">
-                <span className="w-10 shrink-0 font-display font-semibold">{s.day}</span>
+              <div 
+                key={s.dateKey} 
+                className={`flex gap-3 rounded-lg border px-3 py-2 ${
+                  s.isToday ? "border-primary/50 bg-primary/5" : "border-border/40"
+                }`}
+              >
+                <div className="w-16 shrink-0">
+                  <span className="font-display font-semibold text-sm">{s.dateDisplay}</span>
+                  {s.isToday && (
+                    <Badge variant="outline" className="mt-0.5 text-[10px] px-1 py-0 h-4">
+                      Today
+                    </Badge>
+                  )}
+                </div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium">{s.focus}</p>
-                  {s.accountId ? (
-                    <div className="flex items-center gap-2">
-                      <Link 
-                        to={`/sales/accounts`}
-                        className="text-xs text-primary hover:underline truncate"
-                      >
-                        {s.accounts}
-                      </Link>
-                      {s.needsReorder && s.daysSince && (
-                        <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                          {s.daysSince}d
-                        </span>
-                      )}
+                  {s.accountList.length > 0 ? (
+                    <div className="space-y-1.5">
+                      <p className="font-medium text-sm">{s.focus}</p>
+                      {s.accountList.map((account) => {
+                        const lastOrder = account.lastOrderDate ? Date.parse(account.lastOrderDate) : 0;
+                        const needsReorder = lastOrder ? (Date.now() - lastOrder) > 40 * 86400000 : true;
+                        const daysSince = lastOrder ? Math.floor((Date.now() - lastOrder) / 86400000) : null;
+                        
+                        return (
+                          <div key={account.id} className="flex items-center gap-2">
+                            <Link 
+                              to={`/sales/accounts`}
+                              className="text-xs text-primary hover:underline truncate"
+                            >
+                              {account.tradingName}
+                            </Link>
+                            {account.city && (
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                <MapPin className="h-2.5 w-2.5" />
+                                {account.city}
+                              </span>
+                            )}
+                            {needsReorder && daysSince && (
+                              <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                                {daysSince}d
+                              </span>
+                            )}
+                            {account.nextActionDate && (
+                              <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                scheduled
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground">{s.accounts}</p>
+                    <div>
+                      <p className="font-medium text-sm text-muted-foreground">{s.focus}</p>
+                      <p className="text-xs text-muted-foreground">{s.accounts}</p>
+                    </div>
                   )}
                 </div>
               </div>
