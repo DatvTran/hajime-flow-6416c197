@@ -36,6 +36,8 @@ import RetailHomePage from "./pages/RetailHomePage";
 import SalesSectionPage from "./pages/SalesSectionPage";
 import SalesTargetsPage from "./pages/SalesTargetsPage";
 import SalesRepHomePage from "./pages/SalesRepHomePage";
+import SalesOpportunitiesPage from "./pages/SalesOpportunitiesPage";
+import SalesVisitNotesPage from "./pages/SalesVisitNotesPage";
 import FinancePaymentsPage from "./pages/FinancePaymentsPage";
 
 const queryClient = new QueryClient();
@@ -164,8 +166,8 @@ const App = () => {
                     <Route path="/sales" element={<DebugWrapper step="Sales Dashboard"><SalesRepHomePage /></DebugWrapper>} />
                     <Route path="/sales/accounts" element={<Accounts />} />
                     <Route path="/sales/orders" element={<Orders />} />
-                    <Route path="/sales/opportunities" element={<SalesSectionPage />} />
-                    <Route path="/sales/visits" element={<SalesSectionPage />} />
+                    <Route path="/sales/opportunities" element={<SalesOpportunitiesPage />} />
+                    <Route path="/sales/visits" element={<SalesVisitNotesPage />} />
                     <Route path="/sales/targets" element={<SalesTargetsPage />} />
                     <Route path="/sales/reports" element={<Reports />} />
                     <Route path="/sales/alerts" element={<AlertsHubPage />} />

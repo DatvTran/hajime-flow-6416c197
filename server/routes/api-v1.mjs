@@ -1,12 +1,18 @@
 /**
  * Granular API Routes - v1
  * RESTful endpoints for products, orders, accounts, inventory
+ * With full RBAC protection
  */
 import { Router } from 'express';
 import { db } from '../config/database.mjs';
-import { authenticateToken } from '../middleware/auth.mjs';
+import { authenticateToken, requirePermission, requireTenantAccess } from '../middleware/auth.mjs';
+import { Permission } from '../rbac/permissions.mjs';
 
 const router = Router();
+
+// Apply auth to all routes
+router.use(authenticateToken);
+router.use(requireTenantAccess);
 
 // Helper to get tenantId from authenticated user
 function getTenantId(req) {
@@ -16,14 +22,13 @@ function getTenantId(req) {
 // ===== PRODUCTS =====
 
 // GET /api/v1/products - List all products
-router.get('/products', authenticateToken, async (req, res) => {
+router.get('/products', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     const { page = 1, limit = 50, category, search } = req.query;
     
     console.log(`[API v1] GET /products - tenantId: ${tenantId}`);
     
-    // Build base query (without orderBy for count)
     let baseQuery = db('products')
       .where({ tenant_id: tenantId })
       .whereNull('deleted_at');
@@ -41,10 +46,8 @@ router.get('/products', authenticateToken, async (req, res) => {
     
     const offset = (Number(page) - 1) * Number(limit);
     
-    // Count query (no orderBy)
     const countQuery = baseQuery.clone().count('id as count').first();
     
-    // Data query (with orderBy)
     const dataQuery = baseQuery
       .clone()
       .orderBy('created_at', 'desc')
@@ -71,7 +74,7 @@ router.get('/products', authenticateToken, async (req, res) => {
 });
 
 // GET /api/v1/products/:id - Get single product
-router.get('/products/:id', authenticateToken, async (req, res) => {
+router.get('/products/:id', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     const { id } = req.params;
@@ -93,7 +96,7 @@ router.get('/products/:id', authenticateToken, async (req, res) => {
 });
 
 // POST /api/v1/products - Create product
-router.post('/products', authenticateToken, async (req, res) => {
+router.post('/products', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     const { sku, name, description, category, unit_size, metadata } = req.body;
@@ -124,13 +127,12 @@ router.post('/products', authenticateToken, async (req, res) => {
 });
 
 // PUT /api/v1/products/:id - Update product
-router.put('/products/:id', authenticateToken, async (req, res) => {
+router.put('/products/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     const { id } = req.params;
     const updates = req.body;
     
-    // Remove fields that shouldn't be updated
     delete updates.id;
     delete updates.tenant_id;
     delete updates.created_at;
@@ -159,7 +161,7 @@ router.put('/products/:id', authenticateToken, async (req, res) => {
 });
 
 // DELETE /api/v1/products/:id - Soft delete product
-router.delete('/products/:id', authenticateToken, async (req, res) => {
+router.delete('/products/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     const { id } = req.params;
@@ -184,12 +186,11 @@ router.delete('/products/:id', authenticateToken, async (req, res) => {
 // ===== ACCOUNTS =====
 
 // GET /api/v1/accounts - List all accounts
-router.get('/accounts', authenticateToken, async (req, res) => {
+router.get('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
-    const { page = 1, limit = 50, type, market, status = 'active' } = req.query;
+    const { page = 1, limit = 50, type, market, status = 'active', sales_owner } = req.query;
     
-    // Build base query (without orderBy for count)
     let baseQuery = db('accounts')
       .where({ tenant_id: tenantId })
       .whereNull('deleted_at');
@@ -197,13 +198,12 @@ router.get('/accounts', authenticateToken, async (req, res) => {
     if (type) baseQuery = baseQuery.where('type', type);
     if (market) baseQuery = baseQuery.where('market', market);
     if (status) baseQuery = baseQuery.where('status', status);
+    if (sales_owner) baseQuery = baseQuery.where('sales_owner', sales_owner);
     
     const offset = (Number(page) - 1) * Number(limit);
     
-    // Count query (no orderBy)
     const countQuery = baseQuery.clone().count('id as count').first();
     
-    // Data query (with orderBy)
     const dataQuery = baseQuery
       .clone()
       .orderBy('created_at', 'desc')
@@ -228,7 +228,7 @@ router.get('/accounts', authenticateToken, async (req, res) => {
 });
 
 // GET /api/v1/accounts/:id - Get single account
-router.get('/accounts/:id', authenticateToken, async (req, res) => {
+router.get('/accounts/:id', requirePermission(Permission.ACCOUNTS_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     const { id } = req.params;
@@ -250,7 +250,7 @@ router.get('/accounts/:id', authenticateToken, async (req, res) => {
 });
 
 // POST /api/v1/accounts - Create account
-router.post('/accounts', authenticateToken, async (req, res) => {
+router.post('/accounts', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     const accountData = req.body;
@@ -264,6 +264,7 @@ router.post('/accounts', authenticateToken, async (req, res) => {
         tenant_id: tenantId,
         account_number: accountData.accountNumber,
         name: accountData.name,
+        trading_name: accountData.tradingName,
         type: accountData.type,
         market: accountData.market,
         status: accountData.status || 'active',
@@ -273,6 +274,7 @@ router.post('/accounts', authenticateToken, async (req, res) => {
         shipping_address: accountData.shippingAddress ? JSON.stringify(accountData.shippingAddress) : null,
         payment_terms: accountData.paymentTerms,
         credit_limit: accountData.creditLimit,
+        sales_owner: accountData.salesOwner,
         notes: accountData.notes
       })
       .returning('*');
@@ -285,7 +287,7 @@ router.post('/accounts', authenticateToken, async (req, res) => {
 });
 
 // PUT /api/v1/accounts/:id - Update account
-router.put('/accounts/:id', authenticateToken, async (req, res) => {
+router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     const { id } = req.params;
@@ -297,6 +299,10 @@ router.put('/accounts/:id', authenticateToken, async (req, res) => {
     
     if (updates.billingAddress) updates.billing_address = JSON.stringify(updates.billingAddress);
     if (updates.shippingAddress) updates.shipping_address = JSON.stringify(updates.shippingAddress);
+    if (updates.tradingName) updates.trading_name = updates.tradingName;
+    if (updates.salesOwner) updates.sales_owner = updates.salesOwner;
+    if (updates.paymentTerms) updates.payment_terms = updates.paymentTerms;
+    if (updates.creditLimit) updates.credit_limit = updates.creditLimit;
     
     updates.updated_at = new Date();
     
@@ -317,10 +323,33 @@ router.put('/accounts/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// DELETE /api/v1/accounts/:id - Soft delete account
+router.delete('/accounts/:id', requirePermission(Permission.ACCOUNTS_DELETE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const [account] = await db('accounts')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update({ deleted_at: new Date(), updated_at: new Date() })
+      .returning('*');
+    
+    if (!account) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    
+    res.json({ data: account, message: 'Account deleted' });
+  } catch (err) {
+    console.error('[API v1] Error deleting account:', err);
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
 // ===== SALES ORDERS =====
 
 // GET /api/v1/orders - List sales orders
-router.get('/orders', authenticateToken, async (req, res) => {
+router.get('/orders', requirePermission(Permission.ORDERS_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     const { 
@@ -328,11 +357,12 @@ router.get('/orders', authenticateToken, async (req, res) => {
       limit = 50, 
       status, 
       account_id,
+      account_name,
       date_from,
-      date_to 
+      date_to,
+      sales_rep
     } = req.query;
     
-    // Build base query (without orderBy for count) - use explicit table names
     let baseQuery = db('sales_orders')
       .where('sales_orders.tenant_id', tenantId)
       .whereNull('sales_orders.deleted_at');
@@ -341,26 +371,33 @@ router.get('/orders', authenticateToken, async (req, res) => {
     if (account_id) baseQuery = baseQuery.where('sales_orders.account_id', account_id);
     if (date_from) baseQuery = baseQuery.where('sales_orders.order_date', '>=', date_from);
     if (date_to) baseQuery = baseQuery.where('sales_orders.order_date', '<=', date_to);
+    if (sales_rep) baseQuery = baseQuery.where('sales_orders.sales_rep', sales_rep);
     
     const offset = (Number(page) - 1) * Number(limit);
     
-    // Count query (no orderBy, no joins)
     const countQuery = baseQuery.clone().count('sales_orders.id as count').first();
     
-    // Data query (with orderBy and joins)
-    const dataQuery = baseQuery
+    let dataQuery = baseQuery
       .clone()
       .orderBy('sales_orders.created_at', 'desc')
       .leftJoin('accounts', 'sales_orders.account_id', 'accounts.id')
       .select(
         'sales_orders.*',
         'accounts.name as account_name',
-        'accounts.account_number'
-      )
-      .limit(Number(limit))
-      .offset(offset);
+        'accounts.account_number',
+        'accounts.trading_name as account_trading_name'
+      );
     
-    const [countResult, orders] = await Promise.all([countQuery, dataQuery]);
+    if (account_name) {
+      dataQuery = dataQuery.where(function() {
+        this.where('accounts.name', 'ilike', `%${account_name}%`)
+          .orWhere('accounts.trading_name', 'ilike', `%${account_name}%`);
+      });
+    }
+    
+    const dataResultPromise = dataQuery.limit(Number(limit)).offset(offset);
+    
+    const [countResult, orders] = await Promise.all([countQuery, dataResultPromise]);
     
     res.json({
       data: orders,
@@ -379,7 +416,7 @@ router.get('/orders', authenticateToken, async (req, res) => {
 });
 
 // GET /api/v1/orders/:id - Get single order with items
-router.get('/orders/:id', authenticateToken, async (req, res) => {
+router.get('/orders/:id', requirePermission(Permission.ORDERS_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     const { id } = req.params;
@@ -391,7 +428,8 @@ router.get('/orders/:id', authenticateToken, async (req, res) => {
       .select(
         'sales_orders.*',
         'accounts.name as account_name',
-        'accounts.account_number'
+        'accounts.account_number',
+        'accounts.trading_name as account_trading_name'
       )
       .first();
     
@@ -416,19 +454,18 @@ router.get('/orders/:id', authenticateToken, async (req, res) => {
 });
 
 // POST /api/v1/orders - Create order
-router.post('/orders', authenticateToken, async (req, res) => {
+router.post('/orders', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
   const trx = await db.transaction();
   
   try {
     const tenantId = getTenantId(req);
-    const { order_number, account_id, status, order_date, items, ...orderData } = req.body;
+    const { order_number, account_id, status, order_date, items, sales_rep, ...orderData } = req.body;
     
     if (!order_number || !account_id) {
       await trx.rollback();
       return res.status(400).json({ error: 'Order number and account_id are required' });
     }
     
-    // Create order
     const [order] = await trx('sales_orders')
       .insert({
         tenant_id: tenantId,
@@ -436,17 +473,17 @@ router.post('/orders', authenticateToken, async (req, res) => {
         account_id,
         status: status || 'draft',
         order_date: order_date || new Date(),
+        sales_rep,
         subtotal: orderData.subtotal || 0,
         tax_amount: orderData.taxAmount || 0,
         shipping_cost: orderData.shippingCost || 0,
         total_amount: orderData.totalAmount || 0,
         shipping_address: orderData.shippingAddress ? JSON.stringify(orderData.shippingAddress) : null,
         notes: orderData.notes,
-        created_by: req.user?.id
+        created_by: req.user?.userId
       })
       .returning('*');
     
-    // Create order items
     if (items && items.length > 0) {
       const orderItems = items.map(item => ({
         tenant_id: tenantId,
@@ -471,14 +508,78 @@ router.post('/orders', authenticateToken, async (req, res) => {
   }
 });
 
-// PUT /api/v1/orders/:id/status - Update order status
-router.put('/orders/:id/status', authenticateToken, async (req, res) => {
+// PUT /api/v1/orders/:id - Update order (full update)
+router.put('/orders/:id', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
+  const trx = await db.transaction();
+  
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const { items, ...orderData } = req.body;
+    
+    const updates = {
+      account_id: orderData.account_id,
+      order_date: orderData.order_date,
+      sales_rep: orderData.sales_rep,
+      subtotal: orderData.subtotal,
+      tax_amount: orderData.tax_amount,
+      shipping_cost: orderData.shipping_cost,
+      total_amount: orderData.total_amount,
+      notes: orderData.notes,
+      updated_at: new Date()
+    };
+    
+    if (orderData.shippingAddress) {
+      updates.shipping_address = JSON.stringify(orderData.shippingAddress);
+    }
+    
+    const [order] = await trx('sales_orders')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update(updates)
+      .returning('*');
+    
+    if (!order) {
+      await trx.rollback();
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    
+    if (items && items.length > 0) {
+      await trx('sales_order_items')
+        .where({ sales_order_id: id, tenant_id: tenantId })
+        .delete();
+      
+      const orderItems = items.map(item => ({
+        tenant_id: tenantId,
+        sales_order_id: id,
+        product_id: item.product_id,
+        sku: item.sku,
+        product_name: item.product_name || item.name,
+        quantity_ordered: item.quantity,
+        unit_price: item.unit_price || item.price
+      }));
+      
+      await trx('sales_order_items').insert(orderItems);
+    }
+    
+    await trx.commit();
+    
+    res.json({ data: order });
+  } catch (err) {
+    await trx.rollback();
+    console.error('[API v1] Error updating order:', err);
+    res.status(500).json({ error: 'Failed to update order' });
+  }
+});
+
+// PATCH /api/v1/orders/:id/status - Update order status
+router.patch('/orders/:id/status', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     const { id } = req.params;
     const { status } = req.body;
     
-    const validStatuses = ['draft', 'pending', 'approved', 'fulfilled', 'cancelled'];
+    const validStatuses = ['draft', 'confirmed', 'packed', 'shipped', 'delivered', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
@@ -488,8 +589,8 @@ router.put('/orders/:id/status', authenticateToken, async (req, res) => {
       updated_at: new Date() 
     };
     
-    if (status === 'fulfilled') {
-      updates.fulfilled_at = new Date();
+    if (status === 'delivered') {
+      updates.delivered_at = new Date();
     } else if (status === 'cancelled') {
       updates.cancelled_at = new Date();
     }
@@ -511,29 +612,50 @@ router.put('/orders/:id/status', authenticateToken, async (req, res) => {
   }
 });
 
+// DELETE /api/v1/orders/:id - Soft delete order
+router.delete('/orders/:id', requirePermission(Permission.ORDERS_DELETE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const [order] = await db('sales_orders')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update({ deleted_at: new Date(), updated_at: new Date() })
+      .returning('*');
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    
+    res.json({ data: order, message: 'Order deleted' });
+  } catch (err) {
+    console.error('[API v1] Error deleting order:', err);
+    res.status(500).json({ error: 'Failed to delete order' });
+  }
+});
+
 // ===== INVENTORY =====
 
 // GET /api/v1/inventory - List inventory
-router.get('/inventory', authenticateToken, async (req, res) => {
+router.get('/inventory', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
-    const { page = 1, limit = 50, location, low_stock } = req.query;
+    const { page = 1, limit = 50, location, low_stock, product_id } = req.query;
     
-    // Build filter conditions for count query (simpler, no joins)
     let countQuery = db('inventory')
       .where('inventory.tenant_id', tenantId)
       .join('products', 'inventory.product_id', 'products.id')
       .whereNull('products.deleted_at');
     
     if (location) countQuery = countQuery.where('inventory.location', location);
+    if (product_id) countQuery = countQuery.where('inventory.product_id', product_id);
     if (low_stock === 'true') {
       countQuery = countQuery.whereRaw('inventory.available_quantity <= inventory.reorder_point');
     }
     
-    // Count query (just count, no select columns)
     const countResultPromise = countQuery.clone().count('inventory.id as count').first();
     
-    // Build data query (with select columns and orderBy)
     let dataQuery = db('inventory')
       .where('inventory.tenant_id', tenantId)
       .join('products', 'inventory.product_id', 'products.id')
@@ -546,13 +668,13 @@ router.get('/inventory', authenticateToken, async (req, res) => {
       );
     
     if (location) dataQuery = dataQuery.where('inventory.location', location);
+    if (product_id) dataQuery = dataQuery.where('inventory.product_id', product_id);
     if (low_stock === 'true') {
       dataQuery = dataQuery.whereRaw('inventory.available_quantity <= inventory.reorder_point');
     }
     
     const offset = (Number(page) - 1) * Number(limit);
     
-    // Data query (with orderBy)
     const dataResultPromise = dataQuery
       .orderBy('products.name')
       .limit(Number(limit))
@@ -577,7 +699,7 @@ router.get('/inventory', authenticateToken, async (req, res) => {
 });
 
 // POST /api/v1/inventory/adjust - Adjust inventory quantity
-router.post('/inventory/adjust', authenticateToken, async (req, res) => {
+router.post('/inventory/adjust', requirePermission(Permission.INVENTORY_ADJUST), async (req, res) => {
   const trx = await db.transaction();
   
   try {
@@ -589,7 +711,6 @@ router.post('/inventory/adjust', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'product_id and quantity are required' });
     }
     
-    // Get current inventory
     let inventory = await trx('inventory')
       .where({ tenant_id: tenantId, product_id, location })
       .first();
@@ -602,6 +723,7 @@ router.post('/inventory/adjust', authenticateToken, async (req, res) => {
         .where({ id: inventory.id })
         .update({
           quantity_on_hand: quantityAfter,
+          available_quantity: quantityAfter - (inventory.reserved_quantity || 0),
           updated_at: new Date()
         });
     } else {
@@ -610,12 +732,13 @@ router.post('/inventory/adjust', authenticateToken, async (req, res) => {
           tenant_id: tenantId,
           product_id,
           location,
-          quantity_on_hand: quantityAfter
+          quantity_on_hand: quantityAfter,
+          available_quantity: quantityAfter,
+          reorder_point: 100
         })
         .returning('*');
     }
     
-    // Log adjustment
     await trx('inventory_adjustments').insert({
       tenant_id: tenantId,
       inventory_id: inventory?.id,
@@ -626,7 +749,7 @@ router.post('/inventory/adjust', authenticateToken, async (req, res) => {
       quantity_after: quantityAfter,
       quantity_changed: Number(quantity),
       notes,
-      created_by: req.user?.id,
+      created_by: req.user?.userId,
       created_at: new Date()
     });
     
@@ -646,7 +769,7 @@ router.post('/inventory/adjust', authenticateToken, async (req, res) => {
 // ===== DASHBOARD STATS =====
 
 // GET /api/v1/dashboard/stats - Get dashboard statistics
-router.get('/dashboard/stats', authenticateToken, async (req, res) => {
+router.get('/dashboard/stats', requirePermission(Permission.REPORTS_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     
@@ -698,6 +821,127 @@ router.get('/dashboard/stats', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('[API v1] Error fetching dashboard stats:', err);
     res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+  }
+});
+
+// ===== VISIT NOTES (for Sales Rep) =====
+
+// GET /api/v1/visit-notes - List visit notes
+router.get('/visit-notes', requirePermission(Permission.ACCOUNTS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { account_id, sales_rep, page = 1, limit = 50 } = req.query;
+    
+    let query = db('visit_notes')
+      .where({ tenant_id: tenantId })
+      .orderBy('created_at', 'desc');
+    
+    if (account_id) query = query.where('account_id', account_id);
+    if (sales_rep) query = query.where('created_by', sales_rep);
+    
+    const offset = (Number(page) - 1) * Number(limit);
+    
+    const countQuery = query.clone().count('id as count').first();
+    const dataQuery = query.clone().limit(Number(limit)).offset(offset);
+    
+    const [countResult, notes] = await Promise.all([countQuery, dataQuery]);
+    
+    res.json({
+      data: notes,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: Number(countResult?.count || 0),
+        totalPages: Math.ceil(Number(countResult?.count || 0) / Number(limit))
+      }
+    });
+  } catch (err) {
+    console.error('[API v1] Error fetching visit notes:', err);
+    res.status(500).json({ error: 'Failed to fetch visit notes' });
+  }
+});
+
+// POST /api/v1/visit-notes - Create visit note
+router.post('/visit-notes', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { account_id, note, visit_date } = req.body;
+    
+    if (!account_id || !note) {
+      return res.status(400).json({ error: 'account_id and note are required' });
+    }
+    
+    const [visitNote] = await db('visit_notes')
+      .insert({
+        tenant_id: tenantId,
+        account_id,
+        note,
+        visit_date: visit_date || new Date(),
+        created_by: req.user?.userId,
+        created_at: new Date()
+      })
+      .returning('*');
+    
+    res.status(201).json({ data: visitNote });
+  } catch (err) {
+    console.error('[API v1] Error creating visit note:', err);
+    res.status(500).json({ error: 'Failed to create visit note' });
+  }
+});
+
+// ===== SALES TARGETS =====
+
+// GET /api/v1/sales-targets - List sales targets
+router.get('/sales-targets', requirePermission(Permission.REPORTS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { sales_rep, quarter, year } = req.query;
+    
+    let query = db('sales_targets')
+      .where({ tenant_id: tenantId })
+      .orderBy('created_at', 'desc');
+    
+    if (sales_rep) query = query.where('sales_rep', sales_rep);
+    if (quarter) query = query.where('quarter', quarter);
+    if (year) query = query.where('year', year);
+    
+    const targets = await query;
+    
+    res.json({ data: targets });
+  } catch (err) {
+    console.error('[API v1] Error fetching sales targets:', err);
+    res.status(500).json({ error: 'Failed to fetch sales targets' });
+  }
+});
+
+// POST /api/v1/sales-targets - Create/update sales target
+router.post('/sales-targets', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { sales_rep, quarter, year, target_amount } = req.body;
+    
+    if (!sales_rep || !quarter || !year || target_amount === undefined) {
+      return res.status(400).json({ error: 'sales_rep, quarter, year, and target_amount are required' });
+    }
+    
+    const [target] = await db('sales_targets')
+      .insert({
+        tenant_id: tenantId,
+        sales_rep,
+        quarter,
+        year,
+        target_amount,
+        created_at: new Date(),
+        updated_at: new Date()
+      })
+      .onConflict(['tenant_id', 'sales_rep', 'quarter', 'year'])
+      .merge()
+      .returning('*');
+    
+    res.status(201).json({ data: target });
+  } catch (err) {
+    console.error('[API v1] Error creating sales target:', err);
+    res.status(500).json({ error: 'Failed to create sales target' });
   }
 });
 
