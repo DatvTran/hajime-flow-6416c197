@@ -39,6 +39,7 @@ import SalesRepHomePage from "./pages/SalesRepHomePage";
 import SalesOpportunitiesPage from "./pages/SalesOpportunitiesPage";
 import SalesVisitNotesPage from "./pages/SalesVisitNotesPage";
 import FinancePaymentsPage from "./pages/FinancePaymentsPage";
+import IncentiveManagerPage from "./pages/IncentiveManagerPage";
 
 const queryClient = new QueryClient();
 
@@ -150,6 +151,7 @@ const App = () => {
                     <Route path="/reports" element={<Reports />} />
                     <Route path="/alerts" element={<AlertsHubPage />} />
                     <Route path="/finance" element={<FinancePaymentsPage />} />
+                    <Route path="/incentives" element={<IncentiveManagerPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     {/* Distributor namespaced routes */}
                     <Route path="/distributor" element={<DebugWrapper step="Distributor Dashboard"><RoleHomeEntry /></DebugWrapper>} />

@@ -24,6 +24,7 @@ import {
   TrendingUp,
   LineChart,
   Receipt,
+  Gift,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -89,6 +90,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
             { title: "Analytics", url: "/reports", icon: BarChart3 },
             { title: "Alerts", url: "/alerts", icon: AlertTriangle },
             { title: "Payments & AR/AP", url: "/finance", icon: Receipt },
+            { title: "Incentive Manager", url: "/incentives", icon: Gift },
           ],
         },
         {
