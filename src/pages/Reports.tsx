@@ -1,4 +1,5 @@
 import { useMemo, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BarChart3, Download } from "lucide-react";
+import { BarChart3, Download, Gift } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -549,6 +550,42 @@ export default function Reports() {
                   </div>
                 ))
               )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Incentive Manager Summary */}
+        <Card className="lg:col-span-2 border-primary/20">
+          <CardHeader>
+            <CardTitle className="font-display text-lg flex items-center gap-2">
+              <Gift className="h-5 w-5 text-primary" />
+              Partner Incentive Summary
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">SPIF payouts, partner tiers, and margin impact</p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-4">
+              <div className="p-4 bg-muted rounded-lg text-center">
+                <p className="text-2xl font-bold">$216</p>
+                <p className="text-xs text-muted-foreground">Gross Margin/Case</p>
+              </div>
+              <div className="p-4 bg-muted rounded-lg text-center">
+                <p className="text-2xl font-bold">$150</p>
+                <p className="text-xs text-muted-foreground">New On-Premise SPIF</p>
+              </div>
+              <div className="p-4 bg-muted rounded-lg text-center">
+                <p className="text-2xl font-bold">$100</p>
+                <p className="text-xs text-muted-foreground">New Off-Premise SPIF</p>
+              </div>
+              <div className="p-4 bg-muted rounded-lg text-center">
+                <p className="text-2xl font-bold">$5</p>
+                <p className="text-xs text-muted-foreground">Reorder SPIF</p>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/incentives">Open Incentive Manager</Link>
+              </Button>
             </div>
           </CardContent>
         </Card>

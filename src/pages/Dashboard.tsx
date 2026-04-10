@@ -12,6 +12,7 @@ import {
   ArrowRight,
   ClipboardList,
   ExternalLink,
+  Gift,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -920,6 +921,33 @@ export default function Dashboard() {
                 </div>
                 <p className="mt-1 font-display text-lg font-semibold tabular-nums">{mfgStatus.nextInboundEta ?? "—"}</p>
                 <p className="text-[11px] leading-snug text-muted-foreground">{mfgStatus.nextInboundLabel ?? "—"}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-border/70 shadow-none">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="font-display text-base flex items-center gap-2">
+                <Gift className="h-4 w-4" />
+                Partner Incentives
+              </CardTitle>
+              <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
+                <Link to="/incentives">Manage</Link>
+              </Button>
+            </CardHeader>
+            <CardContent className="grid gap-3 pt-0 sm:grid-cols-2 xl:grid-cols-1">
+              <div className="rounded-lg border border-border/50 p-3">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <span className="text-[11px] font-medium uppercase tracking-wide">Gross Margin</span>
+                </div>
+                <p className="mt-1 font-display text-2xl font-semibold tabular-nums">$216</p>
+                <p className="text-[11px] text-muted-foreground">per case ($48 wholesale − $30 landed)</p>
+              </div>
+              <div className="rounded-lg border border-border/50 p-3">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <span className="text-[11px] font-medium uppercase tracking-wide">SPIF Rates</span>
+                </div>
+                <p className="mt-1 text-sm">On-premise: $150 · Off-premise: $100</p>
+                <p className="text-[11px] text-muted-foreground">Reorder: $5 · Tasting: $25</p>
               </div>
             </CardContent>
           </Card>

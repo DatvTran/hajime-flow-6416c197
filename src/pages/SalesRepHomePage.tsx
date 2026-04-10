@@ -15,6 +15,7 @@ import {
   StickyNote,
   Sparkles,
   Plus,
+  Gift,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/sonner";
@@ -357,6 +358,23 @@ export default function SalesRepHomePage() {
           </p>
           <Button variant="secondary" size="sm" className="touch-manipulation shrink-0" asChild>
             <Link to="/sales/opportunities">Opportunity list</Link>
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/70">
+        <CardHeader className="pb-2">
+          <CardTitle className="font-display flex items-center gap-2 text-base">
+            <Gift className="h-4 w-4" />
+            Partner Incentives
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            Track SPIF payouts, partner tiers, and margin impact across your distributor network.
+          </p>
+          <Button variant="secondary" size="sm" className="touch-manipulation shrink-0" asChild>
+            <Link to="/incentives">Open Incentive Manager</Link>
           </Button>
         </CardContent>
       </Card>

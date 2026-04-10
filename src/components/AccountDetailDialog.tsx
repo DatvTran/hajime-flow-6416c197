@@ -723,6 +723,37 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
 
               <Separator />
 
+              {/* SPIF History Section */}
+              <div className="rounded-lg border border-border/50 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">SPIF History</p>
+                  <Button variant="ghost" size="sm" className="h-6 text-xs" asChild>
+                    <Link to="/incentives">Manage</Link>
+                  </Button>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">New On-Premise SPIF</span>
+                    <span className="font-medium">$150/account</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">New Off-Premise SPIF</span>
+                    <span className="font-medium">$100/account</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Reorder SPIF</span>
+                    <span className="font-medium">$5/case</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Buyer Tasting</span>
+                    <span className="font-medium">$25/event</span>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  SPIF payouts tracked in Incentive Manager. Link this account to a partner to see history.
+                </p>
+              </div>
+
               <Button type="button" variant="secondary" className="w-full touch-manipulation" asChild>
                 <Link to={`/orders?account=${encodeURIComponent(draft.tradingName)}`} onClick={() => handleClose(false)}>
                   <ExternalLink className="mr-2 h-4 w-4" />
