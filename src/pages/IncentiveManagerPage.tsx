@@ -626,7 +626,7 @@ export default function IncentiveManagerPage() {
             <CardHeader>
               <CardTitle>Partner Health Scores</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Incentive cost as % of gross margin. >15% flags red.
+                Incentive cost as % of gross margin. {"&gt;"}15% flags red.
               </p>
             </CardHeader>
             <CardContent>
