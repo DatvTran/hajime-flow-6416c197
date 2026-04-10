@@ -38,7 +38,7 @@ import {
   BarChart3,
   Store,
   Calendar,
-  WineGlass,
+  Wine,
   RefreshCw,
   MapPin,
   AlertCircle,
@@ -537,7 +537,7 @@ export default function IncentiveManagerPage() {
                     <p className="text-sm text-muted-foreground">Tastings</p>
                     <p className="text-2xl font-bold">{dashboardMetrics.totalTastings}</p>
                   </div>
-                  <WineGlass className="h-8 w-8 text-purple-500" />
+                  <Wine className="h-8 w-8 text-purple-500" />
                 </div>
               </CardContent>
             </Card>
