@@ -1,6 +1,7 @@
 /**
  * Hybrid Data Service
- * Uses granular APIs when available, falls back to /api/app
+ * Stage 4: Reads use granular APIs, Writes use api-v1-mutations
+ * Legacy putAppData removed — all mutations go through granular endpoints
  */
 import { 
   getProducts, 
@@ -191,11 +192,11 @@ export async function fetchAppDataGranular(): Promise<AppData> {
 }
 
 /**
- * Fetch data - Stage 3: Use granular APIs with fallback to legacy
+ * Fetch data - Stage 4: Use granular APIs with fallback to legacy
  */
 export async function fetchAppData(): Promise<AppData> {
   try {
-    // Stage 3: Try granular APIs first
+    // Stage 4: Try granular APIs first
     return await fetchAppDataGranular();
   } catch (err) {
     console.warn("[DataService] Granular APIs failed, falling back to legacy:", err);
@@ -204,16 +205,8 @@ export async function fetchAppData(): Promise<AppData> {
   }
 }
 
-/**
- * Save data - Stage 3: Use granular APIs for saves
- * TODO: Implement granular save endpoints
- */
-export async function putAppData(data: AppData): Promise<void> {
-  // Stage 3: Data mutations should use granular endpoints
-  // For now, still use legacy for writes until granular save endpoints are built
-  const { putAppData: putLegacyAppData } = await import("./api-app");
-  return putLegacyAppData(data);
-}
+// Stage 4: putAppData removed — use api-v1-mutations for all writes
+// Import { createProduct, updateProduct, etc. } from "@/lib/api-v1-mutations"
 
 // Re-export API v1 functions for direct use
 export * from "./api-v1";
