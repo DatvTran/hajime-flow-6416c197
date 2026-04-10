@@ -38,7 +38,6 @@ import {
   BarChart3,
   Store,
   Calendar,
-  Wine,
   RefreshCw,
   MapPin,
   AlertCircle,
@@ -546,7 +545,7 @@ export default function IncentiveManagerPage() {
           {/* Margin Breakdown */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="font-display flex items-center gap-2">
                 <TrendingUp className="h-5 w-5" />
                 Gross Margin Breakdown (per case: ${GROSS_MARGIN_PER_CASE})
               </CardTitle>
@@ -624,7 +623,7 @@ export default function IncentiveManagerPage() {
           {/* Partner Health Scores */}
           <Card>
             <CardHeader>
-              <CardTitle>Partner Health Scores</CardTitle>
+              <CardTitle className="font-display">Partner Health Scores</CardTitle>
               <p className="text-sm text-muted-foreground">
                 Incentive cost as % of gross margin. {"&gt;"}15% flags red.
               </p>
@@ -1051,7 +1050,7 @@ export default function IncentiveManagerPage() {
           {spifs.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Running Totals by Partner</CardTitle>
+                <CardTitle className="font-display">Running Totals by Partner</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -1077,7 +1076,7 @@ export default function IncentiveManagerPage() {
           {/* Pricing Chain */}
           <Card>
             <CardHeader>
-              <CardTitle>Supply Chain Pricing Breakdown</CardTitle>
+              <CardTitle className="font-display">Supply Chain Pricing Breakdown</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -1122,7 +1121,7 @@ export default function IncentiveManagerPage() {
             {marginScenarios.map(scenario => (
               <Card key={scenario.name}>
                 <CardHeader>
-                  <CardTitle className="text-base">{scenario.name}</CardTitle>
+                  <CardTitle className="font-display text-base">{scenario.name}</CardTitle>
                   <p className="text-sm text-muted-foreground">{scenario.description}</p>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -1173,7 +1172,7 @@ export default function IncentiveManagerPage() {
           {/* SPIF Rate Reference */}
           <Card>
             <CardHeader>
-              <CardTitle>SPIF Rate Reference</CardTitle>
+              <CardTitle className="font-display">SPIF Rate Reference</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
