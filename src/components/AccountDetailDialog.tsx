@@ -16,9 +16,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { Link } from "react-router-dom";
-import { CreditCard, ExternalLink, MapPin, Pencil } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CreditCard, ExternalLink, MapPin, Pencil, Calendar, MessageSquare } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAppData } from "@/contexts/AppDataContext";
 
 function onboardingPipelineLabel(p: Account["onboardingPipeline"] | undefined): string {
   switch (p) {
@@ -56,6 +57,7 @@ function parseTags(s: string): string[] {
 
 export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Props) {
   const { user } = useAuth();
+  const { data } = useAppData();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Account | null>(null);
   const [tagsInput, setTagsInput] = useState("");
@@ -63,6 +65,14 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
   const [brandTier, setBrandTier] = useState<NonNullable<Account["pricingTier"]>>("standard");
   const [brandCredit, setBrandCredit] = useState("");
   const [portalEmail, setPortalEmail] = useState("");
+
+  // Get visit notes for this account (visible to all roles)
+  const accountVisitNotes = useMemo(() => {
+    if (!account || !data.visitNotes) return [];
+    return data.visitNotes
+      .filter(v => v.account === account.tradingName || v.account === account.name)
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  }, [account, data.visitNotes]);
 
   useEffect(() => {
     if (account) {
@@ -753,6 +763,38 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
                   SPIF payouts tracked in Incentive Manager. Link this account to a partner to see history.
                 </p>
               </div>
+
+              {/* Visit Notes Section - visible to all roles */}
+              {accountVisitNotes.length > 0 ? (
+                <div className="rounded-lg border border-border/50 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Visit Notes</p>
+                    <span className="text-xs text-muted-foreground">{accountVisitNotes.length} note{accountVisitNotes.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="space-y-3 max-h-48 overflow-y-auto">
+                    {accountVisitNotes.slice(0, 5).map((note) => (
+                      <div key={note.id} className="text-sm border-l-2 border-primary/30 pl-3">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                          <Calendar className="h-3 w-3" />
+                          {note.at}
+                          <span className="text-primary/70">· {note.authorRep}</span>
+                        </div>
+                        <p className="text-foreground">{note.body}</p>
+                      </div>
+                    ))}
+                    {accountVisitNotes.length > 5 ? (
+                      <p className="text-xs text-muted-foreground text-center">
+                        +{accountVisitNotes.length - 5} more notes
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border/50 p-4 text-center">
+                  <MessageSquare className="h-5 w-5 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground">No visit notes yet</p>
+                </div>
+              )}
 
               <Button type="button" variant="secondary" className="w-full touch-manipulation" asChild>
                 <Link to={`/orders?account=${encodeURIComponent(draft.tradingName)}`} onClick={() => handleClose(false)}>
