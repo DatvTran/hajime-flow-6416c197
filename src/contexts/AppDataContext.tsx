@@ -38,6 +38,57 @@ import {
 
 const FALLBACK_SEED = normalizeAppData(seedJson as AppData);
 
+/**
+ * Merge server data with local data - local changes take precedence.
+ * Preserves new features (financing ledger, shelf stock, onboarding) when API doesn't have them yet.
+ */
+function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
+  if (!local) return server;
+  
+  // Start with server data as base
+  const merged: AppData = { ...server };
+  
+  // Preserve local arrays if server returns empty (API might not support these features yet)
+  if (!server.financingLedger?.length && local.financingLedger?.length) {
+    merged.financingLedger = local.financingLedger;
+  }
+  if (!server.visitNotes?.length && local.visitNotes?.length) {
+    merged.visitNotes = local.visitNotes;
+  }
+  
+  // Merge retailer shelf stock - combine both sources
+  merged.retailerShelfStock = {
+    ...server.retailerShelfStock,
+    ...local.retailerShelfStock,
+  };
+  
+  // For accounts: preserve onboardingPipeline status from local if server account doesn't have it
+  if (local.accounts?.length && server.accounts?.length) {
+    const localAccountsById = new Map(local.accounts.map(a => [a.id, a]));
+    merged.accounts = server.accounts.map(serverAccount => {
+      const localAccount = localAccountsById.get(serverAccount.id);
+      if (localAccount && localAccount.onboardingPipeline && !serverAccount.onboardingPipeline) {
+        return { ...serverAccount, onboardingPipeline: localAccount.onboardingPipeline };
+      }
+      return serverAccount;
+    });
+    
+    // Add local-only accounts (new accounts created while offline)
+    const serverIds = new Set(server.accounts.map(a => a.id));
+    const localOnlyAccounts = local.accounts.filter(a => !serverIds.has(a.id));
+    merged.accounts = [...merged.accounts, ...localOnlyAccounts];
+  }
+  
+  // For orders: preserve local-only orders (created while offline)
+  if (local.salesOrders?.length && server.salesOrders?.length) {
+    const serverIds = new Set(server.salesOrders.map(o => o.id));
+    const localOnlyOrders = local.salesOrders.filter(o => !serverIds.has(o.id));
+    merged.salesOrders = [...server.salesOrders, ...localOnlyOrders];
+  }
+  
+  return merged;
+}
+
 function sumAvailableForSku(items: InventoryItem[], sku: string): number {
   let s = 0;
   for (const i of items) {
@@ -75,35 +126,46 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     hasAttemptedFetch.current = true;
 
     let cancelled = false;
+    
+    // STEP 1: Load from localStorage FIRST for instant UI (prevents data loss on refresh)
+    const local = loadLocalAppData();
+    if (local && !cancelled) {
+      setData(normalizeAppData(local));
+      setLoading(false); // Show UI immediately with local data
+    }
+    
+    // STEP 2: Try to fetch from API in background
     (async () => {
       try {
-        const d = await fetchAppData();
+        const serverData = await fetchAppData();
         if (!cancelled) {
-          setData(normalizeAppData(d as AppData));
+          // Merge server data with local data - local changes take precedence
+          const merged = mergeServerWithLocal(serverData as AppData, loadLocalAppData());
+          setData(normalizeAppData(merged));
           setError(null);
+          // Save merged data back to localStorage
+          saveLocalAppData(merged);
         }
       } catch (e) {
         console.error("[AppDataContext] Fetch error:", e);
         if (!cancelled) {
-          const local = loadLocalAppData();
-          if (local) {
-            setData(normalizeAppData(local));
-            setError(String(e));
-            toast.info("API unavailable — loaded data from this browser", {
-              description: "Your last saved session is restored. Start npm run dev:api to sync with the server.",
-            });
-          } else {
+          setError(String(e));
+          // If we already loaded local data, just show the API error toast
+          // If no local data was loaded, fall back to seed
+          if (!local) {
             setData(FALLBACK_SEED);
-            setError(String(e));
             toast.info("API unavailable — using local seed data", {
               description: "Start the server (npm run dev:api) to load and save persisted data. Edits save in-browser until then.",
             });
+          } else {
+            toast.info("API unavailable — working from local copy", {
+              description: "Your changes are saved in this browser. Connect to server to sync.",
+            });
           }
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     })();
+    
     return () => {
       cancelled = true;
     };
