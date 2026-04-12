@@ -57,7 +57,11 @@ export default function AlertsHubPage() {
               ? "Manufacturer view: warehouse inventory, production delays, and shipments. Excludes retailer-specific alerts and payments."
               : user.role === "retail"
                 ? "Retail view: your shelf stock, shipments, and demand signals. Hides other retailers' data and HQ reorder suggestions."
-                : "Low stock, demand spikes, delays, and reorder hints roll up from live AppData."}
+                : user.role === "distributor"
+                  ? "Wholesaler view: inventory, shipments, and retailer onboarding applications awaiting your review."
+                  : user.role === "brand_operator"
+                    ? "HQ view: low stock, demand spikes, delays, reorder hints, and retailer onboarding awaiting brand approval."
+                    : "Low stock, demand spikes, delays, reorder hints, and retailer onboarding pipeline."}
           </p>
         </CardHeader>
         <CardContent id="active-queue" className="space-y-3 scroll-mt-24" tabIndex={-1}>
