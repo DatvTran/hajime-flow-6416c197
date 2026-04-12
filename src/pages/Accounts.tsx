@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CSVImportButton } from "@/components/CSVImportButton";
 import { toast } from "@/components/ui/sonner";
+import { resolveSalesRepLabelForSession } from "@/data/team-roster";
 
 function channelLabel(type: Account["type"]): string {
   if (type === "distributor") return "Distributor";
@@ -56,8 +57,15 @@ export default function Accounts() {
   }, [salesOrders]);
 
   const filtered = useMemo(() => {
+    // Role-based scoping: sales reps only see their assigned accounts
+    let scopedAccounts = accounts;
+    if (user.role === "sales_rep") {
+      const rep = resolveSalesRepLabelForSession(user.email, user.displayName ?? "");
+      scopedAccounts = accounts.filter((a) => a.salesOwner === rep);
+    }
+    
     const q = search.toLowerCase();
-    return accounts.filter((a) => {
+    return scopedAccounts.filter((a) => {
       if (activeOnly && a.status !== "active") return false;
       if (pipelineOnboarding) {
         const p = a.onboardingPipeline ?? "none";
@@ -65,7 +73,7 @@ export default function Accounts() {
       }
       return (a.tradingName?.toLowerCase() || "").includes(q) || (a.city?.toLowerCase() || "").includes(q);
     });
-  }, [search, activeOnly, accounts, pipelineOnboarding]);
+  }, [search, activeOnly, accounts, pipelineOnboarding, user.role, user.email, user.displayName]);
 
   const clearStatusFilter = () => {
     const next = new URLSearchParams(searchParams);
