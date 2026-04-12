@@ -16,6 +16,9 @@ import type { AppData } from "@/types/app-data";
 // Feature flag to control granular API usage - Stage 3: Always use granular
 const USE_GRANULAR_API = true;
 
+// Dev mode flag for logging
+const isDev = process.env.NODE_ENV === 'development' || import.meta.env?.DEV;
+
 /**
  * Transform API v1 data to AppData format
  */
@@ -25,12 +28,14 @@ function transformToAppData(
   orders: any[],
   inventory: any[]
 ): Partial<AppData> {
-  console.log("[DataService] transformToAppData input:", { 
-    productsCount: products?.length, 
-    accountsCount: accounts?.length, 
-    ordersCount: orders?.length, 
-    inventoryCount: inventory?.length 
-  });
+  if (isDev) {
+    console.log("[DataService] transformToAppData input:", { 
+      productsCount: products?.length, 
+      accountsCount: accounts?.length, 
+      ordersCount: orders?.length, 
+      inventoryCount: inventory?.length 
+    });
+  }
   
   try {
     const result = {
@@ -127,12 +132,14 @@ function transformToAppData(
       financingLedger: [],
     };
     
-    console.log("[DataService] transformToAppData output:", { 
-      products: result.products?.length,
-      accounts: result.accounts?.length,
-      salesOrders: result.salesOrders?.length,
-      inventory: result.inventory?.length,
-    });
+    if (isDev) {
+      console.log("[DataService] transformToAppData output:", { 
+        products: result.products?.length,
+        accounts: result.accounts?.length,
+        salesOrders: result.salesOrders?.length,
+        inventory: result.inventory?.length,
+      });
+    }
     
     return result;
   } catch (err) {
@@ -146,7 +153,9 @@ function transformToAppData(
  * Uses Promise.allSettled to handle partial failures gracefully
  */
 export async function fetchAppDataGranular(): Promise<AppData> {
-  console.log("[DataService] Using granular APIs (Stage 3)");
+  if (isDev) {
+    console.log("[DataService] Using granular APIs (Stage 3)");
+  }
   
   const results = await Promise.allSettled([
     getProducts({ limit: 100 }),
@@ -167,12 +176,14 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     }
   });
   
-  console.log("[DataService] Raw API responses:", {
-    products: productsRes?.data?.length,
-    accounts: accountsRes?.data?.length,
-    orders: ordersRes?.data?.length,
-    inventory: inventoryRes?.data?.length,
-  });
+  if (isDev) {
+    console.log("[DataService] Raw API responses:", {
+      products: productsRes?.data?.length,
+      accounts: accountsRes?.data?.length,
+      orders: ordersRes?.data?.length,
+      inventory: inventoryRes?.data?.length,
+    });
+  }
   
   const data = transformToAppData(
     productsRes.data || [],
@@ -181,12 +192,14 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     inventoryRes.data || []
   );
   
-  console.log("[DataService] Transformed data:", {
-    products: data.products?.length,
-    accounts: data.accounts?.length,
-    salesOrders: data.salesOrders?.length,
-    inventory: data.inventory?.length,
-  });
+  if (isDev) {
+    console.log("[DataService] Transformed data:", {
+      products: data.products?.length,
+      accounts: data.accounts?.length,
+      salesOrders: data.salesOrders?.length,
+      inventory: data.inventory?.length,
+    });
+  }
   
   return data as AppData;
 }
@@ -199,7 +212,9 @@ export async function fetchAppData(): Promise<AppData> {
     // Stage 4: Try granular APIs first
     return await fetchAppDataGranular();
   } catch (err) {
-    console.warn("[DataService] Granular APIs failed, falling back to legacy:", err);
+    if (isDev) {
+      console.warn("[DataService] Granular APIs failed, falling back to legacy:", err);
+    }
     // Fallback to legacy API
     return fetchLegacyAppData();
   }
