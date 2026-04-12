@@ -12,6 +12,7 @@ const registerSchema = z.object({
   password: z.string().min(8),
   displayName: z.string().min(1),
   role: z.enum([
+    Role.FOUNDER_ADMIN,
     Role.BRAND_OPERATOR,
     Role.SALES,
     Role.OPERATIONS,

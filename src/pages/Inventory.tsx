@@ -3,6 +3,7 @@ import { ReceiveStockDialog } from "@/components/ReceiveStockDialog";
 import { StatCard } from "@/components/StatCard";
 import type { InventoryItem } from "@/data/mockData";
 import { useAppData, useInventory } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   healthForInventoryRow,
   healthLabel,
@@ -22,6 +23,9 @@ import { CSVExportInventoryButton } from "@/components/CSVExportButtons";
 import { CSVImportButton } from "@/components/CSVImportButton";
 
 const STATUS_VALUES: InventoryItem["status"][] = ["available", "reserved", "damaged", "in-transit", "in-production"];
+
+/** Roles allowed to receive stock (matches server-side inventory:write permission) */
+const CAN_RECEIVE_STOCK_ROLES = new Set(["brand_operator", "operations"]);
 
 function computeInventorySummary(items: InventoryItem[]) {
   const s = {
@@ -65,6 +69,7 @@ function parseStatusParam(raw: string | null): InventoryItem["status"] | null {
 export default function Inventory() {
   const { data } = useAppData();
   const { items, receiveLine, setItemStatus: setItemStatusCtx } = useInventory();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = parseStatusParam(searchParams.get("status"));
   const [search, setSearch] = useState("");
@@ -73,6 +78,8 @@ export default function Inventory() {
     if (sku) setSearch(sku);
   }, [searchParams]);
   const [receiveOpen, setReceiveOpen] = useState(false);
+
+  const canReceiveStock = user?.role ? CAN_RECEIVE_STOCK_ROLES.has(user.role) : false;
 
   const summary = useMemo(() => computeInventorySummary(items), [items]);
 
@@ -141,10 +148,12 @@ export default function Inventory() {
               onSuccess={() => toast.success("Inventory updated", { description: "Refresh to see changes" })}
             />
             <CSVExportInventoryButton variant="outline" size="sm" />
-            <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setReceiveOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Receive Stock
-            </Button>
+            {canReceiveStock ? (
+              <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setReceiveOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Receive Stock
+              </Button>
+            ) : null}
           </div>
         }
       />

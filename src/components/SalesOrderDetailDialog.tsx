@@ -260,38 +260,55 @@ export function SalesOrderDetailDialog({
                 </div>
               ) : null}
 
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="detail-order-status">Fulfillment status</Label>
-                  <Select value={order.status} onValueChange={handleStatus}>
-                    <SelectTrigger id="detail-order-status" className="touch-manipulation">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ORDER_STATUSES.map((s) => (
-                        <SelectItem key={s} value={s} className="capitalize">
-                          {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              {/* Role-guarded status controls — only manufacturer/distributor can change fulfillment/payment status */}
+              {user.role === "manufacturer" || user.role === "distributor" ? (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="detail-order-status">Fulfillment status</Label>
+                    <Select value={order.status} onValueChange={handleStatus}>
+                      <SelectTrigger id="detail-order-status" className="touch-manipulation">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ORDER_STATUSES.map((s) => (
+                          <SelectItem key={s} value={s} className="capitalize">
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="detail-payment-status">Payment status</Label>
+                    <Select value={order.paymentStatus} onValueChange={handlePayment}>
+                      <SelectTrigger id="detail-payment-status" className="touch-manipulation">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAYMENT_STATUSES.map((s) => (
+                          <SelectItem key={s} value={s} className="capitalize">
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="detail-payment-status">Payment status</Label>
-                  <Select value={order.paymentStatus} onValueChange={handlePayment}>
-                    <SelectTrigger id="detail-payment-status" className="touch-manipulation">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAYMENT_STATUSES.map((s) => (
-                        <SelectItem key={s} value={s} className="capitalize">
-                          {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              ) : (
+                <div className="space-y-3 rounded-md border border-muted bg-muted/30 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Fulfillment status</span>
+                    <StatusBadge status={order.status} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Payment status</span>
+                    <StatusBadge status={order.paymentStatus} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Only manufacturer and distributor roles can modify order statuses.
+                  </p>
                 </div>
-              </div>
+              )}
 
               <Separator />
 

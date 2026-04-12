@@ -165,7 +165,7 @@ export default function BackordersPage() {
       trackingNumber || undefined
     );
 
-    setBackorders((prev) =
+    setBackorders((prev) =>
       prev.map((bo) => (bo.id === updated.id ? updated : bo))
     );
 
@@ -192,7 +192,7 @@ export default function BackordersPage() {
     }
 
     const updated = releaseInventoryToBackorder(backorder, toRelease);
-    setBackorders((prev) =
+    setBackorders((prev) =>
       prev.map((bo) => (bo.id === updated.id ? updated : bo))
     );
 

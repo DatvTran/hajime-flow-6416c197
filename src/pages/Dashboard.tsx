@@ -514,47 +514,47 @@ export default function Dashboard() {
                                 >
                                   Reject
                                 </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 touch-manipulation text-xs"
+                                  onClick={() =>
+                                    toast.message("On hold", {
+                                      description: `${item.order.id} kept as draft — follow up with the account.`,
+                                    })
+                                  }
+                                >
+                                  Hold
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 touch-manipulation text-xs"
+                                  asChild
+                                >
+                                  <Link to="/markets">Reallocate</Link>
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 touch-manipulation text-xs"
+                                  onClick={() =>
+                                    toast.message("Distributor path", {
+                                      description: "Route this request through your wholesale partner workflow (V1: manual).",
+                                    })
+                                  }
+                                >
+                                  To distributor
+                                </Button>
                               </>
                             ) : (
                               <span className="text-xs text-muted-foreground">
                                 Awaiting HQ review
                               </span>
                             )}
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-8 touch-manipulation text-xs"
-                              onClick={() =>
-                                toast.message("On hold", {
-                                  description: `${item.order.id} kept as draft — follow up with the account.`,
-                                })
-                              }
-                            >
-                              Hold
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-8 touch-manipulation text-xs"
-                              asChild
-                            >
-                              <Link to="/markets">Reallocate</Link>
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 touch-manipulation text-xs"
-                              onClick={() =>
-                                toast.message("Distributor path", {
-                                  description: "Route this request through your wholesale partner workflow (V1: manual).",
-                                })
-                              }
-                            >
-                              To distributor
-                            </Button>
                           </div>
                         </li>
                       );

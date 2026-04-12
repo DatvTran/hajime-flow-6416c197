@@ -38,10 +38,9 @@ function isRole(v: unknown): v is HajimeRole {
 function normalizeStoredRole(role: unknown): HajimeRole | null {
   if (isRole(role)) return role;
   if (typeof role !== "string") return null;
+  // Legacy mappings for old role names (pre-9-role system)
   const legacy: Record<string, HajimeRole> = {
-    founder: "brand_operator",
-    sales: "sales_rep",
-    operations: "distributor",
+    founder: "brand_operator",        // Old 'founder' -> brand_operator
   };
   return legacy[role] ?? null;
 }
@@ -148,11 +147,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const response = await apiFetch("/api/auth/me");
         const userData = await response.json();
+        const validatedRole = normalizeStoredRole(userData.role);
+        if (!validatedRole) {
+          console.error(`[Auth] Invalid role from server: ${userData.role}, defaulting to brand_operator`);
+        }
         setUser({
           id: userData.id,
           email: userData.email,
           displayName: userData.displayName,
-          role: normalizeStoredRole(userData.role) || userData.role,
+          role: validatedRole || "brand_operator",
           tenantId: userData.tenantId,
         });
       } catch (err) {
@@ -189,11 +192,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshToken: data.refreshToken,
       });
 
+      const validatedRole = normalizeStoredRole(data.user.role);
+      if (!validatedRole) {
+        console.error(`[Auth] Invalid role from server: ${data.user.role}, defaulting to brand_operator`);
+      }
       setUser({
         id: data.user.id,
         email: data.user.email,
         displayName: data.user.displayName,
-        role: normalizeStoredRole(data.user.role) || data.user.role,
+        role: validatedRole || "brand_operator",
         tenantId: data.user.tenantId,
       });
     } catch (err) {
