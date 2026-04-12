@@ -19,7 +19,22 @@
     <meta http-equiv="Surrogate-Control" content="no-store" />
     
     <!-- Cache busting timestamp -->
-    <meta name="build-time" content="2026-04-12T21:58:00Z" />
+    <meta name="build-time" content="2026-04-12T22:05:00Z" />
+    
+    <!-- FORCE CACHE INVALIDATION: Reload page if cached version detected -->
+    <script>
+      (function() {
+        // Check if this is a fresh load by looking for a version marker
+        if (window.__HAJIME_VERSION__ !== '2026-04-12-v4') {
+          // First load or cached version - set marker and reload
+          window.__HAJIME_VERSION__ = '2026-04-12-v4';
+          // Force reload from server (not cache)
+          if (!window.location.href.includes('reload=true')) {
+            window.location.href = window.location.href.split('?')[0] + '?reload=true&v=4&nocache=' + Date.now();
+          }
+        }
+      })();
+    </script>
   </head>
 
   <body>
@@ -48,6 +63,6 @@
       })();
     </script>
     
-    <script type="module" src="/src/main.tsx?v=3&nocache=2026-04-12"></script>
+    <script type="module" src="/src/main.tsx?v=4&nocache=2026-04-12-2205"></script>
   </body>
 </html>
