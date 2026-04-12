@@ -67,6 +67,14 @@ export function resolveAlertHref(alert: DerivedAlert, role: HajimeRole): string 
     return "/markets";
   }
 
+  if (type === "onboarding" && id.startsWith("onboarding-")) {
+    const accountId = id.slice("onboarding-".length);
+    if (role === "distributor") {
+      return `/distributor/accounts?account=${encodeURIComponent(accountId)}`;
+    }
+    return `/accounts?account=${encodeURIComponent(accountId)}`;
+  }
+
   if (type === "account") {
     if (role === "sales_rep") return "/sales/accounts";
     return "/accounts";

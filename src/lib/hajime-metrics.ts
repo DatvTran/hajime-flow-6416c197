@@ -86,7 +86,7 @@ export function computeSalesSummary(orders: SalesOrder[], now = new Date()) {
 
 export type DerivedAlert = {
   id: string;
-  type: "low-stock" | "delay" | "reorder" | "shipment" | "payment" | "account" | "demand-spike";
+  type: "low-stock" | "delay" | "reorder" | "shipment" | "payment" | "account" | "demand-spike" | "onboarding";
   message: string;
   time: string;
   severity: "high" | "medium" | "low";
@@ -257,12 +257,28 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
     });
   }
 
+  // Onboarding pipeline alerts for distributors and brand operators
+  const onboardingAccounts = data.accounts.filter(
+    (a) => a.onboardingPipeline === "sales_intake" || a.onboardingPipeline === "brand_review"
+  );
+  for (const acc of onboardingAccounts) {
+    const stage = acc.onboardingPipeline === "sales_intake" ? "Wholesaler review" : "Brand approval";
+    const severity = acc.onboardingPipeline === "brand_review" ? "high" : "medium";
+    alerts.push({
+      id: `onboarding-${acc.id}`,
+      type: "onboarding",
+      message: `${acc.tradingName} — retailer onboarding awaiting ${stage}`,
+      time: acc.applicationSubmittedAt?.slice(0, 10) || "now",
+      severity,
+    });
+  }
+
   alerts.sort((a, b) => {
     const rank = { high: 0, medium: 1, low: 2 };
     return rank[a.severity] - rank[b.severity];
   });
 
-  return alerts.slice(0, 16);
+  return alerts.slice(0, 20);
 }
 
 export type ReorderRec = {
