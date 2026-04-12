@@ -35,7 +35,10 @@ export default function Orders() {
   const { accounts } = useAccounts();
   const { appendEntry } = useFinancingLedger();
   const { updateData } = useAppData();
-  const canApproveDraftQueue = user.role === "brand_operator";
+  
+  // Only brand_operator can approve/reject draft orders (HQ allocation authority)
+  const canApproveDraftQueue = user?.role === "brand_operator";
+  
   const newOrderVariant = useMemo(() => mapRoleToSalesOrderFormVariant(user.role), [user.role]);
   const [searchParams, setSearchParams] = useSearchParams();
   const accountFromUrl = searchParams.get("account");
