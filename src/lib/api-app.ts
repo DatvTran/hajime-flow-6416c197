@@ -23,9 +23,7 @@ function getAuthHeaders(): Record<string, string> {
 }
 
 export async function fetchAppData(): Promise<AppData> {
-  console.log("[api-app] Fetching app data...");
   const headers = getAuthHeaders();
-  console.log("[api-app] Headers:", { ...headers, Authorization: headers.Authorization ? "Bearer ***" : "missing" });
   
   // Add cache-busting query param to prevent 304 caching issues
   const cacheBuster = `?_cb=${Date.now()}`;
@@ -35,16 +33,12 @@ export async function fetchAppData(): Promise<AppData> {
     cache: "no-store",
   });
   
-  console.log("[api-app] Response status:", res.status);
-  
   if (!res.ok) {
     const text = await res.text();
-    console.error("[api-app] Error response:", text);
     throw new Error(text || `HTTP ${res.status}`);
   }
   
   const data = await res.json();
-  console.log("[api-app] Data received, products:", data.products?.length || 0);
   return data as AppData;
 }
 

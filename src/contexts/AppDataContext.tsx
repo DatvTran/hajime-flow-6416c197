@@ -77,9 +77,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        console.log("[AppDataContext] Fetching app data...");
         const d = await fetchAppData();
-        console.log("[AppDataContext] Data received:", { hasProducts: !!(d as any)?.products?.length });
         if (!cancelled) {
           setData(normalizeAppData(d as AppData));
           setError(null);
@@ -129,8 +127,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     if (!data) return null;
     return { data, loading, error, updateData };
   }, [data, loading, error, updateData]);
-
-  console.log("[AppDataContext] Render state:", { hasData: !!data, hasValue: !!value, loading, error: error?.slice(0, 100), user: user?.email, role: user?.role });
 
   if (!data || !value) {
     return (
