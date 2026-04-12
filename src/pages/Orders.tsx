@@ -18,7 +18,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,7 +27,8 @@ import { toast } from "@/components/ui/sonner";
 import { apiListCardLast4s, apiVerifyCheckoutSession } from "@/lib/stripe-api";
 import { setStoredCardLast4, setStoredCustomerId } from "@/lib/stripe-local";
 import { buildOutboundShipmentForOrder } from "@/lib/order-shipment";
-import { CSVExportOrdersButton } from "@/components/CSVExportButtons";
+import { downloadSalesOrdersCsv } from "@/lib/export-orders-csv";
+import { Download } from "lucide-react";
 
 export default function Orders() {
   const { user } = useAuth();
@@ -283,7 +284,18 @@ export default function Orders() {
         }
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <CSVExportOrdersButton variant="outline" size="sm" />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                downloadSalesOrdersCsv(orders);
+                toast.success("Orders exported", { description: "CSV downloaded with current filter." });
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
             <Button
               type="button"
               size="sm"
