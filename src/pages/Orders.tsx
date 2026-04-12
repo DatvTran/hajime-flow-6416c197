@@ -256,14 +256,25 @@ export default function Orders() {
 
     patchSalesOrder(id, merged);
 
+    // Auto-create shipment when order transitions to shipped
     if (merged.status === "shipped" && o.status !== "shipped") {
-      updateData((d) => {
-        const ord = d.salesOrders.find((x) => x.id === id);
-        if (!ord || ord.status !== "shipped") return d;
-        const sh = buildOutboundShipmentForOrder(ord, d.accounts, d.shipments);
-        if (!sh) return d;
-        return { ...d, shipments: [sh, ...d.shipments] };
-      });
+      // Use setTimeout to ensure patchSalesOrder has updated state first
+      setTimeout(() => {
+        updateData((d) => {
+          const ord = d.salesOrders.find((x) => x.id === id);
+          // Double-check order exists and is shipped
+          if (!ord || ord.status !== "shipped") return d;
+          // Prevent duplicate shipments
+          if (d.shipments.some((s) => s.linkedOrder === id)) {
+            toast.info("Shipment already exists", { description: `${ord.id} already has a shipment record.` });
+            return d;
+          }
+          const sh = buildOutboundShipmentForOrder(ord, d.accounts, d.shipments);
+          if (!sh) return d;
+          toast.success("Shipment auto-created", { description: `${sh.id} linked to ${ord.id}` });
+          return { ...d, shipments: [sh, ...d.shipments] };
+        });
+      }, 0);
     }
   };
 
