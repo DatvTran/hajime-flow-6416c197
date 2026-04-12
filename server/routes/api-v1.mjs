@@ -9,6 +9,7 @@ import { authenticateToken, requirePermission, requireTenantAccess } from '../mi
 import { Permission } from '../rbac/permissions.mjs';
 
 const router = Router();
+const isDev = process.env.NODE_ENV === 'development';
 
 // Apply auth to all routes
 router.use(authenticateToken);
@@ -27,7 +28,9 @@ router.get('/products', requirePermission(Permission.INVENTORY_READ), async (req
     const tenantId = getTenantId(req);
     const { page = 1, limit = 50, category, search } = req.query;
     
-    console.log(`[API v1] GET /products - tenantId: ${tenantId}`);
+    if (isDev) {
+      console.log(`[API v1] GET /products - tenantId: ${tenantId}`);
+    }
     
     let baseQuery = db('products')
       .where({ tenant_id: tenantId })
@@ -56,7 +59,9 @@ router.get('/products', requirePermission(Permission.INVENTORY_READ), async (req
     
     const [countResult, products] = await Promise.all([countQuery, dataQuery]);
     
-    console.log(`[API v1] Products found: ${products.length}, count: ${countResult?.count}`);
+    if (isDev) {
+      console.log(`[API v1] Products found: ${products.length}, count: ${countResult?.count}`);
+    }
     
     res.json({
       data: products,
