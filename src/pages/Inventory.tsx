@@ -19,8 +19,17 @@ import { Package, Plus, Search, Factory } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { CSVExportInventoryButton } from "@/components/CSVExportButtons";
+import { downloadInventoryCsv, downloadLowStockCsv } from "@/lib/export-inventory-csv";
 import { CSVImportButton } from "@/components/CSVImportButton";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Download, FileSpreadsheet } from "lucide-react";
 
 const STATUS_VALUES: InventoryItem["status"][] = ["available", "reserved", "damaged", "in-transit", "in-production"];
 
@@ -147,7 +156,26 @@ export default function Inventory() {
               size="sm"
               onSuccess={() => toast.success("Inventory updated", { description: "Refresh to see changes" })}
             />
-            <CSVExportInventoryButton variant="outline" size="sm" />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export CSV
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Export Options</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => downloadInventoryCsv(items)}>
+                  <FileSpreadsheet className="mr-2 h-4 w-4" />
+                  All Inventory
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadLowStockCsv(items)}>
+                  <FileSpreadsheet className="mr-2 h-4 w-4 text-amber-500" />
+                  Low Stock Only
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {canReceiveStock ? (
               <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setReceiveOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
