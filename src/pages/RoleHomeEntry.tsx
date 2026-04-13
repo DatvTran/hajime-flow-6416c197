@@ -18,7 +18,7 @@ export default function RoleHomeEntry() {
     case "manufacturer":
       return <Navigate to="/manufacturer" replace />;
     case "distributor":
-      return <Navigate to="/distributor" replace />;
+      return <DistributorHomePage />;
     case "retail":
       return <RetailHomePage />;
     case "sales":
