@@ -684,3 +684,78 @@ export const newProductRequests: NewProductRequest[] = [
     productionPoId: "PO-2025-0089",
   },
 ];
+
+/** Depletion Report: distributor reports actual sell-through to brand operator */
+export type DepletionReport = {
+  id: string;
+  accountId: string;
+  sku: string;
+  periodStart: string; // ISO date YYYY-MM-DD
+  periodEnd: string;   // ISO date YYYY-MM-DD
+  bottlesSold: number;
+  bottlesOnHandAtEnd: number;
+  notes: string;
+  reportedBy: string;
+  reportedAt: string;  // ISO timestamp
+  flaggedForReplenishment: boolean;
+};
+
+export const depletionReports: DepletionReport[] = [
+  {
+    id: "DEP-2025-001",
+    accountId: "ACC-005",
+    sku: "HJM-OG-750",
+    periodStart: "2026-03-01",
+    periodEnd: "2026-03-31",
+    bottlesSold: 144,
+    bottlesOnHandAtEnd: 36,
+    notes: "Strong month — Drake cocktail program feature drove velocity",
+    reportedBy: "distributor",
+    reportedAt: "2026-04-01T10:00:00Z",
+    flaggedForReplenishment: true,
+  },
+  {
+    id: "DEP-2025-002",
+    accountId: "ACC-002",
+    sku: "HJM-YZ-750",
+    periodStart: "2026-03-01",
+    periodEnd: "2026-03-31",
+    bottlesSold: 72,
+    bottlesOnHandAtEnd: 48,
+    notes: "Steady movement, no concerns",
+    reportedBy: "distributor",
+    reportedAt: "2026-04-01T11:00:00Z",
+    flaggedForReplenishment: false,
+  },
+  {
+    id: "DEP-2025-003",
+    accountId: "ACC-MIL-001",
+    sku: "HJM-OG-750",
+    periodStart: "2026-03-01",
+    periodEnd: "2026-03-31",
+    bottlesSold: 96,
+    bottlesOnHandAtEnd: 24,
+    notes: "Bar Basso events drove high velocity — need restock soon",
+    reportedBy: "distributor",
+    reportedAt: "2026-04-02T09:00:00Z",
+    flaggedForReplenishment: true,
+  },
+];
+
+/** Inventory Adjustment Request: distributor reconciles physical counts with system */
+export type InventoryAdjustmentRequest = {
+  id: string;
+  accountId: string;
+  sku: string;
+  adjustmentType: "count_discrepancy" | "damage" | "theft" | "other";
+  quantityExpected: number;
+  quantityActual: number;
+  quantityAdjustment: number;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  requestedAt: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+};
+
+export const inventoryAdjustmentRequests: InventoryAdjustmentRequest[] = [];

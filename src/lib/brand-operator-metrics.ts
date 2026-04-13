@@ -634,3 +634,85 @@ export function mapShipmentStatusLabel(s: Shipment): string {
   if (s.status === "preparing") return "Preparing";
   return "In transit";
 }
+
+/** Depletion-based velocity: bottles sold from distributor reports (actual sell-through). */
+export function computeDepletionVelocity(
+  depletionReports: import("@/data/mockData").DepletionReport[],
+  days = 30,
+  now = new Date(),
+): number {
+  const cutoff = now.getTime() - days * MS_DAY;
+  return depletionReports
+    .filter((r) => Date.parse(r.periodEnd) >= cutoff)
+    .reduce((sum, r) => sum + r.bottlesSold, 0);
+}
+
+/** Depletion-based sell-through %: sold / (sold + on-hand at end of period). */
+export function computeDepletionSellThrough(
+  depletionReports: import("@/data/mockData").DepletionReport[],
+  days = 30,
+  now = new Date(),
+): number {
+  const cutoff = now.getTime() - days * MS_DAY;
+  const relevant = depletionReports.filter((r) => Date.parse(r.periodEnd) >= cutoff);
+  const sold = relevant.reduce((sum, r) => sum + r.bottlesSold, 0);
+  const onHand = relevant.reduce((sum, r) => sum + r.bottlesOnHandAtEnd, 0);
+  const total = sold + onHand;
+  if (total <= 0) return 0;
+  return Math.min(100, Math.round((sold / total) * 1000) / 10);
+}
+
+/** Per-account depletion summary for Brand Operator dashboards. */
+export type AccountDepletionSummary = {
+  accountId: string;
+  accountName: string;
+  totalSold30d: number;
+  totalOnHand: number;
+  sellThroughPct: number;
+  flagged: boolean;
+  lastReportDate: string;
+  topSku: string;
+};
+
+export function computeAccountDepletionSummaries(
+  depletionReports: import("@/data/mockData").DepletionReport[],
+  accounts: Account[],
+  days = 30,
+  now = new Date(),
+): AccountDepletionSummary[] {
+  const cutoff = now.getTime() - days * MS_DAY;
+  const byAccount = new Map<string, import("@/data/mockData").DepletionReport[]>();
+  for (const r of depletionReports) {
+    if (Date.parse(r.periodEnd) < cutoff) continue;
+    const arr = byAccount.get(r.accountId) ?? [];
+    arr.push(r);
+    byAccount.set(r.accountId, arr);
+  }
+
+  const out: AccountDepletionSummary[] = [];
+  for (const [accountId, reports] of byAccount) {
+    const acc = accounts.find((a) => a.id === accountId);
+    const totalSold = reports.reduce((s, r) => s + r.bottlesSold, 0);
+    const totalOnHand = reports.reduce((s, r) => s + r.bottlesOnHandAtEnd, 0);
+    const total = totalSold + totalOnHand;
+    const sellThroughPct = total <= 0 ? 0 : Math.min(100, Math.round((totalSold / total) * 1000) / 10);
+    const flagged = reports.some((r) => r.flaggedForReplenishment);
+    const lastReport = reports.sort((a, b) => Date.parse(b.periodEnd) - Date.parse(a.periodEnd))[0];
+    const skuCounts = new Map<string, number>();
+    for (const r of reports) {
+      skuCounts.set(r.sku, (skuCounts.get(r.sku) ?? 0) + r.bottlesSold);
+    }
+    const topSku = Array.from(skuCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+    out.push({
+      accountId,
+      accountName: acc?.tradingName || acc?.legalName || accountId,
+      totalSold30d: totalSold,
+      totalOnHand,
+      sellThroughPct,
+      flagged,
+      lastReportDate: lastReport?.periodEnd ?? "",
+      topSku,
+    });
+  }
+  return out.sort((a, b) => b.totalSold30d - a.totalSold30d);
+}

@@ -8,7 +8,8 @@ import {
   getAccounts, 
   getOrders, 
   getInventory,
-  getDashboardStats 
+  getDashboardStats,
+  getDepletionReports,
 } from "./api-v1";
 import { fetchAppData as fetchLegacyAppData } from "./api-app";
 import type { AppData } from "@/types/app-data";
@@ -26,14 +27,16 @@ function transformToAppData(
   products: any[],
   accounts: any[],
   orders: any[],
-  inventory: any[]
+  inventory: any[],
+  depletionReports?: any[]
 ): Partial<AppData> {
   if (isDev) {
     console.log("[DataService] transformToAppData input:", { 
       productsCount: products?.length, 
       accountsCount: accounts?.length, 
       ordersCount: orders?.length, 
-      inventoryCount: inventory?.length 
+      inventoryCount: inventory?.length,
+      depletionReportsCount: depletionReports?.length
     });
   }
   
@@ -124,6 +127,19 @@ function transformToAppData(
         reorderQuantity: i.reorder_quantity,
         status: i.available_quantity <= (i.reorder_point || 0) ? "low" : "available",
       })),
+      depletionReports: (depletionReports || []).map(r => ({
+        id: r.id,
+        accountId: r.account_id,
+        sku: r.sku,
+        periodStart: r.period_start,
+        periodEnd: r.period_end,
+        bottlesSold: r.bottles_sold,
+        bottlesOnHandAtEnd: r.bottles_on_hand_at_end,
+        notes: r.notes || '',
+        reportedBy: r.reported_by || 'distributor',
+        reportedAt: r.reported_at,
+        flaggedForReplenishment: r.flagged_for_replenishment || false,
+      })),
       // Empty arrays for entities not yet migrated
       purchaseOrders: [],
       shipments: [],
@@ -138,6 +154,7 @@ function transformToAppData(
         accounts: result.accounts?.length,
         salesOrders: result.salesOrders?.length,
         inventory: result.inventory?.length,
+        depletionReports: result.depletionReports?.length,
       });
     }
     
@@ -162,12 +179,14 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     getAccounts({ limit: 100 }),
     getOrders({ limit: 100 }),
     getInventory({ limit: 100 }),
+    getDepletionReports({ limit: 200 }),
   ]);
   
   const productsRes = results[0].status === 'fulfilled' ? results[0].value : { data: [] };
   const accountsRes = results[1].status === 'fulfilled' ? results[1].value : { data: [] };
   const ordersRes = results[2].status === 'fulfilled' ? results[2].value : { data: [] };
   const inventoryRes = results[3].status === 'fulfilled' ? results[3].value : { data: [] };
+  const depletionReportsRes = results[4].status === 'fulfilled' ? results[4].value : { data: [] };
   
   // Log any failures
   results.forEach((result, index) => {
@@ -182,6 +201,7 @@ export async function fetchAppDataGranular(): Promise<AppData> {
       accounts: accountsRes?.data?.length,
       orders: ordersRes?.data?.length,
       inventory: inventoryRes?.data?.length,
+      depletionReports: depletionReportsRes?.data?.length,
     });
   }
   
@@ -189,7 +209,8 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     productsRes.data || [],
     accountsRes.data || [],
     ordersRes.data || [],
-    inventoryRes.data || []
+    inventoryRes.data || [],
+    depletionReportsRes.data || []
   );
   
   if (isDev) {
@@ -198,6 +219,7 @@ export async function fetchAppDataGranular(): Promise<AppData> {
       accounts: data.accounts?.length,
       salesOrders: data.salesOrders?.length,
       inventory: data.inventory?.length,
+      depletionReports: data.depletionReports?.length,
     });
   }
   

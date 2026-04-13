@@ -273,6 +273,19 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
     });
   }
 
+  // Distributor-reported depletion alerts
+  for (const r of data.depletionReports ?? []) {
+    if (!r.flaggedForReplenishment) continue;
+    const acc = data.accounts.find((a) => a.id === r.accountId);
+    alerts.push({
+      id: `depletion-${r.id}`,
+      type: "reorder",
+      message: `${acc?.tradingName || r.accountId} flagged ${r.sku} for replenishment — ${r.bottlesSold.toLocaleString()} sold, ${r.bottlesOnHandAtEnd.toLocaleString()} on-hand`,
+      time: r.reportedAt.slice(0, 10),
+      severity: r.bottlesOnHandAtEnd < 30 ? "high" : "medium",
+    });
+  }
+
   alerts.sort((a, b) => {
     const rank = { high: 0, medium: 1, low: 2 };
     return rank[a.severity] - rank[b.severity];

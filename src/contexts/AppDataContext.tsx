@@ -10,6 +10,7 @@ import {
 } from "react";
 import type {
   Account,
+  DepletionReport,
   InventoryItem,
   NewProductRequest,
   Product,
@@ -36,6 +37,11 @@ import {
   createOrder as apiCreateOrder,
   updateOrderStatus as apiUpdateOrderStatus,
   adjustInventory as apiAdjustInventory,
+  createDepletionReport as apiCreateDepletionReport,
+  updateDepletionReport as apiUpdateDepletionReport,
+  deleteDepletionReport as apiDeleteDepletionReport,
+  createInventoryAdjustmentRequest as apiCreateInventoryAdjustmentRequest,
+  getInventoryAdjustmentRequests as apiGetInventoryAdjustmentRequests,
 } from "@/lib/api-v1-mutations";
 
 const FALLBACK_SEED = normalizeAppData(seedJson as AppData);
@@ -798,5 +804,164 @@ export function useTransferOrders() {
         })),
     }),
     [data.transferOrders, updateData]
+  );
+}
+
+export function useDepletionReports() {
+  const { data, updateData } = useAppData();
+
+  const addDepletionReport = useCallback(async (r: Omit<DepletionReport, "id">) => {
+    try {
+      const result = await apiCreateDepletionReport({
+        account_id: r.accountId,
+        sku: r.sku,
+        period_start: r.periodStart,
+        period_end: r.periodEnd,
+        bottles_sold: r.bottlesSold,
+        bottles_on_hand_at_end: r.bottlesOnHandAtEnd,
+        notes: r.notes,
+        flagged_for_replenishment: r.flaggedForReplenishment,
+      });
+      updateData((d) => ({
+        ...d,
+        depletionReports: [{
+          ...r,
+          id: result.data.id,
+          reportedAt: result.data.reported_at,
+          reportedBy: result.data.reported_by || 'distributor',
+        }, ...(d.depletionReports ?? [])],
+      }));
+      toast.success("Depletion report submitted");
+      return { success: true, data: result.data };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to submit depletion report";
+      toast.error("Failed to submit depletion report", { description: message });
+      return { success: false, error: message };
+    }
+  }, [updateData]);
+
+  const patchDepletionReport = useCallback(async (id: string, patch: Partial<DepletionReport>) => {
+    try {
+      const result = await apiUpdateDepletionReport(id, {
+        account_id: patch.accountId,
+        sku: patch.sku,
+        period_start: patch.periodStart,
+        period_end: patch.periodEnd,
+        bottles_sold: patch.bottlesSold,
+        bottles_on_hand_at_end: patch.bottlesOnHandAtEnd,
+        notes: patch.notes,
+        flagged_for_replenishment: patch.flaggedForReplenishment,
+      });
+      updateData((d) => ({
+        ...d,
+        depletionReports: (d.depletionReports ?? []).map((r) =>
+          r.id === id ? { ...r, ...patch } : r
+        ),
+      }));
+      toast.success("Depletion report updated");
+      return { success: true, data: result.data };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update depletion report";
+      toast.error("Failed to update depletion report", { description: message });
+      return { success: false, error: message };
+    }
+  }, [updateData]);
+
+  const removeDepletionReport = useCallback(async (id: string) => {
+    try {
+      await apiDeleteDepletionReport(id);
+      updateData((d) => ({
+        ...d,
+        depletionReports: (d.depletionReports ?? []).filter((r) => r.id !== id),
+      }));
+      toast.success("Depletion report deleted");
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete depletion report";
+      toast.error("Failed to delete depletion report", { description: message });
+      return { success: false, error: message };
+    }
+  }, [updateData]);
+
+  return useMemo(
+    () => ({
+      depletionReports: data.depletionReports ?? [],
+      addDepletionReport,
+      patchDepletionReport,
+      removeDepletionReport,
+    }),
+    [data.depletionReports, addDepletionReport, patchDepletionReport, removeDepletionReport],
+  );
+}
+
+export function useInventoryAdjustments() {
+  const { data, updateData } = useAppData();
+
+  const addAdjustment = useCallback(async (r: Omit<import("@/data/mockData").InventoryAdjustmentRequest, "id" | "status" | "quantityAdjustment" | "requestedAt">) => {
+    try {
+      const result = await apiCreateInventoryAdjustmentRequest({
+        account_id: r.accountId,
+        sku: r.sku,
+        adjustment_type: r.adjustmentType,
+        quantity_expected: r.quantityExpected,
+        quantity_actual: r.quantityActual,
+        reason: r.reason,
+      });
+      updateData((d) => ({
+        ...d,
+        inventoryAdjustmentRequests: [
+          {
+            ...r,
+            id: result.data.id,
+            status: "pending",
+            quantityAdjustment: result.data.quantity_adjustment,
+            requestedAt: result.data.requested_at,
+          },
+          ...(d.inventoryAdjustmentRequests ?? []),
+        ],
+      }));
+      toast.success("Adjustment request submitted");
+      return { success: true, data: result.data };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to submit adjustment request";
+      toast.error("Failed to submit adjustment request", { description: message });
+      return { success: false, error: message };
+    }
+  }, [updateData]);
+
+  const fetchAdjustments = useCallback(async () => {
+    try {
+      const result = await apiGetInventoryAdjustmentRequests({ limit: 200 });
+      updateData((d) => ({
+        ...d,
+        inventoryAdjustmentRequests: (result.data || []).map((item: any) => ({
+          id: item.id,
+          accountId: item.account_id,
+          sku: item.sku,
+          adjustmentType: item.adjustment_type,
+          quantityExpected: item.quantity_expected,
+          quantityActual: item.quantity_actual,
+          quantityAdjustment: item.quantity_adjustment,
+          reason: item.reason,
+          status: item.status,
+          requestedAt: item.requested_at,
+          approvedAt: item.approved_at,
+          rejectionReason: item.rejection_reason,
+        })),
+      }));
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to fetch adjustment requests";
+      return { success: false, error: message };
+    }
+  }, [updateData]);
+
+  return useMemo(
+    () => ({
+      adjustments: data.inventoryAdjustmentRequests ?? [],
+      addAdjustment,
+      fetchAdjustments,
+    }),
+    [data.inventoryAdjustmentRequests, addAdjustment, fetchAdjustments],
   );
 }

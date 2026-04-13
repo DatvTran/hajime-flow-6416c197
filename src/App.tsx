@@ -41,6 +41,9 @@ import FinancePaymentsPage from "./pages/FinancePaymentsPage";
 import IncentiveManagerPage from "./pages/IncentiveManagerPage";
 import ProductDevelopmentPage from "./pages/ProductDevelopmentPage";
 import ManufacturerProductRequestsPage from "./pages/ManufacturerProductRequestsPage";
+import DistributorDepletionsPage from "./pages/DistributorDepletionsPage";
+import DistributorInventoryAdjustmentsPage from "./pages/DistributorInventoryAdjustmentsPage";
+import DistributorSellThroughPage from "./pages/DistributorSellThroughPage";
 
 const queryClient = new QueryClient();
 
@@ -106,6 +109,9 @@ const App = () => {
                   <Route path="/distributor/purchase-orders" element={<PurchaseOrders />} />
                   <Route path="/distributor/shipments" element={<Shipments />} />
                   <Route path="/distributor/backorders" element={<BackordersPage />} />
+                  <Route path="/distributor/depletions" element={<DistributorDepletionsPage />} />
+                  <Route path="/distributor/adjustments" element={<DistributorInventoryAdjustmentsPage />} />
+                  <Route path="/distributor/sellthrough" element={<DistributorSellThroughPage />} />
                   <Route path="/distributor/alerts" element={<AlertsHubPage />} />
                   <Route path="/distributor/finance" element={<FinancePaymentsPage />} />
                   <Route path="/distributor/reports" element={<Reports />} />

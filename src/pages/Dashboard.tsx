@@ -63,7 +63,7 @@ import {
   computeVelocityByAccountLastWindow,
   computeVelocityByProduct,
   countShipmentEtaAlerts,
-  sellThroughPercent30d,
+  computeDepletionSellThrough,
   countLowStockMarkets,
   mapDerivedAlertsToDecisionAlerts,
   computeHQReplenishmentSuggestions,
@@ -148,8 +148,8 @@ export default function Dashboard() {
   const orderTabCounts = useMemo(() => computeOrderTabCounts(data.salesOrders), [data.salesOrders]);
 
   const sellThrough = useMemo(
-    () => sellThroughPercent30d(data.salesOrders, data.inventory),
-    [data.salesOrders, data.inventory],
+    () => computeDepletionSellThrough(data.depletionReports ?? [], 30),
+    [data.depletionReports],
   );
   const activeAccounts = useMemo(
     () => data.accounts.filter((a) => a.status === "active").length,

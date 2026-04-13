@@ -22,9 +22,11 @@ import {
   Target,
   ClipboardList,
   TrendingUp,
+  TrendingDown,
   LineChart,
   Receipt,
   Gift,
+  Scale,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -127,6 +129,9 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
             { title: "Overview", url: "/distributor", icon: LayoutDashboard },
             { title: "Warehouse inventory", url: "/distributor/inventory", icon: Warehouse },
             { title: "Orders to fulfill", url: "/distributor/orders?tab=approved", icon: ShoppingCart },
+            { title: "Report depletions", url: "/distributor/depletions", icon: TrendingDown },
+            { title: "Sell-through velocity", url: "/distributor/sellthrough", icon: TrendingUp },
+            { title: "Inventory adjustments", url: "/distributor/adjustments", icon: Scale },
             { title: "Production requests", url: "/distributor/purchase-orders", icon: FileText },
             { title: "Deliveries", url: "/distributor/shipments", icon: Truck },
             { title: "Retail accounts", url: "/distributor/accounts", icon: Users },

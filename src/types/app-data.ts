@@ -76,6 +76,10 @@ export type AppData = {
   visitNotes?: VisitNoteEntry[];
   /** New product development requests — brand → manufacturer → production PO pipeline. */
   newProductRequests?: NewProductRequest[];
+  /** Distributor-reported depletion data — actual sell-through vs orders. */
+  depletionReports?: import("@/data/mockData").DepletionReport[];
+  /** Distributor inventory adjustment requests — reconcile physical counts. */
+  inventoryAdjustmentRequests?: import("@/data/mockData").InventoryAdjustmentRequest[];
 };
 
 export type VisitNoteEntry = {

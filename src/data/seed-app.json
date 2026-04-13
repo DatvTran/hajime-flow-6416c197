@@ -1090,5 +1090,46 @@
       "linkedSalesOrderId": "SO-2026-002",
       "notes": "Express delivery requested"
     }
+  ],
+  "depletionReports": [
+    {
+      "id": "DEP-2025-001",
+      "accountId": "ACC-005",
+      "sku": "HJM-OG-750",
+      "periodStart": "2026-03-01",
+      "periodEnd": "2026-03-31",
+      "bottlesSold": 144,
+      "bottlesOnHandAtEnd": 36,
+      "notes": "Strong month — Drake cocktail program feature drove velocity",
+      "reportedBy": "distributor",
+      "reportedAt": "2026-04-01T10:00:00Z",
+      "flaggedForReplenishment": true
+    },
+    {
+      "id": "DEP-2025-002",
+      "accountId": "ACC-002",
+      "sku": "HJM-YZ-750",
+      "periodStart": "2026-03-01",
+      "periodEnd": "2026-03-31",
+      "bottlesSold": 72,
+      "bottlesOnHandAtEnd": 48,
+      "notes": "Steady movement, no concerns",
+      "reportedBy": "distributor",
+      "reportedAt": "2026-04-01T11:00:00Z",
+      "flaggedForReplenishment": false
+    },
+    {
+      "id": "DEP-2025-003",
+      "accountId": "ACC-MIL-001",
+      "sku": "HJM-OG-750",
+      "periodStart": "2026-03-01",
+      "periodEnd": "2026-03-31",
+      "bottlesSold": 96,
+      "bottlesOnHandAtEnd": 24,
+      "notes": "Bar Basso events drove high velocity — need restock soon",
+      "reportedBy": "distributor",
+      "reportedAt": "2026-04-02T09:00:00Z",
+      "flaggedForReplenishment": true
+    }
   ]
 }

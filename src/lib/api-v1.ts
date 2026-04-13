@@ -319,3 +319,156 @@ export interface DashboardStats {
 export function getDashboardStats(): Promise<{ data: DashboardStats }> {
   return apiFetch("/api/v1/dashboard/stats");
 }
+
+// ===== DEPLETION REPORTS =====
+
+export interface DepletionReport {
+  id: string;
+  account_id: string;
+  account_name?: string;
+  account_trading_name?: string;
+  product_id?: string;
+  sku: string;
+  period_start: string;
+  period_end: string;
+  bottles_sold: number;
+  bottles_on_hand_at_end: number;
+  flagged_for_replenishment: boolean;
+  notes: string;
+  reported_by?: string;
+  reported_by_role?: string;
+  reported_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DepletionReportsResponse {
+  data: DepletionReport[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export function getDepletionReports(params?: {
+  page?: number;
+  limit?: number;
+  account_id?: string;
+  sku?: string;
+  flagged?: boolean;
+  start_date?: string;
+  end_date?: string;
+}): Promise<DepletionReportsResponse> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.account_id) query.set("account_id", params.account_id);
+  if (params?.sku) query.set("sku", params.sku);
+  if (params?.flagged) query.set("flagged", "true");
+  if (params?.start_date) query.set("start_date", params.start_date);
+  if (params?.end_date) query.set("end_date", params.end_date);
+
+  return apiFetch(`/api/v1/depletion-reports?${query.toString()}`);
+}
+
+export function getDepletionReport(id: string): Promise<{ data: DepletionReport }> {
+  return apiFetch(`/api/v1/depletion-reports/${id}`);
+}
+
+export interface SellThroughVelocity {
+  account_id: string;
+  account_name?: string;
+  sku: string;
+  total_bottles_sold: number;
+  avg_on_hand: number;
+  report_count: number;
+  first_period: string;
+  last_period: string;
+  velocity_bottles_per_day: number;
+  days_in_period: number;
+}
+
+export function getSellThroughVelocity(params?: {
+  account_id?: string;
+  sku?: string;
+  days?: number;
+}): Promise<{ data: SellThroughVelocity[] }> {
+  const query = new URLSearchParams();
+  if (params?.account_id) query.set("account_id", params.account_id);
+  if (params?.sku) query.set("sku", params.sku);
+  if (params?.days) query.set("days", String(params.days));
+
+  return apiFetch(`/api/v1/depletion-reports/sellthrough/velocity?${query.toString()}`);
+}
+
+export interface SellThroughSummary {
+  period: string;
+  period_days: number;
+  total_bottles_sold: number;
+  total_bottles_on_hand: number;
+  accounts_reporting: number;
+  total_reports: number;
+  flagged_for_replenishment: number;
+  top_skus: Array<{ sku: string; total_sold: number }>;
+  calculated_at: string;
+}
+
+export function getSellThroughSummary(params?: {
+  period?: "7d" | "30d" | "90d";
+}): Promise<{ data: SellThroughSummary }> {
+  const query = new URLSearchParams();
+  if (params?.period) query.set("period", params.period);
+
+  return apiFetch(`/api/v1/depletion-reports/sellthrough/summary?${query.toString()}`);
+}
+
+// ===== INVENTORY ADJUSTMENT REQUESTS =====
+
+export interface InventoryAdjustmentRequest {
+  id: string;
+  account_id: string;
+  account_name?: string;
+  account_trading_name?: string;
+  product_id?: string;
+  sku: string;
+  adjustment_type: "count_discrepancy" | "damage" | "theft" | "other";
+  quantity_expected: number;
+  quantity_actual: number;
+  quantity_adjustment: number;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  requested_by?: string;
+  approved_by?: string;
+  requested_at: string;
+  approved_at?: string;
+  rejection_reason?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InventoryAdjustmentRequestsResponse {
+  data: InventoryAdjustmentRequest[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export function getInventoryAdjustmentRequests(params?: {
+  page?: number;
+  limit?: number;
+  account_id?: string;
+  status?: string;
+}): Promise<InventoryAdjustmentRequestsResponse> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.account_id) query.set("account_id", params.account_id);
+  if (params?.status) query.set("status", params.status);
+
+  return apiFetch(`/api/v1/inventory-adjustment-requests?${query.toString()}`);
+}

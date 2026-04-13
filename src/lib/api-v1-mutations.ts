@@ -258,3 +258,138 @@ export async function getSalesTargets(params?: {
   
   return apiFetch(`/api/v1/sales-targets?${queryParams.toString()}`);
 }
+
+// ===== DEPLETION REPORTS =====
+
+export async function createDepletionReport(reportData: {
+  account_id: string;
+  sku: string;
+  period_start: string;
+  period_end: string;
+  bottles_sold: number;
+  bottles_on_hand_at_end: number;
+  notes?: string;
+  flagged_for_replenishment?: boolean;
+}) {
+  return apiFetch("/api/v1/depletion-reports", {
+    method: "POST",
+    body: JSON.stringify(reportData),
+  });
+}
+
+export async function updateDepletionReport(
+  id: string,
+  updates: Partial<{
+    account_id: string;
+    sku: string;
+    period_start: string;
+    period_end: string;
+    bottles_sold: number;
+    bottles_on_hand_at_end: number;
+    notes: string;
+    flagged_for_replenishment: boolean;
+  }>
+) {
+  return apiFetch(`/api/v1/depletion-reports/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteDepletionReport(id: string) {
+  return apiFetch(`/api/v1/depletion-reports/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getDepletionReports(params?: {
+  account_id?: string;
+  sku?: string;
+  flagged?: boolean;
+  start_date?: string;
+  end_date?: string;
+  page?: number;
+  limit?: number;
+}) {
+  const queryParams = new URLSearchParams();
+  if (params?.account_id) queryParams.set("account_id", params.account_id);
+  if (params?.sku) queryParams.set("sku", params.sku);
+  if (params?.flagged) queryParams.set("flagged", "true");
+  if (params?.start_date) queryParams.set("start_date", params.start_date);
+  if (params?.end_date) queryParams.set("end_date", params.end_date);
+  if (params?.page) queryParams.set("page", String(params.page));
+  if (params?.limit) queryParams.set("limit", String(params.limit));
+
+  return apiFetch(`/api/v1/depletion-reports?${queryParams.toString()}`);
+}
+
+export async function getDepletionReport(id: string) {
+  return apiFetch(`/api/v1/depletion-reports/${id}`);
+}
+
+export async function getSellThroughVelocity(params?: {
+  account_id?: string;
+  sku?: string;
+  days?: number;
+}) {
+  const queryParams = new URLSearchParams();
+  if (params?.account_id) queryParams.set("account_id", params.account_id);
+  if (params?.sku) queryParams.set("sku", params.sku);
+  if (params?.days) queryParams.set("days", String(params.days));
+
+  return apiFetch(`/api/v1/depletion-reports/sellthrough/velocity?${queryParams.toString()}`);
+}
+
+export async function getSellThroughSummary(params?: {
+  period?: "7d" | "30d" | "90d";
+}) {
+  const queryParams = new URLSearchParams();
+  if (params?.period) queryParams.set("period", params.period);
+
+  return apiFetch(`/api/v1/depletion-reports/sellthrough/summary?${queryParams.toString()}`);
+}
+
+// ===== INVENTORY ADJUSTMENT REQUESTS =====
+
+export async function createInventoryAdjustmentRequest(requestData: {
+  account_id: string;
+  sku: string;
+  adjustment_type: "count_discrepancy" | "damage" | "theft" | "other";
+  quantity_expected: number;
+  quantity_actual: number;
+  reason?: string;
+}) {
+  return apiFetch("/api/v1/inventory-adjustment-requests", {
+    method: "POST",
+    body: JSON.stringify(requestData),
+  });
+}
+
+export async function getInventoryAdjustmentRequests(params?: {
+  account_id?: string;
+  status?: string;
+  page?: number;
+  limit?: number;
+}) {
+  const queryParams = new URLSearchParams();
+  if (params?.account_id) queryParams.set("account_id", params.account_id);
+  if (params?.status) queryParams.set("status", params.status);
+  if (params?.page) queryParams.set("page", String(params.page));
+  if (params?.limit) queryParams.set("limit", String(params.limit));
+
+  return apiFetch(`/api/v1/inventory-adjustment-requests?${queryParams.toString()}`);
+}
+
+export async function approveInventoryAdjustmentRequest(
+  id: string,
+  approved: boolean,
+  rejectionReason?: string
+) {
+  return apiFetch(`/api/v1/inventory-adjustment-requests/${id}/approve`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      approved,
+      rejection_reason: rejectionReason,
+    }),
+  });
+}

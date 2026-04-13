@@ -950,4 +950,497 @@ router.post('/sales-targets', requirePermission(Permission.SETTINGS_WRITE), asyn
   }
 });
 
+// ===== DEPLETION REPORTS =====
+
+// GET /api/v1/depletion-reports - List depletion reports
+router.get('/depletion-reports', requirePermission(Permission.REPORTS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { page = 1, limit = 50, account_id, sku, flagged, start_date, end_date } = req.query;
+    
+    let query = db('depletion_reports')
+      .where({ tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .orderBy('reported_at', 'desc');
+    
+    if (account_id) query = query.where('account_id', account_id);
+    if (sku) query = query.where('sku', sku);
+    if (flagged === 'true') query = query.where('flagged_for_replenishment', true);
+    if (start_date) query = query.where('period_end', '>=', start_date);
+    if (end_date) query = query.where('period_start', '<=', end_date);
+    
+    const offset = (Number(page) - 1) * Number(limit);
+    
+    const countQuery = query.clone().count('id as count').first();
+    const dataQuery = query
+      .clone()
+      .select(
+        'depletion_reports.*',
+        'accounts.name as account_name',
+        'accounts.trading_name as account_trading_name'
+      )
+      .leftJoin('accounts', 'depletion_reports.account_id', 'accounts.id')
+      .limit(Number(limit))
+      .offset(offset);
+    
+    const [countResult, reports] = await Promise.all([countQuery, dataQuery]);
+    
+    res.json({
+      data: reports,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: Number(countResult?.count || 0),
+        totalPages: Math.ceil(Number(countResult?.count || 0) / Number(limit))
+      }
+    });
+  } catch (err) {
+    console.error('[API v1] Error fetching depletion reports:', err);
+    res.status(500).json({ error: 'Failed to fetch depletion reports' });
+  }
+});
+
+// GET /api/v1/depletion-reports/:id - Get single depletion report
+router.get('/depletion-reports/:id', requirePermission(Permission.REPORTS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const report = await db('depletion_reports')
+      .where({ 'depletion_reports.id': id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .select(
+        'depletion_reports.*',
+        'accounts.name as account_name',
+        'accounts.trading_name as account_trading_name'
+      )
+      .leftJoin('accounts', 'depletion_reports.account_id', 'accounts.id')
+      .first();
+    
+    if (!report) {
+      return res.status(404).json({ error: 'Depletion report not found' });
+    }
+    
+    res.json({ data: report });
+  } catch (err) {
+    console.error('[API v1] Error fetching depletion report:', err);
+    res.status(500).json({ error: 'Failed to fetch depletion report' });
+  }
+});
+
+// POST /api/v1/depletion-reports - Create depletion report
+router.post('/depletion-reports', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { 
+      account_id, 
+      sku, 
+      period_start, 
+      period_end, 
+      bottles_sold, 
+      bottles_on_hand_at_end,
+      notes,
+      flagged_for_replenishment
+    } = req.body;
+    
+    if (!account_id || !sku || !period_start || !period_end) {
+      return res.status(400).json({ 
+        error: 'account_id, sku, period_start, and period_end are required' 
+      });
+    }
+    
+    // Find product_id from SKU
+    const product = await db('products')
+      .where({ tenant_id: tenantId, sku })
+      .whereNull('deleted_at')
+      .first();
+    
+    const [report] = await db('depletion_reports')
+      .insert({
+        tenant_id: tenantId,
+        account_id,
+        product_id: product?.id || null,
+        sku,
+        period_start,
+        period_end,
+        bottles_sold: Math.max(0, Number(bottles_sold) || 0),
+        bottles_on_hand_at_end: Math.max(0, Number(bottles_on_hand_at_end) || 0),
+        notes: notes || '',
+        flagged_for_replenishment: flagged_for_replenishment || false,
+        reported_by: req.user?.userId,
+        reported_by_role: req.user?.role || 'distributor',
+        reported_at: new Date()
+      })
+      .returning('*');
+    
+    res.status(201).json({ data: report });
+  } catch (err) {
+    console.error('[API v1] Error creating depletion report:', err);
+    res.status(500).json({ error: 'Failed to create depletion report' });
+  }
+});
+
+// PUT /api/v1/depletion-reports/:id - Update depletion report
+router.put('/depletion-reports/:id', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const updates = req.body;
+    
+    delete updates.id;
+    delete updates.tenant_id;
+    delete updates.created_at;
+    delete updates.reported_at; // Don't allow changing the original report time
+    
+    updates.updated_at = new Date();
+    
+    // Handle numeric fields
+    if (updates.bottles_sold !== undefined) {
+      updates.bottles_sold = Math.max(0, Number(updates.bottles_sold) || 0);
+    }
+    if (updates.bottles_on_hand_at_end !== undefined) {
+      updates.bottles_on_hand_at_end = Math.max(0, Number(updates.bottles_on_hand_at_end) || 0);
+    }
+    
+    // Update product_id if SKU changed
+    if (updates.sku) {
+      const product = await db('products')
+        .where({ tenant_id: tenantId, sku: updates.sku })
+        .whereNull('deleted_at')
+        .first();
+      updates.product_id = product?.id || null;
+    }
+    
+    const [report] = await db('depletion_reports')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update(updates)
+      .returning('*');
+    
+    if (!report) {
+      return res.status(404).json({ error: 'Depletion report not found' });
+    }
+    
+    res.json({ data: report });
+  } catch (err) {
+    console.error('[API v1] Error updating depletion report:', err);
+    res.status(500).json({ error: 'Failed to update depletion report' });
+  }
+});
+
+// DELETE /api/v1/depletion-reports/:id - Soft delete depletion report
+router.delete('/depletion-reports/:id', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const [report] = await db('depletion_reports')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update({ deleted_at: new Date(), updated_at: new Date() })
+      .returning('*');
+    
+    if (!report) {
+      return res.status(404).json({ error: 'Depletion report not found' });
+    }
+    
+    res.json({ data: report, message: 'Depletion report deleted' });
+  } catch (err) {
+    console.error('[API v1] Error deleting depletion report:', err);
+    res.status(500).json({ error: 'Failed to delete depletion report' });
+  }
+});
+
+// GET /api/v1/depletion-reports/sellthrough/velocity - Get sell-through velocity
+router.get('/depletion-reports/sellthrough/velocity', requirePermission(Permission.REPORTS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { account_id, sku, days = 30 } = req.query;
+    
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - Number(days));
+    
+    let query = db('depletion_reports')
+      .where({ tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .where('period_end', '>=', startDate.toISOString().split('T')[0]);
+    
+    if (account_id) query = query.where('account_id', account_id);
+    if (sku) query = query.where('sku', sku);
+    
+    // Aggregate by account and SKU
+    const velocity = await query
+      .select(
+        'account_id',
+        'sku',
+        db.raw('SUM(bottles_sold) as total_bottles_sold'),
+        db.raw('SUM(bottles_on_hand_at_end) as avg_on_hand'),
+        db.raw('COUNT(*) as report_count'),
+        db.raw('MIN(period_start) as first_period'),
+        db.raw('MAX(period_end) as last_period')
+      )
+      .groupBy('account_id', 'sku');
+    
+    // Get account names
+    const accountIds = [...new Set(velocity.map(v => v.account_id))];
+    const accounts = await db('accounts')
+      .whereIn('id', accountIds)
+      .where({ tenant_id: tenantId })
+      .select('id', 'name', 'trading_name');
+    
+    const accountMap = Object.fromEntries(accounts.map(a => [a.id, a]));
+    
+    // Calculate velocity (bottles per day)
+    const result = velocity.map(v => {
+      const daysInPeriod = Math.max(1, Number(days));
+      return {
+        ...v,
+        account_name: accountMap[v.account_id]?.trading_name || accountMap[v.account_id]?.name,
+        velocity_bottles_per_day: Number((Number(v.total_bottles_sold) / daysInPeriod).toFixed(2)),
+        days_in_period: daysInPeriod
+      };
+    });
+    
+    res.json({ data: result });
+  } catch (err) {
+    console.error('[API v1] Error calculating sell-through velocity:', err);
+    res.status(500).json({ error: 'Failed to calculate sell-through velocity' });
+  }
+});
+
+// GET /api/v1/depletion-reports/sellthrough/summary - Get summary by period
+router.get('/depletion-reports/sellthrough/summary', requirePermission(Permission.REPORTS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { period = '30d' } = req.query;
+    
+    const days = period === '7d' ? 7 : period === '90d' ? 90 : 30;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    
+    // Get total depletions
+    const depletionsResult = await db('depletion_reports')
+      .where({ tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .where('period_end', '>=', startDate.toISOString().split('T')[0])
+      .select(
+        db.raw('SUM(bottles_sold) as total_sold'),
+        db.raw('SUM(bottles_on_hand_at_end) as total_on_hand'),
+        db.raw('COUNT(DISTINCT account_id) as accounts_reporting'),
+        db.raw('COUNT(*) as total_reports')
+      )
+      .first();
+    
+    // Get flagged for replenishment
+    const flaggedResult = await db('depletion_reports')
+      .where({ tenant_id: tenantId, flagged_for_replenishment: true })
+      .whereNull('deleted_at')
+      .where('period_end', '>=', startDate.toISOString().split('T')[0])
+      .count('id as count')
+      .first();
+    
+    // Get top SKUs by velocity
+    const topSkus = await db('depletion_reports')
+      .where({ tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .where('period_end', '>=', startDate.toISOString().split('T')[0])
+      .select('sku')
+      .select(db.raw('SUM(bottles_sold) as total_sold'))
+      .groupBy('sku')
+      .orderBy('total_sold', 'desc')
+      .limit(5);
+    
+    res.json({
+      data: {
+        period,
+        period_days: days,
+        total_bottles_sold: Number(depletionsResult?.total_sold || 0),
+        total_bottles_on_hand: Number(depletionsResult?.total_on_hand || 0),
+        accounts_reporting: Number(depletionsResult?.accounts_reporting || 0),
+        total_reports: Number(depletionsResult?.total_reports || 0),
+        flagged_for_replenishment: Number(flaggedResult?.count || 0),
+        top_skus: topSkus,
+        calculated_at: new Date().toISOString()
+      }
+    });
+  } catch (err) {
+    console.error('[API v1] Error fetching sell-through summary:', err);
+    res.status(500).json({ error: 'Failed to fetch sell-through summary' });
+  }
+});
+
+// ===== INVENTORY ADJUSTMENT REQUESTS =====
+
+// GET /api/v1/inventory-adjustment-requests - List adjustment requests
+router.get('/inventory-adjustment-requests', requirePermission(Permission.REPORTS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { page = 1, limit = 50, account_id, status } = req.query;
+    
+    let query = db('inventory_adjustment_requests')
+      .where({ tenant_id: tenantId })
+      .orderBy('requested_at', 'desc');
+    
+    if (account_id) query = query.where('account_id', account_id);
+    if (status) query = query.where('status', status);
+    
+    const offset = (Number(page) - 1) * Number(limit);
+    
+    const countQuery = query.clone().count('id as count').first();
+    const dataQuery = query
+      .clone()
+      .select(
+        'inventory_adjustment_requests.*',
+        'accounts.name as account_name',
+        'accounts.trading_name as account_trading_name'
+      )
+      .leftJoin('accounts', 'inventory_adjustment_requests.account_id', 'accounts.id')
+      .limit(Number(limit))
+      .offset(offset);
+    
+    const [countResult, requests] = await Promise.all([countQuery, dataQuery]);
+    
+    res.json({
+      data: requests,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: Number(countResult?.count || 0),
+        totalPages: Math.ceil(Number(countResult?.count || 0) / Number(limit))
+      }
+    });
+  } catch (err) {
+    console.error('[API v1] Error fetching adjustment requests:', err);
+    res.status(500).json({ error: 'Failed to fetch adjustment requests' });
+  }
+});
+
+// POST /api/v1/inventory-adjustment-requests - Create adjustment request
+router.post('/inventory-adjustment-requests', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { 
+      account_id, 
+      sku, 
+      adjustment_type,
+      quantity_expected,
+      quantity_actual,
+      reason
+    } = req.body;
+    
+    if (!account_id || !sku || !adjustment_type) {
+      return res.status(400).json({ 
+        error: 'account_id, sku, and adjustment_type are required' 
+      });
+    }
+    
+    const expected = Number(quantity_expected) || 0;
+    const actual = Number(quantity_actual) || 0;
+    const adjustment = actual - expected;
+    
+    // Find product_id from SKU
+    const product = await db('products')
+      .where({ tenant_id: tenantId, sku })
+      .whereNull('deleted_at')
+      .first();
+    
+    const [request] = await db('inventory_adjustment_requests')
+      .insert({
+        tenant_id: tenantId,
+        account_id,
+        product_id: product?.id || null,
+        sku,
+        adjustment_type,
+        quantity_expected: expected,
+        quantity_actual: actual,
+        quantity_adjustment: adjustment,
+        reason: reason || '',
+        status: 'pending',
+        requested_by: req.user?.userId,
+        requested_at: new Date()
+      })
+      .returning('*');
+    
+    res.status(201).json({ data: request });
+  } catch (err) {
+    console.error('[API v1] Error creating adjustment request:', err);
+    res.status(500).json({ error: 'Failed to create adjustment request' });
+  }
+});
+
+// PATCH /api/v1/inventory-adjustment-requests/:id/approve - Approve/reject adjustment
+router.patch('/inventory-adjustment-requests/:id/approve', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const { approved, rejection_reason } = req.body;
+    
+    const [request] = await db('inventory_adjustment_requests')
+      .where({ id, tenant_id: tenantId, status: 'pending' })
+      .first();
+    
+    if (!request) {
+      return res.status(404).json({ error: 'Adjustment request not found or already processed' });
+    }
+    
+    const updates = {
+      status: approved ? 'approved' : 'rejected',
+      approved_by: req.user?.userId,
+      approved_at: new Date(),
+      rejection_reason: approved ? null : (rejection_reason || ''),
+      updated_at: new Date()
+    };
+    
+    const [updated] = await db('inventory_adjustment_requests')
+      .where({ id, tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+    
+    // If approved, also adjust inventory
+    if (approved) {
+      // Find inventory record
+      const inventory = await db('inventory')
+        .where({ 
+          tenant_id: tenantId, 
+          product_id: request.product_id 
+        })
+        .first();
+      
+      if (inventory) {
+        const quantityBefore = inventory.quantity_on_hand;
+        const quantityAfter = quantityBefore + request.quantity_adjustment;
+        
+        await db('inventory')
+          .where({ id: inventory.id })
+          .update({ 
+            quantity_on_hand: quantityAfter,
+            updated_at: new Date()
+          });
+        
+        // Log the adjustment
+        await db('inventory_adjustments').insert({
+          tenant_id: tenantId,
+          inventory_id: inventory.id,
+          product_id: request.product_id,
+          location: inventory.location,
+          adjustment_type: `distributor_${request.adjustment_type}`,
+          quantity_before: quantityBefore,
+          quantity_after: quantityAfter,
+          quantity_changed: request.quantity_adjustment,
+          reference_type: 'adjustment_request',
+          reference_id: id,
+          notes: `Distributor adjustment: ${request.reason}`,
+          created_by: req.user?.userId,
+          created_at: new Date()
+        });
+      }
+    }
+    
+    res.json({ data: updated });
+  } catch (err) {
+    console.error('[API v1] Error approving adjustment request:', err);
+    res.status(500).json({ error: 'Failed to approve adjustment request' });
+  }
+});
+
 export default router;

@@ -3,14 +3,15 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useAppData, useSalesOrders } from "@/contexts/AppDataContext";
+import { useAppData, useSalesOrders, useDepletionReports } from "@/contexts/AppDataContext";
 import { computeInventorySummary, deriveAlerts } from "@/lib/hajime-metrics";
-import { Package, ShoppingCart, Truck, Users, AlertTriangle, Warehouse, Calendar } from "lucide-react";
+import { Package, ShoppingCart, Truck, Users, AlertTriangle, Warehouse, Calendar, TrendingDown } from "lucide-react";
 import { useMemo } from "react";
 
 export default function DistributorHomePage() {
   const { data } = useAppData();
   const { salesOrders } = useSalesOrders();
+  const { depletionReports } = useDepletionReports();
   const inv = useMemo(() => computeInventorySummary(data.inventory), [data.inventory]);
   const alerts = useMemo(() => deriveAlerts(data).slice(0, 4), [data]);
 
@@ -29,6 +30,16 @@ export default function DistributorHomePage() {
     [data.accounts],
   );
 
+  const depletionFlags = useMemo(
+    () => depletionReports.filter((r) => r.flaggedForReplenishment).length,
+    [depletionReports],
+  );
+
+  const recentDepletions = useMemo(
+    () => depletionReports.slice(0, 5),
+    [depletionReports],
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -36,7 +47,7 @@ export default function DistributorHomePage() {
         description="Execution-first: pick, pack, ship, and clear backorders — same inventory and orders as HQ."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
             <Warehouse className="h-4 w-4 text-muted-foreground" />
@@ -86,6 +97,19 @@ export default function DistributorHomePage() {
             <p className="text-xs text-muted-foreground">active (non-distributor)</p>
             <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
               <Link to="/distributor/accounts">Directory</Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
+            <TrendingDown className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="font-display text-sm font-medium">Depletion reports</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="font-display text-2xl font-semibold tabular-nums">{depletionFlags}</p>
+            <p className="text-xs text-muted-foreground">flagged for replenishment</p>
+            <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
+              <Link to="/distributor/depletions">Report sell-through</Link>
             </Button>
           </CardContent>
         </Card>

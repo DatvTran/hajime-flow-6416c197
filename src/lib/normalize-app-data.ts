@@ -2,7 +2,7 @@ import type { AppData, TeamMember } from "@/types/app-data";
 import { TEAM_ROSTER } from "@/data/team-roster";
 import seedJson from "@/data/seed-app.json";
 import type { Product } from "@/data/mockData";
-import { products as PRODUCT_DEFAULTS, newProductRequests as DEFAULT_NEW_PRODUCT_REQUESTS, transferOrders as DEFAULT_TRANSFER_ORDERS } from "@/data/mockData";
+import { products as PRODUCT_DEFAULTS, newProductRequests as DEFAULT_NEW_PRODUCT_REQUESTS, transferOrders as DEFAULT_TRANSFER_ORDERS, depletionReports as DEFAULT_DEPLETION_REPORTS } from "@/data/mockData";
 
 const ROSTER_EMAILS = new Set(TEAM_ROSTER.map((m) => m.email?.toLowerCase()).filter(Boolean));
 
@@ -81,5 +81,6 @@ export function normalizeAppData(raw: AppData): AppData {
     visitNotes: Array.isArray(raw.visitNotes) ? raw.visitNotes : [],
     newProductRequests: pickOrSeed(raw.newProductRequests, DEFAULT_NEW_PRODUCT_REQUESTS),
     transferOrders: pickOrSeed(raw.transferOrders, DEFAULT_TRANSFER_ORDERS),
+    depletionReports: pickOrSeed(raw.depletionReports, DEFAULT_DEPLETION_REPORTS),
   };
 }
