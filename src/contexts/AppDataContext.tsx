@@ -611,6 +611,55 @@ export function useInventory() {
     [caseSizeForSku, updateData],
   );
 
+  // Add inventory when a Production PO is delivered (manufacturer shipment arrives)
+  const addForPo = useCallback(
+    async (po: PurchaseOrder, location: string = "Toronto Main") => {
+      try {
+        // Find product ID from SKU
+        const product = data.products.find((p) => p.sku === po.sku);
+        if (!product) {
+          return { ok: false, error: "Product not found" };
+        }
+        
+        // Call API to add inventory (positive adjustment)
+        const result = await apiAdjustInventory({
+          product_id: product.id,
+          location,
+          quantity: po.quantity,
+          reason: "production_po_delivery",
+          notes: `Received from PO ${po.id} - ${po.manufacturer}`,
+        });
+        
+        // Update local state
+        updateData((d) => ({
+          ...d,
+          inventory: [{
+            id: result.data.id,
+            sku: po.sku,
+            productName: product.name,
+            batchLot: po.id,
+            productionDate: new Date().toISOString().slice(0, 10),
+            quantityBottles: result.data.quantity_on_hand,
+            quantityCases: Math.floor(result.data.quantity_on_hand / (product.caseSize || 12)),
+            warehouse: location,
+            location,
+            status: "available" as const,
+            labelVersion: po.labelVersion || "v1.0",
+            notes: `Received from ${po.manufacturer}`,
+            availableQuantity: result.data.available_quantity,
+            reservedQuantity: 0,
+          }, ...d.inventory],
+        }));
+        
+        return { ok: true, error: null };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to add inventory";
+        return { ok: false, error: message };
+      }
+    },
+    [data.products, updateData],
+  );
+
   return useMemo(
     () => ({
       items,
@@ -619,8 +668,9 @@ export function useInventory() {
       adjustQuantity,
       availableBottlesForSku,
       consumeForPo,
+      addForPo,
     }),
-    [items, receiveLine, setItemStatus, adjustQuantity, availableBottlesForSku, consumeForPo],
+    [items, receiveLine, setItemStatus, adjustQuantity, availableBottlesForSku, consumeForPo, addForPo],
   );
 }
 

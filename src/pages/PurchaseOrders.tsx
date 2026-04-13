@@ -13,12 +13,11 @@ import { Plus, Download, Factory, Truck } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { useInventory, usePurchaseOrders, useTransferOrders } from "@/contexts/AppDataContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { simulateLedgerCommit } from "@/lib/ledger";
 
-function shouldConsumeInventoryForTransition(p: PurchaseOrder, nextStatus: PurchaseOrder["status"]): boolean {
-  if (p.inventoryConsumed) return false;
-  if (nextStatus !== "shipped" && nextStatus !== "delivered") return false;
-  if (p.status === "shipped" || p.status === "delivered") return false;
+function shouldAddInventoryForTransition(p: PurchaseOrder, nextStatus: PurchaseOrder["status"]): boolean {
+  // Production POs ADD inventory when delivered (manufacturer shipment arrives)
+  if (nextStatus !== "delivered") return false;
+  if (p.status === "delivered") return false; // Already counted
   return true;
 }
 
@@ -29,7 +28,7 @@ export default function PurchaseOrders() {
   const canEditPoStatus = user.role === "brand_operator" || user.role === "founder_admin";
   const canEditTransfer = user.role === "brand_operator" || user.role === "operations" || user.role === "distributor" || user.role === "founder_admin";
 
-  const { consumeForPo } = useInventory();
+  const { consumeForPo, addForPo } = useInventory();
   const { purchaseOrders, addPurchaseOrder, patchPurchaseOrder } = usePurchaseOrders();
   const { transferOrders, addTransferOrder, patchTransferOrder } = useTransferOrders();
 
@@ -91,27 +90,23 @@ export default function PurchaseOrders() {
     const p = purchaseOrders.find((x) => x.id === id);
     if (!p) return;
     const merged = { ...p, ...patch };
-    if (patch.status !== undefined && shouldConsumeInventoryForTransition(p, patch.status)) {
-      const r = consumeForPo(merged);
+    
+    // Production POs ADD inventory when delivered (manufacturer shipment arrives)
+    if (patch.status !== undefined && shouldAddInventoryForTransition(p, patch.status)) {
+      const r = await addForPo(merged);
       if (!r.ok) {
-        toast.error("Insufficient inventory to fulfill", {
-          description: `Short by ${r.shortfall.toLocaleString()} bottles for ${merged.sku}. Receive stock or lower the PO quantity.`,
+        toast.error("Failed to receive inventory", {
+          description: r.error || `Could not add inventory for ${merged.sku}.`,
         });
         return;
       }
-      const { txHash } = await simulateLedgerCommit({
-        type: "po_fulfill",
-        poId: id,
-        sku: merged.sku,
-        quantity: merged.quantity,
-        status: merged.status,
-      });
       patchPurchaseOrder(id, { status: merged.status, inventoryConsumed: true });
       toast.success("PO status updated", {
-        description: `${id} → ${merged.status} · Ledger ${txHash.slice(0, 10)}…`,
+        description: `${id} → ${merged.status} · Inventory received`,
       });
       return;
     }
+    
     patchPurchaseOrder(id, patch);
     toast.success("PO status updated", { description: `${id} → ${merged.status}` });
   };
@@ -123,17 +118,8 @@ export default function PurchaseOrders() {
   };
 
   const handleCreatePo = (po: PurchaseOrder) => {
-    if ((po.status === "shipped" || po.status === "delivered") && !po.inventoryConsumed) {
-      const r = consumeForPo(po);
-      if (!r.ok) {
-        toast.error("Could not allocate inventory", {
-          description: `Short by ${r.shortfall.toLocaleString()} bottles for ${po.sku}.`,
-        });
-        return;
-      }
-      addPurchaseOrder({ ...po, inventoryConsumed: true });
-      return;
-    }
+    // Production POs create inventory (when manufacturer delivers), they don't consume it.
+    // Inventory is added via receive stock or when PO status transitions to delivered.
     addPurchaseOrder(po);
   };
 
