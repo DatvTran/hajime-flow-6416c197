@@ -508,3 +508,149 @@ export const inventoryByStatus = [
   { status: "In Production", count: 1200, color: "hsl(220, 20%, 46%)" },
   { status: "Damaged", count: 40, color: "hsl(0, 72%, 51%)" },
 ];
+
+// New Product Development
+export type NewProductRequestStatus = "draft" | "submitted" | "under_review" | "proposed" | "approved" | "rejected" | "declined";
+
+export type NewProductAttachment = {
+  name: string;
+  url: string;
+  type: "design_brief" | "tasting_notes" | "competitor_analysis" | "other";
+};
+
+export type NewProductManufacturerProposal = {
+  feasible: boolean;
+  canHitAbv: boolean;
+  proposedAbv?: number;
+  production: {
+    equipmentRequired: string[];
+    fermentationTime: string;
+    agingTime?: string;
+    batchSize: number;
+    minimumBatchSize: number;
+    capacityAvailable: boolean;
+  };
+  costs: {
+    perBottleProduction: number;
+    perBottlePackaging: number;
+    perBottleLabeling: number;
+    setupFee?: number;
+    totalPerBottle: number;
+  };
+  timeline: {
+    sampleAvailableDate: string;
+    productionStartDate: string;
+    firstDeliveryDate: string;
+  };
+  technicalNotes: string;
+  regulatoryNotes: string;
+  sampleQuantity: number;
+  sampleShipDate: string;
+};
+
+export type NewProductBrandDecision = {
+  approved: boolean;
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+  requestedChanges?: string;
+};
+
+export type NewProductRequest = {
+  id: string;
+  title: string;
+  requestedBy: string;
+  requestedAt: string;
+  specs: {
+    baseSpirit: string;
+    targetAbv: number;
+    flavorProfile: string[];
+    sweetener?: string;
+    targetPricePoint: "premium" | "super_premium" | "ultra_premium";
+    packaging: {
+      bottleSize: "750ml" | "1000ml" | "375ml";
+      labelStyle: string;
+      caseConfiguration: number;
+    };
+    minimumOrderQuantity: number;
+    targetLaunchDate: string;
+    regulatoryMarkets: string[];
+  };
+  attachments: NewProductAttachment[];
+  notes: string;
+  status: NewProductRequestStatus;
+  assignedManufacturer?: string;
+  submittedAt?: string;
+  reviewStartedAt?: string;
+  proposalReceivedAt?: string;
+  decidedAt?: string;
+  manufacturerProposal?: NewProductManufacturerProposal;
+  brandDecision?: NewProductBrandDecision;
+  sampleShipmentId?: string;
+  productionPoId?: string;
+  resultingSku?: string;
+};
+
+export const newProductRequests: NewProductRequest[] = [
+  {
+    id: "NPR-2025-0001",
+    title: "Hazelnut Coffee Rhum 30%",
+    requestedBy: "brand_operator",
+    requestedAt: "2025-04-01T10:00:00Z",
+    specs: {
+      baseSpirit: "coffee_rhum",
+      targetAbv: 30,
+      flavorProfile: ["hazelnut", "vanilla", "caramel"],
+      sweetener: "cane_sugar",
+      targetPricePoint: "super_premium",
+      packaging: { bottleSize: "750ml", labelStyle: "Minimalist ensō with copper foil", caseConfiguration: 12 },
+      minimumOrderQuantity: 1200,
+      targetLaunchDate: "2025-09-01",
+      regulatoryMarkets: ["Ontario", "EU", "US"],
+    },
+    attachments: [],
+    notes: "Competitor: Mr Black, but higher ABV and Japanese design positioning.",
+    status: "under_review",
+    assignedManufacturer: "Kirin Brewery Co.",
+    submittedAt: "2025-04-02T10:00:00Z",
+    reviewStartedAt: "2025-04-03T10:00:00Z",
+  },
+  {
+    id: "NPR-2025-0002",
+    title: "Vanilla Cold Brew Liqueur",
+    requestedBy: "brand_operator",
+    requestedAt: "2025-03-15T10:00:00Z",
+    specs: {
+      baseSpirit: "coffee_rhum",
+      targetAbv: 25,
+      flavorProfile: ["vanilla", "cold_brew"],
+      sweetener: "cane_sugar",
+      targetPricePoint: "premium",
+      packaging: { bottleSize: "750ml", labelStyle: "Navy blue matte with silver ensō", caseConfiguration: 12 },
+      minimumOrderQuantity: 2400,
+      targetLaunchDate: "2025-08-15",
+      regulatoryMarkets: ["Ontario", "US"],
+    },
+    attachments: [],
+    notes: "Seasonal summer release.",
+    status: "approved",
+    assignedManufacturer: "Kirin Brewery Co.",
+    submittedAt: "2025-03-16T10:00:00Z",
+    reviewStartedAt: "2025-03-17T10:00:00Z",
+    proposalReceivedAt: "2025-03-20T10:00:00Z",
+    decidedAt: "2025-03-22T10:00:00Z",
+    manufacturerProposal: {
+      feasible: true,
+      canHitAbv: true,
+      production: { equipmentRequired: ["Standard still", "Fermentation tanks"], fermentationTime: "14 days", batchSize: 2400, minimumBatchSize: 2400, capacityAvailable: true },
+      costs: { perBottleProduction: 8.5, perBottlePackaging: 2.2, perBottleLabeling: 0.8, setupFee: 5000, totalPerBottle: 11.5 },
+      timeline: { sampleAvailableDate: "2025-05-20", productionStartDate: "2025-06-01", firstDeliveryDate: "2025-07-15" },
+      technicalNotes: "Standard formulation.",
+      regulatoryNotes: "No issues for Ontario / US.",
+      sampleQuantity: 12,
+      sampleShipDate: "2025-05-22",
+    },
+    brandDecision: { approved: true, approvedBy: "brand_operator", approvedAt: "2025-03-22T10:00:00Z" },
+    productionPoId: "PO-2025-0089",
+  },
+];

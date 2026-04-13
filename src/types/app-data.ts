@@ -6,6 +6,7 @@ import type {
   PurchaseOrder,
   SalesOrder,
   Shipment,
+  NewProductRequest,
 } from "@/data/mockData";
 
 export type AuditLogEntry = {
@@ -71,6 +72,8 @@ export type AppData = {
   financingLedger?: FinancingLedgerEntry[];
   /** Field visit notes — synced across roles via AppData (replaces localStorage-only). */
   visitNotes?: VisitNoteEntry[];
+  /** New product development requests — brand → manufacturer → production PO pipeline. */
+  newProductRequests?: NewProductRequest[];
 };
 
 export type VisitNoteEntry = {

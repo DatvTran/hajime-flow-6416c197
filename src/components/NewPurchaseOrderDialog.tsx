@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { PurchaseOrder } from "@/data/mockData";
-import { useProducts, useInventory } from "@/contexts/AppDataContext";
+import { useProducts } from "@/contexts/AppDataContext";
 import { simulateLedgerCommit } from "@/lib/ledger";
 import {
   Dialog,
@@ -47,11 +47,15 @@ type Props = {
   onCreate: (po: PurchaseOrder) => void;
   /** Deep link from manufacturer / alerts — pre-fill SKU and bottle quantity. */
   prefill?: { sku?: string; quantity?: string } | null;
+  /**
+   * Variant of the dialog. "replenishment" checks available inventory before creation.
+   * "production" (default for manufacturing new SKUs) skips the inventory guard.
+   */
+  variant?: "replenishment" | "production";
 };
 
-export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate, prefill }: Props) {
+export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate, prefill, variant = "production" }: Props) {
   const { products } = useProducts();
-  const { availableBottlesForSku } = useInventory();
   const [submitting, setSubmitting] = useState(false);
   const [manufacturer, setManufacturer] = useState<(typeof MANUFACTURERS)[number]>(MANUFACTURERS[0]);
   const [issueDate, setIssueDate] = useState(todayISO());
@@ -81,8 +85,6 @@ export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate,
     setNotes(prefill?.sku ? `Replenishment suggestion for ${prefill.sku}` : "");
   }, [open, products, prefill]);
 
-  const availableForSku = useMemo(() => availableBottlesForSku(sku), [availableBottlesForSku, sku]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sku.trim() || products.length === 0) {
@@ -90,13 +92,6 @@ export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate,
       return;
     }
     const qty = Math.max(1, Math.round(Number(quantity) || 0));
-    const available = availableBottlesForSku(sku);
-    if (available < qty) {
-      toast.error("Insufficient available inventory", {
-        description: `${sku} needs ${qty.toLocaleString()} bottles; only ${available.toLocaleString()} available (status: available).`,
-      });
-      return;
-    }
     const po: PurchaseOrder = {
       id: nextPoId(existing),
       manufacturer,
@@ -130,9 +125,9 @@ export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate,
         <DialogHeader>
           <DialogTitle>New purchase order</DialogTitle>
           <DialogDescription>
-            Production PO for the manufacturer. Before save we verify <strong className="text-foreground">available</strong> inventory for the SKU;
-            when the PO moves to <strong className="text-foreground">shipped</strong> or <strong className="text-foreground">delivered</strong>, that
-            quantity is removed from inventory (FIFO). Creation is recorded on the simulated ledger.
+            Production PO for the manufacturer. {variant === "replenishment" ? "Before save we verify available inventory for the SKU;" : "This is a production order — inventory availability is not checked at creation."} when the PO moves to{" "}
+            <strong className="text-foreground">shipped</strong> or{" "}
+            <strong className="text-foreground">delivered</strong>, that quantity is removed from inventory (FIFO). Creation is recorded on the simulated ledger.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -206,13 +201,6 @@ export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate,
                 onChange={(e) => setQuantity(e.target.value)}
                 className="touch-manipulation"
               />
-              <p className="text-xs text-muted-foreground">
-                Available for <span className="font-mono text-foreground">{sku}</span>:{" "}
-                <strong className="tabular-nums text-foreground">{availableForSku.toLocaleString()}</strong> bottles
-                {availableForSku < Math.max(1, Math.round(Number(quantity) || 0)) ? (
-                  <span className="text-destructive"> — below requested quantity</span>
-                ) : null}
-              </p>
             </div>
             <div className="space-y-2">
               <Label>Initial status</Label>

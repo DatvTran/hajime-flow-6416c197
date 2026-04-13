@@ -39,6 +39,8 @@ import SalesOpportunitiesPage from "./pages/SalesOpportunitiesPage";
 import SalesVisitNotesPage from "./pages/SalesVisitNotesPage";
 import FinancePaymentsPage from "./pages/FinancePaymentsPage";
 import IncentiveManagerPage from "./pages/IncentiveManagerPage";
+import ProductDevelopmentPage from "./pages/ProductDevelopmentPage";
+import ManufacturerProductRequestsPage from "./pages/ManufacturerProductRequestsPage";
 
 const queryClient = new QueryClient();
 
@@ -81,10 +83,12 @@ const App = () => {
                   <Route path="/markets" element={<MarketsPage />} />
                   <Route path="/shipments" element={<Shipments />} />
                   <Route path="/purchase-orders" element={<PurchaseOrders />} />
+                  <Route path="/product-development" element={<ProductDevelopmentPage />} />
                   <Route path="/manufacturer" element={<Manufacturer />} />
                   <Route path="/manufacturer/market-demand" element={<ManufacturerMarketDemandPage />} />
                   <Route path="/manufacturer/profile" element={<ManufacturerProfilePage />} />
                   <Route path="/manufacturer/purchase-orders" element={<PurchaseOrders />} />
+                  <Route path="/manufacturer/product-requests" element={<ManufacturerProductRequestsPage />} />
                   <Route path="/manufacturer/shipments" element={<Shipments />} />
                   <Route path="/manufacturer/inventory" element={<Inventory />} />
                   <Route path="/manufacturer/alerts" element={<AlertsHubPage />} />

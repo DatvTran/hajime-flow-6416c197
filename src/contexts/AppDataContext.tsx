@@ -11,6 +11,7 @@ import {
 import type {
   Account,
   InventoryItem,
+  NewProductRequest,
   Product,
   PurchaseOrder,
   SalesOrder,
@@ -730,5 +731,40 @@ export function useProductionStatuses() {
         updateData((d) => ({ ...d, productionStatuses: [row, ...d.productionStatuses] })),
     }),
     [data.productionStatuses, updateData],
+  );
+}
+
+function nextNprId(existing: NewProductRequest[]): string {
+  const year = new Date().getFullYear();
+  const nums = existing
+    .filter((n) => n.id.startsWith(`NPR-${year}`))
+    .map((n) => {
+      const m = n.id.match(/-(\d+)$/);
+      return m ? parseInt(m[1], 10) : 0;
+    });
+  const next = (nums.length ? Math.max(...nums) : 0) + 1;
+  return `NPR-${year}-${String(next).padStart(4, "0")}`;
+}
+
+export function useNewProductRequests() {
+  const { data, updateData } = useAppData();
+  return useMemo(
+    () => ({
+      newProductRequests: data.newProductRequests ?? [],
+      addNewProductRequest: (npr: Omit<NewProductRequest, "id">) =>
+        updateData((d) => {
+          const existing = d.newProductRequests ?? [];
+          const created: NewProductRequest = { ...npr, id: nextNprId(existing) };
+          return { ...d, newProductRequests: [created, ...existing] };
+        }),
+      patchNewProductRequest: (id: string, patch: Partial<NewProductRequest>) =>
+        updateData((d) => ({
+          ...d,
+          newProductRequests: (d.newProductRequests ?? []).map((n) =>
+            n.id === id ? { ...n, ...patch } : n
+          ),
+        })),
+    }),
+    [data.newProductRequests, updateData]
   );
 }

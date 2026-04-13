@@ -81,6 +81,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           label: "Supply chain",
           items: [
             { title: "Production requests", url: "/purchase-orders", icon: FileText },
+            { title: "Product development", url: "/product-development", icon: Factory },
             { title: "Manufacturer portal", url: "/manufacturer", icon: Factory },
           ],
         },
@@ -104,6 +105,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           label: "Manufacturer",
           items: [
             { title: "Overview", url: "/manufacturer", icon: LayoutDashboard },
+            { title: "New product requests", url: "/manufacturer/product-requests", icon: Factory },
             { title: "Production orders", url: "/manufacturer/purchase-orders", icon: FileText },
             { title: "Shipments", url: "/manufacturer/shipments", icon: Truck },
             { title: "Batch history", url: "/manufacturer/inventory", icon: Package },
