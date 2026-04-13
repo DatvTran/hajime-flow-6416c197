@@ -57,12 +57,35 @@ export default function Accounts() {
   }, [salesOrders]);
 
   const filtered = useMemo(() => {
-    // Role-based scoping: sales reps only see their assigned accounts
+    // Role-based scoping — tightened permissions
     let scopedAccounts = accounts;
+    
     if (user.role === "sales_rep") {
+      // Sales reps: assigned accounts only
       const rep = resolveSalesRepLabelForSession(user.email, user.displayName ?? "");
       scopedAccounts = accounts.filter((a) => a.salesOwner === rep);
+    } else if (user.role === "distributor") {
+      // Distributors: on-premise accounts they fulfill (retail, bar, restaurant, hotel)
+      scopedAccounts = accounts.filter((a) => 
+        ["retail", "bar", "restaurant", "hotel"].includes(a.type)
+      );
+    } else if (user.role === "manufacturer") {
+      // Manufacturers: distributor accounts + direct retail chains (sell-in planning)
+      scopedAccounts = accounts.filter((a) => 
+        a.type === "distributor" || a.type === "retail" || a.tags?.includes("direct")
+      );
+    } else if (user.role === "retail") {
+      // Retail: own account only (can't browse other retailers)
+      scopedAccounts = accounts.filter((a) => {
+        const emailMatch = user.email && a.email?.toLowerCase() === user.email.toLowerCase();
+        const nameMatch = user.displayName && (
+          a.tradingName?.toLowerCase().includes(user.displayName.toLowerCase()) ||
+          a.name?.toLowerCase().includes(user.displayName.toLowerCase())
+        );
+        return emailMatch || nameMatch;
+      });
     }
+    // brand_operator, founder_admin, operations, finance: full access (no filter)
     
     const q = search.toLowerCase();
     return scopedAccounts.filter((a) => {
@@ -99,8 +122,14 @@ export default function Accounts() {
         title="Accounts"
         description={
           user.role === "sales_rep"
-            ? "Submit new retailer applications — wholesaler verifies, then brand HQ approves pricing tier and credit."
-            : "Retailers and distributors — market assignment, sell-in history, onboarding pipeline, and account managers."
+            ? "Your assigned accounts — submit new retailer applications, track onboarding pipeline, and manage relationships."
+            : user.role === "distributor"
+              ? "On-premise accounts you fulfill — retail, bars, restaurants, and hotels in your territory."
+              : user.role === "manufacturer"
+                ? "Distributors and retail chains for sell-in planning and production forecasting."
+                : user.role === "retail"
+                  ? "Your account profile and order history."
+                  : "Retailers and distributors — market assignment, sell-in history, onboarding pipeline, and account managers."
         }
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
@@ -185,7 +214,28 @@ export default function Accounts() {
         </div>
       </div>
 
-      {view === "cards" ? (
+      {filtered.length === 0 ? (
+        <Card className="py-12">
+          <CardContent className="text-center">
+            <p className="text-muted-foreground mb-2">
+              {user.role === "sales_rep"
+                ? "No accounts assigned to you yet. Contact your manager to get accounts assigned."
+                : user.role === "distributor"
+                  ? "No on-premise accounts in your territory yet."
+                  : user.role === "manufacturer"
+                    ? "No distributor or retail accounts found."
+                    : user.role === "retail"
+                      ? "Your account profile will appear here once set up."
+                      : "No accounts match your filters."}
+            </p>
+            {user.role === "sales_rep" ? (
+              <Button variant="outline" size="sm" onClick={() => setApplicationOpen(true)}>
+                Submit retailer application
+              </Button>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : view === "cards" ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((account) => (
             <Card
