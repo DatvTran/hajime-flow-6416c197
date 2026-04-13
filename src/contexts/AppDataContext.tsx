@@ -15,6 +15,7 @@ import type {
   Product,
   PurchaseOrder,
   SalesOrder,
+  TransferOrder,
 } from "@/data/mockData";
 import { deductFifoAvailableBottles } from "@/lib/inventory-deduct";
 import { fetchAppData } from "@/lib/data-service";
@@ -766,5 +767,36 @@ export function useNewProductRequests() {
         })),
     }),
     [data.newProductRequests, updateData]
+  );
+}
+
+export function useTransferOrders() {
+  const { data, updateData } = useAppData();
+  return useMemo(
+    () => ({
+      transferOrders: data.transferOrders ?? [],
+      addTransferOrder: (to: Omit<TransferOrder, "id">) =>
+        updateData((d) => {
+          const existing = d.transferOrders ?? [];
+          const year = new Date().getFullYear();
+          const nums = existing
+            .filter((n) => n.id.startsWith(`TO-${year}`))
+            .map((n) => {
+              const m = n.id.match(/-(\d+)$/);
+              return m ? parseInt(m[1], 10) : 0;
+            });
+          const next = (nums.length ? Math.max(...nums) : 0) + 1;
+          const id = `TO-${year}-${String(next).padStart(4, "0")}`;
+          return { ...d, transferOrders: [{ ...to, id }, ...existing] };
+        }),
+      patchTransferOrder: (id: string, patch: Partial<TransferOrder>) =>
+        updateData((d) => ({
+          ...d,
+          transferOrders: (d.transferOrders ?? []).map((t) =>
+            t.id === id ? { ...t, ...patch } : t
+          ),
+        })),
+    }),
+    [data.transferOrders, updateData]
   );
 }

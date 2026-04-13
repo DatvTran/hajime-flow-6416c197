@@ -305,11 +305,41 @@ export type PurchaseOrder = {
   inventoryConsumed?: boolean;
 };
 
+/** Transfer Order: moves existing inventory between locations (wholesaler fulfillment) */
+export type TransferOrder = {
+  id: string;
+  /** Origin warehouse or inventory location */
+  fromLocation: string;
+  /** Destination: account, distributor, or warehouse */
+  toLocation: string;
+  toAccountId?: string;
+  sku: string;
+  quantity: number;
+  /** When the shipment should leave */
+  shipDate: string;
+  /** When it should arrive */
+  deliveryDate: string;
+  status: "draft" | "picked" | "packed" | "shipped" | "delivered" | "cancelled";
+  /** Reference to linked sales order if this fulfills one */
+  linkedSalesOrderId?: string;
+  /** Internal tracking / BOL number */
+  trackingNumber?: string;
+  notes: string;
+  /** Set once inventory has been reduced for this transfer. */
+  inventoryConsumed?: boolean;
+};
+
 export const purchaseOrders: PurchaseOrder[] = [
   { id: "PO-2025-001", manufacturer: "Kirin Brewery Co.", issueDate: "2026-03-01", requiredDate: "2026-03-25", requestedShipDate: "2026-03-28", sku: "HJM-OG-750", quantity: 2400, packagingInstructions: "Standard 12-bottle case", labelVersion: "v3.1", marketDestination: "Ontario", status: "in-production", notes: "Priority order for LCBO restock" },
   { id: "PO-2025-002", manufacturer: "Kirin Brewery Co.", issueDate: "2026-02-10", requiredDate: "2026-03-28", requestedShipDate: "2026-04-02", sku: "HJM-YZ-750", quantity: 1200, packagingInstructions: "Standard 12-bottle case", labelVersion: "v2.0", marketDestination: "Milan", status: "approved", notes: "For European market" },
   { id: "PO-2025-003", manufacturer: "Kirin Brewery Co.", issueDate: "2026-03-05", requiredDate: "2026-03-28", requestedShipDate: "2026-04-08", sku: "HJM-SP-750", quantity: 1800, packagingInstructions: "6-bottle premium case", labelVersion: "v1.0", marketDestination: "Toronto", status: "draft", notes: "New SKU launch batch — confirm specs" },
   { id: "PO-2024-047", manufacturer: "Kirin Brewery Co.", issueDate: "2026-03-01", requiredDate: "2026-04-10", requestedShipDate: "2026-04-15", sku: "HJM-OG-375", quantity: 960, packagingInstructions: "24-bottle case", labelVersion: "v3.1", marketDestination: "Ontario", status: "delayed", notes: "Label supply issue — estimated 3-day delay" },
+];
+
+export const transferOrders: TransferOrder[] = [
+  { id: "TO-2025-001", fromLocation: "Toronto Main", toLocation: "The Drake Hotel", toAccountId: "ACC-005", sku: "HJM-OG-750", quantity: 48, shipDate: "2026-04-10", deliveryDate: "2026-04-11", status: "shipped", linkedSalesOrderId: "SO-2026-001", trackingNumber: "TRK789456123", notes: "Weekly restock" },
+  { id: "TO-2025-002", fromLocation: "Toronto Main", toLocation: "Bar Isabel", toAccountId: "ACC-002", sku: "HJM-YZ-750", quantity: 24, shipDate: "2026-04-12", deliveryDate: "2026-04-13", status: "packed", linkedSalesOrderId: "SO-2026-002", notes: "Express delivery requested" },
+  { id: "TO-2025-003", fromLocation: "Milan DC", toLocation: "Bar Basso", toAccountId: "ACC-MIL-001", sku: "HJM-OG-750", quantity: 72, shipDate: "2026-04-15", deliveryDate: "2026-04-18", status: "draft", linkedSalesOrderId: "SO-2026-REG-03", notes: "Awaiting payment confirmation" },
 ];
 
 export type ProductionStatus = {

@@ -1061,5 +1061,34 @@
       "brandDecision": { "approved": true, "approvedBy": "brand_operator", "approvedAt": "2025-03-22T10:00:00Z" },
       "productionPoId": "PO-2025-0089"
     }
+  ],
+  "transferOrders": [
+    {
+      "id": "TO-2025-001",
+      "fromLocation": "Toronto Main",
+      "toLocation": "The Drake Hotel",
+      "toAccountId": "ACC-005",
+      "sku": "HJM-OG-750",
+      "quantity": 48,
+      "shipDate": "2026-04-10",
+      "deliveryDate": "2026-04-11",
+      "status": "shipped",
+      "linkedSalesOrderId": "SO-2026-001",
+      "trackingNumber": "TRK789456123",
+      "notes": "Weekly restock"
+    },
+    {
+      "id": "TO-2025-002",
+      "fromLocation": "Toronto Main",
+      "toLocation": "Bar Isabel",
+      "toAccountId": "ACC-002",
+      "sku": "HJM-YZ-750",
+      "quantity": 24,
+      "shipDate": "2026-04-12",
+      "deliveryDate": "2026-04-13",
+      "status": "packed",
+      "linkedSalesOrderId": "SO-2026-002",
+      "notes": "Express delivery requested"
+    }
   ]
 }

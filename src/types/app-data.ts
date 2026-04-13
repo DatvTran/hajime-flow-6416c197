@@ -7,6 +7,7 @@ import type {
   SalesOrder,
   Shipment,
   NewProductRequest,
+  TransferOrder,
 } from "@/data/mockData";
 
 export type AuditLogEntry = {
@@ -60,6 +61,7 @@ export type AppData = {
   accounts: Account[];
   salesOrders: SalesOrder[];
   purchaseOrders: PurchaseOrder[];
+  transferOrders?: TransferOrder[];
   shipments: Shipment[];
   productionStatuses: ProductionStatus[];
   operationalSettings?: OperationalSettings;
