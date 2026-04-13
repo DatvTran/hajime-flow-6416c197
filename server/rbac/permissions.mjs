@@ -130,6 +130,8 @@ export const ROLE_PERMISSIONS = {
   ],
 
   [Role.MANUFACTURER]: [
+    Permission.ORDERS_READ,
+    Permission.ORDERS_WRITE,
     Permission.PO_READ,
     Permission.PRODUCTION_READ,
     Permission.PRODUCTION_WRITE,
@@ -139,6 +141,7 @@ export const ROLE_PERMISSIONS = {
 
   [Role.DISTRIBUTOR]: [
     Permission.ORDERS_READ,
+    Permission.ORDERS_WRITE,
     Permission.INVENTORY_READ,
     Permission.SHIPMENTS_READ,
     Permission.SHIPMENTS_WRITE,
