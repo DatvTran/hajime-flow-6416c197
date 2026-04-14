@@ -4,8 +4,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useNewProductRequests } from "@/contexts/AppDataContext";
-import { Factory, FileText, ChevronRight } from "lucide-react";
+import { Factory, FileText, ChevronRight, Plus } from "lucide-react";
 import { ManufacturerProposalDialog } from "@/components/ManufacturerProposalDialog";
+import { ManufacturerNewProductDialog } from "@/components/ManufacturerNewProductDialog";
 
 const STATUS_STYLES: Record<string, string> = {
   submitted: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
@@ -26,8 +27,9 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default function ManufacturerProductRequestsPage() {
-  const { newProductRequests, patchNewProductRequest } = useNewProductRequests();
+  const { newProductRequests, patchNewProductRequest, addNewProductRequest } = useNewProductRequests();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const assigned = useMemo(
     () => newProductRequests.filter((n) => n.status !== "draft" && n.assignedManufacturer === "Kirin Brewery Co."),
@@ -53,7 +55,13 @@ export default function ManufacturerProductRequestsPage() {
     <div className="space-y-6">
       <PageHeader
         title="New Product Requests"
-        description="Review product development requests from Hajime HQ. Submit feasibility assessments, costing, and timelines."
+        description="Review product development requests from Hajime HQ, or propose new SKU formulations for brand approval."
+        actions={
+          <Button className="touch-manipulation" onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Propose New SKU
+          </Button>
+        }
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -150,6 +158,13 @@ export default function ManufacturerProductRequestsPage() {
         onOpenChange={(open) => !open && setSelectedId(null)}
         request={selected}
         onPatch={patchNewProductRequest}
+      />
+
+      <ManufacturerNewProductDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        existingRequests={newProductRequests}
+        onCreate={addNewProductRequest}
       />
     </div>
   );

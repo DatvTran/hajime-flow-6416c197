@@ -247,18 +247,23 @@ export function ProductRequestDetailDialog({ open, onOpenChange, request, onPatc
               <div className="flex items-center gap-2">
                 <Factory className="h-4 w-4 text-muted-foreground" />
                 <h4 className="font-display text-sm font-medium">Manufacturer Proposal</h4>
+                {request.requestedBy === "manufacturer" ? (
+                  <Badge variant="outline" className="text-[10px]">Manufacturer Initiated</Badge>
+                ) : null}
               </div>
               <p className="text-sm text-muted-foreground">
                 {request.status === "draft"
                   ? "Submit this request to send it to the manufacturer for review."
                   : request.status === "submitted" || request.status === "under_review"
                     ? `Awaiting proposal from ${request.assignedManufacturer}...`
-                    : "No proposal was submitted for this request."}
+                    : request.requestedBy === "manufacturer"
+                      ? `${request.assignedManufacturer} proposed this new SKU for your review.`
+                      : "No proposal was submitted for this request."}
               </p>
             </div>
           )}
 
-          {/* Linked PO */}
+          {/* Linked PO or Create Product */}
           {request.productionPoId ? (
             <>
               <Separator />
@@ -268,6 +273,19 @@ export function ProductRequestDetailDialog({ open, onOpenChange, request, onPatc
                   <p className="font-medium">Production PO Created</p>
                   <p className="text-muted-foreground">
                     {request.productionPoId} · SKU will be generated on first shipment
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : request.status === "approved" && request.resultingSku ? (
+            <>
+              <Separator />
+              <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-950/20">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                <div className="text-sm">
+                  <p className="font-medium text-green-800 dark:text-green-300">Product Approved</p>
+                  <p className="text-green-700 dark:text-green-400">
+                    SKU {request.resultingSku} created. Create a production PO to begin manufacturing.
                   </p>
                 </div>
               </div>
