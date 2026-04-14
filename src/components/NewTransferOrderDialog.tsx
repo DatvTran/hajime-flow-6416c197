@@ -41,7 +41,7 @@ type Props = {
 export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) {
   const { products } = useProducts();
   const { accounts } = useAccounts();
-  const { availableBottlesForSku } = useInventory();
+  const { availableBottlesAtWarehouse } = useInventory();
   const [submitting, setSubmitting] = useState(false);
 
   const [fromLocation, setFromLocation] = useState<typeof LOCATIONS[number]>(LOCATIONS[0]);
@@ -68,7 +68,7 @@ export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) 
     setNotes("");
   }, [open, products, accounts]);
 
-  const availableForSku = useMemo(() => availableBottlesForSku(sku), [availableBottlesForSku, sku]);
+  const availableForSku = useMemo(() => availableBottlesAtWarehouse(sku, fromLocation), [availableBottlesAtWarehouse, sku, fromLocation]);
 
   const toAccount = useMemo(
     () => accounts.find((a) => a.id === toAccountId),

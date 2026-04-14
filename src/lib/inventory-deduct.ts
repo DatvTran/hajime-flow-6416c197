@@ -1,16 +1,23 @@
 import type { InventoryItem } from "@/data/mockData";
 
-/** FIFO deduct from `available` lines for a SKU, oldest production date first. */
+/** FIFO deduct from `available` lines for a SKU, oldest production date first.
+ *  Optionally filters by warehouse or locationType. */
 export function deductFifoAvailableBottles(
   items: InventoryItem[],
   sku: string,
   qty: number,
   caseSize: number,
+  opts?: { warehouse?: string; locationType?: InventoryItem["locationType"] },
 ): { next: InventoryItem[]; shortfall: number } {
   if (qty <= 0) return { next: items, shortfall: 0 };
   const working = [...items];
   const order = working
-    .filter((r) => r.sku === sku && r.status === "available")
+    .filter((r) => {
+      if (r.sku !== sku || r.status !== "available") return false;
+      if (opts?.warehouse && r.warehouse !== opts.warehouse) return false;
+      if (opts?.locationType && r.locationType !== opts.locationType) return false;
+      return true;
+    })
     .sort((a, b) => a.productionDate.localeCompare(b.productionDate));
   let remaining = qty;
   for (const target of order) {

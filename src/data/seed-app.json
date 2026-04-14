@@ -49,7 +49,8 @@
       "warehouse": "Toronto Main",
       "status": "available",
       "labelVersion": "v3.1",
-      "notes": ""
+      "notes": "",
+      "locationType": "distributor_warehouse"
     },
     {
       "id": "INV-002",
@@ -62,7 +63,8 @@
       "warehouse": "Toronto Main",
       "status": "reserved",
       "labelVersion": "v3.1",
-      "notes": "Reserved for LCBO Q1"
+      "notes": "Reserved for LCBO Q1",
+      "locationType": "distributor_warehouse"
     },
     {
       "id": "INV-003",
@@ -75,7 +77,8 @@
       "warehouse": "Toronto Main",
       "status": "available",
       "labelVersion": "v2.0",
-      "notes": ""
+      "notes": "",
+      "locationType": "distributor_warehouse"
     },
     {
       "id": "INV-004",
@@ -88,7 +91,8 @@
       "warehouse": "Milan Depot",
       "status": "in-transit",
       "labelVersion": "v2.0",
-      "notes": "En route from manufacturer"
+      "notes": "En route from manufacturer",
+      "locationType": "in_transit"
     },
     {
       "id": "INV-005",
@@ -101,7 +105,8 @@
       "warehouse": "Toronto Main",
       "status": "available",
       "labelVersion": "v3.1",
-      "notes": ""
+      "notes": "",
+      "locationType": "distributor_warehouse"
     },
     {
       "id": "INV-006",
@@ -114,7 +119,8 @@
       "warehouse": "Production",
       "status": "in-production",
       "labelVersion": "v1.0",
-      "notes": "New SKU launch batch"
+      "notes": "New SKU launch batch",
+      "locationType": "manufacturer"
     },
     {
       "id": "INV-007",
@@ -127,7 +133,8 @@
       "warehouse": "Toronto Main",
       "status": "damaged",
       "labelVersion": "v3.0",
-      "notes": "Water damage during storage"
+      "notes": "Water damage during storage",
+      "locationType": "distributor_warehouse"
     },
     {
       "id": "INV-FP-01",
@@ -140,7 +147,8 @@
       "warehouse": "Toronto Main",
       "status": "available",
       "labelVersion": "v1.0",
-      "notes": ""
+      "notes": "",
+      "locationType": "distributor_warehouse"
     }
   ],
   "accounts": [
@@ -1008,13 +1016,25 @@
       "specs": {
         "baseSpirit": "coffee_rhum",
         "targetAbv": 30,
-        "flavorProfile": ["hazelnut", "vanilla", "caramel"],
+        "flavorProfile": [
+          "hazelnut",
+          "vanilla",
+          "caramel"
+        ],
         "sweetener": "cane_sugar",
         "targetPricePoint": "super_premium",
-        "packaging": { "bottleSize": "750ml", "labelStyle": "Minimalist ensō with copper foil", "caseConfiguration": 12 },
+        "packaging": {
+          "bottleSize": "750ml",
+          "labelStyle": "Minimalist ensō with copper foil",
+          "caseConfiguration": 12
+        },
         "minimumOrderQuantity": 1200,
         "targetLaunchDate": "2025-09-01",
-        "regulatoryMarkets": ["Ontario", "EU", "US"]
+        "regulatoryMarkets": [
+          "Ontario",
+          "EU",
+          "US"
+        ]
       },
       "attachments": [],
       "notes": "Competitor: Mr Black, but higher ABV and Japanese design positioning.",
@@ -1031,13 +1051,23 @@
       "specs": {
         "baseSpirit": "coffee_rhum",
         "targetAbv": 25,
-        "flavorProfile": ["vanilla", "cold_brew"],
+        "flavorProfile": [
+          "vanilla",
+          "cold_brew"
+        ],
         "sweetener": "cane_sugar",
         "targetPricePoint": "premium",
-        "packaging": { "bottleSize": "750ml", "labelStyle": "Navy blue matte with silver ensō", "caseConfiguration": 12 },
+        "packaging": {
+          "bottleSize": "750ml",
+          "labelStyle": "Navy blue matte with silver ensō",
+          "caseConfiguration": 12
+        },
         "minimumOrderQuantity": 2400,
         "targetLaunchDate": "2025-08-15",
-        "regulatoryMarkets": ["Ontario", "US"]
+        "regulatoryMarkets": [
+          "Ontario",
+          "US"
+        ]
       },
       "attachments": [],
       "notes": "Seasonal summer release.",
@@ -1050,15 +1080,38 @@
       "manufacturerProposal": {
         "feasible": true,
         "canHitAbv": true,
-        "production": { "equipmentRequired": ["Standard still", "Fermentation tanks"], "fermentationTime": "14 days", "batchSize": 2400, "minimumBatchSize": 2400, "capacityAvailable": true },
-        "costs": { "perBottleProduction": 8.5, "perBottlePackaging": 2.2, "perBottleLabeling": 0.8, "setupFee": 5000, "totalPerBottle": 11.5 },
-        "timeline": { "sampleAvailableDate": "2025-05-20", "productionStartDate": "2025-06-01", "firstDeliveryDate": "2025-07-15" },
+        "production": {
+          "equipmentRequired": [
+            "Standard still",
+            "Fermentation tanks"
+          ],
+          "fermentationTime": "14 days",
+          "batchSize": 2400,
+          "minimumBatchSize": 2400,
+          "capacityAvailable": true
+        },
+        "costs": {
+          "perBottleProduction": 8.5,
+          "perBottlePackaging": 2.2,
+          "perBottleLabeling": 0.8,
+          "setupFee": 5000,
+          "totalPerBottle": 11.5
+        },
+        "timeline": {
+          "sampleAvailableDate": "2025-05-20",
+          "productionStartDate": "2025-06-01",
+          "firstDeliveryDate": "2025-07-15"
+        },
         "technicalNotes": "Standard formulation.",
         "regulatoryNotes": "No issues for Ontario / US.",
         "sampleQuantity": 12,
         "sampleShipDate": "2025-05-22"
       },
-      "brandDecision": { "approved": true, "approvedBy": "brand_operator", "approvedAt": "2025-03-22T10:00:00Z" },
+      "brandDecision": {
+        "approved": true,
+        "approvedBy": "brand_operator",
+        "approvedAt": "2025-03-22T10:00:00Z"
+      },
       "productionPoId": "PO-2025-0089"
     }
   ],

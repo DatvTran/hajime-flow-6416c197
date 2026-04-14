@@ -1,9 +1,13 @@
 import type { InventoryItem } from "@/data/mockData";
 
 export function availableBottlesForSku(inventory: InventoryItem[], sku: string): number {
+  // Only count inventory at distributor warehouses and retail shelves
   let s = 0;
   for (const row of inventory) {
-    if (row.sku === sku && row.status === "available") s += row.quantityBottles;
+    if (row.sku === sku && row.status === "available" && 
+        (row.locationType === "distributor_warehouse" || row.locationType === "retail_shelf")) {
+      s += row.quantityBottles;
+    }
   }
   return s;
 }

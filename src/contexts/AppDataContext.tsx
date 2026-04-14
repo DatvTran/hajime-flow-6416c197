@@ -98,9 +98,25 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
 }
 
 function sumAvailableForSku(items: InventoryItem[], sku: string): number {
+  // Only count inventory at distributor warehouses and retail shelves as "available" for fulfillment
+  // Manufacturer and in-transit inventory is NOT available for sales/transfer
   let s = 0;
   for (const i of items) {
-    if (i.sku === sku && i.status === "available") s += i.quantityBottles;
+    if (i.sku === sku && i.status === "available" && 
+        (i.locationType === "distributor_warehouse" || i.locationType === "retail_shelf")) {
+      s += i.quantityBottles;
+    }
+  }
+  return s;
+}
+
+/** Get available inventory at a specific warehouse location */
+function sumAvailableAtWarehouse(items: InventoryItem[], sku: string, warehouse: string): number {
+  let s = 0;
+  for (const i of items) {
+    if (i.sku === sku && i.warehouse === warehouse && i.status === "available") {
+      s += i.quantityBottles;
+    }
   }
   return s;
 }
@@ -503,6 +519,7 @@ export function useInventory() {
   );
 
   const availableBottlesForSku = useCallback((sku: string) => sumAvailableForSku(items, sku), [items]);
+  const availableBottlesAtWarehouse = useCallback((sku: string, warehouse: string) => sumAvailableAtWarehouse(items, sku, warehouse), [items]);
 
   const receiveLine = useCallback(async (line: InventoryItem) => {
     try {
@@ -599,10 +616,10 @@ export function useInventory() {
   }, [items, data.products, updateData]);
 
   const consumeForPo = useCallback(
-    (po: PurchaseOrder) => {
+    (po: PurchaseOrder, opts?: { warehouse?: string; locationType?: InventoryItem["locationType"] }) => {
       const caseSize = caseSizeForSku(po.sku);
       const prev = itemsRef.current;
-      const { next, shortfall } = deductFifoAvailableBottles(prev, po.sku, po.quantity, caseSize);
+      const { next, shortfall } = deductFifoAvailableBottles(prev, po.sku, po.quantity, caseSize, opts);
       if (shortfall > 0) return { ok: false, shortfall };
       updateData((d) => ({ ...d, inventory: next }));
       itemsRef.current = next;
@@ -642,7 +659,7 @@ export function useInventory() {
             quantityBottles: result.data.quantity_on_hand,
             quantityCases: Math.floor(result.data.quantity_on_hand / (product.caseSize || 12)),
             warehouse: location,
-            location,
+            locationType: "distributor_warehouse" as const,
             status: "available" as const,
             labelVersion: po.labelVersion || "v1.0",
             notes: `Received from ${po.manufacturer}`,
@@ -667,10 +684,11 @@ export function useInventory() {
       setItemStatus,
       adjustQuantity,
       availableBottlesForSku,
+      availableBottlesAtWarehouse,
       consumeForPo,
       addForPo,
     }),
-    [items, receiveLine, setItemStatus, adjustQuantity, availableBottlesForSku, consumeForPo, addForPo],
+    [items, receiveLine, setItemStatus, adjustQuantity, availableBottlesForSku, availableBottlesAtWarehouse, consumeForPo, addForPo],
   );
 }
 
