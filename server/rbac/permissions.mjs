@@ -143,6 +143,8 @@ export const ROLE_PERMISSIONS = {
     Permission.ORDERS_READ,
     Permission.ORDERS_WRITE,
     Permission.INVENTORY_READ,
+    Permission.INVENTORY_WRITE,
+    Permission.INVENTORY_ADJUST,
     Permission.SHIPMENTS_READ,
     Permission.SHIPMENTS_WRITE,
     Permission.ACCOUNTS_READ,

@@ -33,8 +33,10 @@ import { Download, FileSpreadsheet } from "lucide-react";
 
 const STATUS_VALUES: InventoryItem["status"][] = ["available", "reserved", "damaged", "in-transit", "in-production"];
 
-/** Roles allowed to receive stock (matches server-side inventory:write permission) */
-const CAN_RECEIVE_STOCK_ROLES = new Set(["brand_operator", "operations"]);
+/** Roles allowed to receive stock (matches server-side inventory:write permission)
+ * Distributors receive from manufacturers, brand/ops receive from production.
+ */
+const CAN_RECEIVE_STOCK_ROLES = new Set(["brand_operator", "operations", "distributor"]);
 
 function computeInventorySummary(items: InventoryItem[]) {
   const s = {
