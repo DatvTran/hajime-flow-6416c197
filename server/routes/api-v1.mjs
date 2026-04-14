@@ -1443,4 +1443,194 @@ router.patch('/inventory-adjustment-requests/:id/approve', requirePermission(Per
   }
 });
 
+// ===== NEW PRODUCT REQUESTS =====
+
+// GET /api/v1/new-product-requests - List new product requests
+router.get('/new-product-requests', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { status, assigned_manufacturer, limit = 50, offset = 0 } = req.query;
+    
+    let query = db('new_product_requests')
+      .where({ tenant_id: tenantId })
+      .orderBy('requested_at', 'desc');
+    
+    if (status) {
+      query = query.where('status', status);
+    }
+    
+    if (assigned_manufacturer) {
+      query = query.where('assigned_manufacturer', assigned_manufacturer);
+    }
+    
+    const countQuery = query.clone().count('id as count').first();
+    
+    const dataQuery = query
+      .limit(parseInt(limit))
+      .offset(parseInt(offset));
+    
+    const [{ count }, data] = await Promise.all([countQuery, dataQuery]);
+    
+    // Parse JSONB fields
+    const parsed = data.map(row => ({
+      ...row,
+      specs: row.specs || {},
+      manufacturer_proposal: row.manufacturer_proposal || null,
+      brand_decision: row.brand_decision || null,
+      attachments: row.attachments || []
+    }));
+    
+    res.json({ 
+      data: parsed,
+      pagination: {
+        total: parseInt(count),
+        limit: parseInt(limit),
+        offset: parseInt(offset)
+      }
+    });
+  } catch (err) {
+    console.error('[API v1] Error fetching new product requests:', err);
+    res.status(500).json({ error: 'Failed to fetch new product requests' });
+  }
+});
+
+// GET /api/v1/new-product-requests/:id - Get single request
+router.get('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const request = await db('new_product_requests')
+      .where({ id, tenant_id: tenantId })
+      .first();
+    
+    if (!request) {
+      return res.status(404).json({ error: 'New product request not found' });
+    }
+    
+    // Parse JSONB fields
+    res.json({ 
+      data: {
+        ...request,
+        specs: request.specs || {},
+        manufacturer_proposal: request.manufacturer_proposal || null,
+        brand_decision: request.brand_decision || null,
+        attachments: request.attachments || []
+      }
+    });
+  } catch (err) {
+    console.error('[API v1] Error fetching new product request:', err);
+    res.status(500).json({ error: 'Failed to fetch new product request' });
+  }
+});
+
+// POST /api/v1/new-product-requests - Create new request
+router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const {
+      request_id,
+      title,
+      requested_by = 'brand_operator',
+      specs,
+      notes,
+      assigned_manufacturer,
+      status = 'draft'
+    } = req.body;
+    
+    if (!title || !specs) {
+      return res.status(400).json({ error: 'title and specs are required' });
+    }
+    
+    const [request] = await db('new_product_requests')
+      .insert({
+        tenant_id: tenantId,
+        request_id: request_id || `NPR-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`,
+        title,
+        requested_by,
+        requested_at: new Date(),
+        specs: JSON.stringify(specs),
+        status,
+        assigned_manufacturer,
+        notes,
+        created_by: req.user?.userId
+      })
+      .returning('*');
+    
+    res.status(201).json({ 
+      data: {
+        ...request,
+        specs: request.specs || {},
+        manufacturer_proposal: null,
+        brand_decision: null,
+        attachments: []
+      }
+    });
+  } catch (err) {
+    console.error('[API v1] Error creating new product request:', err);
+    res.status(500).json({ error: 'Failed to create new product request' });
+  }
+});
+
+// PUT /api/v1/new-product-requests/:id - Update request
+router.put('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const updates = req.body;
+    
+    // JSONB fields need stringification
+    if (updates.specs) updates.specs = JSON.stringify(updates.specs);
+    if (updates.manufacturer_proposal) updates.manufacturer_proposal = JSON.stringify(updates.manufacturer_proposal);
+    if (updates.brand_decision) updates.brand_decision = JSON.stringify(updates.brand_decision);
+    if (updates.attachments) updates.attachments = JSON.stringify(updates.attachments);
+    
+    updates.updated_at = new Date();
+    updates.updated_by = req.user?.userId;
+    
+    const [updated] = await db('new_product_requests')
+      .where({ id, tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+    
+    if (!updated) {
+      return res.status(404).json({ error: 'New product request not found' });
+    }
+    
+    res.json({ 
+      data: {
+        ...updated,
+        specs: updated.specs || {},
+        manufacturer_proposal: updated.manufacturer_proposal || null,
+        brand_decision: updated.brand_decision || null,
+        attachments: updated.attachments || []
+      }
+    });
+  } catch (err) {
+    console.error('[API v1] Error updating new product request:', err);
+    res.status(500).json({ error: 'Failed to update new product request' });
+  }
+});
+
+// DELETE /api/v1/new-product-requests/:id - Delete request
+router.delete('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const deleted = await db('new_product_requests')
+      .where({ id, tenant_id: tenantId })
+      .del();
+    
+    if (!deleted) {
+      return res.status(404).json({ error: 'New product request not found' });
+    }
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[API v1] Error deleting new product request:', err);
+    res.status(500).json({ error: 'Failed to delete new product request' });
+  }
+});
+
 export default router;

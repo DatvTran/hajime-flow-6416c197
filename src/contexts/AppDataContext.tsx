@@ -43,6 +43,12 @@ import {
   createInventoryAdjustmentRequest as apiCreateInventoryAdjustmentRequest,
   getInventoryAdjustmentRequests as apiGetInventoryAdjustmentRequests,
 } from "@/lib/api-v1-mutations";
+import {
+  getNewProductRequests,
+  createNewProductRequest as apiCreateNewProductRequest,
+  updateNewProductRequest as apiUpdateNewProductRequest,
+  deleteNewProductRequest as apiDeleteNewProductRequest,
+} from "@/lib/api-v1";
 
 const FALLBACK_SEED = normalizeAppData(seedJson as AppData);
 
@@ -823,24 +829,77 @@ function nextNprId(existing: NewProductRequest[]): string {
 
 export function useNewProductRequests() {
   const { data, updateData } = useAppData();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchRequests = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await getNewProductRequests({ limit: 100 });
+      updateData((d) => ({ ...d, newProductRequests: response.data }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to fetch new product requests";
+      setError(message);
+      toast.error("Failed to fetch new product requests", { description: message });
+    } finally {
+      setLoading(false);
+    }
+  }, [updateData]);
+
+  const addNewProductRequest = useCallback(async (npr: Omit<NewProductRequest, "id">) => {
+    try {
+      const response = await apiCreateNewProductRequest({
+        request_id: npr.id,
+        title: npr.title,
+        requested_by: npr.requestedBy as "brand_operator" | "manufacturer",
+        specs: npr.specs,
+        notes: npr.notes,
+        assigned_manufacturer: npr.assignedManufacturer,
+        status: npr.status,
+        manufacturer_proposal: npr.manufacturerProposal,
+      });
+      updateData((d) => ({
+        ...d,
+        newProductRequests: [response.data as any, ...(d.newProductRequests ?? [])],
+      }));
+      toast.success("New product request created", { description: response.data.title });
+      return { success: true, data: response.data };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create new product request";
+      toast.error("Failed to create new product request", { description: message });
+      return { success: false, error: message };
+    }
+  }, [updateData]);
+
+  const patchNewProductRequest = useCallback(async (id: string, patch: Partial<NewProductRequest>) => {
+    try {
+      const response = await apiUpdateNewProductRequest(id, patch as any);
+      updateData((d) => ({
+        ...d,
+        newProductRequests: (d.newProductRequests ?? []).map((n) =>
+          n.id === id ? { ...n, ...response.data } as any : n
+        ),
+      }));
+      toast.success("New product request updated");
+      return { success: true, data: response.data };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update new product request";
+      toast.error("Failed to update new product request", { description: message });
+      return { success: false, error: message };
+    }
+  }, [updateData]);
+
   return useMemo(
     () => ({
       newProductRequests: data.newProductRequests ?? [],
-      addNewProductRequest: (npr: Omit<NewProductRequest, "id">) =>
-        updateData((d) => {
-          const existing = d.newProductRequests ?? [];
-          const created: NewProductRequest = { ...npr, id: nextNprId(existing) };
-          return { ...d, newProductRequests: [created, ...existing] };
-        }),
-      patchNewProductRequest: (id: string, patch: Partial<NewProductRequest>) =>
-        updateData((d) => ({
-          ...d,
-          newProductRequests: (d.newProductRequests ?? []).map((n) =>
-            n.id === id ? { ...n, ...patch } : n
-          ),
-        })),
+      loading,
+      error,
+      fetchRequests,
+      addNewProductRequest,
+      patchNewProductRequest,
     }),
-    [data.newProductRequests, updateData]
+    [data.newProductRequests, loading, error, fetchRequests, addNewProductRequest, patchNewProductRequest]
   );
 }
 

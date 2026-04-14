@@ -472,3 +472,123 @@ export function getInventoryAdjustmentRequests(params?: {
 
   return apiFetch(`/api/v1/inventory-adjustment-requests?${query.toString()}`);
 }
+
+// ===== NEW PRODUCT REQUESTS =====
+
+export interface NewProductRequestApi {
+  id: string;
+  request_id: string;
+  title: string;
+  requested_by: "brand_operator" | "manufacturer";
+  requested_at: string;
+  specs: {
+    baseSpirit: string;
+    targetAbv: number;
+    flavorProfile: string[];
+    sweetener?: string;
+    targetPricePoint: string;
+    packaging: {
+      bottleSize: string;
+      labelStyle: string;
+      caseConfiguration: number;
+    };
+    minimumOrderQuantity: number;
+    targetLaunchDate: string;
+    regulatoryMarkets: string[];
+  };
+  status: "draft" | "submitted" | "under_review" | "proposed" | "approved" | "rejected" | "declined";
+  assigned_manufacturer?: string;
+  submitted_at?: string;
+  review_started_at?: string;
+  proposal_received_at?: string;
+  decided_at?: string;
+  manufacturer_proposal?: {
+    feasible: boolean;
+    canHitAbv: boolean;
+    proposedAbv?: number;
+    production: {
+      equipmentRequired: string[];
+      fermentationTime: string;
+      agingTime?: string;
+      batchSize: number;
+      minimumBatchSize: number;
+      capacityAvailable: boolean;
+    };
+    costs: {
+      perBottleProduction: number;
+      perBottlePackaging: number;
+      perBottleLabeling: number;
+      setupFee?: number;
+      totalPerBottle: number;
+    };
+    timeline: {
+      sampleAvailableDate: string;
+      productionStartDate: string;
+      firstDeliveryDate: string;
+    };
+    technicalNotes: string;
+    regulatoryNotes: string;
+    sampleQuantity: number;
+    sampleShipDate: string;
+  };
+  brand_decision?: {
+    decision: "approve" | "reject" | "request_changes";
+    notes: string;
+    decidedAt: string;
+    decidedBy: string;
+  };
+  production_po_id?: string;
+  resulting_sku?: string;
+  attachments: any[];
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewProductRequestsResponse {
+  data: NewProductRequestApi[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+  };
+}
+
+export function getNewProductRequests(params?: {
+  limit?: number;
+  offset?: number;
+  status?: string;
+  assigned_manufacturer?: string;
+}): Promise<NewProductRequestsResponse> {
+  const query = new URLSearchParams();
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.status) query.set("status", params.status);
+  if (params?.assigned_manufacturer) query.set("assigned_manufacturer", params.assigned_manufacturer);
+
+  return apiFetch(`/api/v1/new-product-requests?${query.toString()}`);
+}
+
+export function getNewProductRequest(id: string): Promise<{ data: NewProductRequestApi }> {
+  return apiFetch(`/api/v1/new-product-requests/${id}`);
+}
+
+export function createNewProductRequest(data: Partial<NewProductRequestApi>): Promise<{ data: NewProductRequestApi }> {
+  return apiFetch("/api/v1/new-product-requests", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateNewProductRequest(id: string, data: Partial<NewProductRequestApi>): Promise<{ data: NewProductRequestApi }> {
+  return apiFetch(`/api/v1/new-product-requests/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteNewProductRequest(id: string): Promise<{ success: boolean }> {
+  return apiFetch(`/api/v1/new-product-requests/${id}`, {
+    method: "DELETE",
+  });
+}
