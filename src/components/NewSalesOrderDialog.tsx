@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Account, OrderRoutingTarget, SalesOrder } from "@/data/mockData";
 import { orderCreatedByFromRole } from "@/lib/order-routing";
-import { useAccounts, useProducts } from "@/contexts/AppDataContext";
+import { useAccounts, useProducts, useInventory } from "@/contexts/AppDataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
 import {
@@ -77,11 +77,35 @@ type Props = {
   variant: NewSalesOrderFormVariant;
 };
 
+/** Stock availability indicator for sales rep order creation */
+function StockAvailability({ sku, available, requested }: { sku: string; available: number; requested: number }) {
+  const shortfall = Math.max(0, requested - available);
+  const isShort = shortfall > 0;
+  return (
+    <div className={`rounded-md border px-3 py-2 text-xs ${isShort ? "border-destructive/60 bg-destructive/10" : "border-emerald-600/40 bg-emerald-600/10"}`}>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">Available stock:</span>
+        <span className={`font-medium tabular-nums ${isShort ? "text-destructive" : "text-emerald-700"}`}>
+          {available.toLocaleString()} bottles
+        </span>
+      </div>
+      {isShort ? (
+        <p className="mt-1 text-destructive">
+          Short by {shortfall.toLocaleString()} bottles. Order may be backordered.
+        </p>
+      ) : (
+        <p className="mt-1 text-emerald-700">Sufficient stock for this order.</p>
+      )}
+    </div>
+  );
+}
+
 export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCreate, variant }: Props) {
   const { accounts: allAccounts } = useAccounts();
   const { products } = useProducts();
   const { user } = useAuth();
   const sessionRep = resolveSalesRepLabelForSession(user?.email, user?.displayName ?? "");
+  const { availableBottlesForSku } = useInventory();
 
   const cfg = getSalesOrderFormVariantConfig(variant);
   const accounts = useMemo(() => accountsForSalesOrderVariant(allAccounts, variant), [allAccounts, variant]);
@@ -160,6 +184,15 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     if (!Number.isFinite(qty) || qty < 1) {
       setError("Quantity must be a whole number of at least 1.");
       return;
+    }
+
+    // Stock availability check for sales reps
+    if (variant === "sales_rep" || variant === "distributor") {
+      const available = availableBottlesForSku(sku);
+      if (available < qty) {
+        setError(`Insufficient stock for ${sku}. Available: ${available.toLocaleString()} bottles. Requested: ${qty.toLocaleString()} bottles.`);
+        return;
+      }
     }
     if (!price.trim()) {
       setError("Enter the order value (CAD).");
@@ -383,6 +416,9 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
                   onChange={(e) => setQuantity(e.target.value)}
                   required
                 />
+                {sku ? (
+                  <StockAvailability sku={sku} available={availableBottlesForSku(sku)} requested={Math.max(1, parseInt(quantity, 10) || 0)} />
+                ) : null}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="so-price">Order value (CAD) *</Label>

@@ -184,6 +184,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
             { title: "Opportunities", url: "/sales/opportunities", icon: TrendingUp },
             { title: "Visit notes", url: "/sales/visits", icon: ClipboardList },
             { title: "Draft orders", url: "/sales/orders?tab=pending-review", icon: FileText },
+            { title: "Inventory", url: "/inventory", icon: Package },
           ],
         },
         {
