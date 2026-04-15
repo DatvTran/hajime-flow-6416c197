@@ -29,6 +29,7 @@ import {
   Receipt,
   Gift,
   Scale,
+  Store,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -74,6 +75,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           label: "Operations",
           items: [
             { title: "Command center", url: "/", icon: LayoutDashboard },
+            { title: "New wholesale order", url: "/orders/new-wholesale", icon: Store },
             { title: "Inventory", url: "/inventory", icon: Package },
             { title: "Orders", url: "/orders", icon: ShoppingCart },
             { title: "Markets", url: "/markets", icon: Globe },

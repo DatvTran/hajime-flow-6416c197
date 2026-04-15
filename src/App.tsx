@@ -46,6 +46,7 @@ import ManufacturerProductRequestsPage from "./pages/ManufacturerProductRequests
 import DistributorDepletionsPage from "./pages/DistributorDepletionsPage";
 import DistributorInventoryAdjustmentsPage from "./pages/DistributorInventoryAdjustmentsPage";
 import DistributorSellThroughPage from "./pages/DistributorSellThroughPage";
+import NewWholesaleOrderPage from "./pages/NewWholesaleOrderPage";
 
 const queryClient = new QueryClient();
 
@@ -90,6 +91,7 @@ const App = () => {
                   <Route path="/" element={<RoleHomeEntry />} />
                   <Route path="/inventory" element={<Inventory />} />
                   <Route path="/orders" element={<Orders />} />
+                  <Route path="/orders/new-wholesale" element={<NewWholesaleOrderPage />} />
                   <Route path="/accounts" element={<Accounts />} />
                   <Route path="/markets" element={<MarketsPage />} />
                   <Route path="/shipments" element={<Shipments />} />
