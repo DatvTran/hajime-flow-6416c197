@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authService } from '../services/auth.mjs';
 import { db } from '../config/database.mjs';
 import { Role, normalizeRole } from '../rbac/permissions.mjs';
+import { authenticateToken } from '../middleware/auth.mjs';
 
 const router = express.Router();
 
@@ -374,7 +375,7 @@ router.post('/password-reset', async (req, res) => {
  * GET /api/auth/me
  * Get current user profile
  */
-router.get('/me', async (req, res) => {
+router.get('/me', authenticateToken, async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
