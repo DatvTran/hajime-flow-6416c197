@@ -1633,4 +1633,951 @@ router.delete('/new-product-requests/:id', requirePermission(Permission.PRODUCTI
   }
 });
 
+// ===== PURCHASE ORDERS =====
+
+// GET /api/v1/purchase-orders - List purchase orders
+router.get('/purchase-orders', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { page = 1, limit = 50, status, manufacturer_id } = req.query;
+    
+    let baseQuery = db('purchase_orders')
+      .where({ tenant_id: tenantId })
+      .whereNull('deleted_at');
+    
+    if (status) baseQuery = baseQuery.where('status', status);
+    if (manufacturer_id) baseQuery = baseQuery.where('manufacturer_id', manufacturer_id);
+    
+    const offset = (Number(page) - 1) * Number(limit);
+    
+    const countQuery = baseQuery.clone().count('id as count').first();
+    
+    const dataQuery = baseQuery
+      .clone()
+      .orderBy('created_at', 'desc')
+      .limit(Number(limit))
+      .offset(offset);
+    
+    const [countResult, orders] = await Promise.all([countQuery, dataQuery]);
+    
+    res.json({
+      data: orders,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: Number(countResult?.count || 0),
+        totalPages: Math.ceil(Number(countResult?.count || 0) / Number(limit))
+      }
+    });
+  } catch (err) {
+    console.error('[API v1] Error fetching purchase orders:', err);
+    res.status(500).json({ error: 'Failed to fetch purchase orders' });
+  }
+});
+
+// GET /api/v1/purchase-orders/:id - Get single purchase order with items
+router.get('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const order = await db('purchase_orders')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .first();
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Purchase order not found' });
+    }
+    
+    const items = await db('purchase_order_items')
+      .where({ purchase_order_id: id, tenant_id: tenantId });
+    
+    res.json({ data: { ...order, items } });
+  } catch (err) {
+    console.error('[API v1] Error fetching purchase order:', err);
+    res.status(500).json({ error: 'Failed to fetch purchase order' });
+  }
+});
+
+// POST /api/v1/purchase-orders - Create purchase order
+router.post('/purchase-orders', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  const trx = await db.transaction();
+  
+  try {
+    const tenantId = getTenantId(req);
+    const { po_number, manufacturer_id, status, order_date, delivery_date, items, ...orderData } = req.body;
+    
+    if (!po_number || !manufacturer_id) {
+      await trx.rollback();
+      return res.status(400).json({ error: 'po_number and manufacturer_id are required' });
+    }
+    
+    const [order] = await trx('purchase_orders')
+      .insert({
+        tenant_id: tenantId,
+        po_number,
+        manufacturer_id,
+        status: status || 'draft',
+        order_date: order_date || new Date(),
+        delivery_date,
+        market_destination: orderData.marketDestination,
+        total_bottles: orderData.totalBottles || 0,
+        total_amount: orderData.totalAmount || 0,
+        notes: orderData.notes,
+        created_by: req.user?.userId
+      })
+      .returning('*');
+    
+    if (items && items.length > 0) {
+      const orderItems = items.map(item => ({
+        tenant_id: tenantId,
+        purchase_order_id: order.id,
+        product_id: item.productId || item.product_id,
+        sku: item.sku,
+        product_name: item.productName || item.product_name || item.name,
+        quantity: item.quantity,
+        unit_price: item.unitPrice || item.unit_price || 0
+      }));
+      
+      await trx('purchase_order_items').insert(orderItems);
+    }
+    
+    await trx.commit();
+    
+    res.status(201).json({ data: order });
+  } catch (err) {
+    await trx.rollback();
+    console.error('[API v1] Error creating purchase order:', err);
+    res.status(500).json({ error: 'Failed to create purchase order' });
+  }
+});
+
+// PUT /api/v1/purchase-orders/:id - Update purchase order
+router.put('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  const trx = await db.transaction();
+  
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const { items, ...orderData } = req.body;
+    
+    const updates = {
+      manufacturer_id: orderData.manufacturer_id || orderData.manufacturerId,
+      order_date: orderData.order_date || orderData.orderDate,
+      delivery_date: orderData.delivery_date || orderData.deliveryDate,
+      market_destination: orderData.market_destination || orderData.marketDestination,
+      total_bottles: orderData.total_bottles || orderData.totalBottles,
+      total_amount: orderData.total_amount || orderData.totalAmount,
+      notes: orderData.notes,
+      updated_at: new Date()
+    };
+    
+    const [order] = await trx('purchase_orders')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update(updates)
+      .returning('*');
+    
+    if (!order) {
+      await trx.rollback();
+      return res.status(404).json({ error: 'Purchase order not found' });
+    }
+    
+    if (items && items.length > 0) {
+      await trx('purchase_order_items')
+        .where({ purchase_order_id: id, tenant_id: tenantId })
+        .delete();
+      
+      const orderItems = items.map(item => ({
+        tenant_id: tenantId,
+        purchase_order_id: id,
+        product_id: item.productId || item.product_id,
+        sku: item.sku,
+        product_name: item.productName || item.product_name || item.name,
+        quantity: item.quantity,
+        unit_price: item.unitPrice || item.unit_price || 0
+      }));
+      
+      await trx('purchase_order_items').insert(orderItems);
+    }
+    
+    await trx.commit();
+    
+    res.json({ data: order });
+  } catch (err) {
+    await trx.rollback();
+    console.error('[API v1] Error updating purchase order:', err);
+    res.status(500).json({ error: 'Failed to update purchase order' });
+  }
+});
+
+// PATCH /api/v1/purchase-orders/:id/status - Update purchase order status
+router.patch('/purchase-orders/:id/status', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    const validStatuses = ['draft', 'submitted', 'acknowledged', 'in_production', 'ready_for_shipment', 'shipped', 'delivered', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const updates = { 
+      status, 
+      updated_at: new Date() 
+    };
+    
+    if (status === 'delivered') {
+      updates.delivered_at = new Date();
+    }
+    
+    const [order] = await db('purchase_orders')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update(updates)
+      .returning('*');
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Purchase order not found' });
+    }
+    
+    res.json({ data: order });
+  } catch (err) {
+    console.error('[API v1] Error updating purchase order status:', err);
+    res.status(500).json({ error: 'Failed to update purchase order status' });
+  }
+});
+
+// DELETE /api/v1/purchase-orders/:id - Soft delete purchase order
+router.delete('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_DELETE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const [order] = await db('purchase_orders')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update({ deleted_at: new Date(), updated_at: new Date() })
+      .returning('*');
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Purchase order not found' });
+    }
+    
+    res.json({ data: order, message: 'Purchase order deleted' });
+  } catch (err) {
+    console.error('[API v1] Error deleting purchase order:', err);
+    res.status(500).json({ error: 'Failed to delete purchase order' });
+  }
+});
+
+// ===== TRANSFER ORDERS =====
+
+// GET /api/v1/transfer-orders - List transfer orders
+router.get('/transfer-orders', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { page = 1, limit = 50, status, from_location, to_location } = req.query;
+    
+    let baseQuery = db('transfer_orders')
+      .where({ tenant_id: tenantId })
+      .whereNull('deleted_at');
+    
+    if (status) baseQuery = baseQuery.where('status', status);
+    if (from_location) baseQuery = baseQuery.where('from_location', from_location);
+    if (to_location) baseQuery = baseQuery.where('to_location', to_location);
+    
+    const offset = (Number(page) - 1) * Number(limit);
+    
+    const countQuery = baseQuery.clone().count('id as count').first();
+    
+    const dataQuery = baseQuery
+      .clone()
+      .orderBy('created_at', 'desc')
+      .limit(Number(limit))
+      .offset(offset);
+    
+    const [countResult, orders] = await Promise.all([countQuery, dataQuery]);
+    
+    res.json({
+      data: orders,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: Number(countResult?.count || 0),
+        totalPages: Math.ceil(Number(countResult?.count || 0) / Number(limit))
+      }
+    });
+  } catch (err) {
+    console.error('[API v1] Error fetching transfer orders:', err);
+    res.status(500).json({ error: 'Failed to fetch transfer orders' });
+  }
+});
+
+// GET /api/v1/transfer-orders/:id - Get single transfer order with items
+router.get('/transfer-orders/:id', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const order = await db('transfer_orders')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .first();
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Transfer order not found' });
+    }
+    
+    const items = await db('transfer_order_items')
+      .where({ transfer_order_id: id, tenant_id: tenantId });
+    
+    res.json({ data: { ...order, items } });
+  } catch (err) {
+    console.error('[API v1] Error fetching transfer order:', err);
+    res.status(500).json({ error: 'Failed to fetch transfer order' });
+  }
+});
+
+// POST /api/v1/transfer-orders - Create transfer order
+router.post('/transfer-orders', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+  const trx = await db.transaction();
+  
+  try {
+    const tenantId = getTenantId(req);
+    const { to_number, from_location, to_location, status, request_date, ship_date, items, ...orderData } = req.body;
+    
+    if (!to_number || !from_location || !to_location) {
+      await trx.rollback();
+      return res.status(400).json({ error: 'to_number, from_location, and to_location are required' });
+    }
+    
+    const [order] = await trx('transfer_orders')
+      .insert({
+        tenant_id: tenantId,
+        to_number,
+        from_location,
+        to_location,
+        status: status || 'draft',
+        request_date: request_date || new Date(),
+        ship_date,
+        delivery_date: orderData.deliveryDate,
+        tracking_number: orderData.trackingNumber,
+        carrier: orderData.carrier,
+        total_bottles: orderData.totalBottles || 0,
+        notes: orderData.notes,
+        created_by: req.user?.userId
+      })
+      .returning('*');
+    
+    if (items && items.length > 0) {
+      const orderItems = items.map(item => ({
+        tenant_id: tenantId,
+        transfer_order_id: order.id,
+        product_id: item.productId || item.product_id,
+        sku: item.sku,
+        product_name: item.productName || item.product_name || item.name,
+        quantity: item.quantity,
+        batch_id: item.batchId || item.batch_id
+      }));
+      
+      await trx('transfer_order_items').insert(orderItems);
+    }
+    
+    await trx.commit();
+    
+    res.status(201).json({ data: order });
+  } catch (err) {
+    await trx.rollback();
+    console.error('[API v1] Error creating transfer order:', err);
+    res.status(500).json({ error: 'Failed to create transfer order' });
+  }
+});
+
+// PUT /api/v1/transfer-orders/:id - Update transfer order
+router.put('/transfer-orders/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+  const trx = await db.transaction();
+  
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const { items, ...orderData } = req.body;
+    
+    const updates = {
+      from_location: orderData.from_location || orderData.fromLocation,
+      to_location: orderData.to_location || orderData.toLocation,
+      request_date: orderData.request_date || orderData.requestDate,
+      ship_date: orderData.ship_date || orderData.shipDate,
+      delivery_date: orderData.delivery_date || orderData.deliveryDate,
+      tracking_number: orderData.tracking_number || orderData.trackingNumber,
+      carrier: orderData.carrier,
+      total_bottles: orderData.total_bottles || orderData.totalBottles,
+      notes: orderData.notes,
+      updated_at: new Date()
+    };
+    
+    const [order] = await trx('transfer_orders')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update(updates)
+      .returning('*');
+    
+    if (!order) {
+      await trx.rollback();
+      return res.status(404).json({ error: 'Transfer order not found' });
+    }
+    
+    if (items && items.length > 0) {
+      await trx('transfer_order_items')
+        .where({ transfer_order_id: id, tenant_id: tenantId })
+        .delete();
+      
+      const orderItems = items.map(item => ({
+        tenant_id: tenantId,
+        transfer_order_id: id,
+        product_id: item.productId || item.product_id,
+        sku: item.sku,
+        product_name: item.productName || item.product_name || item.name,
+        quantity: item.quantity,
+        batch_id: item.batchId || item.batch_id
+      }));
+      
+      await trx('transfer_order_items').insert(orderItems);
+    }
+    
+    await trx.commit();
+    
+    res.json({ data: order });
+  } catch (err) {
+    await trx.rollback();
+    console.error('[API v1] Error updating transfer order:', err);
+    res.status(500).json({ error: 'Failed to update transfer order' });
+  }
+});
+
+// PATCH /api/v1/transfer-orders/:id/status - Update transfer order status
+router.patch('/transfer-orders/:id/status', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    const validStatuses = ['draft', 'pending', 'approved', 'packed', 'shipped', 'in_transit', 'delivered', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const updates = { 
+      status, 
+      updated_at: new Date() 
+    };
+    
+    if (status === 'delivered') {
+      updates.delivered_at = new Date();
+    } else if (status === 'shipped') {
+      updates.shipped_at = new Date();
+    }
+    
+    const [order] = await db('transfer_orders')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update(updates)
+      .returning('*');
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Transfer order not found' });
+    }
+    
+    res.json({ data: order });
+  } catch (err) {
+    console.error('[API v1] Error updating transfer order status:', err);
+    res.status(500).json({ error: 'Failed to update transfer order status' });
+  }
+});
+
+// DELETE /api/v1/transfer-orders/:id - Soft delete transfer order
+router.delete('/transfer-orders/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const [order] = await db('transfer_orders')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update({ deleted_at: new Date(), updated_at: new Date() })
+      .returning('*');
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Transfer order not found' });
+    }
+    
+    res.json({ data: order, message: 'Transfer order deleted' });
+  } catch (err) {
+    console.error('[API v1] Error deleting transfer order:', err);
+    res.status(500).json({ error: 'Failed to delete transfer order' });
+  }
+});
+
+// ===== SHIPMENTS =====
+
+// GET /api/v1/shipments - List shipments
+router.get('/shipments', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { page = 1, limit = 50, status, carrier, order_id, order_type } = req.query;
+    
+    let baseQuery = db('shipments')
+      .where({ tenant_id: tenantId })
+      .whereNull('deleted_at');
+    
+    if (status) baseQuery = baseQuery.where('status', status);
+    if (carrier) baseQuery = baseQuery.where('carrier', carrier);
+    if (order_id) baseQuery = baseQuery.where('order_id', order_id);
+    if (order_type) baseQuery = baseQuery.where('order_type', order_type);
+    
+    const offset = (Number(page) - 1) * Number(limit);
+    
+    const countQuery = baseQuery.clone().count('id as count').first();
+    
+    const dataQuery = baseQuery
+      .clone()
+      .orderBy('created_at', 'desc')
+      .limit(Number(limit))
+      .offset(offset);
+    
+    const [countResult, shipments] = await Promise.all([countQuery, dataQuery]);
+    
+    res.json({
+      data: shipments,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: Number(countResult?.count || 0),
+        totalPages: Math.ceil(Number(countResult?.count || 0) / Number(limit))
+      }
+    });
+  } catch (err) {
+    console.error('[API v1] Error fetching shipments:', err);
+    res.status(500).json({ error: 'Failed to fetch shipments' });
+  }
+});
+
+// GET /api/v1/shipments/:id - Get single shipment with items
+router.get('/shipments/:id', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const shipment = await db('shipments')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .first();
+    
+    if (!shipment) {
+      return res.status(404).json({ error: 'Shipment not found' });
+    }
+    
+    const items = await db('shipment_items')
+      .where({ shipment_id: id, tenant_id: tenantId });
+    
+    res.json({ data: { ...shipment, items } });
+  } catch (err) {
+    console.error('[API v1] Error fetching shipment:', err);
+    res.status(500).json({ error: 'Failed to fetch shipment' });
+  }
+});
+
+// POST /api/v1/shipments - Create shipment
+router.post('/shipments', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+  const trx = await db.transaction();
+  
+  try {
+    const tenantId = getTenantId(req);
+    const { 
+      shipment_number, 
+      order_id, 
+      order_type,
+      carrier, 
+      tracking_number,
+      from_location,
+      to_location,
+      status,
+      ship_date,
+      estimated_delivery,
+      items,
+      ...shipmentData 
+    } = req.body;
+    
+    if (!shipment_number || !order_id || !order_type) {
+      await trx.rollback();
+      return res.status(400).json({ error: 'shipment_number, order_id, and order_type are required' });
+    }
+    
+    const [shipment] = await trx('shipments')
+      .insert({
+        tenant_id: tenantId,
+        shipment_number,
+        order_id,
+        order_type,
+        carrier,
+        tracking_number,
+        from_location,
+        to_location,
+        status: status || 'packed',
+        ship_date: ship_date || new Date(),
+        estimated_delivery,
+        delivered_at: shipmentData.deliveredAt,
+        total_bottles: shipmentData.totalBottles || 0,
+        notes: shipmentData.notes,
+        created_by: req.user?.userId
+      })
+      .returning('*');
+    
+    if (items && items.length > 0) {
+      const shipmentItems = items.map(item => ({
+        tenant_id: tenantId,
+        shipment_id: shipment.id,
+        product_id: item.productId || item.product_id,
+        sku: item.sku,
+        product_name: item.productName || item.product_name || item.name,
+        quantity: item.quantity,
+        batch_id: item.batchId || item.batch_id
+      }));
+      
+      await trx('shipment_items').insert(shipmentItems);
+    }
+    
+    await trx.commit();
+    
+    res.status(201).json({ data: shipment });
+  } catch (err) {
+    await trx.rollback();
+    console.error('[API v1] Error creating shipment:', err);
+    res.status(500).json({ error: 'Failed to create shipment' });
+  }
+});
+
+// PUT /api/v1/shipments/:id - Update shipment
+router.put('/shipments/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+  const trx = await db.transaction();
+  
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const { items, ...shipmentData } = req.body;
+    
+    const updates = {
+      carrier: shipmentData.carrier,
+      tracking_number: shipmentData.tracking_number || shipmentData.trackingNumber,
+      from_location: shipmentData.from_location || shipmentData.fromLocation,
+      to_location: shipmentData.to_location || shipmentData.toLocation,
+      ship_date: shipmentData.ship_date || shipmentData.shipDate,
+      estimated_delivery: shipmentData.estimated_delivery || shipmentData.estimatedDelivery,
+      delivered_at: shipmentData.delivered_at || shipmentData.deliveredAt,
+      total_bottles: shipmentData.total_bottles || shipmentData.totalBottles,
+      notes: shipmentData.notes,
+      updated_at: new Date()
+    };
+    
+    const [shipment] = await trx('shipments')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update(updates)
+      .returning('*');
+    
+    if (!shipment) {
+      await trx.rollback();
+      return res.status(404).json({ error: 'Shipment not found' });
+    }
+    
+    if (items && items.length > 0) {
+      await trx('shipment_items')
+        .where({ shipment_id: id, tenant_id: tenantId })
+        .delete();
+      
+      const shipmentItems = items.map(item => ({
+        tenant_id: tenantId,
+        shipment_id: id,
+        product_id: item.productId || item.product_id,
+        sku: item.sku,
+        product_name: item.productName || item.product_name || item.name,
+        quantity: item.quantity,
+        batch_id: item.batchId || item.batch_id
+      }));
+      
+      await trx('shipment_items').insert(shipmentItems);
+    }
+    
+    await trx.commit();
+    
+    res.json({ data: shipment });
+  } catch (err) {
+    await trx.rollback();
+    console.error('[API v1] Error updating shipment:', err);
+    res.status(500).json({ error: 'Failed to update shipment' });
+  }
+});
+
+// PATCH /api/v1/shipments/:id/status - Update shipment status
+router.patch('/shipments/:id/status', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    const validStatuses = ['packed', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'exception', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const updates = { 
+      status, 
+      updated_at: new Date() 
+    };
+    
+    if (status === 'delivered') {
+      updates.delivered_at = new Date();
+    }
+    
+    const [shipment] = await db('shipments')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update(updates)
+      .returning('*');
+    
+    if (!shipment) {
+      return res.status(404).json({ error: 'Shipment not found' });
+    }
+    
+    res.json({ data: shipment });
+  } catch (err) {
+    console.error('[API v1] Error updating shipment status:', err);
+    res.status(500).json({ error: 'Failed to update shipment status' });
+  }
+});
+
+// DELETE /api/v1/shipments/:id - Soft delete shipment
+router.delete('/shipments/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const [shipment] = await db('shipments')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update({ deleted_at: new Date(), updated_at: new Date() })
+      .returning('*');
+    
+    if (!shipment) {
+      return res.status(404).json({ error: 'Shipment not found' });
+    }
+    
+    res.json({ data: shipment, message: 'Shipment deleted' });
+  } catch (err) {
+    console.error('[API v1] Error deleting shipment:', err);
+    res.status(500).json({ error: 'Failed to delete shipment' });
+  }
+});
+
+// ===== INCENTIVES =====
+
+// GET /api/v1/incentives - List incentives
+router.get('/incentives', requirePermission(Permission.REPORTS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { page = 1, limit = 50, type, status, account_id } = req.query;
+    
+    let baseQuery = db('incentives')
+      .where({ tenant_id: tenantId })
+      .whereNull('deleted_at');
+    
+    if (type) baseQuery = baseQuery.where('type', type);
+    if (status) baseQuery = baseQuery.where('status', status);
+    if (account_id) baseQuery = baseQuery.where('account_id', account_id);
+    
+    const offset = (Number(page) - 1) * Number(limit);
+    
+    const countQuery = baseQuery.clone().count('id as count').first();
+    
+    const dataQuery = baseQuery
+      .clone()
+      .orderBy('created_at', 'desc')
+      .limit(Number(limit))
+      .offset(offset);
+    
+    const [countResult, incentives] = await Promise.all([countQuery, dataQuery]);
+    
+    res.json({
+      data: incentives,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: Number(countResult?.count || 0),
+        totalPages: Math.ceil(Number(countResult?.count || 0) / Number(limit))
+      }
+    });
+  } catch (err) {
+    console.error('[API v1] Error fetching incentives:', err);
+    res.status(500).json({ error: 'Failed to fetch incentives' });
+  }
+});
+
+// GET /api/v1/incentives/:id - Get single incentive
+router.get('/incentives/:id', requirePermission(Permission.REPORTS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const incentive = await db('incentives')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .first();
+    
+    if (!incentive) {
+      return res.status(404).json({ error: 'Incentive not found' });
+    }
+    
+    res.json({ data: incentive });
+  } catch (err) {
+    console.error('[API v1] Error fetching incentive:', err);
+    res.status(500).json({ error: 'Failed to fetch incentive' });
+  }
+});
+
+// POST /api/v1/incentives - Create incentive
+router.post('/incentives', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { 
+      name,
+      type,
+      target_sku,
+      target_account_id,
+      threshold_quantity,
+      reward_type,
+      reward_amount,
+      start_date,
+      end_date,
+      notes
+    } = req.body;
+    
+    if (!name || !type || !reward_type) {
+      return res.status(400).json({ error: 'name, type, and reward_type are required' });
+    }
+    
+    const [incentive] = await db('incentives')
+      .insert({
+        tenant_id: tenantId,
+        name,
+        type,
+        target_sku,
+        target_account_id,
+        threshold_quantity,
+        reward_type,
+        reward_amount,
+        start_date,
+        end_date,
+        status: 'draft',
+        notes,
+        created_by: req.user?.userId,
+        created_at: new Date()
+      })
+      .returning('*');
+    
+    res.status(201).json({ data: incentive });
+  } catch (err) {
+    console.error('[API v1] Error creating incentive:', err);
+    res.status(500).json({ error: 'Failed to create incentive' });
+  }
+});
+
+// PUT /api/v1/incentives/:id - Update incentive
+router.put('/incentives/:id', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const updates = req.body;
+    
+    delete updates.id;
+    delete updates.tenant_id;
+    delete updates.created_at;
+    
+    updates.updated_at = new Date();
+    updates.updated_by = req.user?.userId;
+    
+    const [incentive] = await db('incentives')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update(updates)
+      .returning('*');
+    
+    if (!incentive) {
+      return res.status(404).json({ error: 'Incentive not found' });
+    }
+    
+    res.json({ data: incentive });
+  } catch (err) {
+    console.error('[API v1] Error updating incentive:', err);
+    res.status(500).json({ error: 'Failed to update incentive' });
+  }
+});
+
+// PATCH /api/v1/incentives/:id/status - Update incentive status
+router.patch('/incentives/:id/status', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    const validStatuses = ['draft', 'active', 'paused', 'completed', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const [incentive] = await db('incentives')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update({ 
+        status, 
+        updated_at: new Date(),
+        updated_by: req.user?.userId
+      })
+      .returning('*');
+    
+    if (!incentive) {
+      return res.status(404).json({ error: 'Incentive not found' });
+    }
+    
+    res.json({ data: incentive });
+  } catch (err) {
+    console.error('[API v1] Error updating incentive status:', err);
+    res.status(500).json({ error: 'Failed to update incentive status' });
+  }
+});
+
+// DELETE /api/v1/incentives/:id - Soft delete incentive
+router.delete('/incentives/:id', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    
+    const [incentive] = await db('incentives')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update({ deleted_at: new Date(), updated_at: new Date() })
+      .returning('*');
+    
+    if (!incentive) {
+      return res.status(404).json({ error: 'Incentive not found' });
+    }
+    
+    res.json({ data: incentive, message: 'Incentive deleted' });
+  } catch (err) {
+    console.error('[API v1] Error deleting incentive:', err);
+    res.status(500).json({ error: 'Failed to delete incentive' });
+  }
+});
+
 export default router;
