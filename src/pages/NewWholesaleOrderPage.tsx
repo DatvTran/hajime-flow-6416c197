@@ -127,16 +127,65 @@ export default function NewWholesaleOrderPage() {
       }));
   }, [accounts]);
 
-  const distributors = useMemo(() => {
-    return wholesaleAccounts.filter(a => a.type === "distributor");
-  }, [wholesaleAccounts]);
+  // Pathway-aligned account filtering
+  const availableDistributors = useMemo(() => {
+    // For "via_distributor" pathway, filter by market if specified
+    return wholesaleAccounts.filter(a => {
+      if (a.type !== "distributor") return false;
+      if (market && market !== "All Markets") {
+        return a.market?.toLowerCase().includes(market.toLowerCase()) || 
+               a.region?.toLowerCase().includes(market.toLowerCase());
+      }
+      return true;
+    });
+  }, [wholesaleAccounts, market]);
 
-  const retailAccounts = useMemo(() => {
-    return wholesaleAccounts.filter(a => a.type === "retail");
-  }, [wholesaleAccounts]);
+  // Customer accounts filtered by pathway and market
+  const eligibleCustomerAccounts = useMemo(() => {
+    let eligible = wholesaleAccounts;
+    
+    // Filter by pathway-appropriate account types
+    if (orderPathway === "direct_to_retail") {
+      // Direct to retail = only retail accounts
+      eligible = eligible.filter(a => a.type === "retail");
+    } else if (orderPathway === "via_distributor") {
+      // Via distributor = can order for retail (distributor is routing only)
+      eligible = eligible.filter(a => a.type === "retail");
+      // If distributor selected, filter retail in same market
+      if (distributorId && selectedDistributor) {
+        eligible = eligible.filter(a => 
+          a.market === selectedDistributor.market || 
+          a.region === selectedDistributor.region
+        );
+      }
+    } else if (orderPathway === "via_manufacturer") {
+      // Via manufacturer = retail or distributor accounts
+      eligible = eligible.filter(a => a.type === "retail" || a.type === "distributor");
+    }
+    
+    // Filter by market/region if specified
+    if (market && market !== "All Markets") {
+      eligible = eligible.filter(a => 
+        a.market?.toLowerCase().includes(market.toLowerCase()) || 
+        a.region?.toLowerCase().includes(market.toLowerCase())
+      );
+    }
+    
+    return eligible;
+  }, [wholesaleAccounts, orderPathway, distributorId, selectedDistributor, market]);
 
   const selectedCustomer = wholesaleAccounts.find(a => a.id === customerId);
   const selectedDistributor = wholesaleAccounts.find(a => a.id === distributorId);
+
+  // Available markets from accounts for filtering
+  const availableMarkets = useMemo(() => {
+    const markets = new Set<string>();
+    wholesaleAccounts.forEach(a => {
+      if (a.market) markets.add(a.market);
+      if (a.region && a.region !== a.market) markets.add(a.region);
+    });
+    return Array.from(markets).sort();
+  }, [wholesaleAccounts]);
 
   const availableProducts = useMemo(() => {
     return (products || [])
@@ -331,12 +380,22 @@ export default function NewWholesaleOrderPage() {
       {orderPathway === "via_distributor" && (
         <div className="space-y-2">
           <Label>Select Distributor / DC</Label>
-          <Select value={distributorId} onValueChange={setDistributorId}>
+          <Select value={distributorId} onValueChange={(value) => {
+            setDistributorId(value);
+            // Clear customer if they don't match the distributor's market
+            const dist = wholesaleAccounts.find(a => a.id === value);
+            if (dist && customerId) {
+              const customer = selectedCustomer;
+              if (customer && customer.market !== dist.market && customer.region !== dist.region) {
+                setCustomerId("");
+              }
+            }
+          }}>
             <SelectTrigger className="w-full md:w-[400px]">
               <SelectValue placeholder="Choose distributor warehouse..." />
             </SelectTrigger>
             <SelectContent>
-              {distributors.map((d) => (
+              {availableDistributors.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
                   <div className="flex flex-col">
                     <span>{d.tradingName || d.name}</span>
@@ -366,7 +425,33 @@ export default function NewWholesaleOrderPage() {
   const renderStep2 = () => (
     <div className="space-y-6">
       <div className="space-y-4">
-        <Label className="text-base">Select Customer Account</Label>
+        <div className="flex items-center justify-between">
+          <Label className="text-base">Select Customer Account</Label>
+          
+          {/* Market Filter */}
+          <Select value={market} onValueChange={(v) => {
+            setMarket(v);
+            // Clear customer if they don't match the new market
+            if (v && v !== "All Markets" && customerId) {
+              const customer = selectedCustomer;
+              if (customer && 
+                  !customer.market?.toLowerCase().includes(v.toLowerCase()) && 
+                  !customer.region?.toLowerCase().includes(v.toLowerCase())) {
+                setCustomerId("");
+              }
+            }
+          }}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Filter by market..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All Markets">All Markets</SelectItem>
+              {availableMarkets.map((m) => (
+                <SelectItem key={m} value={m}>{m}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         
         <Popover open={customerSearchOpen} onOpenChange={setCustomerSearchOpen}>
           <PopoverTrigger asChild>
@@ -383,7 +468,11 @@ export default function NewWholesaleOrderPage() {
                   <Badge variant="secondary" className="ml-2">{selectedCustomer.type}</Badge>
                 </div>
               ) : (
-                "Search accounts..."
+                <span className="text-muted-foreground">
+                  {eligibleCustomerAccounts.length === 0 
+                    ? "No accounts match the selected pathway/market" 
+                    : "Search eligible accounts..."}
+                </span>
               )}
               <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </Button>
@@ -392,59 +481,79 @@ export default function NewWholesaleOrderPage() {
             <Command>
               <CommandInput placeholder="Search by name, market, or type..." />
               <CommandList>
-                <CommandEmpty>No accounts found.</CommandEmpty>
-                <CommandGroup heading="Distributors">
-                  {wholesaleAccounts
-                    .filter(a => a.type === "distributor")
-                    .map((account) => (
-                      <CommandItem
-                        key={account.id}
-                        value={account.id}
-                        onSelect={() => {
-                          setCustomerId(account.id);
-                          setMarket(account.market);
-                          setCustomerSearchOpen(false);
-                        }}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            customerId === account.id ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        <div className="flex flex-col">
-                          <span>{account.tradingName || account.name}</span>
-                          <span className="text-xs text-muted-foreground">{account.market}</span>
-                        </div>
-                      </CommandItem>
-                    ))}
-                </CommandGroup>
-                <CommandGroup heading="Retail">
-                  {wholesaleAccounts
-                    .filter(a => a.type === "retail")
-                    .map((account) => (
-                      <CommandItem
-                        key={account.id}
-                        value={account.id}
-                        onSelect={() => {
-                          setCustomerId(account.id);
-                          setMarket(account.market);
-                          setCustomerSearchOpen(false);
-                        }}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            customerId === account.id ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        <div className="flex flex-col">
-                          <span>{account.tradingName || account.name}</span>
-                          <span className="text-xs text-muted-foreground">{account.market}</span>
-                        </div>
-                      </CommandItem>
-                    ))}
-                </CommandGroup>
+                <CommandEmpty>
+                  {eligibleCustomerAccounts.length === 0 
+                    ? "No eligible accounts for this pathway/market. Try changing the market filter or order pathway."
+                    : "No matching accounts found."}
+                </CommandEmpty>
+                
+                {/* Distributors Group (only show if applicable for pathway) */}
+                {eligibleCustomerAccounts.some(a => a.type === "distributor") && (
+                  <CommandGroup heading="Distributors">
+                    {eligibleCustomerAccounts
+                      .filter(a => a.type === "distributor")
+                      .map((account) => (
+                        <CommandItem
+                          key={account.id}
+                          value={`${account.id}-${account.name}`}
+                          onSelect={() => {
+                            setCustomerId(account.id);
+                            if (!market || market === "All Markets") {
+                              setMarket(account.market);
+                            }
+                            setCustomerSearchOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              customerId === account.id ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          <div className="flex flex-col">
+                            <span>{account.tradingName || account.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {account.market} {account.region && account.region !== account.market ? `• ${account.region}` : ""}
+                            </span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                  </CommandGroup>
+                )}
+                
+                {/* Retail Group (always show if eligible) */}
+                {eligibleCustomerAccounts.some(a => a.type === "retail") && (
+                  <CommandGroup heading="Retail">
+                    {eligibleCustomerAccounts
+                      .filter(a => a.type === "retail")
+                      .map((account) => (
+                        <CommandItem
+                          key={account.id}
+                          value={`${account.id}-${account.name}`}
+                          onSelect={() => {
+                            setCustomerId(account.id);
+                            if (!market || market === "All Markets") {
+                              setMarket(account.market);
+                            }
+                            setCustomerSearchOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              customerId === account.id ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          <div className="flex flex-col">
+                            <span>{account.tradingName || account.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {account.market} {account.region && account.region !== account.market ? `• ${account.region}` : ""}
+                            </span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                  </CommandGroup>
+                )}
               </CommandList>
             </Command>
           </PopoverContent>
@@ -476,14 +585,18 @@ export default function NewWholesaleOrderPage() {
         </Card>
       )}
 
+      {/* Market display - auto-populated from customer selection */}
       <div className="space-y-2">
-        <Label>Market / Region</Label>
-        <Input 
-          value={market} 
-          onChange={(e) => setMarket(e.target.value)}
-          placeholder="e.g., Ontario, Toronto, Milan"
-          className="w-full md:w-[400px]"
-        />
+        <Label>Order Market / Region</Label>
+        <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-md w-full md:w-[400px]">
+          <MapPin className="h-4 w-4 text-muted-foreground" />
+          <span className={market ? "font-medium" : "text-muted-foreground"}>
+            {market || "Select a customer to populate market"}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Market is automatically set based on the selected customer's location
+        </p>
       </div>
 
       <div className="flex justify-between pt-4">
@@ -628,6 +741,21 @@ export default function NewWholesaleOrderPage() {
             <CardTitle className="text-base">Order Summary</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {/* Pathway indicator */}
+            <div className="flex items-center gap-2 pb-2">
+              <Badge variant="outline" className="text-xs">
+                {orderPathway === "direct_to_retail" && "Direct to Retail"}
+                {orderPathway === "via_distributor" && "Via Distributor"}
+                {orderPathway === "via_manufacturer" && "Via Manufacturer"}
+              </Badge>
+              {selectedDistributor && (
+                <span className="text-xs text-muted-foreground">
+                  via {selectedDistributor.tradingName || selectedDistributor.name}
+                </span>
+              )}
+            </div>
+            <Separator />
+            
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Subtotal</span>
               <span>${orderTotals.subtotal.toFixed(2)}</span>
