@@ -1,4 +1,4 @@
-import type { TransferOrder } from "@/data/mockData";
+import type { TransferOrder, InventoryItem } from "@/data/mockData";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Separator } from "@/components/ui/separator";
+import { useInventory } from "@/contexts/AppDataContext";
+import { Package, Truck, Store, Factory, AlertCircle } from "lucide-react";
 
 const NEXT_STATUS: Record<TransferOrder["status"], TransferOrder["status"] | null> = {
   draft: "picked",
@@ -20,6 +22,15 @@ const NEXT_STATUS: Record<TransferOrder["status"], TransferOrder["status"] | nul
   cancelled: null,
 };
 
+const STATUS_ACTION: Record<TransferOrder["status"], string> = {
+  draft: "Reserve for picking",
+  picked: "Confirm packed",
+  packed: "Ship (moves to in-transit)",
+  shipped: "Mark delivered (receives at destination)",
+  delivered: "—",
+  cancelled: "—",
+};
+
 type Props = {
   transferOrder: TransferOrder | null;
   open: boolean;
@@ -28,14 +39,41 @@ type Props = {
   readOnly?: boolean;
 };
 
+function LocationBadge({ type }: { type: InventoryItem["locationType"] }) {
+  const config = {
+    manufacturer: { icon: Factory, label: "Manufacturer", className: "bg-amber-100 text-amber-800" },
+    distributor_warehouse: { icon: Package, label: "Warehouse", className: "bg-blue-100 text-blue-800" },
+    in_transit: { icon: Truck, label: "In Transit", className: "bg-purple-100 text-purple-800" },
+    retail_shelf: { icon: Store, label: "Retail Shelf", className: "bg-green-100 text-green-800" },
+  };
+  const { icon: Icon, label, className } = config[type];
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${className}`}>
+      <Icon className="h-3 w-3" />
+      {label}
+    </span>
+  );
+}
+
 export function TransferOrderDetailDialog({ transferOrder, open, onOpenChange, onPatch, readOnly }: Props) {
+  const { availableBottlesAtWarehouse, getInventoryBreakdownForSku, checkCanShipTransfer } = useInventory();
+  
   if (!transferOrder) return null;
 
   const next = NEXT_STATUS[transferOrder.status];
+  const action = STATUS_ACTION[transferOrder.status];
+  
+  // Get inventory data for this SKU
+  const breakdown = getInventoryBreakdownForSku(transferOrder.sku);
+  const availableAtSource = availableBottlesAtWarehouse(transferOrder.sku, transferOrder.fromLocation);
+  const canShip = checkCanShipTransfer(transferOrder.sku, transferOrder.quantity, transferOrder.fromLocation);
+  
+  // Calculate destination location type
+  const destType: InventoryItem["locationType"] = transferOrder.toAccountId ? "retail_shelf" : "distributor_warehouse";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(90vh,720px)] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[min(90vh,800px)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{transferOrder.id}</DialogTitle>
           <DialogDescription>
@@ -87,6 +125,75 @@ export function TransferOrderDetailDialog({ transferOrder, open, onOpenChange, o
               </div>
             ) : null}
           </div>
+
+          <Separator />
+
+          {/* Inventory Movement Visual */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Inventory Movement</p>
+            
+            <div className="flex items-center gap-3">
+              <div className="flex-1 rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">From</p>
+                <p className="font-medium">{transferOrder.fromLocation}</p>
+                <LocationBadge type="distributor_warehouse" />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Available: {availableAtSource.toLocaleString()} bottles
+                </p>
+              </div>
+              
+              <div className="flex flex-col items-center">
+                <Truck className="h-5 w-5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">{transferOrder.quantity}</span>
+              </div>
+              
+              <div className="flex-1 rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">To</p>
+                <p className="font-medium">{transferOrder.toLocation}</p>
+                <LocationBadge type={destType} />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {transferOrder.status === "delivered" ? "Received" : "Awaiting delivery"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Warning for insufficient stock */}
+          {transferOrder.status === "packed" && !canShip.canShip && (
+            <div className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <p className="font-medium">Insufficient Inventory</p>
+                <p className="text-xs">
+                  Need {transferOrder.quantity} bottles at {transferOrder.fromLocation}, 
+                  have {canShip.available}. Cannot ship until stock is available.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Inventory Breakdown */}
+          <div className="space-y-2">
+            <p className="text-sm font-medium">{transferOrder.sku} Inventory by Location</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg border p-2">
+                <p className="text-xs text-muted-foreground">Manufacturer</p>
+                <p className="text-lg font-semibold">{breakdown.manufacturer.toLocaleString()}</p>
+              </div>
+              <div className="rounded-lg border p-2">
+                <p className="text-xs text-muted-foreground">Warehouse</p>
+                <p className="text-lg font-semibold">{breakdown.distributor_warehouse.toLocaleString()}</p>
+              </div>
+              <div className="rounded-lg border p-2">
+                <p className="text-xs text-muted-foreground">In Transit</p>
+                <p className="text-lg font-semibold">{breakdown.in_transit.toLocaleString()}</p>
+              </div>
+              <div className="rounded-lg border p-2">
+                <p className="text-xs text-muted-foreground">Retail Shelf</p>
+                <p className="text-lg font-semibold">{breakdown.retail_shelf.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <DialogFooter className="flex-col gap-2 pt-4 sm:flex-row sm:justify-end">
@@ -102,8 +209,9 @@ export function TransferOrderDetailDialog({ transferOrder, open, onOpenChange, o
               <Button
                 className="touch-manipulation"
                 onClick={() => onPatch(transferOrder.id, { status: next })}
+                disabled={next === "shipped" && !canShip.canShip}
               >
-                Mark as {next}
+                {action}
               </Button>
             </>
           ) : (

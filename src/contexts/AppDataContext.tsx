@@ -19,6 +19,15 @@ import type {
   TransferOrder,
 } from "@/data/mockData";
 import { deductFifoAvailableBottles } from "@/lib/inventory-deduct";
+import {
+  moveInventory,
+  reserveInventory,
+  releaseReservation,
+  deductInTransitInventory,
+  canShipTransfer,
+  getInventoryByLocation,
+  type InTransitDetails,
+} from "@/lib/inventory-movement";
 import { fetchAppData } from "@/lib/data-service";
 import type { AppData, FinancingLedgerEntry } from "@/types/app-data";
 import type { ProductionStatus } from "@/data/mockData";
@@ -27,7 +36,6 @@ import { toast } from "@/components/ui/sonner";
 import { normalizeAppData } from "@/lib/normalize-app-data";
 import { loadLocalAppData, saveLocalAppData } from "@/lib/local-app-data";
 import { useAuth } from "./AuthContext";
-// Granular API mutations (Stage 4: Replace monolithic writes)
 import {
   createProduct as apiCreateProduct,
   updateProduct as apiUpdateProduct,
@@ -106,25 +114,59 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
 function sumAvailableForSku(items: InventoryItem[], sku: string): number {
   // Only count inventory at distributor warehouses and retail shelves as "available" for fulfillment
   // Manufacturer and in-transit inventory is NOT available for sales/transfer
-  let s = 0;
-  for (const i of items) {
-    if (i.sku === sku && i.status === "available" && 
-        (i.locationType === "distributor_warehouse" || i.locationType === "retail_shelf")) {
-      s += i.quantityBottles;
-    }
-  }
-  return s;
+  return items
+    .filter(
+      (i) =>
+        i.sku === sku &&
+        i.status === "available" &&
+        (i.locationType === "distributor_warehouse" || i.locationType === "retail_shelf")
+    )
+    .reduce((sum, i) => sum + i.quantityBottles, 0);
 }
 
 /** Get available inventory at a specific warehouse location */
 function sumAvailableAtWarehouse(items: InventoryItem[], sku: string, warehouse: string): number {
-  let s = 0;
-  for (const i of items) {
-    if (i.sku === sku && i.warehouse === warehouse && i.status === "available") {
-      s += i.quantityBottles;
-    }
+  return items
+    .filter(
+      (i) =>
+        i.sku === sku &&
+        i.warehouse === warehouse &&
+        i.status === "available" &&
+        i.locationType === "distributor_warehouse"
+    )
+    .reduce((sum, i) => sum + i.quantityBottles, 0);
+}
+
+/** Get available inventory at a specific location type */
+function sumAvailableAtLocationType(
+  items: InventoryItem[],
+  sku: string,
+  locationType: InventoryItem["locationType"]
+): number {
+  return items
+    .filter((i) => i.sku === sku && i.status === "available" && i.locationType === locationType)
+    .reduce((sum, i) => sum + i.quantityBottles, 0);
+}
+
+/** Get inventory breakdown by location type for a SKU */
+function getInventoryBreakdown(
+  items: InventoryItem[],
+  sku: string
+): Record<InventoryItem["locationType"], number> {
+  const result: Record<string, number> = {
+    manufacturer: 0,
+    distributor_warehouse: 0,
+    in_transit: 0,
+    retail_shelf: 0,
+  };
+
+  for (const item of items) {
+    if (item.sku !== sku) continue;
+    if (item.status !== "available") continue;
+    result[item.locationType] = (result[item.locationType] || 0) + item.quantityBottles;
   }
-  return s;
+
+  return result as Record<InventoryItem["locationType"], number>;
 }
 
 type AppDataContextValue = {
@@ -526,6 +568,70 @@ export function useInventory() {
 
   const availableBottlesForSku = useCallback((sku: string) => sumAvailableForSku(items, sku), [items]);
   const availableBottlesAtWarehouse = useCallback((sku: string, warehouse: string) => sumAvailableAtWarehouse(items, sku, warehouse), [items]);
+  const availableBottlesAtLocationType = useCallback(
+    (sku: string, locationType: InventoryItem["locationType"]) => sumAvailableAtLocationType(items, sku, locationType),
+    [items]
+  );
+  const getInventoryBreakdownForSku = useCallback((sku: string) => getInventoryBreakdown(items, sku), [items]);
+  const checkCanShipTransfer = useCallback(
+    (sku: string, quantity: number, fromWarehouse: string) => canShipTransfer(items, sku, quantity, fromWarehouse),
+    [items]
+  );
+
+  // Move inventory between locations (for transfer orders)
+  const moveInventoryBetweenLocations = useCallback(
+    (sku: string, quantity: number, fromLocation: { warehouse: string; locationType: InventoryItem["locationType"] }, toLocation: { warehouse: string; locationType: InventoryItem["locationType"]; retailAccountId?: string }, options?: { transferOrderId?: string; shipDate?: string; expectedDelivery?: string }) => {
+      const caseSize = caseSizeForSku(sku);
+      const result = moveInventory(items, sku, quantity, fromLocation, toLocation, { ...options, caseSize });
+      if (result.success) {
+        updateData((d) => ({ ...d, inventory: result.nextInventory }));
+        itemsRef.current = result.nextInventory;
+      }
+      return result;
+    },
+    [items, caseSizeForSku, updateData]
+  );
+
+  // Reserve inventory for picking (soft hold)
+  const reserveInventoryForTransfer = useCallback(
+    (sku: string, quantity: number, warehouse: string, reservationId: string) => {
+      const caseSize = caseSizeForSku(sku);
+      const result = reserveInventory(items, sku, quantity, warehouse, reservationId, caseSize);
+      if (result.success) {
+        updateData((d) => ({ ...d, inventory: result.nextInventory }));
+        itemsRef.current = result.nextInventory;
+      }
+      return result;
+    },
+    [items, caseSizeForSku, updateData]
+  );
+
+  // Release reserved inventory (cancel transfer)
+  const releaseReservedInventory = useCallback(
+    (reservationId: string) => {
+      const caseSize = 12; // Default case size for release
+      const result = releaseReservation(items, reservationId, caseSize);
+      if (result.success) {
+        updateData((d) => ({ ...d, inventory: result.nextInventory }));
+        itemsRef.current = result.nextInventory;
+      }
+      return result;
+    },
+    [items, updateData]
+  );
+
+  // Deduct in-transit inventory (when transfer is delivered)
+  const deductInTransitForDelivery = useCallback(
+    (transferOrderId: string) => {
+      const result = deductInTransitInventory(items, transferOrderId);
+      if (result.success) {
+        updateData((d) => ({ ...d, inventory: result.nextInventory }));
+        itemsRef.current = result.nextInventory;
+      }
+      return result;
+    },
+    [items, updateData]
+  );
 
   const receiveLine = useCallback(async (line: InventoryItem) => {
     try {
@@ -691,11 +797,240 @@ export function useInventory() {
       adjustQuantity,
       availableBottlesForSku,
       availableBottlesAtWarehouse,
+      availableBottlesAtLocationType,
+      getInventoryBreakdownForSku,
+      checkCanShipTransfer,
       consumeForPo,
       addForPo,
+      moveInventoryBetweenLocations,
+      reserveInventoryForTransfer,
+      releaseReservedInventory,
+      deductInTransitForDelivery,
     }),
-    [items, receiveLine, setItemStatus, adjustQuantity, availableBottlesForSku, availableBottlesAtWarehouse, consumeForPo, addForPo],
+    [
+      items,
+      receiveLine,
+      setItemStatus,
+      adjustQuantity,
+      availableBottlesForSku,
+      availableBottlesAtWarehouse,
+      availableBottlesAtLocationType,
+      getInventoryBreakdownForSku,
+      checkCanShipTransfer,
+      consumeForPo,
+      addForPo,
+      moveInventoryBetweenLocations,
+      reserveInventoryForTransfer,
+      releaseReservedInventory,
+      deductInTransitForDelivery,
+    ],
   );
+}
+
+/**
+ * Role-based inventory visibility rules
+ */
+const ROLE_LOCATION_VISIBILITY: Record<
+  import("./AuthContext").HajimeRole,
+  InventoryItem["locationType"][]
+> = {
+  // Manufacturer only sees their own production inventory
+  manufacturer: ["manufacturer"],
+  
+  // Distributor sees warehouses, their in-transit shipments, and retail shelves they service
+  distributor: ["distributor_warehouse", "in_transit", "retail_shelf"],
+  
+  // Sales rep sees warehouse (read-only) and their accounts' shelves
+  sales_rep: ["distributor_warehouse", "retail_shelf"],
+  
+  // Retail only sees their own shelf stock
+  retail: ["retail_shelf"],
+  
+  // Brand operators see everything
+  brand_operator: ["manufacturer", "distributor_warehouse", "in_transit", "retail_shelf"],
+  
+  // Operations sees everything
+  operations: ["manufacturer", "distributor_warehouse", "in_transit", "retail_shelf"],
+  
+  // Founder admin sees everything
+  founder_admin: ["manufacturer", "distributor_warehouse", "in_transit", "retail_shelf"],
+  
+  // Sales (legacy) - same as sales_rep
+  sales: ["distributor_warehouse", "retail_shelf"],
+  
+  // Finance - sees warehouse and retail for reporting
+  finance: ["distributor_warehouse", "retail_shelf"],
+};
+
+/**
+ * Filter inventory items based on user role
+ */
+function filterInventoryByRole(
+  items: InventoryItem[],
+  role: import("./AuthContext").HajimeRole,
+  userAccountId?: string
+): InventoryItem[] {
+  const allowedLocations = ROLE_LOCATION_VISIBILITY[role] || [];
+  
+  return items.filter((item) => {
+    // Check location type visibility
+    if (!allowedLocations.includes(item.locationType)) {
+      return false;
+    }
+    
+    // Retail users only see their own shelf stock
+    if (role === "retail" && item.locationType === "retail_shelf") {
+      return item.retailAccountId === userAccountId;
+    }
+    
+    // Sales reps only see their assigned accounts' shelf stock
+    // Note: This would need account assignment data - for now, show all retail_shelf
+    // TODO: Filter by rep's account assignments when that data is available
+    
+    return true;
+  });
+}
+
+/**
+ * Get available warehouses for transfer creation based on role
+ */
+function getTransferSourceWarehouses(
+  role: import("./AuthContext").HajimeRole
+): InventoryItem["locationType"][] {
+  switch (role) {
+    case "distributor":
+    case "brand_operator":
+    case "operations":
+    case "founder_admin":
+      return ["distributor_warehouse"];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Role-aware inventory hook
+ * Filters inventory based on user role and location permissions
+ */
+export function useInventoryForRole() {
+  const { user } = useAuth();
+  const inventory = useInventory();
+  const { data } = useAppData();
+  
+  const role = user?.role || "brand_operator";
+  const userAccountId = user?.id; // For retail users to see only their stock
+  
+  // Filter inventory items by role
+  const filteredItems = useMemo(() => {
+    return filterInventoryByRole(inventory.items, role, userAccountId);
+  }, [inventory.items, role, userAccountId]);
+  
+  // Calculate available bottles filtered by role
+  const availableBottlesForSku = useCallback(
+    (sku: string) => {
+      return filteredItems
+        .filter(
+          (i) =>
+            i.sku === sku &&
+            i.status === "available" &&
+            (i.locationType === "distributor_warehouse" || i.locationType === "retail_shelf")
+        )
+        .reduce((sum, i) => sum + i.quantityBottles, 0);
+    },
+    [filteredItems]
+  );
+  
+  // Calculate available at specific warehouse (role-filtered)
+  const availableBottlesAtWarehouse = useCallback(
+    (sku: string, warehouse: string) => {
+      return filteredItems
+        .filter(
+          (i) =>
+            i.sku === sku &&
+            i.warehouse === warehouse &&
+            i.status === "available" &&
+            i.locationType === "distributor_warehouse"
+        )
+        .reduce((sum, i) => sum + i.quantityBottles, 0);
+    },
+    [filteredItems]
+  );
+  
+  // Get breakdown by location type (role-filtered)
+  const getInventoryBreakdownForSku = useCallback(
+    (sku: string) => {
+      const result: Record<string, number> = {
+        manufacturer: 0,
+        distributor_warehouse: 0,
+        in_transit: 0,
+        retail_shelf: 0,
+      };
+
+      for (const item of filteredItems) {
+        if (item.sku !== sku) continue;
+        if (item.status !== "available") continue;
+        result[item.locationType] = (result[item.locationType] || 0) + item.quantityBottles;
+      }
+
+      return result as Record<InventoryItem["locationType"], number>;
+    },
+    [filteredItems]
+  );
+  
+  // Check if user can create transfers from a warehouse
+  const canCreateTransferFrom = useCallback(
+    (warehouse: string) => {
+      const allowedSourceTypes = getTransferSourceWarehouses(role);
+      
+      // Check if there's any inventory at this warehouse that the user can access
+      return filteredItems.some(
+        (i) =>
+          i.warehouse === warehouse &&
+          allowedSourceTypes.includes(i.locationType) &&
+          i.status === "available"
+      );
+    },
+    [filteredItems, role]
+  );
+  
+  // Get list of warehouses user can transfer from
+  const availableSourceWarehouses = useMemo(() => {
+    const warehouses = new Set<string>();
+    const allowedSourceTypes = getTransferSourceWarehouses(role);
+    
+    for (const item of filteredItems) {
+      if (allowedSourceTypes.includes(item.locationType) && item.status === "available") {
+        warehouses.add(item.warehouse);
+      }
+    }
+    
+    return Array.from(warehouses);
+  }, [filteredItems, role]);
+  
+  return {
+    // Filtered items
+    items: filteredItems,
+    allItems: inventory.items, // Unfiltered for admin operations
+    
+    // Role-filtered queries
+    availableBottlesForSku,
+    availableBottlesAtWarehouse,
+    getInventoryBreakdownForSku,
+    canCreateTransferFrom,
+    availableSourceWarehouses,
+    
+    // Pass through mutation functions (these handle their own permissions)
+    receiveLine: inventory.receiveLine,
+    setItemStatus: inventory.setItemStatus,
+    adjustQuantity: inventory.adjustQuantity,
+    consumeForPo: inventory.consumeForPo,
+    addForPo: inventory.addForPo,
+    moveInventoryBetweenLocations: inventory.moveInventoryBetweenLocations,
+    reserveInventoryForTransfer: inventory.reserveInventoryForTransfer,
+    releaseReservedInventory: inventory.releaseReservedInventory,
+    deductInTransitForDelivery: inventory.deductInTransitForDelivery,
+    checkCanShipTransfer: inventory.checkCanShipTransfer,
+  };
 }
 
 export function useSalesOrders() {

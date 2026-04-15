@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import type { TransferOrder } from "@/data/mockData";
-import { useProducts, useInventory } from "@/contexts/AppDataContext";
+import type { TransferOrder, InventoryItem } from "@/data/mockData";
+import { useProducts, useInventory, useInventoryForRole } from "@/contexts/AppDataContext";
 import {
   Dialog,
   DialogContent,
@@ -13,13 +13,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { useAccounts } from "@/contexts/AppDataContext";
+import { Package, Truck, Store, AlertCircle } from "lucide-react";
 
 const LOCATIONS = ["Toronto Main", "Milan DC", "Paris Hub", "NYC Warehouse"] as const;
 
 const TO_STATUSES: TransferOrder["status"][] = ["draft", "picked", "packed", "shipped", "delivered", "cancelled"];
+
+const LOCATION_TYPE_COLORS: Record<InventoryItem["locationType"], string> = {
+  manufacturer: "bg-amber-100 text-amber-800",
+  distributor_warehouse: "bg-blue-100 text-blue-800",
+  in_transit: "bg-purple-100 text-purple-800",
+  retail_shelf: "bg-green-100 text-green-800",
+};
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -41,7 +50,7 @@ type Props = {
 export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) {
   const { products } = useProducts();
   const { accounts } = useAccounts();
-  const { availableBottlesAtWarehouse } = useInventory();
+  const { availableBottlesAtWarehouse, getInventoryBreakdownForSku } = useInventoryForRole();
   const [submitting, setSubmitting] = useState(false);
 
   const [fromLocation, setFromLocation] = useState<typeof LOCATIONS[number]>(LOCATIONS[0]);
@@ -69,6 +78,9 @@ export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) 
   }, [open, products, accounts]);
 
   const availableForSku = useMemo(() => availableBottlesAtWarehouse(sku, fromLocation), [availableBottlesAtWarehouse, sku, fromLocation]);
+  const inventoryBreakdown = useMemo(() => getInventoryBreakdownForSku(sku), [getInventoryBreakdownForSku, sku]);
+  const qty = Math.max(1, Math.round(Number(quantity) || 0));
+  const hasShortfall = availableForSku < qty;
 
   const toAccount = useMemo(
     () => accounts.find((a) => a.id === toAccountId),
@@ -81,10 +93,9 @@ export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) 
       toast.error("Select a SKU");
       return;
     }
-    const qty = Math.max(1, Math.round(Number(quantity) || 0));
-    if (availableForSku < qty) {
+    if (hasShortfall) {
       toast.error("Insufficient available inventory", {
-        description: `${sku} needs ${qty.toLocaleString()} bottles; only ${availableForSku.toLocaleString()} available.`,
+        description: `${sku} needs ${qty.toLocaleString()} bottles; only ${availableForSku.toLocaleString()} available at ${fromLocation}.`,
       });
       return;
     }
@@ -118,7 +129,7 @@ export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(90vh,720px)] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[min(90vh,800px)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New transfer order</DialogTitle>
           <DialogDescription>
@@ -126,6 +137,40 @@ export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) 
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
+          {/* Inventory Overview */}
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs font-medium text-muted-foreground mb-2">{sku} Inventory by Location</p>
+            <div className="grid grid-cols-4 gap-2">
+              <div className="text-center">
+                <Badge variant="secondary" className={`${LOCATION_TYPE_COLORS.distributor_warehouse} text-[10px]`}>
+                  <Package className="mr-1 h-3 w-3" />
+                  Warehouse
+                </Badge>
+                <p className="text-sm font-semibold mt-1">{inventoryBreakdown.distributor_warehouse.toLocaleString()}</p>
+              </div>
+              <div className="text-center">
+                <Badge variant="secondary" className={`${LOCATION_TYPE_COLORS.in_transit} text-[10px]`}>
+                  <Truck className="mr-1 h-3 w-3" />
+                  In Transit
+                </Badge>
+                <p className="text-sm font-semibold mt-1">{inventoryBreakdown.in_transit.toLocaleString()}</p>
+              </div>
+              <div className="text-center">
+                <Badge variant="secondary" className={`${LOCATION_TYPE_COLORS.retail_shelf} text-[10px]`}>
+                  <Store className="mr-1 h-3 w-3" />
+                  Retail
+                </Badge>
+                <p className="text-sm font-semibold mt-1">{inventoryBreakdown.retail_shelf.toLocaleString()}</p>
+              </div>
+              <div className="text-center">
+                <Badge variant="secondary" className={`${LOCATION_TYPE_COLORS.manufacturer} text-[10px]`}>
+                  Factory
+                </Badge>
+                <p className="text-sm font-semibold mt-1">{inventoryBreakdown.manufacturer.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>From Location</Label>
@@ -139,6 +184,9 @@ export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) 
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Available: <strong className="tabular-nums text-foreground">{availableForSku.toLocaleString()}</strong> bottles
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -182,15 +230,14 @@ export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) 
                 step={1}
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                className="touch-manipulation"
+                className={`touch-manipulation ${hasShortfall ? "border-destructive" : ""}`}
               />
-              <p className="text-xs text-muted-foreground">
-                Available for <span className="font-mono text-foreground">{sku}</span>:{" "}
-                <strong className="tabular-nums text-foreground">{availableForSku.toLocaleString()}</strong> bottles
-                {availableForSku < Math.max(1, Math.round(Number(quantity) || 0)) ? (
-                  <span className="text-destructive"> — below requested quantity</span>
-                ) : null}
-              </p>
+              {hasShortfall ? (
+                <div className="flex items-center gap-1.5 text-xs text-destructive">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  <span>Need {qty.toLocaleString()} — only {availableForSku.toLocaleString()} available</span>
+                </div>
+              ) : null}
             </div>
 
             <div className="space-y-2">
@@ -239,7 +286,7 @@ export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) 
             <Button type="button" variant="outline" className="touch-manipulation" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" className="touch-manipulation" disabled={submitting || products.length === 0}>
+            <Button type="submit" className="touch-manipulation" disabled={submitting || products.length === 0 || hasShortfall}>
               {submitting ? "Creating…" : "Create Transfer"}
             </Button>
           </DialogFooter>

@@ -21,6 +21,18 @@ function shouldAddInventoryForTransition(p: PurchaseOrder, nextStatus: PurchaseO
   return true;
 }
 
+/** Map market destination to receiving warehouse */
+function getWarehouseForMarket(market: string): string {
+  const warehouseMap: Record<string, string> = {
+    "Ontario": "Toronto Main",
+    "Toronto": "Toronto Main",
+    "Milan": "Milan DC",
+    "Paris": "Paris Hub",
+    "NYC": "NYC Warehouse",
+  };
+  return warehouseMap[market] || "Toronto Main";
+}
+
 export default function PurchaseOrders() {
   const { user } = useAuth();
   const canCreateProductionRequest = user.role === "brand_operator" || user.role === "operations" || user.role === "founder_admin";
@@ -28,7 +40,13 @@ export default function PurchaseOrders() {
   const canEditPoStatus = user.role === "brand_operator" || user.role === "founder_admin";
   const canEditTransfer = user.role === "brand_operator" || user.role === "operations" || user.role === "distributor" || user.role === "founder_admin";
 
-  const { consumeForPo, addForPo } = useInventory();
+  const { 
+    consumeForPo, 
+    addForPo, 
+    moveInventoryBetweenLocations, 
+    deductInTransitForDelivery,
+    checkCanShipTransfer 
+  } = useInventory();
   const { purchaseOrders, addPurchaseOrder, patchPurchaseOrder } = usePurchaseOrders();
   const { transferOrders, addTransferOrder, patchTransferOrder } = useTransferOrders();
 
@@ -93,7 +111,9 @@ export default function PurchaseOrders() {
     
     // Production POs ADD inventory when delivered (manufacturer shipment arrives)
     if (patch.status !== undefined && shouldAddInventoryForTransition(p, patch.status)) {
-      const r = await addForPo(merged);
+      // Determine destination warehouse based on market
+      const destinationWarehouse = getWarehouseForMarket(p.marketDestination);
+      const r = await addForPo(merged, destinationWarehouse);
       if (!r.ok) {
         toast.error("Failed to receive inventory", {
           description: r.error || `Could not add inventory for ${merged.sku}.`,
@@ -102,7 +122,7 @@ export default function PurchaseOrders() {
       }
       patchPurchaseOrder(id, { status: merged.status, inventoryConsumed: true });
       toast.success("PO status updated", {
-        description: `${id} → ${merged.status} · Inventory received`,
+        description: `${id} → ${merged.status} · ${p.quantity} bottles received at ${destinationWarehouse}`,
       });
       return;
     }
@@ -113,6 +133,124 @@ export default function PurchaseOrders() {
 
   const patchTo = (id: string, patch: Partial<Pick<TransferOrder, "status">>) => {
     if (!canEditTransfer) return;
+    
+    const to = transferOrders.find((t) => t.id === id);
+    if (!to) return;
+    
+    const prevStatus = to.status;
+    const nextStatus = patch.status;
+    
+    if (!nextStatus || prevStatus === nextStatus) {
+      // No status change, just update other fields
+      patchTransferOrder(id, patch);
+      return;
+    }
+    
+    // Status transition handling for inventory movement
+    
+    // 1. shipped: Move from source warehouse to in_transit
+    if (nextStatus === "shipped" && prevStatus !== "shipped") {
+      const canShip = checkCanShipTransfer(to.sku, to.quantity, to.fromLocation);
+      if (!canShip.canShip) {
+        toast.error("Cannot ship — insufficient inventory", {
+          description: `Need ${to.quantity} bottles at ${to.fromLocation}, have ${canShip.available}.`,
+        });
+        return;
+      }
+      
+      const result = moveInventoryBetweenLocations(
+        to.sku,
+        to.quantity,
+        { warehouse: to.fromLocation, locationType: "distributor_warehouse" },
+        { warehouse: "In Transit", locationType: "in_transit" },
+        {
+          transferOrderId: to.id,
+          shipDate: new Date().toISOString().slice(0, 10),
+          expectedDelivery: to.deliveryDate,
+        }
+      );
+      
+      if (!result.success) {
+        toast.error("Failed to move inventory", { description: result.error });
+        return;
+      }
+      
+      patchTransferOrder(id, { ...patch, inventoryConsumed: true });
+      toast.success("Transfer shipped", {
+        description: `${to.quantity} bottles of ${to.sku} moved to in-transit.`,
+      });
+      return;
+    }
+    
+    // 2. delivered: Move from in_transit to destination
+    if (nextStatus === "delivered" && prevStatus !== "delivered") {
+      // First, deduct from in_transit
+      const deductResult = deductInTransitForDelivery(to.id);
+      if (!deductResult.success) {
+        toast.error("Failed to receive inventory", { description: deductResult.error });
+        return;
+      }
+      
+      // Then, add to destination (either retail shelf or distributor warehouse)
+      const isRetail = to.toAccountId != null;
+      const destResult = moveInventoryBetweenLocations(
+        to.sku,
+        to.quantity,
+        { warehouse: "In Transit", locationType: "in_transit" },
+        {
+          warehouse: isRetail ? to.toLocation : to.toLocation,
+          locationType: isRetail ? "retail_shelf" : "distributor_warehouse",
+          retailAccountId: to.toAccountId,
+        }
+      );
+      
+      if (!destResult.success) {
+        // Try to restore in_transit if destination move failed
+        toast.error("Failed to deliver inventory", { description: destResult.error });
+        return;
+      }
+      
+      patchTransferOrder(id, patch);
+      toast.success("Transfer delivered", {
+        description: `${to.quantity} bottles of ${to.sku} arrived at ${to.toLocation}.`,
+      });
+      return;
+    }
+    
+    // 3. cancelled: Return inventory to source if already shipped
+    if (nextStatus === "cancelled") {
+      if (prevStatus === "shipped" || prevStatus === "packed") {
+        // Inventory was reserved or moved to in_transit - need to return it
+        const deductResult = deductInTransitForDelivery(to.id);
+        if (deductResult.movedItems && deductResult.movedItems.length > 0) {
+          // Return to source
+          const returnResult = moveInventoryBetweenLocations(
+            to.sku,
+            to.quantity,
+            { warehouse: "In Transit", locationType: "in_transit" },
+            { warehouse: to.fromLocation, locationType: "distributor_warehouse" }
+          );
+          
+          if (!returnResult.success) {
+            toast.error("Failed to return inventory", { description: returnResult.error });
+            return;
+          }
+          
+          toast.success("Transfer cancelled", {
+            description: `${to.quantity} bottles returned to ${to.fromLocation}.`,
+          });
+        } else {
+          toast.success("Transfer cancelled");
+        }
+      } else {
+        toast.success("Transfer cancelled");
+      }
+      
+      patchTransferOrder(id, patch);
+      return;
+    }
+    
+    // Default: just update status
     patchTransferOrder(id, patch);
     toast.success("Transfer updated", { description: `${id} → ${patch.status}` });
   };

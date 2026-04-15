@@ -89,10 +89,17 @@
       "quantityBottles": 360,
       "quantityCases": 30,
       "warehouse": "Milan Depot",
-      "status": "in-transit",
+      "status": "available",
       "labelVersion": "v2.0",
       "notes": "En route from manufacturer",
-      "locationType": "in_transit"
+      "locationType": "in_transit",
+      "inTransitDetails": {
+        "transferOrderId": "TO-2024-001",
+        "fromWarehouse": "Toronto Main",
+        "toWarehouse": "Milan Depot",
+        "shipDate": "2024-12-15",
+        "expectedDelivery": "2025-01-15"
+      }
     },
     {
       "id": "INV-005",
@@ -117,7 +124,7 @@
       "quantityBottles": 1200,
       "quantityCases": 100,
       "warehouse": "Production",
-      "status": "in-production",
+      "status": "available",
       "labelVersion": "v1.0",
       "notes": "New SKU launch batch",
       "locationType": "manufacturer"

@@ -34,6 +34,15 @@ export const topAccounts = [
   { name: "The Drake Hotel", revenue: 42000, orders: 5, trend: 5.6 },
 ];
 
+export type InTransitDetails = {
+  transferOrderId: string;
+  fromWarehouse: string;
+  toWarehouse: string;
+  toAccountId?: string;
+  shipDate: string;
+  expectedDelivery: string;
+};
+
 export type InventoryItem = {
   id: string;
   sku: string;
@@ -44,19 +53,23 @@ export type InventoryItem = {
   quantityCases: number;
   warehouse: string;
   /** Business location classification — drives availability logic */
-  locationType?: "manufacturer" | "in_transit" | "distributor_warehouse" | "retail_shelf";
-  status: "available" | "reserved" | "damaged" | "in-transit" | "in-production";
+  locationType: "manufacturer" | "in_transit" | "distributor_warehouse" | "retail_shelf";
+  status: "available" | "reserved" | "damaged";
   labelVersion: string;
   notes: string;
+  /** For in_transit items: track the transfer order details */
+  inTransitDetails?: InTransitDetails;
+  /** For retail_shelf items: which account owns this stock */
+  retailAccountId?: string;
 };
 
 export const inventoryItems: InventoryItem[] = [
   { id: "INV-001", sku: "HJM-OG-750", productName: "Hajime Original 750ml", batchLot: "B2024-112", productionDate: "2024-11-15", quantityBottles: 1440, quantityCases: 120, warehouse: "Toronto Main", locationType: "distributor_warehouse", status: "available", labelVersion: "v3.1", notes: "" },
   { id: "INV-002", sku: "HJM-OG-750", productName: "Hajime Original 750ml", batchLot: "B2024-108", productionDate: "2024-10-20", quantityBottles: 480, quantityCases: 40, warehouse: "Toronto Main", locationType: "distributor_warehouse", status: "reserved", labelVersion: "v3.1", notes: "Reserved for LCBO Q1" },
   { id: "INV-003", sku: "HJM-YZ-750", productName: "Hajime Yuzu 750ml", batchLot: "B2024-115", productionDate: "2024-12-01", quantityBottles: 720, quantityCases: 60, warehouse: "Toronto Main", locationType: "distributor_warehouse", status: "available", labelVersion: "v2.0", notes: "" },
-  { id: "INV-004", sku: "HJM-YZ-750", productName: "Hajime Yuzu 750ml", batchLot: "B2024-116", productionDate: "2024-12-10", quantityBottles: 360, quantityCases: 30, warehouse: "Milan DC", locationType: "in_transit", status: "in-transit", labelVersion: "v2.0", notes: "En route from manufacturer" },
+  { id: "INV-004", sku: "HJM-YZ-750", productName: "Hajime Yuzu 750ml", batchLot: "B2024-116", productionDate: "2024-12-10", quantityBottles: 360, quantityCases: 30, warehouse: "Milan DC", locationType: "in_transit", status: "available", labelVersion: "v2.0", notes: "En route from manufacturer", inTransitDetails: { transferOrderId: "TO-2024-001", fromWarehouse: "Toronto Main", toWarehouse: "Milan DC", shipDate: "2024-12-15", expectedDelivery: "2025-01-15" } },
   { id: "INV-005", sku: "HJM-OG-375", productName: "Hajime Original 375ml", batchLot: "B2024-120", productionDate: "2024-12-15", quantityBottles: 960, quantityCases: 80, warehouse: "Toronto Main", locationType: "distributor_warehouse", status: "available", labelVersion: "v3.1", notes: "" },
-  { id: "INV-006", sku: "HJM-SP-750", productName: "Hajime Sparkling 750ml", batchLot: "B2024-121", productionDate: "2025-01-05", quantityBottles: 1200, quantityCases: 100, warehouse: "Kirin Brewery Co.", locationType: "manufacturer", status: "in-production", labelVersion: "v1.0", notes: "New SKU launch batch" },
+  { id: "INV-006", sku: "HJM-SP-750", productName: "Hajime Sparkling 750ml", batchLot: "B2024-121", productionDate: "2025-01-05", quantityBottles: 1200, quantityCases: 100, warehouse: "Kirin Brewery Co.", locationType: "manufacturer", status: "available", labelVersion: "v1.0", notes: "New SKU launch batch" },
   { id: "INV-007", sku: "HJM-OG-750", productName: "Hajime Original 750ml", batchLot: "B2024-107", productionDate: "2024-10-01", quantityBottles: 48, quantityCases: 4, warehouse: "Toronto Main", locationType: "distributor_warehouse", status: "damaged", labelVersion: "v3.0", notes: "Water damage during storage" },
   { id: "INV-FP-01", sku: "HJM-FP-750", productName: "Hajime First Press Coffee Rhum 750ml", batchLot: "B2025-201", productionDate: "2025-03-01", quantityBottles: 360, quantityCases: 30, warehouse: "Toronto Main", locationType: "distributor_warehouse", status: "available", labelVersion: "v1.0", notes: "" },
 ];
