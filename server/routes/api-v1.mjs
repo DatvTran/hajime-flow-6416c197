@@ -1851,7 +1851,7 @@ router.patch('/purchase-orders/:id/status', requirePermission(Permission.PRODUCT
 });
 
 // DELETE /api/v1/purchase-orders/:id - Soft delete purchase order
-router.delete('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_DELETE), async (req, res) => {
+router.delete('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     const { id } = req.params;

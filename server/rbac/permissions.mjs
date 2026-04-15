@@ -45,6 +45,7 @@ export const Permission = {
   // Production
   PRODUCTION_READ: 'production:read',
   PRODUCTION_WRITE: 'production:write',
+  PRODUCTION_DELETE: 'production:delete',
 
   // Shipments
   SHIPMENTS_READ: 'shipments:read',
