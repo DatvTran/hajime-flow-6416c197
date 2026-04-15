@@ -9,6 +9,8 @@ import { AppDataProvider } from "@/contexts/AppDataContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { RetailCartProvider } from "@/contexts/RetailCartContext";
 import { RequireAuth } from "@/components/RequireAuth";
+import { InactivityWarningDialog } from "@/components/InactivityWarningDialog";
+import { useInactivityTimer } from "@/hooks/useInactivityTimer";
 import RoleHomeEntry from "./pages/RoleHomeEntry";
 import Inventory from "./pages/Inventory";
 import Orders from "./pages/Orders";
@@ -49,6 +51,7 @@ const queryClient = new QueryClient();
 
 function AppDataShell() {
   const { user } = useAuth();
+  const { state, formattedTimeRemaining, stayActive } = useInactivityTimer();
   
   if (!user) {
     return null;
@@ -63,6 +66,11 @@ function AppDataShell() {
       ) : (
         <AppLayout />
       )}
+      <InactivityWarningDialog
+        isOpen={state === "warning"}
+        timeRemaining={formattedTimeRemaining}
+        onStayActive={stayActive}
+      />
     </AppDataProvider>
   );
 }
