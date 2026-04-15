@@ -160,6 +160,13 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           ],
         },
         {
+          label: "Inventory",
+          items: [
+            { title: "My stock", url: "/inventory", icon: Package },
+            { title: "Report depletions", url: "/distributor/depletions", icon: TrendingDown },
+          ],
+        },
+        {
           label: "You",
           items: [
             { title: "Account", url: "/retail/account", icon: User },
