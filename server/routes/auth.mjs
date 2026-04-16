@@ -3,27 +3,56 @@ import { z } from 'zod';
 import { authService } from '../services/auth.mjs';
 import { db } from '../config/database.mjs';
 import { Role, normalizeRole } from '../rbac/permissions.mjs';
-import { authenticateToken } from '../middleware/auth.mjs';
+import { authenticateToken, requirePermission } from '../middleware/auth.mjs';
 
 const router = express.Router();
+
+/**
+ * Roles that can self-register (open registration).
+ * FOUNDER_ADMIN and BRAND_OPERATOR must be created by an existing admin.
+ */
+const SELF_REGISTERABLE_ROLES = [
+  Role.SALES,
+  Role.OPERATIONS,
+  Role.MANUFACTURER,
+  Role.FINANCE,
+  Role.DISTRIBUTOR,
+  Role.RETAIL,
+  Role.SALES_REP,
+];
+
+/**
+ * Roles that can only be assigned by an existing FOUNDER_ADMIN or BRAND_OPERATOR.
+ */
+const ADMIN_ASSIGNABLE_ROLES = [
+  Role.FOUNDER_ADMIN,
+  Role.BRAND_OPERATOR,
+  Role.SALES,
+  Role.OPERATIONS,
+  Role.MANUFACTURER,
+  Role.FINANCE,
+  Role.DISTRIBUTOR,
+  Role.RETAIL,
+  Role.SALES_REP,
+];
 
 // Validation schemas
 const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   displayName: z.string().min(1),
-  role: z.enum([
-    Role.FOUNDER_ADMIN,
-    Role.BRAND_OPERATOR,
-    Role.SALES,
-    Role.OPERATIONS,
-    Role.MANUFACTURER,
-    Role.FINANCE,
-    Role.DISTRIBUTOR,
-    Role.RETAIL,
-    Role.SALES_REP,
-  ]),
+  role: z.enum(SELF_REGISTERABLE_ROLES),
   tenantId: z.string().uuid().optional(), // Optional: create new tenant if not provided
+  inviteToken: z.string().optional(), // Required when joining an existing tenant
+});
+
+// Admin-only user creation schema (all roles allowed)
+const adminCreateUserSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  displayName: z.string().min(1),
+  role: z.enum(ADMIN_ASSIGNABLE_ROLES),
+  tenantId: z.string().uuid().optional(), // Defaults to admin's own tenant
 });
 
 const loginSchema = z.object({
@@ -46,7 +75,8 @@ const passwordResetSchema = z.object({
 
 /**
  * POST /api/auth/register
- * Register a new user
+ * Open self-registration — limited to partner roles only.
+ * Brand Operator and Founder Admin can only be created via admin-create-user.
  */
 router.post('/register', async (req, res) => {
   try {
@@ -58,7 +88,36 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    const { email, password, displayName, role, tenantId } = result.data;
+    const { email, password, displayName, role, inviteToken } = result.data;
+
+    // Validate invite token if provided (joining an existing tenant)
+    let userTenantId = null;
+    if (inviteToken) {
+      const invite = await db('user_invites')
+        .where({ token: inviteToken, used: false })
+        .whereRaw('expires_at > NOW()')
+        .first();
+
+      if (!invite) {
+        return res.status(400).json({ error: 'Invalid or expired invite token' });
+      }
+
+      // Invite must allow this role
+      if (invite.intended_role && invite.intended_role !== normalizeRole(role)) {
+        return res.status(403).json({ error: 'Invite is for a different role' });
+      }
+
+      userTenantId = invite.tenant_id;
+
+      // Mark invite used
+      await db('user_invites').where({ token: inviteToken }).update({ used: true });
+    } else {
+      // No invite → create a fresh tenant for this user
+      const [tenant] = await db('tenants')
+        .insert({ name: `${displayName}'s Organization` })
+        .returning('id');
+      userTenantId = tenant.id;
+    }
 
     // Check if user already exists
     const existingUser = await db('users')
@@ -67,26 +126,7 @@ router.post('/register', async (req, res) => {
       .first();
 
     if (existingUser) {
-      return res.status(409).json({
-        error: 'Email already registered',
-      });
-    }
-
-    // Create or get tenant
-    let userTenantId = tenantId;
-    if (!userTenantId) {
-      const [tenant] = await db('tenants')
-        .insert({
-          name: `${displayName}'s Organization`,
-        })
-        .returning('id');
-      userTenantId = tenant.id;
-    } else {
-      // Verify tenant exists
-      const tenant = await db('tenants').where({ id: tenantId }).first();
-      if (!tenant) {
-        return res.status(404).json({ error: 'Tenant not found' });
-      }
+      return res.status(409).json({ error: 'Email already registered' });
     }
 
     // Hash password
@@ -135,6 +175,81 @@ router.post('/register', async (req, res) => {
     res.status(500).json({ error: 'Registration failed' });
   }
 });
+
+/**
+ * POST /api/auth/admin-create-user
+ * Create a user with any role — requires existing admin authentication.
+ * This is the only way to create FOUNDER_ADMIN or BRAND_OPERATOR accounts.
+ */
+router.post(
+  '/admin-create-user',
+  authenticateToken,
+  requirePermission('users:write'),
+  async (req, res) => {
+    try {
+      const result = adminCreateUserSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({
+          error: 'Invalid input',
+          details: result.error.errors,
+        });
+      }
+
+      const { email, password, displayName, role, tenantId } = result.data;
+
+      // Default to the admin's own tenant
+      const userTenantId = tenantId ?? req.user.tenantId;
+
+      // Prevent creating users in a different tenant unless FOUNDER_ADMIN
+      if (tenantId && tenantId !== req.user.tenantId && req.user.role !== 'founder_admin') {
+        return res.status(403).json({ error: 'Cannot create users in another tenant' });
+      }
+
+      const existingUser = await db('users')
+        .where({ email: email.toLowerCase() })
+        .whereNull('deleted_at')
+        .first();
+
+      if (existingUser) {
+        return res.status(409).json({ error: 'Email already registered' });
+      }
+
+      const passwordHash = await authService.hashPassword(password);
+
+      const [user] = await db('users')
+        .insert({
+          tenant_id: userTenantId,
+          email: email.toLowerCase(),
+          password_hash: passwordHash,
+          role: normalizeRole(role),
+          display_name: displayName,
+          email_verified: true, // Admin-created users are pre-verified
+        })
+        .returning(['id', 'email', 'role', 'display_name', 'tenant_id']);
+
+      await authService.logAuthEvent({
+        userId: req.user.userId,
+        eventType: 'admin_user_created',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        metadata: { createdUserId: user.id, role: user.role },
+      });
+
+      res.status(201).json({
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          displayName: user.display_name,
+          tenantId: user.tenant_id,
+        },
+      });
+    } catch (err) {
+      console.error('Admin create user error:', err);
+      res.status(500).json({ error: 'User creation failed' });
+    }
+  }
+);
 
 /**
  * POST /api/auth/login

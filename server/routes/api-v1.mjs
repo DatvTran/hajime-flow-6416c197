@@ -15,9 +15,14 @@ const isDev = process.env.NODE_ENV === 'development';
 router.use(authenticateToken);
 router.use(requireTenantAccess);
 
-// Helper to get tenantId from authenticated user
-function getTenantId(req) {
-  return req.user?.tenantId || '00000000-0000-0000-0000-000000000000';
+// Helper to get tenantId from authenticated user — throws 403 if missing to prevent cross-tenant leakage
+function getTenantId(req, res) {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) {
+    res.status(403).json({ error: 'Tenant identity missing from token' });
+    return null;
+  }
+  return tenantId;
 }
 
 // ===== PRODUCTS =====
@@ -25,7 +30,8 @@ function getTenantId(req) {
 // GET /api/v1/products - List all products
 router.get('/products', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { page = 1, limit = 50, category, search } = req.query;
     
     if (isDev) {
@@ -81,7 +87,8 @@ router.get('/products', requirePermission(Permission.INVENTORY_READ), async (req
 // GET /api/v1/products/:id - Get single product
 router.get('/products/:id', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const product = await db('products')
@@ -103,7 +110,8 @@ router.get('/products/:id', requirePermission(Permission.INVENTORY_READ), async 
 // POST /api/v1/products - Create product
 router.post('/products', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { sku, name, description, category, unit_size, metadata } = req.body;
     
     if (!sku || !name) {
@@ -134,7 +142,8 @@ router.post('/products', requirePermission(Permission.INVENTORY_WRITE), async (r
 // PUT /api/v1/products/:id - Update product
 router.put('/products/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const updates = req.body;
     
@@ -168,7 +177,8 @@ router.put('/products/:id', requirePermission(Permission.INVENTORY_WRITE), async
 // DELETE /api/v1/products/:id - Soft delete product
 router.delete('/products/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const [product] = await db('products')
@@ -193,7 +203,8 @@ router.delete('/products/:id', requirePermission(Permission.INVENTORY_WRITE), as
 // GET /api/v1/accounts - List all accounts
 router.get('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { page = 1, limit = 50, type, market, status = 'active', sales_owner } = req.query;
     
     let baseQuery = db('accounts')
@@ -235,7 +246,8 @@ router.get('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req,
 // GET /api/v1/accounts/:id - Get single account
 router.get('/accounts/:id', requirePermission(Permission.ACCOUNTS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const account = await db('accounts')
@@ -257,7 +269,8 @@ router.get('/accounts/:id', requirePermission(Permission.ACCOUNTS_READ), async (
 // POST /api/v1/accounts - Create account
 router.post('/accounts', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const accountData = req.body;
     
     if (!accountData.name) {
@@ -294,7 +307,8 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_WRITE), async (re
 // PUT /api/v1/accounts/:id - Update account
 router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const updates = req.body;
     
@@ -331,7 +345,8 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
 // DELETE /api/v1/accounts/:id - Soft delete account
 router.delete('/accounts/:id', requirePermission(Permission.ACCOUNTS_DELETE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const [account] = await db('accounts')
@@ -356,7 +371,8 @@ router.delete('/accounts/:id', requirePermission(Permission.ACCOUNTS_DELETE), as
 // GET /api/v1/orders - List sales orders
 router.get('/orders', requirePermission(Permission.ORDERS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { 
       page = 1, 
       limit = 50, 
@@ -423,7 +439,8 @@ router.get('/orders', requirePermission(Permission.ORDERS_READ), async (req, res
 // GET /api/v1/orders/:id - Get single order with items
 router.get('/orders/:id', requirePermission(Permission.ORDERS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const order = await db('sales_orders')
@@ -463,7 +480,8 @@ router.post('/orders', requirePermission(Permission.ORDERS_WRITE), async (req, r
   const trx = await db.transaction();
   
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { order_number, account_id, status, order_date, items, sales_rep, ...orderData } = req.body;
     
     if (!order_number || !account_id) {
@@ -518,7 +536,8 @@ router.put('/orders/:id', requirePermission(Permission.ORDERS_WRITE), async (req
   const trx = await db.transaction();
   
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const { items, ...orderData } = req.body;
     
@@ -580,7 +599,8 @@ router.put('/orders/:id', requirePermission(Permission.ORDERS_WRITE), async (req
 // PATCH /api/v1/orders/:id/status - Update order status
 router.patch('/orders/:id/status', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const { status } = req.body;
     
@@ -620,7 +640,8 @@ router.patch('/orders/:id/status', requirePermission(Permission.ORDERS_WRITE), a
 // DELETE /api/v1/orders/:id - Soft delete order
 router.delete('/orders/:id', requirePermission(Permission.ORDERS_DELETE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const [order] = await db('sales_orders')
@@ -645,7 +666,8 @@ router.delete('/orders/:id', requirePermission(Permission.ORDERS_DELETE), async 
 // GET /api/v1/inventory - List inventory
 router.get('/inventory', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { page = 1, limit = 50, location, low_stock, product_id } = req.query;
     
     let countQuery = db('inventory')
@@ -708,7 +730,8 @@ router.post('/inventory/adjust', requirePermission(Permission.INVENTORY_ADJUST),
   const trx = await db.transaction();
   
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { product_id, location = 'Main Warehouse', quantity, reason, notes } = req.body;
     
     if (!product_id || quantity === undefined) {
@@ -776,7 +799,8 @@ router.post('/inventory/adjust', requirePermission(Permission.INVENTORY_ADJUST),
 // GET /api/v1/dashboard/stats - Get dashboard statistics
 router.get('/dashboard/stats', requirePermission(Permission.REPORTS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     
     const [
       productsCount,
@@ -834,7 +858,8 @@ router.get('/dashboard/stats', requirePermission(Permission.REPORTS_READ), async
 // GET /api/v1/visit-notes - List visit notes
 router.get('/visit-notes', requirePermission(Permission.ACCOUNTS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { account_id, sales_rep, page = 1, limit = 50 } = req.query;
     
     let query = db('visit_notes')
@@ -869,7 +894,8 @@ router.get('/visit-notes', requirePermission(Permission.ACCOUNTS_READ), async (r
 // POST /api/v1/visit-notes - Create visit note
 router.post('/visit-notes', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { account_id, note, visit_date } = req.body;
     
     if (!account_id || !note) {
@@ -899,7 +925,8 @@ router.post('/visit-notes', requirePermission(Permission.ACCOUNTS_WRITE), async 
 // GET /api/v1/sales-targets - List sales targets
 router.get('/sales-targets', requirePermission(Permission.REPORTS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { sales_rep, quarter, year } = req.query;
     
     let query = db('sales_targets')
@@ -922,7 +949,8 @@ router.get('/sales-targets', requirePermission(Permission.REPORTS_READ), async (
 // POST /api/v1/sales-targets - Create/update sales target
 router.post('/sales-targets', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { sales_rep, quarter, year, target_amount } = req.body;
     
     if (!sales_rep || !quarter || !year || target_amount === undefined) {
@@ -955,7 +983,8 @@ router.post('/sales-targets', requirePermission(Permission.SETTINGS_WRITE), asyn
 // GET /api/v1/depletion-reports - List depletion reports
 router.get('/depletion-reports', requirePermission(Permission.REPORTS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { page = 1, limit = 50, account_id, sku, flagged, start_date, end_date } = req.query;
     
     let query = db('depletion_reports')
@@ -1003,7 +1032,8 @@ router.get('/depletion-reports', requirePermission(Permission.REPORTS_READ), asy
 // GET /api/v1/depletion-reports/:id - Get single depletion report
 router.get('/depletion-reports/:id', requirePermission(Permission.REPORTS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const report = await db('depletion_reports')
@@ -1031,7 +1061,8 @@ router.get('/depletion-reports/:id', requirePermission(Permission.REPORTS_READ),
 // POST /api/v1/depletion-reports - Create depletion report
 router.post('/depletion-reports', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { 
       account_id, 
       sku, 
@@ -1083,7 +1114,8 @@ router.post('/depletion-reports', requirePermission(Permission.ORDERS_WRITE), as
 // PUT /api/v1/depletion-reports/:id - Update depletion report
 router.put('/depletion-reports/:id', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const updates = req.body;
     
@@ -1131,7 +1163,8 @@ router.put('/depletion-reports/:id', requirePermission(Permission.ORDERS_WRITE),
 // DELETE /api/v1/depletion-reports/:id - Soft delete depletion report
 router.delete('/depletion-reports/:id', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const [report] = await db('depletion_reports')
@@ -1154,7 +1187,8 @@ router.delete('/depletion-reports/:id', requirePermission(Permission.ORDERS_WRIT
 // GET /api/v1/depletion-reports/sellthrough/velocity - Get sell-through velocity
 router.get('/depletion-reports/sellthrough/velocity', requirePermission(Permission.REPORTS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { account_id, sku, days = 30 } = req.query;
     
     const startDate = new Date();
@@ -1211,7 +1245,8 @@ router.get('/depletion-reports/sellthrough/velocity', requirePermission(Permissi
 // GET /api/v1/depletion-reports/sellthrough/summary - Get summary by period
 router.get('/depletion-reports/sellthrough/summary', requirePermission(Permission.REPORTS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { period = '30d' } = req.query;
     
     const days = period === '7d' ? 7 : period === '90d' ? 90 : 30;
@@ -1274,7 +1309,8 @@ router.get('/depletion-reports/sellthrough/summary', requirePermission(Permissio
 // GET /api/v1/inventory-adjustment-requests - List adjustment requests
 router.get('/inventory-adjustment-requests', requirePermission(Permission.REPORTS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { page = 1, limit = 50, account_id, status } = req.query;
     
     let query = db('inventory_adjustment_requests')
@@ -1318,7 +1354,8 @@ router.get('/inventory-adjustment-requests', requirePermission(Permission.REPORT
 // POST /api/v1/inventory-adjustment-requests - Create adjustment request
 router.post('/inventory-adjustment-requests', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { 
       account_id, 
       sku, 
@@ -1371,7 +1408,8 @@ router.post('/inventory-adjustment-requests', requirePermission(Permission.ORDER
 // PATCH /api/v1/inventory-adjustment-requests/:id/approve - Approve/reject adjustment
 router.patch('/inventory-adjustment-requests/:id/approve', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const { approved, rejection_reason } = req.body;
     
@@ -1448,7 +1486,8 @@ router.patch('/inventory-adjustment-requests/:id/approve', requirePermission(Per
 // GET /api/v1/new-product-requests - List new product requests
 router.get('/new-product-requests', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { status, assigned_manufacturer, limit = 50, offset = 0 } = req.query;
     
     let query = db('new_product_requests')
@@ -1497,7 +1536,8 @@ router.get('/new-product-requests', requirePermission(Permission.PRODUCTION_READ
 // GET /api/v1/new-product-requests/:id - Get single request
 router.get('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const request = await db('new_product_requests')
@@ -1527,7 +1567,8 @@ router.get('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_
 // POST /api/v1/new-product-requests - Create new request
 router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const {
       request_id,
       title,
@@ -1575,7 +1616,8 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
 // PUT /api/v1/new-product-requests/:id - Update request
 router.put('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const updates = req.body;
     
@@ -1615,7 +1657,8 @@ router.put('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_
 // DELETE /api/v1/new-product-requests/:id - Delete request
 router.delete('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const deleted = await db('new_product_requests')
@@ -1638,7 +1681,8 @@ router.delete('/new-product-requests/:id', requirePermission(Permission.PRODUCTI
 // GET /api/v1/purchase-orders - List purchase orders
 router.get('/purchase-orders', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { page = 1, limit = 50, status, manufacturer_id } = req.query;
     
     let baseQuery = db('purchase_orders')
@@ -1678,7 +1722,8 @@ router.get('/purchase-orders', requirePermission(Permission.PRODUCTION_READ), as
 // GET /api/v1/purchase-orders/:id - Get single purchase order with items
 router.get('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const order = await db('purchase_orders')
@@ -1705,7 +1750,8 @@ router.post('/purchase-orders', requirePermission(Permission.PRODUCTION_WRITE), 
   const trx = await db.transaction();
   
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { po_number, manufacturer_id, status, order_date, delivery_date, items, ...orderData } = req.body;
     
     if (!po_number || !manufacturer_id) {
@@ -1758,7 +1804,8 @@ router.put('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WRITE
   const trx = await db.transaction();
   
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const { items, ...orderData } = req.body;
     
@@ -1815,7 +1862,8 @@ router.put('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WRITE
 // PATCH /api/v1/purchase-orders/:id/status - Update purchase order status
 router.patch('/purchase-orders/:id/status', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const { status } = req.body;
     
@@ -1853,7 +1901,8 @@ router.patch('/purchase-orders/:id/status', requirePermission(Permission.PRODUCT
 // DELETE /api/v1/purchase-orders/:id - Soft delete purchase order
 router.delete('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const [order] = await db('purchase_orders')
@@ -1878,7 +1927,8 @@ router.delete('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WR
 // GET /api/v1/transfer-orders - List transfer orders
 router.get('/transfer-orders', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { page = 1, limit = 50, status, from_location, to_location } = req.query;
     
     let baseQuery = db('transfer_orders')
@@ -1919,7 +1969,8 @@ router.get('/transfer-orders', requirePermission(Permission.INVENTORY_READ), asy
 // GET /api/v1/transfer-orders/:id - Get single transfer order with items
 router.get('/transfer-orders/:id', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const order = await db('transfer_orders')
@@ -1946,7 +1997,8 @@ router.post('/transfer-orders', requirePermission(Permission.INVENTORY_WRITE), a
   const trx = await db.transaction();
   
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { to_number, from_location, to_location, status, request_date, ship_date, items, ...orderData } = req.body;
     
     if (!to_number || !from_location || !to_location) {
@@ -2001,7 +2053,8 @@ router.put('/transfer-orders/:id', requirePermission(Permission.INVENTORY_WRITE)
   const trx = await db.transaction();
   
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const { items, ...orderData } = req.body;
     
@@ -2060,7 +2113,8 @@ router.put('/transfer-orders/:id', requirePermission(Permission.INVENTORY_WRITE)
 // PATCH /api/v1/transfer-orders/:id/status - Update transfer order status
 router.patch('/transfer-orders/:id/status', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const { status } = req.body;
     
@@ -2100,7 +2154,8 @@ router.patch('/transfer-orders/:id/status', requirePermission(Permission.INVENTO
 // DELETE /api/v1/transfer-orders/:id - Soft delete transfer order
 router.delete('/transfer-orders/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const [order] = await db('transfer_orders')
@@ -2125,7 +2180,8 @@ router.delete('/transfer-orders/:id', requirePermission(Permission.INVENTORY_WRI
 // GET /api/v1/shipments - List shipments
 router.get('/shipments', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { page = 1, limit = 50, status, carrier, order_id, order_type } = req.query;
     
     let baseQuery = db('shipments')
@@ -2167,7 +2223,8 @@ router.get('/shipments', requirePermission(Permission.INVENTORY_READ), async (re
 // GET /api/v1/shipments/:id - Get single shipment with items
 router.get('/shipments/:id', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const shipment = await db('shipments')
@@ -2194,7 +2251,8 @@ router.post('/shipments', requirePermission(Permission.INVENTORY_WRITE), async (
   const trx = await db.transaction();
   
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { 
       shipment_number, 
       order_id, 
@@ -2264,7 +2322,8 @@ router.put('/shipments/:id', requirePermission(Permission.INVENTORY_WRITE), asyn
   const trx = await db.transaction();
   
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const { items, ...shipmentData } = req.body;
     
@@ -2323,7 +2382,8 @@ router.put('/shipments/:id', requirePermission(Permission.INVENTORY_WRITE), asyn
 // PATCH /api/v1/shipments/:id/status - Update shipment status
 router.patch('/shipments/:id/status', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const { status } = req.body;
     
@@ -2361,7 +2421,8 @@ router.patch('/shipments/:id/status', requirePermission(Permission.INVENTORY_WRI
 // DELETE /api/v1/shipments/:id - Soft delete shipment
 router.delete('/shipments/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const [shipment] = await db('shipments')
@@ -2386,7 +2447,8 @@ router.delete('/shipments/:id', requirePermission(Permission.INVENTORY_WRITE), a
 // GET /api/v1/incentives - List incentives
 router.get('/incentives', requirePermission(Permission.REPORTS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { page = 1, limit = 50, type, status, account_id } = req.query;
     
     let baseQuery = db('incentives')
@@ -2427,7 +2489,8 @@ router.get('/incentives', requirePermission(Permission.REPORTS_READ), async (req
 // GET /api/v1/incentives/:id - Get single incentive
 router.get('/incentives/:id', requirePermission(Permission.REPORTS_READ), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const incentive = await db('incentives')
@@ -2449,7 +2512,8 @@ router.get('/incentives/:id', requirePermission(Permission.REPORTS_READ), async 
 // POST /api/v1/incentives - Create incentive
 router.post('/incentives', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { 
       name,
       type,
@@ -2496,7 +2560,8 @@ router.post('/incentives', requirePermission(Permission.SETTINGS_WRITE), async (
 // PUT /api/v1/incentives/:id - Update incentive
 router.put('/incentives/:id', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const updates = req.body;
     
@@ -2527,7 +2592,8 @@ router.put('/incentives/:id', requirePermission(Permission.SETTINGS_WRITE), asyn
 // PATCH /api/v1/incentives/:id/status - Update incentive status
 router.patch('/incentives/:id/status', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     const { status } = req.body;
     
@@ -2560,7 +2626,8 @@ router.patch('/incentives/:id/status', requirePermission(Permission.SETTINGS_WRI
 // DELETE /api/v1/incentives/:id - Soft delete incentive
 router.delete('/incentives/:id', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
     const { id } = req.params;
     
     const [incentive] = await db('incentives')

@@ -26,6 +26,24 @@ import apiV1Routes from './routes/api-v1.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
 
+// ── Startup environment validation ─────────────────────────────────────────
+// Fail fast: crash at boot rather than silently allowing unsigned JWTs
+const REQUIRED_ENV = ['ACCESS_TOKEN_SECRET'];
+const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
+if (missingEnv.length > 0) {
+  console.error(
+    `FATAL: Missing required environment variables: ${missingEnv.join(', ')}\n` +
+    `Set them in server/.env or as Fly.io secrets (fly secrets set ACCESS_TOKEN_SECRET=...)`
+  );
+  process.exit(1);
+}
+
+// Warn if the secret is too short (minimum 32 chars recommended)
+if ((process.env.ACCESS_TOKEN_SECRET ?? '').length < 32) {
+  console.warn('WARNING: ACCESS_TOKEN_SECRET is shorter than 32 characters — use a longer secret in production');
+}
+// ───────────────────────────────────────────────────────────────────────────
+
 const PORT = Number(process.env.PORT) || 4242;
 const DATA_DIR = path.join(__dirname, 'data');
 const CUSTOMER_MAP_FILE = path.join(DATA_DIR, 'stripe-customers.json');
@@ -125,7 +143,11 @@ console.log('[hajime-api] Granular API v1 enabled');
 // ===== APP DATA API (with migration stages) =====
 app.get('/api/app', authenticateToken, async (req, res) => {
   try {
-    const tenantId = req.user?.tenantId || '00000000-0000-0000-0000-000000000000';
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      // Never fall back to a hardcoded UUID — reject to prevent cross-tenant data leakage
+      return res.status(403).json({ error: 'Tenant identity missing from token' });
+    }
     const data = await dataMigrationService.getData(tenantId);
     res.json(data);
   } catch (e) {
@@ -148,7 +170,10 @@ app.put('/api/app', authenticateToken, async (req, res) => {
       }
     }
 
-    const tenantId = req.user?.tenantId || '00000000-0000-0000-0000-000000000000';
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(403).json({ error: 'Tenant identity missing from token' });
+    }
     await dataMigrationService.saveData(body, tenantId);
 
     res.json({ ok: true });
