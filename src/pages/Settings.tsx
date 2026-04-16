@@ -456,7 +456,14 @@ export default function SettingsPage() {
                 <StatusBadge status="active" />
               </div>
             ))}
-            <Button variant="outline" size="sm" className="mt-2">Add Warehouse</Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="mt-2" 
+              onClick={() => toast.info("Warehouse management", { description: "Coming soon in a future update." })}
+            >
+              Add Warehouse
+            </Button>
           </CardContent>
         </Card>
       </div>

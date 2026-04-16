@@ -151,6 +151,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     // NEW: Reset proxy mode
     setIsProxyMode(false);
     setOnBehalfOfAccountId("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, variant]);
 
   useEffect(() => {

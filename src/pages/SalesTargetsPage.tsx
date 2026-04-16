@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,7 @@ export default function SalesTargetsPage() {
     return Math.floor(month / 3) + 1;
   }
 
-  const fetchTargets = async () => {
+  const fetchTargets = useCallback(async () => {
     setIsLoading(true);
     try {
       const response = await getSalesTargets({
@@ -68,11 +68,11 @@ export default function SalesTargetsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [repName, selectedQuarter, selectedYear]);
 
   useEffect(() => {
     fetchTargets();
-  }, [repName, selectedQuarter, selectedYear]);
+  }, [fetchTargets]);
 
   // Calculate actual performance from sales orders
   const performance = useMemo(() => {

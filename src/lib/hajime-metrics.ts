@@ -30,11 +30,17 @@ function sumBottles(items: InventoryItem[], pred: (i: InventoryItem) => boolean)
   return s;
 }
 
-export function computeInventorySummary(inventory: InventoryItem[]) {
+export function computeInventorySummary(
+  inventory: InventoryItem[],
+  purchaseOrders?: { status: string; quantity: number }[]
+) {
   const available = sumBottles(inventory, (i) => i.status === "available");
   const reserved = sumBottles(inventory, (i) => i.status === "reserved");
   const inTransit = sumBottles(inventory, (i) => i.status === "in-transit");
-  const inProduction = sumBottles(inventory, (i) => i.status === "in-production");
+  // In-production comes from purchase orders with status "in-production", not inventory items
+  const inProduction = (purchaseOrders ?? [])
+    .filter((po) => po.status === "in-production")
+    .reduce((sum, po) => sum + po.quantity, 0);
   const damaged = sumBottles(inventory, (i) => i.status === "damaged");
   const totalOnHand = inventory.reduce((a, i) => a + i.quantityBottles, 0);
   return { totalOnHand, available, reserved, inTransit, inProduction, damaged };
@@ -313,7 +319,12 @@ export function computeReorderRecommendations(data: AppData, now = new Date()): 
   const inProdBySku: Record<string, number> = {};
   for (const row of inv) {
     if (row.status === "available") availableBySku[row.sku] = (availableBySku[row.sku] ?? 0) + row.quantityBottles;
-    if (row.status === "in-production") inProdBySku[row.sku] = (inProdBySku[row.sku] ?? 0) + row.quantityBottles;
+  }
+  // In-production comes from purchase orders, not inventory status
+  for (const po of data.purchaseOrders ?? []) {
+    if (po.status === "in-production") {
+      inProdBySku[po.sku] = (inProdBySku[po.sku] ?? 0) + po.quantity;
+    }
   }
 
   const skus = new Set([...Object.keys(availableBySku), ...Object.keys(velocity), ...data.products.map((p) => p.sku)]);
@@ -570,8 +581,14 @@ export function computeSalesByAnchorCities(orders: SalesOrder[], windowDays = 30
 }
 
 /** Bottles staged as manufacturer → warehouse network → retail allocation. */
-export function computeInventoryFlowStages(inventory: InventoryItem[]) {
-  const manufacturer = sumBottles(inventory, (i) => i.status === "in-production");
+export function computeInventoryFlowStages(
+  inventory: InventoryItem[],
+  purchaseOrders?: { status: string; quantity: number }[]
+) {
+  // In-production comes from purchase orders, not inventory items
+  const manufacturer = (purchaseOrders ?? [])
+    .filter((po) => po.status === "in-production")
+    .reduce((sum, po) => sum + po.quantity, 0);
   const warehouse = sumBottles(
     inventory,
     (i) => i.status === "available" || i.status === "in-transit" || i.status === "damaged",
@@ -587,8 +604,14 @@ export function computeInventoryFlowStages(inventory: InventoryItem[]) {
  * Distributor: in motion between hubs / wholesale channel. Retail: allocated to sell-in.
  * Excludes damaged (quarantine) from this pipeline view.
  */
-export function computeSupplyChainLayers(inventory: InventoryItem[]) {
-  const manufacturer = sumBottles(inventory, (i) => i.status === "in-production");
+export function computeSupplyChainLayers(
+  inventory: InventoryItem[],
+  purchaseOrders?: { status: string; quantity: number }[]
+) {
+  // In-production comes from purchase orders, not inventory items
+  const manufacturer = (purchaseOrders ?? [])
+    .filter((po) => po.status === "in-production")
+    .reduce((sum, po) => sum + po.quantity, 0);
   const brandOperator = sumBottles(inventory, (i) => i.status === "available");
   const distributor = sumBottles(inventory, (i) => i.status === "in-transit");
   const retail = sumBottles(inventory, (i) => i.status === "reserved");

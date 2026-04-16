@@ -23,7 +23,7 @@ export default function Manufacturer() {
   const { user } = useAuth();
   const logAudit = useAuditLog();
 
-  const invSummary = useMemo(() => computeInventorySummary(data.inventory), [data.inventory]);
+  const invSummary = useMemo(() => computeInventorySummary(data.inventory, data.purchaseOrders), [data.inventory, data.purchaseOrders]);
 
   const activePOs = useMemo(() => purchaseOrders.filter((po) => po.status !== "draft"), [purchaseOrders]);
 

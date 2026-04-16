@@ -110,7 +110,7 @@ export default function Reports() {
     [analyticsOrders, analyticsAsOf],
   );
   const inventoryByStatus = useMemo(
-    () => (isSalesRep ? [] : inventoryByStatusForChart(computeInventorySummary(data.inventory))),
+    () => (isSalesRep ? [] : inventoryByStatusForChart(computeInventorySummary(data.inventory, data.purchaseOrders))),
     [data.inventory, isSalesRep],
   );
   const topAccounts = useMemo(() => computeTopAccounts(analyticsOrders), [analyticsOrders]);
@@ -192,7 +192,7 @@ export default function Reports() {
         { label: "Markets (90d)", value: String(countActiveMarkets(analyticsOrders, 90, analyticsAsOf)), sub: "distinct regions" },
       ];
     }
-    const inv = computeInventorySummary(data.inventory);
+    const inv = computeInventorySummary(data.inventory, data.purchaseOrders);
     return [
       { label: "Inventory on hand", value: inv.totalOnHand.toLocaleString(), sub: "bottles · all hubs" },
       { label: "Sell-in (90d)", value: `$${revenueInWindow(data.salesOrders, 90, analyticsAsOf).toLocaleString()}`, sub: "CAD · network" },

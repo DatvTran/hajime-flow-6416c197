@@ -244,7 +244,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       clearError,
     }),
-    [user, isLoading, error, signIn, signOut, clearError]
+    // signOut is stable (useCallback with no deps), omit from deps to reduce noise
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, isLoading, error, signIn, clearError]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -323,6 +325,17 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
     return allowed;
   }
 
+  // HQ-only pages: incentives and product development — only brand_operator and operations allowed
+  const hqOnlyPaths = ["/incentives", "/product-development"];
+  const isHqOnly = hqOnlyPaths.some(base => pathMatches(p, base));
+
+  if (isHqOnly) {
+    // Explicit allow-only: brand_operator and operations roles
+    if (role !== "brand_operator" && role !== "operations") {
+      return false;
+    }
+  }
+
   if (role === "distributor") {
     if (pathMatches(p, "/settings") || pathMatches(p, "/manufacturer") || pathMatches(p, "/markets") || pathMatches(p, "/retail") || pathMatches(p, "/sales")) {
       return false;
@@ -337,8 +350,16 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
     return true;
   }
 
-  if (role === "operations" || role === "finance") {
-    // Operations and finance have read access to most areas
+  if (role === "finance") {
+    // Finance has read access to most areas except settings
+    if (pathMatches(p, "/settings")) {
+      return false;
+    }
+    return true;
+  }
+
+  if (role === "operations") {
+    // Operations has access to everything except settings
     if (pathMatches(p, "/settings")) {
       return false;
     }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -79,8 +79,8 @@ export default function BackordersPage() {
     }
   }, [backorders, isLoading]);
 
-  // Auto-create backorders from inventory shortfalls
-  const runAutoCreate = () => {
+  // Auto-create backorders from inventory shortfalls — wrapped in useCallback to prevent stale closure
+  const runAutoCreate = useCallback(() => {
     const inventory = data.inventory.map((i) => ({
       sku: i.sku,
       quantityBottles: i.quantityBottles,
@@ -118,14 +118,14 @@ export default function BackordersPage() {
     }
     
     setLastAutoRun(new Date().toLocaleTimeString());
-  };
+  }, [data.inventory, data.salesOrders, backorders]);
 
   // Run auto-create on mount if no backorders exist
   useEffect(() => {
     if (!isLoading && backorders.length === 0) {
       runAutoCreate();
     }
-  }, [isLoading]);
+  }, [isLoading, backorders.length, runAutoCreate]);
 
   // Calculate summary stats
   const summary = useMemo(() => calculateBackorderSummary(backorders), [backorders]);

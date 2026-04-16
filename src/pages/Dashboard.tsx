@@ -128,7 +128,7 @@ export default function Dashboard() {
     [data.salesOrders, marketFilter],
   );
 
-  const inventorySummary = useMemo(() => computeInventorySummary(data.inventory), [data.inventory]);
+  const inventorySummary = useMemo(() => computeInventorySummary(data.inventory, data.purchaseOrders), [data.inventory, data.purchaseOrders]);
   const marketRows = useMemo(
     () => computeMarketPanelRows(data, rangeDays),
     [data, rangeDays],

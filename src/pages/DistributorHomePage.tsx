@@ -12,7 +12,7 @@ export default function DistributorHomePage() {
   const { data } = useAppData();
   const { salesOrders } = useSalesOrders();
   const { depletionReports } = useDepletionReports();
-  const inv = useMemo(() => computeInventorySummary(data.inventory), [data.inventory]);
+  const inv = useMemo(() => computeInventorySummary(data.inventory, data.purchaseOrders), [data.inventory, data.purchaseOrders]);
   const alerts = useMemo(() => deriveAlerts(data).slice(0, 4), [data]);
 
   const awaitingFulfillment = useMemo(

@@ -40,16 +40,15 @@ export default function DistributorSellThroughPage() {
   const [period, setPeriod] = useState<PeriodFilter>("30d");
   const [groupBy, setGroupBy] = useState<"account" | "sku" | "time">("account");
 
-  const cutoffDays = period === "7d" ? 7 : period === "90d" ? 90 : period === "30d" ? 30 : 365;
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - cutoffDays);
-
   const filteredReports = useMemo(() => {
     if (period === "all") return data.depletionReports ?? [];
+    const cutoffDays = period === "7d" ? 7 : period === "90d" ? 90 : period === "30d" ? 30 : 365;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - cutoffDays);
     return (data.depletionReports ?? []).filter(
-      (r) => new Date(r.periodEnd) >= cutoffDate
+      (r) => new Date(r.periodEnd) >= cutoff
     );
-  }, [data.depletionReports, period, cutoffDate]);
+  }, [data.depletionReports, period]);
 
   const summaryStats = useMemo(() => {
     const totalSold = filteredReports.reduce((sum, r) => sum + r.bottlesSold, 0);

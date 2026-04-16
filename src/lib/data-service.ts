@@ -17,7 +17,7 @@ import type { AppData } from "@/types/app-data";
 // Feature flag to control granular API usage - Stage 3: Always use granular
 const USE_GRANULAR_API = true;
 
-// Dev mode flag for logging
+// Dev mode flag for logging (kept for error logging)
 const isDev = process.env.NODE_ENV === 'development' || import.meta.env?.DEV;
 
 /**
@@ -35,16 +35,6 @@ function transformToAppData(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   depletionReports?: any[]
 ): Partial<AppData> {
-  if (isDev) {
-    console.log("[DataService] transformToAppData input:", { 
-      productsCount: products?.length, 
-      accountsCount: accounts?.length, 
-      ordersCount: orders?.length, 
-      inventoryCount: inventory?.length,
-      depletionReportsCount: depletionReports?.length
-    });
-  }
-  
   try {
     const result = {
       products: (products || []).map(p => ({
@@ -155,16 +145,6 @@ function transformToAppData(
       financingLedger: [],
     };
     
-    if (isDev) {
-      console.log("[DataService] transformToAppData output:", { 
-        products: result.products?.length,
-        accounts: result.accounts?.length,
-        salesOrders: result.salesOrders?.length,
-        inventory: result.inventory?.length,
-        depletionReports: result.depletionReports?.length,
-      });
-    }
-    
     return result;
   } catch (err) {
     console.error("[DataService] transformToAppData error:", err);
@@ -177,10 +157,6 @@ function transformToAppData(
  * Uses Promise.allSettled to handle partial failures gracefully
  */
 export async function fetchAppDataGranular(): Promise<AppData> {
-  if (isDev) {
-    console.log("[DataService] Using granular APIs (Stage 3)");
-  }
-  
   const results = await Promise.allSettled([
     getProducts({ limit: 100 }),
     getAccounts({ limit: 100 }),
@@ -202,16 +178,6 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     }
   });
   
-  if (isDev) {
-    console.log("[DataService] Raw API responses:", {
-      products: productsRes?.data?.length,
-      accounts: accountsRes?.data?.length,
-      orders: ordersRes?.data?.length,
-      inventory: inventoryRes?.data?.length,
-      depletionReports: depletionReportsRes?.data?.length,
-    });
-  }
-  
   const data = transformToAppData(
     productsRes.data || [],
     accountsRes.data || [],
@@ -219,16 +185,6 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     inventoryRes.data || [],
     depletionReportsRes.data || []
   );
-  
-  if (isDev) {
-    console.log("[DataService] Transformed data:", {
-      products: data.products?.length,
-      accounts: data.accounts?.length,
-      salesOrders: data.salesOrders?.length,
-      inventory: data.inventory?.length,
-      depletionReports: data.depletionReports?.length,
-    });
-  }
   
   return data as AppData;
 }

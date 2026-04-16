@@ -45,7 +45,9 @@ export function StripeSetupLinkQr({ accountKey, email, displayName }: Props) {
   useEffect(() => {
     if (!stripePublishableConfigured) return;
     void load();
-  }, [load, stripePublishableConfigured]);
+    // stripePublishableConfigured is a module-level constant, not reactive state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load]);
 
   const copy = async () => {
     if (!url) return;
