@@ -1,61 +1,31 @@
 /**
  * Migration 006: Purchase Orders, Transfer Orders, Shipments, and Incentives
  * Adds full database tables for production workflow entities
+ * NOTE: Uses bigint IDs to match migration 002 schema
  */
 
 export async function up(knex) {
   // ===== PURCHASE ORDERS =====
+  // Note: purchase_orders already exists from migration 002 with bigint IDs
+  // We add new columns for the enhanced workflow
   const hasPurchaseOrders = await knex.schema.hasTable('purchase_orders');
   
-  if (!hasPurchaseOrders) {
-    await knex.schema.createTable('purchase_orders', (table) => {
-      table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
-      table.uuid('tenant_id').notNullable();
-      table.string('po_number', 50).notNullable();
-      table.uuid('manufacturer_id').notNullable();
-      table.enum('status', [
-        'draft', 'submitted', 'acknowledged', 'in_production', 
-        'ready_for_shipment', 'shipped', 'delivered', 'cancelled'
-      ]).defaultTo('draft');
-      table.date('order_date').notNullable();
-      table.date('delivery_date');
-      table.string('market_destination', 50);
-      table.integer('total_bottles').defaultTo(0);
-      table.decimal('total_amount', 12, 2).defaultTo(0);
-      table.text('notes');
-      table.timestamp('delivered_at');
-      table.uuid('created_by');
-      table.timestamp('created_at').defaultTo(knex.fn.now());
-      table.timestamp('updated_at').defaultTo(knex.fn.now());
-      table.timestamp('deleted_at');
-
-      table.index(['tenant_id', 'status']);
-      table.index(['tenant_id', 'manufacturer_id']);
-      table.index(['tenant_id', 'po_number']);
-      table.index(['deleted_at']);
-    });
-    console.log('[Migration 006] Created purchase_orders');
+  if (hasPurchaseOrders) {
+    // Add new columns to existing table
+    const columns = await knex.table('purchase_orders').columnInfo();
+    
+    if (!columns.po_type) {
+      await knex.schema.alterTable('purchase_orders', (table) => {
+        table.enum('po_type', ['sales', 'production']).defaultTo('production');
+        table.bigInteger('distributor_account_id').nullable();
+        table.timestamp('brand_operator_acknowledged_at');
+      });
+      console.log('[Migration 006] Added po_type, distributor_account_id, brand_operator_acknowledged_at to purchase_orders');
+    } else {
+      console.log('[Migration 006] purchase_orders already has new columns, skipping');
+    }
   } else {
-    console.log('[Migration 006] purchase_orders already exists, skipping');
-  }
-
-  const hasPurchaseOrderItems = await knex.schema.hasTable('purchase_order_items');
-  if (!hasPurchaseOrderItems) {
-    await knex.schema.createTable('purchase_order_items', (table) => {
-      table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
-      table.uuid('tenant_id').notNullable();
-      table.uuid('purchase_order_id').notNullable().references('id').inTable('purchase_orders').onDelete('CASCADE');
-      table.uuid('product_id');
-      table.string('sku', 50).notNullable();
-      table.string('product_name', 255).notNullable();
-      table.integer('quantity').notNullable().defaultTo(0);
-      table.decimal('unit_price', 10, 2).defaultTo(0);
-      table.timestamp('created_at').defaultTo(knex.fn.now());
-
-      table.index(['tenant_id', 'purchase_order_id']);
-      table.index(['product_id']);
-    });
-    console.log('[Migration 006] Created purchase_order_items');
+    console.log('[Migration 006] purchase_orders table does not exist - expected from migration 002');
   }
 
   // ===== TRANSFER ORDERS =====
@@ -63,7 +33,7 @@ export async function up(knex) {
   
   if (!hasTransferOrders) {
     await knex.schema.createTable('transfer_orders', (table) => {
-      table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+      table.bigIncrements('id').primary();
       table.uuid('tenant_id').notNullable();
       table.string('to_number', 50).notNullable();
       table.string('from_location', 100).notNullable();
@@ -81,7 +51,7 @@ export async function up(knex) {
       table.text('notes');
       table.timestamp('shipped_at');
       table.timestamp('delivered_at');
-      table.uuid('created_by');
+      table.bigInteger('created_by').nullable();
       table.timestamp('created_at').defaultTo(knex.fn.now());
       table.timestamp('updated_at').defaultTo(knex.fn.now());
       table.timestamp('deleted_at');
@@ -99,31 +69,35 @@ export async function up(knex) {
   const hasTransferOrderItems = await knex.schema.hasTable('transfer_order_items');
   if (!hasTransferOrderItems) {
     await knex.schema.createTable('transfer_order_items', (table) => {
-      table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+      table.bigIncrements('id').primary();
       table.uuid('tenant_id').notNullable();
-      table.uuid('transfer_order_id').notNullable().references('id').inTable('transfer_orders').onDelete('CASCADE');
-      table.uuid('product_id');
+      table.bigInteger('transfer_order_id').notNullable();
+      table.bigInteger('product_id').nullable();
       table.string('sku', 50).notNullable();
       table.string('product_name', 255).notNullable();
       table.integer('quantity').notNullable().defaultTo(0);
-      table.uuid('batch_id');
+      table.bigInteger('batch_id').nullable();
       table.timestamp('created_at').defaultTo(knex.fn.now());
 
       table.index(['tenant_id', 'transfer_order_id']);
       table.index(['product_id']);
     });
     console.log('[Migration 006] Created transfer_order_items');
+  } else {
+    console.log('[Migration 006] transfer_order_items already exists, skipping');
   }
 
   // ===== SHIPMENTS =====
+  // Note: shipments already exists from migration 002 with bigint IDs
   const hasShipments = await knex.schema.hasTable('shipments');
   
   if (!hasShipments) {
+    // Only create if doesn't exist (should exist from migration 002)
     await knex.schema.createTable('shipments', (table) => {
-      table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+      table.bigIncrements('id').primary();
       table.uuid('tenant_id').notNullable();
       table.string('shipment_number', 50).notNullable();
-      table.uuid('order_id').notNullable();
+      table.bigInteger('order_id').notNullable();
       table.enum('order_type', ['sales_order', 'purchase_order', 'transfer_order']).notNullable();
       table.string('carrier', 50);
       table.string('tracking_number', 100);
@@ -138,7 +112,7 @@ export async function up(knex) {
       table.timestamp('delivered_at');
       table.integer('total_bottles').defaultTo(0);
       table.text('notes');
-      table.uuid('created_by');
+      table.bigInteger('created_by').nullable();
       table.timestamp('created_at').defaultTo(knex.fn.now());
       table.timestamp('updated_at').defaultTo(knex.fn.now());
       table.timestamp('deleted_at');
@@ -157,20 +131,22 @@ export async function up(knex) {
   const hasShipmentItems = await knex.schema.hasTable('shipment_items');
   if (!hasShipmentItems) {
     await knex.schema.createTable('shipment_items', (table) => {
-      table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+      table.bigIncrements('id').primary();
       table.uuid('tenant_id').notNullable();
-      table.uuid('shipment_id').notNullable().references('id').inTable('shipments').onDelete('CASCADE');
-      table.uuid('product_id');
+      table.bigInteger('shipment_id').notNullable();
+      table.bigInteger('product_id').nullable();
       table.string('sku', 50).notNullable();
       table.string('product_name', 255).notNullable();
       table.integer('quantity').notNullable().defaultTo(0);
-      table.uuid('batch_id');
+      table.bigInteger('batch_id').nullable();
       table.timestamp('created_at').defaultTo(knex.fn.now());
 
       table.index(['tenant_id', 'shipment_id']);
       table.index(['product_id']);
     });
     console.log('[Migration 006] Created shipment_items');
+  } else {
+    console.log('[Migration 006] shipment_items already exists, skipping');
   }
 
   // ===== INCENTIVES =====
@@ -178,7 +154,7 @@ export async function up(knex) {
   
   if (!hasIncentives) {
     await knex.schema.createTable('incentives', (table) => {
-      table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+      table.bigIncrements('id').primary();
       table.uuid('tenant_id').notNullable();
       table.string('name', 255).notNullable();
       table.enum('type', [
@@ -191,7 +167,7 @@ export async function up(knex) {
         'trial_incentive'
       ]).notNullable();
       table.string('target_sku', 50);
-      table.uuid('target_account_id');
+      table.bigInteger('target_account_id').nullable();
       table.integer('threshold_quantity');
       table.enum('reward_type', ['percentage_discount', 'fixed_amount', 'free_bottles', 'extended_payment_terms']).notNullable();
       table.decimal('reward_amount', 10, 2);
@@ -199,8 +175,8 @@ export async function up(knex) {
       table.date('end_date');
       table.enum('status', ['draft', 'active', 'paused', 'completed', 'cancelled']).defaultTo('draft');
       table.text('notes');
-      table.uuid('created_by');
-      table.uuid('updated_by');
+      table.bigInteger('created_by').nullable();
+      table.bigInteger('updated_by').nullable();
       table.timestamp('created_at').defaultTo(knex.fn.now());
       table.timestamp('updated_at').defaultTo(knex.fn.now());
       table.timestamp('deleted_at');
@@ -223,11 +199,10 @@ export async function down(knex) {
   await knex.schema.dropTableIfExists('incentive_redemptions');
   await knex.schema.dropTableIfExists('incentives');
   await knex.schema.dropTableIfExists('shipment_items');
-  await knex.schema.dropTableIfExists('shipments');
+  // Note: Don't drop shipments - it exists from migration 002
   await knex.schema.dropTableIfExists('transfer_order_items');
   await knex.schema.dropTableIfExists('transfer_orders');
-  await knex.schema.dropTableIfExists('purchase_order_items');
-  await knex.schema.dropTableIfExists('purchase_orders');
+  // Note: Don't drop purchase_orders or purchase_order_items - they exist from migration 002
   
   console.log('[Migration 006] Dropped tables');
 }
