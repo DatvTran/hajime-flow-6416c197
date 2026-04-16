@@ -61,6 +61,7 @@ export default function SalesTargetsPage() {
         year: selectedYear,
       });
       setTargets(response.data || []);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       toast.error("Failed to load targets", { description: err.message });
       setTargets([]);

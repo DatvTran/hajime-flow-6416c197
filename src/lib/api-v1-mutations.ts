@@ -48,6 +48,7 @@ export async function createProduct(productData: {
   description?: string;
   category?: string;
   unit_size?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>;
 }) {
   return apiFetch("/api/v1/products", {
@@ -61,6 +62,7 @@ export async function updateProduct(id: string, updates: Partial<{
   description: string;
   category: string;
   unit_size: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata: Record<string, any>;
 }>) {
   return apiFetch(`/api/v1/products/${id}`, {
@@ -84,7 +86,9 @@ export async function createAccount(accountData: {
   market?: string;
   email?: string;
   phone?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   billingAddress?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   shippingAddress?: any;
   paymentTerms?: string;
   creditLimit?: number;
@@ -104,7 +108,9 @@ export async function updateAccount(id: string, updates: Partial<{
   market: string;
   email: string;
   phone: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   billingAddress: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   shippingAddress: any;
   paymentTerms: string;
   creditLimit: number;
@@ -143,6 +149,7 @@ export async function createOrder(orderData: {
   taxAmount?: number;
   shippingCost?: number;
   totalAmount?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   shippingAddress?: any;
   notes?: string;
 }) {
@@ -167,6 +174,7 @@ export async function updateOrder(id: string, updates: Partial<{
   tax_amount: number;
   shipping_cost: number;
   total_amount: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   shippingAddress: any;
   notes: string;
 }>) {

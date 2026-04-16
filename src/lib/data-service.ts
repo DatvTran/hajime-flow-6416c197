@@ -24,10 +24,15 @@ const isDev = process.env.NODE_ENV === 'development' || import.meta.env?.DEV;
  * Transform API v1 data to AppData format
  */
 function transformToAppData(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   products: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   accounts: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   orders: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   inventory: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   depletionReports?: any[]
 ): Partial<AppData> {
   if (isDev) {
@@ -60,6 +65,7 @@ function transformToAppData(
       })),
       accounts: (accounts || []).map(a => {
         // Convert address objects to strings if needed
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const formatAddress = (addr: any): string | undefined => {
           if (!addr) return undefined;
           if (typeof addr === "string") return addr;
@@ -102,6 +108,7 @@ function transformToAppData(
         orderNumber: o.order_number,
         accountNumber: o.account_number,
         accountId: o.account_id,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         items: o.items?.map((i: any) => ({
           sku: i.sku,
           name: i.product_name,

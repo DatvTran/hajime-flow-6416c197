@@ -30,6 +30,7 @@ interface ImportPreview {
   preview: CSVPreview;
   validation: ValidationResult;
   tempImportId: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   allRows: any[];
 }
 
@@ -115,6 +116,7 @@ export function CSVImportDialog({
       const data: ImportPreview = await response.json();
       setPreview(data);
       setStep("preview");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       if (err.name === 'AbortError') {
         toast.error("Upload timeout", { description: "The upload took too long. Please try a smaller file or check your connection." });
@@ -162,6 +164,7 @@ export function CSVImportDialog({
       setImportResult(result);
       setStep("complete");
       onSuccess?.();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       if (err.name === 'AbortError') {
         toast.error("Import timeout", { description: "The import took too long. Please try with fewer rows or contact support." });

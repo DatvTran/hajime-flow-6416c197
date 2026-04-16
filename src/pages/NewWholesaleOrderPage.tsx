@@ -709,7 +709,7 @@ export default function NewWholesaleOrderPage() {
         <div className="space-y-4">
           <div className="space-y-2">
             <Label>Order Status</Label>
-            <Select value={initialStatus} onValueChange={(v) => setInitialStatus(v as any)}>
+            <Select value={initialStatus} onValueChange={(v) => setInitialStatus(v as "draft" | "pending_review")}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

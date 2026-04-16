@@ -253,7 +253,7 @@ export default function SalesVisitNotesPage() {
                 
                 <div className="space-y-2">
                   <Label>Visit Type</Label>
-                  <Select value={visitType} onValueChange={(v) => setVisitType(v as any)}>
+                  <Select value={visitType} onValueChange={(v) => setVisitType(v as "in-person" | "phone" | "email" | "video")}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>

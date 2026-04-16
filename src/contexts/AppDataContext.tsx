@@ -1196,6 +1196,7 @@ export function useNewProductRequests() {
       });
       updateData((d) => ({
         ...d,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         newProductRequests: [response.data as any, ...(d.newProductRequests ?? [])],
       }));
       toast.success("New product request created", { description: response.data.title });
@@ -1209,10 +1210,12 @@ export function useNewProductRequests() {
 
   const patchNewProductRequest = useCallback(async (id: string, patch: Partial<NewProductRequest>) => {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await apiUpdateNewProductRequest(id, patch as any);
       updateData((d) => ({
         ...d,
         newProductRequests: (d.newProductRequests ?? []).map((n) =>
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           n.id === id ? { ...n, ...response.data } as any : n
         ),
       }));
@@ -1396,6 +1399,7 @@ export function useInventoryAdjustments() {
       const result = await apiGetInventoryAdjustmentRequests({ limit: 200 });
       updateData((d) => ({
         ...d,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         inventoryAdjustmentRequests: (result.data || []).map((item: any) => ({
           id: item.id,
           accountId: item.account_id,

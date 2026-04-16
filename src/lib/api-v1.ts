@@ -49,6 +49,7 @@ export interface Product {
   description?: string;
   category?: string;
   unit_size?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>;
   created_at: string;
   updated_at: string;
@@ -114,7 +115,9 @@ export interface Account {
   status: string;
   email?: string;
   phone?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   billing_address?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   shipping_address?: any;
   payment_terms?: string;
   credit_limit?: number;
@@ -231,6 +234,7 @@ export function getOrder(id: string): Promise<{ data: Order }> {
   return apiFetch(`/api/v1/orders/${id}`);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createOrder(data: Partial<Order> & { items?: any[] }): Promise<{ data: Order }> {
   return apiFetch("/api/v1/orders", {
     method: "POST",
@@ -292,6 +296,7 @@ export function adjustInventory(data: {
   quantity: number;
   reason?: string;
   notes?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }): Promise<{ data: InventoryItem; adjustment: any }> {
   return apiFetch("/api/v1/inventory/adjust", {
     method: "POST",
@@ -539,6 +544,7 @@ export interface NewProductRequestApi {
   };
   production_po_id?: string;
   resulting_sku?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   attachments: any[];
   notes?: string;
   created_at: string;

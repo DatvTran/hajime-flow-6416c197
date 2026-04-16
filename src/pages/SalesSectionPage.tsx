@@ -101,18 +101,7 @@ export default function SalesSectionPage() {
     [data.accounts, rep]
   );
 
-  if (!section || !["opportunities", "visits"].includes(section)) {
-    return <Navigate to="/" replace />;
-  }
-
-  const isOpportunities = section === "opportunities";
-
-  // Get tasks from AppData
-  const tasks: Task[] = data.salesTasks || [];
-  const myTasks = tasks.filter((t) => !t.completed);
-  const completedTasks = tasks.filter((t) => t.completed);
-
-  // Generate opportunities from account data
+  // Generate opportunities from account data — must be before early return (rules of hooks)
   const opportunities: Opportunity[] = useMemo(() => {
     const ops: Opportunity[] = [];
     const now = Date.now();
@@ -169,6 +158,18 @@ export default function SalesSectionPage() {
     // Sort by score (highest first)
     return ops.sort((a, b) => b.score - a.score);
   }, [myAccounts]);
+
+  // Early return AFTER all hooks (rules of hooks compliance)
+  if (!section || !["opportunities", "visits"].includes(section)) {
+    return <Navigate to="/" replace />;
+  }
+
+  const isOpportunities = section === "opportunities";
+
+  // Get tasks from AppData
+  const tasks: Task[] = data.salesTasks || [];
+  const myTasks = tasks.filter((t) => !t.completed);
+  const completedTasks = tasks.filter((t) => t.completed);
 
   // Filter opportunities
   const filteredOpportunities = opportunities.filter((op) => {

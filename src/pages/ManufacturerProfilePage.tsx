@@ -671,7 +671,7 @@ export default function ManufacturerProfilePage() {
                         </div>
                         <select
                           value={cert.status}
-                          onChange={(e) => updateCertification(cert.id, "status", e.target.value as any)}
+                          onChange={(e) => updateCertification(cert.id, "status", e.target.value as "active" | "pending" | "expired")}
                           className="w-full rounded-md border px-3 py-2 text-sm"
                         >
                           <option value="active">Active</option>

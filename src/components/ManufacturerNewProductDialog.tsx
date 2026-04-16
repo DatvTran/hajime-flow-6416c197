@@ -146,6 +146,7 @@ export function ManufacturerNewProductDialog({ open, onOpenChange, existingReque
       requestedBy: "manufacturer",
       requestedAt: new Date().toISOString(),
       specs: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         baseSpirit: baseSpirit as any,
         targetAbv: Number(targetAbv) || 25,
         flavorProfile: selectedFlavors,
@@ -268,7 +269,7 @@ export function ManufacturerNewProductDialog({ open, onOpenChange, existingReque
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Bottle Size</Label>
-                <Select value={bottleSize} onValueChange={(v) => setBottleSize(v as any)}>
+                <Select value={bottleSize} onValueChange={(v) => setBottleSize(v as "375ml" | "750ml" | "1000ml")}>
                   <SelectTrigger className="touch-manipulation">
                     <SelectValue />
                   </SelectTrigger>
@@ -281,7 +282,7 @@ export function ManufacturerNewProductDialog({ open, onOpenChange, existingReque
               </div>
               <div className="space-y-2">
                 <Label>Price Point</Label>
-                <Select value={pricePoint} onValueChange={(v) => setPricePoint(v as any)}>
+                <Select value={pricePoint} onValueChange={(v) => setPricePoint(v as "premium" | "super_premium" | "ultra_premium")}>
                   <SelectTrigger className="touch-manipulation">
                     <SelectValue />
                   </SelectTrigger>

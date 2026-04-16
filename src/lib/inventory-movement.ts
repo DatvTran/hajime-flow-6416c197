@@ -98,6 +98,7 @@ export function moveInventory(
 
     // Add in-transit metadata if applicable
     if (toLocation.locationType === "in_transit" && options?.transferOrderId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (movedItem as any).inTransitDetails = {
         transferOrderId: options.transferOrderId,
         fromWarehouse: fromLocation.warehouse,
@@ -264,6 +265,7 @@ export function deductInTransitInventory(
   const inTransitItems = items.filter(
     (i) =>
       i.locationType === "in_transit" &&
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (i as any).inTransitDetails?.transferOrderId === transferOrderId
   );
 
@@ -279,6 +281,7 @@ export function deductInTransitInventory(
     (i) =>
       !(
         i.locationType === "in_transit" &&
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (i as any).inTransitDetails?.transferOrderId === transferOrderId
       )
   );

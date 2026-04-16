@@ -61,6 +61,7 @@ export function CSVExportInventoryButton({ variant = "outline", size = "sm", cla
       toast.success("Inventory exported", {
         description: "Your CSV file has been downloaded",
       });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       if (err.name === 'AbortError') {
         toast.error("Export timeout", { description: "The export took too long. Please try with filters or contact support." });
@@ -143,6 +144,7 @@ export function CSVExportOrdersButton({ variant = "outline", size = "sm", classN
       toast.success("Orders exported", {
         description: "Your CSV file has been downloaded",
       });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       if (err.name === 'AbortError') {
         toast.error("Export timeout", { description: "The export took too long. Please try with filters or contact support." });
@@ -236,6 +238,7 @@ export function CSVExportSalesReportButton({
       toast.success("Sales report exported", {
         description: "Your CSV file has been downloaded",
       });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       if (err.name === 'AbortError') {
         toast.error("Export timeout", { description: "The export took too long. Please try with a shorter date range or contact support." });

@@ -46,10 +46,11 @@ type Props = {
 };
 
 export function ProductRequestDetailDialog({ open, onOpenChange, request, onPatch }: Props) {
-  if (!request) return null;
-
+  // Hooks must come before any early return (rules of hooks)
   const { addPurchaseOrder, purchaseOrders } = usePurchaseOrders();
   const [poDialogOpen, setPoDialogOpen] = useState(false);
+
+  if (!request) return null;
 
   const canSubmit = request.status === "draft";
   const canDecide = request.status === "proposed";
