@@ -20,7 +20,7 @@ export const salesSummary = {
 };
 
 export const alerts = [
-  { id: "1", type: "low-stock" as const, message: "Hajime Original 750ml — below threshold (120 units)", time: "12 min ago", severity: "high" as const },
+  { id: "1", type: "low-stock" as const, message: "Hajime Original 750ml - below threshold (120 units)", time: "12 min ago", severity: "high" as const },
   { id: "2", type: "delay" as const, message: "PO-2024-047 production delayed by 3 days", time: "2 hrs ago", severity: "medium" as const },
   { id: "3", type: "reorder" as const, message: "Hajime Yuzu projected stockout in 14 days", time: "4 hrs ago", severity: "high" as const },
   { id: "4", type: "shipment" as const, message: "Shipment SH-1042 arrived at Toronto warehouse", time: "6 hrs ago", severity: "low" as const },
@@ -52,7 +52,7 @@ export type InventoryItem = {
   quantityBottles: number;
   quantityCases: number;
   warehouse: string;
-  /** Business location classification — drives availability logic */
+  /** Business location classification - drives availability logic */
   locationType: "manufacturer" | "in_transit" | "distributor_warehouse" | "retail_shelf";
   status: "available" | "reserved" | "damaged";
   labelVersion: string;
@@ -102,7 +102,7 @@ export type SalesOrder = {
   orderCreatedByRole?: OrderCreatedByRole;
   /** Retail portal: sales rep must approve before payment; then wholesaler ships. */
   repApprovalStatus?: RepApprovalStatus;
-  /** Wholesaler ordering on behalf of a field rep’s territory. */
+  /** Wholesaler ordering on behalf of a field rep's territory. */
   assignedSalesRep?: string;
   /** Multi-SKU retail checkout — when set, sku/quantity/price remain rollup for legacy views */
   lines?: SalesOrderLine[];
@@ -118,6 +118,10 @@ export type SalesOrder = {
   wholesalerFulfillmentStatus?: "pending_ack" | "acknowledged" | "in_fulfillment";
   /** Sales rep created this B2B order for a retail account (on behalf of retailer). */
   placedOnBehalfByRep?: boolean;
+  /** PROXY MODE: Role that actually placed the order (when different from account owner) */
+  placedByRole?: OrderCreatedByRole;
+  /** PROXY MODE: Account ID that this order was placed on behalf of */
+  onBehalfOfAccount?: string;
 };
 
 export const salesOrders: SalesOrder[] = [
@@ -177,7 +181,7 @@ export const salesOrders: SalesOrder[] = [
     paymentStatus: "pending",
     customerPoReference: "CVY-ONT-Q1-02",
     deliveryAddress: "Convoy Supply DC, 2200 Meadowpine Blvd, Mississauga, ON L5N 0A4, Canada",
-    orderNotes: "Pallet release for LCBO lane — coordinate with SH-1043 timing.",
+    orderNotes: "Pallet release for LCBO lane - coordinate with SH-1043 timing.",
   },
   {
     id: "SO-2025-011",
@@ -266,14 +270,14 @@ export type Account = {
   avgOrderSize: number;
   status: "active" | "prospect" | "inactive";
   tags: string[];
-  /** Default card on file (Stripe) — last four digits */
+  /** Default card on file (Stripe) - last four digits */
   cardOnFileLast4?: string;
   /** Estimated consumer depletion in last reporting period (bottles) */
   sellThroughLastPeriod?: number;
   lastContactDate?: string;
   nextActionDate?: string;
   listingStatus?: string;
-  /** ISO 4217 — primary invoicing currency for this partner */
+  /** ISO 4217 - primary invoicing currency for this partner */
   defaultCurrency?: string;
   /** IANA timezone for scheduling and cutoffs */
   timezone?: string;
@@ -287,7 +291,7 @@ export type Account = {
   billingAddress?: string;
   /** CRM / ops narrative for demos */
   internalNotes?: string;
-  /** New retailer onboarding — multi-step pipeline (sales → wholesaler → brand). */
+  /** New retailer onboarding - multi-step pipeline (sales → wholesaler → brand). */
   onboardingPipeline?: "none" | "sales_intake" | "brand_review" | "complete";
   /** Set when brand completes onboarding (standard / premium / key). */
   pricingTier?: "standard" | "premium" | "key";
@@ -318,6 +322,12 @@ export type PurchaseOrder = {
   notes: string;
   /** Set once inventory has been reduced for this PO (shipped/delivered). */
   inventoryConsumed?: boolean;
+  /** PO Type: sales (distributor ordering from manufacturer) vs production (brand op ordering directly) */
+  poType?: "sales" | "production";
+  /** For sales POs: the distributor account that placed the order */
+  distributorAccountId?: string;
+  /** For sales POs: brand operator who approved (visibility, not mandatory gate) */
+  brandOperatorAcknowledgedAt?: string;
 };
 
 /** Transfer Order: moves existing inventory between locations (wholesaler fulfillment) */
@@ -347,8 +357,8 @@ export type TransferOrder = {
 export const purchaseOrders: PurchaseOrder[] = [
   { id: "PO-2025-001", manufacturer: "Kirin Brewery Co.", issueDate: "2026-03-01", requiredDate: "2026-03-25", requestedShipDate: "2026-03-28", sku: "HJM-OG-750", quantity: 2400, packagingInstructions: "Standard 12-bottle case", labelVersion: "v3.1", marketDestination: "Ontario", status: "in-production", notes: "Priority order for LCBO restock" },
   { id: "PO-2025-002", manufacturer: "Kirin Brewery Co.", issueDate: "2026-02-10", requiredDate: "2026-03-28", requestedShipDate: "2026-04-02", sku: "HJM-YZ-750", quantity: 1200, packagingInstructions: "Standard 12-bottle case", labelVersion: "v2.0", marketDestination: "Milan", status: "approved", notes: "For European market" },
-  { id: "PO-2025-003", manufacturer: "Kirin Brewery Co.", issueDate: "2026-03-05", requiredDate: "2026-03-28", requestedShipDate: "2026-04-08", sku: "HJM-SP-750", quantity: 1800, packagingInstructions: "6-bottle premium case", labelVersion: "v1.0", marketDestination: "Toronto", status: "draft", notes: "New SKU launch batch — confirm specs" },
-  { id: "PO-2024-047", manufacturer: "Kirin Brewery Co.", issueDate: "2026-03-01", requiredDate: "2026-04-10", requestedShipDate: "2026-04-15", sku: "HJM-OG-375", quantity: 960, packagingInstructions: "24-bottle case", labelVersion: "v3.1", marketDestination: "Ontario", status: "delayed", notes: "Label supply issue — estimated 3-day delay" },
+  { id: "PO-2025-003", manufacturer: "Kirin Brewery Co.", issueDate: "2026-03-05", requiredDate: "2026-03-28", requestedShipDate: "2026-04-08", sku: "HJM-SP-750", quantity: 1800, packagingInstructions: "6-bottle premium case", labelVersion: "v1.0", marketDestination: "Toronto", status: "draft", notes: "New SKU launch batch - confirm specs" },
+  { id: "PO-2024-047", manufacturer: "Kirin Brewery Co.", issueDate: "2026-03-01", requiredDate: "2026-04-10", requestedShipDate: "2026-04-15", sku: "HJM-OG-375", quantity: 960, packagingInstructions: "24-bottle case", labelVersion: "v3.1", marketDestination: "Ontario", status: "delayed", notes: "Label supply issue - estimated 3-day delay" },
 ];
 
 export const transferOrders: TransferOrder[] = [
@@ -408,7 +418,7 @@ export const productionStatuses: ProductionStatus[] = [
   { poId: "PO-2025-001", stage: "In Production", updatedAt: "2026-03-20", notes: "Brewing phase complete, moving to bottling" },
   { poId: "PO-2025-001", stage: "Materials Secured", updatedAt: "2026-03-08", notes: "All ingredients received" },
   { poId: "PO-2025-002", stage: "PO Received", updatedAt: "2026-02-15", notes: "Acknowledged and scheduled" },
-  { poId: "PO-2024-047", stage: "Delayed", updatedAt: "2026-03-18", notes: "Label supplier delayed — new ETA Apr 12" },
+  { poId: "PO-2024-047", stage: "Delayed", updatedAt: "2026-03-18", notes: "Label supplier delayed - new ETA Apr 12" },
   { poId: "PO-2024-047", stage: "Bottled", updatedAt: "2026-03-12", notes: "Bottling complete, awaiting labels" },
 ];
 
@@ -434,7 +444,7 @@ export const shipments: Shipment[] = [
   {
     id: "SH-1046",
     origin: "Toronto Main Warehouse",
-    destination: "The Drake Hotel — 1150 Queen St W",
+    destination: "The Drake Hotel - 1150 Queen St W",
     carrier: "Metro Logistics",
     shipDate: "2026-03-28",
     eta: "2026-04-05",
@@ -447,7 +457,7 @@ export const shipments: Shipment[] = [
   {
     id: "SH-1047",
     origin: "Toronto Main Warehouse",
-    destination: "Convoy Supply DC — Mississauga",
+    destination: "Convoy Supply DC - Mississauga",
     carrier: "Day & Ross LTL",
     shipDate: "2026-03-22",
     eta: "2026-03-23",
@@ -481,7 +491,7 @@ export const products: Product[] = [
     size: "750ml",
     caseSize: 12,
     status: "active",
-    shortDescription: "Small-batch coffee rum — rich, smooth, bar-ready.",
+    shortDescription: "Small-batch coffee rum - rich, smooth, bar-ready.",
     abv: "28%",
     minOrderCases: 1,
     wholesaleCasePrice: 1440,
@@ -517,7 +527,7 @@ export const products: Product[] = [
     size: "750ml",
     caseSize: 12,
     status: "active",
-    shortDescription: "Bright yuzu citrus — premium back bar staple.",
+    shortDescription: "Bright yuzu citrus - premium back bar staple.",
     abv: "22%",
     minOrderCases: 1,
     wholesaleCasePrice: 980,
@@ -529,7 +539,7 @@ export const products: Product[] = [
     size: "750ml",
     caseSize: 6,
     status: "development",
-    shortDescription: "Limited sparkling release — ask your rep for allocation.",
+    shortDescription: "Limited sparkling release - ask your rep for allocation.",
     abv: "11%",
     minOrderCases: 2,
     wholesaleCasePrice: 1320,
@@ -724,7 +734,7 @@ export const depletionReports: DepletionReport[] = [
     periodEnd: "2026-03-31",
     bottlesSold: 144,
     bottlesOnHandAtEnd: 36,
-    notes: "Strong month — Drake cocktail program feature drove velocity",
+    notes: "Strong month - Drake cocktail program feature drove velocity",
     reportedBy: "distributor",
     reportedAt: "2026-04-01T10:00:00Z",
     flaggedForReplenishment: true,
@@ -750,7 +760,7 @@ export const depletionReports: DepletionReport[] = [
     periodEnd: "2026-03-31",
     bottlesSold: 96,
     bottlesOnHandAtEnd: 24,
-    notes: "Bar Basso events drove high velocity — need restock soon",
+    notes: "Bar Basso events drove high velocity - need restock soon",
     reportedBy: "distributor",
     reportedAt: "2026-04-02T09:00:00Z",
     flaggedForReplenishment: true,

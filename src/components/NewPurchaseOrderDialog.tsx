@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import type { PurchaseOrder } from "@/data/mockData";
-import { useProducts } from "@/contexts/AppDataContext";
+import type { Account, PurchaseOrder } from "@/data/mockData";
+import { useAccounts, useProducts, useAuth } from "@/contexts/AppDataContext";
 import { simulateLedgerCommit } from "@/lib/ledger";
 import {
   Dialog,
@@ -30,6 +30,19 @@ const PO_STATUSES: PurchaseOrder["status"][] = [
   "delayed",
 ];
 
+const PO_TYPES: { value: NonNullable<PurchaseOrder["poType"]>; label: string; description: string }[] = [
+  { 
+    value: "sales", 
+    label: "Sales PO", 
+    description: "Distributor ordering from manufacturer — brand operator approves" 
+  },
+  { 
+    value: "production", 
+    label: "Production PO", 
+    description: "Brand operator ordering directly from manufacturer — no inventory gate" 
+  },
+];
+
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -52,11 +65,30 @@ type Props = {
    * "production" (default for manufacturing new SKUs) skips the inventory guard.
    */
   variant?: "replenishment" | "production";
+  /** User role to determine default PO type and account scoping */
+  userRole?: string;
+  /** Distributor account ID (when distributor creates a Sales PO) */
+  distributorAccountId?: string;
 };
 
-export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate, prefill, variant = "production" }: Props) {
+export function NewPurchaseOrderDialog({ 
+  open, 
+  onOpenChange, 
+  existing, 
+  onCreate, 
+  prefill, 
+  variant = "production",
+  userRole = "brand_operator",
+  distributorAccountId,
+}: Props) {
   const { products } = useProducts();
+  const { accounts } = useAccounts();
   const [submitting, setSubmitting] = useState(false);
+  
+  // NEW: PO Type selection
+  const defaultPoType: PurchaseOrder["poType"] = userRole === "distributor" ? "sales" : "production";
+  const [poType, setPoType] = useState<NonNullable<PurchaseOrder["poType"]>>(defaultPoType);
+  
   const [manufacturer, setManufacturer] = useState<(typeof MANUFACTURERS)[number]>(MANUFACTURERS[0]);
   const [issueDate, setIssueDate] = useState(todayISO());
   const [requiredDate, setRequiredDate] = useState(addDaysISO(30));
@@ -68,9 +100,29 @@ export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate,
   const [marketDestination, setMarketDestination] = useState("Ontario");
   const [status, setStatus] = useState<PurchaseOrder["status"]>("draft");
   const [notes, setNotes] = useState("");
+  
+  // NEW: Selected distributor for Sales PO
+  const [selectedDistributorId, setSelectedDistributorId] = useState<string>(distributorAccountId || "");
+
+  // NEW: Filter accounts based on PO type and user role
+  const availableAccounts = useMemo(() => {
+    // For Sales PO: distributor can only see manufacturer (but we handle that via PO type)
+    // For Production PO: brand operator sees manufacturer only
+    if (poType === "production") {
+      // Production POs don't need account selection — brand operator orders directly
+      return [];
+    }
+    
+    // For Sales PO: filter to manufacturer accounts only
+    // Distributor should only see manufacturer accounts
+    return accounts.filter(a => a.type === "distributor" || a.networkRole?.includes("manufacturer"));
+  }, [accounts, poType]);
 
   useEffect(() => {
     if (!open) return;
+    
+    // Reset to defaults when opening
+    setPoType(defaultPoType);
     setManufacturer(MANUFACTURERS[0]);
     setIssueDate(todayISO());
     setRequiredDate(addDaysISO(30));
@@ -83,7 +135,8 @@ export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate,
     setMarketDestination("Ontario");
     setStatus("draft");
     setNotes(prefill?.sku ? `Replenishment suggestion for ${prefill.sku}` : "");
-  }, [open, products, prefill]);
+    setSelectedDistributorId(distributorAccountId || "");
+  }, [open, products, prefill, defaultPoType, distributorAccountId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,7 +144,15 @@ export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate,
       toast.error("Select a SKU", { description: "Add products under Settings → Product catalog if the list is empty." });
       return;
     }
+    
+    // Validation for Sales PO
+    if (poType === "sales" && !selectedDistributorId && userRole === "brand_operator") {
+      toast.error("Select distributor account", { description: "Sales POs must specify which distributor is ordering." });
+      return;
+    }
+    
     const qty = Math.max(1, Math.round(Number(quantity) || 0));
+    
     const po: PurchaseOrder = {
       id: nextPoId(existing),
       manufacturer,
@@ -105,13 +166,17 @@ export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate,
       marketDestination: marketDestination.trim() || "—",
       status,
       notes: notes.trim(),
+      // NEW: PO type fields
+      poType,
+      distributorAccountId: poType === "sales" ? (selectedDistributorId || distributorAccountId || undefined) : undefined,
     };
+    
     setSubmitting(true);
     try {
       const { txHash } = await simulateLedgerCommit({ type: "po_create", poId: po.id, sku: po.sku, quantity: po.quantity });
       onCreate(po);
       toast.success("Purchase order created", {
-        description: `${po.id} · Network commit ${txHash.slice(0, 10)}…`,
+        description: `${po.id} · ${poType === "sales" ? "Sales PO" : "Production PO"} · Network commit ${txHash.slice(0, 10)}…`,
       });
       onOpenChange(false);
     } finally {
@@ -119,18 +184,80 @@ export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate,
     }
   };
 
+  const canChangePoType = userRole === "brand_operator" || userRole === "operations" || userRole === "founder_admin";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[min(90vh,720px)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New purchase order</DialogTitle>
           <DialogDescription>
-            Production PO for the manufacturer. {variant === "replenishment" ? "Before save we verify available inventory for the SKU;" : "This is a production order — inventory availability is not checked at creation."} when the PO moves to{" "}
-            <strong className="text-foreground">shipped</strong> or{" "}
-            <strong className="text-foreground">delivered</strong>, that quantity is removed from inventory (FIFO). Creation is recorded on the simulated ledger.
+            {variant === "replenishment" 
+              ? "Sales PO for the manufacturer. Before save we verify available inventory for the SKU." 
+              : "Create a purchase order. Sales POs are distributor orders requiring brand approval; Production POs are direct brand orders."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
+          {/* NEW: PO Type Selection */}
+          <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3">
+            <Label>PO Type *</Label>
+            <Select 
+              value={poType} 
+              onValueChange={(v) => setPoType(v as NonNullable<PurchaseOrder["poType"]>)}
+              disabled={!canChangePoType}
+            >
+              <SelectTrigger className="touch-manipulation">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PO_TYPES.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">{t.label}</span>
+                      <span className="text-xs text-muted-foreground">{t.description}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!canChangePoType && (
+              <p className="text-xs text-muted-foreground">
+                PO type is fixed based on your role ({userRole}).
+              </p>
+            )}
+          </div>
+          
+          {/* NEW: Distributor selection for Sales POs (when brand operator creates) */}
+          {poType === "sales" && userRole === "brand_operator" && (
+            <div className="space-y-2">
+              <Label>Distributor *</Label>
+              <Select value={selectedDistributorId} onValueChange={setSelectedDistributorId}>
+                <SelectTrigger className="touch-manipulation">
+                  <SelectValue placeholder="Select distributor account..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableAccounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.tradingName || a.legalName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Sales POs are linked to the distributor placing the order.
+              </p>
+            </div>
+          )}
+          
+          {poType === "sales" && userRole === "distributor" && distributorAccountId && (
+            <div className="space-y-2">
+              <Label>Distributor</Label>
+              <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Your account</span>
+              </div>
+            </div>
+          )}
+          
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
               <Label>Manufacturer</Label>
@@ -244,7 +371,7 @@ export function NewPurchaseOrderDialog({ open, onOpenChange, existing, onCreate,
               Cancel
             </Button>
             <Button type="submit" className="touch-manipulation" disabled={submitting || products.length === 0}>
-              {submitting ? "Committing…" : "Create PO"}
+              {submitting ? "Committing…" : `Create ${poType === "sales" ? "Sales" : "Production"} PO`}
             </Button>
           </DialogFooter>
         </form>

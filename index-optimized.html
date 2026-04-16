@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hajime Wholesale Portal</title>
+    
+    <!-- Preload critical JS chunks -->
+    <link rel="modulepreload" href="/assets/vendor-[hash].js" />
+    <link rel="modulepreload" href="/assets/ui-[hash].js" />
+    <link rel="modulepreload" href="/assets/data-[hash].js" />
+    
+    <!-- Preload critical CSS -->
+    <link rel="preload" href="/assets/index-[hash].css" as="style" />
+    <link rel="stylesheet" href="/assets/index-[hash].css" />
+    
+    <!-- DNS prefetch for API -->
+    <link rel="dns-prefetch" href="//api.yourservice.com" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/assets/index-[hash].js"></script>
+  </body>
+</html>

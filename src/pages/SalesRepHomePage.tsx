@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { useAppData } from "@/contexts/AppDataContext";
+import { useAppData, useInventory } from "@/contexts/AppDataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { VisitNoteEntry } from "@/types/app-data";
+import type { SalesOrder, Account, InventoryItem } from "@/data/mockData";
+import { effectiveRepApprovalStatus } from "@/lib/order-routing";
 import {
   Users,
   FileEdit,
@@ -22,12 +24,75 @@ import {
   MapPin,
   Clock,
   AlertCircle,
+  Package,
+  CheckCircle2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/sonner";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
 
 const VISIT_STORAGE = "hajime_rep_visit_notes";
+
+// NEW: Inventory check helper for pending orders
+function usePendingOrdersWithInventory(
+  orders: SalesOrder[], 
+  accounts: Account[], 
+  inventoryItems: InventoryItem[],
+  rep: string
+) {
+  return useMemo(() => {
+    // Get draft orders assigned to this rep that need approval
+    const pendingOrders = orders.filter(o => 
+      o.status === "draft" && 
+      o.salesRep.trim() === rep.trim() &&
+      effectiveRepApprovalStatus(o, accounts) === "pending"
+    );
+    
+    return pendingOrders.map(order => {
+      const warehouse = "Toronto Main";
+      const needed = order.lines 
+        ? order.lines.reduce((sum, line) => sum + line.quantityBottles, 0)
+        : order.quantity;
+      
+      // Calculate available inventory
+      let available = 0;
+      if (order.lines && order.lines.length > 0) {
+        for (const line of order.lines) {
+          available += inventoryItems
+            .filter((i: InventoryItem) => 
+              i.sku === line.sku && 
+              i.warehouse === warehouse && 
+              i.status === "available" && 
+              i.locationType === "distributor_warehouse"
+            )
+            .reduce((sum, i) => sum + i.quantityBottles, 0);
+        }
+      } else {
+        available = inventoryItems
+          .filter((i: InventoryItem) => 
+            i.sku === order.sku && 
+            i.warehouse === warehouse && 
+            i.status === "available" && 
+            i.locationType === "distributor_warehouse"
+          )
+          .reduce((sum, i) => sum + i.quantityBottles, 0);
+      }
+      
+      const shortfall = Math.max(0, needed - available);
+      
+      return {
+        order,
+        inventoryCheck: {
+          available,
+          needed,
+          shortfall,
+          warehouse,
+        },
+        hasShortfall: shortfall > 0,
+      };
+    });
+  }, [orders, accounts, inventoryItems, rep]);
+}
 
 function loadLegacyVisits(): Omit<VisitNoteEntry, "authorRep">[] {
   try {
@@ -79,10 +144,19 @@ function isToday(date: Date): boolean {
 
 export default function SalesRepHomePage() {
   const { data, updateData } = useAppData();
+  const { items: inventoryItems } = useInventory();
   const { user } = useAuth();
   const rep = useMemo(
     () => resolveSalesRepLabelForSession(user?.email, user?.displayName ?? ""),
     [user?.email, user?.displayName],
+  );
+  
+  // NEW: Get pending orders with inventory checks
+  const pendingOrdersWithInventory = usePendingOrdersWithInventory(
+    data.salesOrders,
+    data.accounts,
+    inventoryItems,
+    rep
   );
 
   // Week navigation state
@@ -372,6 +446,96 @@ export default function SalesRepHomePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* NEW: Pending Orders with Inventory Widget */}
+      {pendingOrdersWithInventory.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Package className="h-5 w-5 text-primary" />
+            <h3 className="font-display text-lg">Pending Orders — Inventory Check Required</h3>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {pendingOrdersWithInventory.map(({ order, inventoryCheck, hasShortfall }) => (
+              <Card key={order.id} className={`border-border/70 ${hasShortfall ? 'border-amber-400/60' : ''}`}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="font-display flex items-center gap-2 text-base">
+                      <span className="font-mono text-xs">{order.id}</span>
+                      {hasShortfall ? (
+                        <Badge variant="outline" className="text-amber-600 border-amber-600 text-xs">
+                          Shortfall
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-emerald-600 border-emerald-600 text-xs">
+                          Ready
+                        </Badge>
+                      )}
+                    </CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Account</span>
+                    <span className="font-medium">{order.account}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Market</span>
+                    <span>{order.market}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Quantity</span>
+                    <span className="font-mono">{inventoryCheck.needed.toLocaleString()} bottles</span>
+                  </div>
+                  
+                  <div className={`rounded-md border px-3 py-2 ${
+                    hasShortfall 
+                      ? "border-amber-500/40 bg-amber-50/30" 
+                      : "border-emerald-600/30 bg-emerald-50/30"
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground text-xs">Warehouse inventory</span>
+                      <span className={`font-medium tabular-nums ${
+                        hasShortfall ? "text-amber-700" : "text-emerald-700"
+                      }`}>
+                        {inventoryCheck.available.toLocaleString()} bottles
+                      </span>
+                    </div>
+                    {hasShortfall && (
+                      <div className="mt-1 text-xs text-amber-700">
+                        ⚠️ Short by {inventoryCheck.shortfall.toLocaleString()} bottles
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-2 pt-1">
+                    <Button 
+                      size="sm" 
+                      className="touch-manipulation flex-1" 
+                      asChild
+                    >
+                      <Link to={`/sales/orders?review=${order.id}`}>
+                        {hasShortfall ? "Review & Override" : "Review & Confirm"}
+                      </Link>
+                    </Button>
+                    {hasShortfall && (
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="touch-manipulation shrink-0"
+                        asChild
+                      >
+                        <Link to={`/purchase-orders?new=1&sku=${order.sku}&qty=${inventoryCheck.shortfall}`}>
+                          Request PO
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="border-border/70">

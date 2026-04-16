@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -11,42 +12,70 @@ import { RetailCartProvider } from "@/contexts/RetailCartContext";
 import { RequireAuth } from "@/components/RequireAuth";
 import { InactivityWarningDialog } from "@/components/InactivityWarningDialog";
 import { useInactivityTimer } from "@/hooks/useInactivityTimer";
-import RoleHomeEntry from "./pages/RoleHomeEntry";
-import Inventory from "./pages/Inventory";
-import Orders from "./pages/Orders";
-import Accounts from "./pages/Accounts";
-import PurchaseOrders from "./pages/PurchaseOrders";
-import Manufacturer from "./pages/Manufacturer";
-import Shipments from "./pages/Shipments";
-import Reports from "./pages/Reports";
-import SettingsPage from "./pages/Settings";
-import NotFound from "./pages/NotFound";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Eagerly loaded (critical path)
 import Login from "./pages/Login";
-import AlertsHubPage from "./pages/AlertsHubPage";
-import MarketsPage from "./pages/MarketsPage";
-import ManufacturerMarketDemandPage from "./pages/ManufacturerMarketDemandPage";
-import ManufacturerProfilePage from "./pages/ManufacturerProfilePage";
-import BackordersPage from "./pages/BackordersPage";
-import RetailReorderPage from "./pages/RetailReorderPage";
-import RetailAccountPage from "./pages/RetailAccountPage";
-import RetailSupportPage from "./pages/RetailSupportPage";
-import RetailNewOrderPage from "./pages/RetailNewOrderPage";
-import RetailMyOrdersPage from "./pages/RetailMyOrdersPage";
-import RetailOrderDetailPage from "./pages/RetailOrderDetailPage";
-import RetailHomePage from "./pages/RetailHomePage";
-import SalesSectionPage from "./pages/SalesSectionPage";
-import SalesTargetsPage from "./pages/SalesTargetsPage";
-import SalesRepHomePage from "./pages/SalesRepHomePage";
-import SalesOpportunitiesPage from "./pages/SalesOpportunitiesPage";
-import SalesVisitNotesPage from "./pages/SalesVisitNotesPage";
-import FinancePaymentsPage from "./pages/FinancePaymentsPage";
-import IncentiveManagerPage from "./pages/IncentiveManagerPage";
-import ProductDevelopmentPage from "./pages/ProductDevelopmentPage";
-import ManufacturerProductRequestsPage from "./pages/ManufacturerProductRequestsPage";
-import DistributorDepletionsPage from "./pages/DistributorDepletionsPage";
-import DistributorInventoryAdjustmentsPage from "./pages/DistributorInventoryAdjustmentsPage";
-import DistributorSellThroughPage from "./pages/DistributorSellThroughPage";
-import NewWholesaleOrderPage from "./pages/NewWholesaleOrderPage";
+import NotFound from "./pages/NotFound";
+
+// Lazy-loaded by route group for better chunking
+const RoleHomeEntry = lazy(() => import("./pages/RoleHomeEntry"));
+const Inventory = lazy(() => import("./pages/Inventory"));
+const Orders = lazy(() => import("./pages/Orders"));
+const Accounts = lazy(() => import("./pages/Accounts"));
+const PurchaseOrders = lazy(() => import("./pages/PurchaseOrders"));
+const Manufacturer = lazy(() => import("./pages/Manufacturer"));
+const Shipments = lazy(() => import("./pages/Shipments"));
+const Reports = lazy(() => import("./pages/Reports"));
+const SettingsPage = lazy(() => import("./pages/Settings"));
+const AlertsHubPage = lazy(() => import("./pages/AlertsHubPage"));
+const MarketsPage = lazy(() => import("./pages/MarketsPage"));
+
+// Manufacturer routes
+const ManufacturerMarketDemandPage = lazy(() => import("./pages/ManufacturerMarketDemandPage"));
+const ManufacturerProfilePage = lazy(() => import("./pages/ManufacturerProfilePage"));
+const ManufacturerProductRequestsPage = lazy(() => import("./pages/ManufacturerProductRequestsPage"));
+const FinancePaymentsPage = lazy(() => import("./pages/FinancePaymentsPage"));
+const IncentiveManagerPage = lazy(() => import("./pages/IncentiveManagerPage"));
+const ProductDevelopmentPage = lazy(() => import("./pages/ProductDevelopmentPage"));
+
+// Distributor routes
+const BackordersPage = lazy(() => import("./pages/BackordersPage"));
+const DistributorDepletionsPage = lazy(() => import("./pages/DistributorDepletionsPage"));
+const DistributorInventoryAdjustmentsPage = lazy(() => import("./pages/DistributorInventoryAdjustmentsPage"));
+const DistributorSellThroughPage = lazy(() => import("./pages/DistributorSellThroughPage"));
+const NewWholesaleOrderPage = lazy(() => import("./pages/NewWholesaleOrderPage"));
+
+// Sales routes
+const SalesRepHomePage = lazy(() => import("./pages/SalesRepHomePage"));
+const SalesSectionPage = lazy(() => import("./pages/SalesSectionPage"));
+const SalesTargetsPage = lazy(() => import("./pages/SalesTargetsPage"));
+const SalesOpportunitiesPage = lazy(() => import("./pages/SalesOpportunitiesPage"));
+const SalesVisitNotesPage = lazy(() => import("./pages/SalesVisitNotesPage"));
+
+// Retail routes
+const RetailHomePage = lazy(() => import("./pages/RetailHomePage"));
+const RetailNewOrderPage = lazy(() => import("./pages/RetailNewOrderPage"));
+const RetailMyOrdersPage = lazy(() => import("./pages/RetailMyOrdersPage"));
+const RetailOrderDetailPage = lazy(() => import("./pages/RetailOrderDetailPage"));
+const RetailAccountPage = lazy(() => import("./pages/RetailAccountPage"));
+const RetailSupportPage = lazy(() => import("./pages/RetailSupportPage"));
+const RetailReorderPage = lazy(() => import("./pages/RetailReorderPage"));
+
+// Loading fallback component
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-screen">
+    <div className="space-y-4 w-full max-w-md px-4">
+      <Skeleton className="h-8 w-3/4" />
+      <Skeleton className="h-4 w-1/2" />
+      <div className="space-y-2">
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    </div>
+  </div>
+);
 
 const queryClient = new QueryClient();
 
@@ -84,7 +113,8 @@ const App = () => {
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <Routes>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
               <Route path="/login" element={<Login />} />
               <Route element={<RequireAuth />}>
                 <Route element={<AppDataShell />}>
@@ -146,10 +176,11 @@ const App = () => {
                 </Route>
               </Route>
             </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+          </Suspense>
+        </BrowserRouter>
+      </TooltipProvider>
+    </AuthProvider>
+  </QueryClientProvider>
   );
 };
 

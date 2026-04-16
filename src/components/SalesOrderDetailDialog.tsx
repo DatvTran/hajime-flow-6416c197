@@ -7,8 +7,11 @@ import {
   createdByLabel,
   effectiveRepApprovalStatus,
   routingTargetLabel,
+  canSalesRepConfirmOrder,
+  getDistributorInventoryForOrder,
 } from "@/lib/order-routing";
 import { orderLineEntries } from "@/lib/order-lines";
+import { useInventory } from "@/contexts/AppDataContext";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +26,8 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
 import { OrderPaymentActions } from "@/components/OrderPaymentActions";
 import { Button } from "@/components/ui/button";
+import { AlertTriangle, Package } from "lucide-react";
+import { useMemo, useState } from "react";
 
 const ORDER_STATUSES: SalesOrder["status"][] = [
   "draft",
@@ -61,6 +66,8 @@ export function SalesOrderDetailDialog({
 }: Props) {
   const { user } = useAuth();
   const sessionRep = resolveSalesRepLabelForSession(user?.email, user?.displayName ?? "");
+  const { availableBottlesAtWarehouse, items } = useInventory();
+  const [showInventoryOverride, setShowInventoryOverride] = useState(false);
 
   const handleStatus = (value: string) => {
     if (!order) return;
@@ -86,6 +93,14 @@ export function SalesOrderDetailDialog({
     order && user.role === "sales_rep" && canSalesRepApproveOrder(order, accounts, sessionRep),
   );
 
+  // NEW: Inventory check for sales rep before confirming
+  const inventoryCheck = useMemo(() => {
+    if (!order || !items.length) return null;
+    return getDistributorInventoryForOrder(order, items, availableBottlesAtWarehouse);
+  }, [order, items, availableBottlesAtWarehouse]);
+
+  const hasInventoryShortfall = inventoryCheck && inventoryCheck.shortfall > 0;
+
   const paymentAllowed = order ? canCollectPaymentForOrder(order, accounts) : false;
 
   const approveRetailOrder = () => {
@@ -94,11 +109,37 @@ export function SalesOrderDetailDialog({
     toast.success("Order approved", { description: `${order.id} — capture payment next, then wholesaler fulfillment.` });
   };
 
+  // NEW: Two-step confirmation with inventory check
+  const confirmWithInventoryCheck = () => {
+    if (!order) return;
+    
+    // Check if we should warn about inventory
+    if (hasInventoryShortfall && !showInventoryOverride) {
+      setShowInventoryOverride(true);
+      toast.warning("Inventory shortfall detected", {
+        description: `Short by ${inventoryCheck?.shortfall} bottles. You can still confirm with warning.`,
+      });
+      return;
+    }
+    
+    onPatch(order.id, { 
+      repApprovalStatus: "approved",
+      status: order.status === "draft" ? "confirmed" : order.status,
+    });
+    toast.success("Order confirmed", { 
+      description: `${order.id} — approved and confirmed for fulfillment.` 
+    });
+    setShowInventoryOverride(false);
+  };
+
   const rejectRetailOrder = () => {
     if (!order) return;
     onPatch(order.id, { status: "cancelled", repApprovalStatus: "not_required" });
     toast.info("Order rejected", { description: `${order.id} marked cancelled.` });
   };
+
+  // NEW: Can sales rep confirm this order (includes inventory check)
+  const canConfirmWithInventory = order && canSalesRepConfirmOrder(order, accounts, sessionRep, items, availableBottlesAtWarehouse);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -192,6 +233,19 @@ export function SalesOrderDetailDialog({
                     <span className="font-medium">{createdByLabel(order.orderCreatedByRole)}</span>
                   </div>
                 ) : null}
+                {/* NEW: Proxy mode fields */}
+                {order.placedByRole ? (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Placed by role</span>
+                    <span className="font-medium">{createdByLabel(order.placedByRole)}</span>
+                  </div>
+                ) : null}
+                {order.onBehalfOfAccount ? (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">On behalf of</span>
+                    <span className="font-mono text-xs font-medium">{order.onBehalfOfAccount}</span>
+                  </div>
+                ) : null}
                 {order.placedOnBehalfByRep ? (
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Placement</span>
@@ -243,20 +297,75 @@ export function SalesOrderDetailDialog({
                 </div>
               ) : null}
 
+              {/* NEW: Sales Rep Inventory-Aware Approval Panel */}
               {showRepApprovalPanel ? (
                 <div className="rounded-lg border border-accent/30 bg-accent/5 p-4">
                   <p className="text-sm font-medium text-foreground">Retail order — your approval</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Approve to allow payment. After the card is charged, this order goes to the wholesaler for delivery and shipping.
                   </p>
+                  
+                  {/* NEW: Inventory visibility widget */}
+                  {inventoryCheck && (
+                    <div className={`mt-3 rounded-md border px-3 py-2 text-xs ${
+                      hasInventoryShortfall 
+                        ? "border-amber-500/60 bg-amber-50/50" 
+                        : "border-emerald-600/40 bg-emerald-50/50"
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="font-medium">Distributor Inventory Check</span>
+                      </div>
+                      <div className="mt-1.5 grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-muted-foreground">Available:</span>
+                          <span className={`ml-1 font-medium tabular-nums ${
+                            hasInventoryShortfall ? "text-amber-700" : "text-emerald-700"
+                          }`}>
+                            {inventoryCheck.available.toLocaleString()} bottles
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Order needs:</span>
+                          <span className="ml-1 font-medium tabular-nums">{inventoryCheck.needed.toLocaleString()} bottles</span>
+                        </div>
+                      </div>
+                      {hasInventoryShortfall ? (
+                        <div className="mt-1.5 flex items-start gap-1.5 text-amber-700">
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                          <span>Short by {inventoryCheck.shortfall.toLocaleString()} bottles — wholesaler may need to restock</span>
+                        </div>
+                      ) : (
+                        <p className="mt-1.5 text-emerald-700">Sufficient stock available for fulfillment.</p>
+                      )}
+                    </div>
+                  )}
+                  
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button type="button" size="sm" className="touch-manipulation" onClick={approveRetailOrder}>
-                      Approve for payment
+                    <Button 
+                      type="button" 
+                      size="sm" 
+                      className="touch-manipulation" 
+                      onClick={confirmWithInventoryCheck}
+                      variant={hasInventoryShortfall && !showInventoryOverride ? "outline" : "default"}
+                    >
+                      {hasInventoryShortfall && !showInventoryOverride 
+                        ? "Check Inventory & Confirm" 
+                        : showInventoryOverride 
+                          ? "Confirm Anyway (Override)"
+                          : "Approve for Payment"
+                      }
                     </Button>
                     <Button type="button" size="sm" variant="outline" className="touch-manipulation" onClick={rejectRetailOrder}>
                       Reject
                     </Button>
                   </div>
+                  
+                  {showInventoryOverride && (
+                    <p className="mt-2 text-xs text-amber-600">
+                      ⚠️ You are confirming despite inventory shortfall. The distributor will be notified.
+                    </p>
+                  )}
                 </div>
               ) : null}
 

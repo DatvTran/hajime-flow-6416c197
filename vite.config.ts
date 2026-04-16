@@ -14,6 +14,18 @@ export default defineConfig({
           const ext = info[info.length - 1];
           return `assets/[name]-[hash][extname]`;
         },
+        manualChunks: {
+          // Core vendor libraries (loaded on every page)
+          vendor: ["react", "react-dom", "react-router-dom"],
+          // UI component libraries
+          ui: ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-tabs", "lucide-react", "class-variance-authority", "clsx", "tailwind-merge"],
+          // Data & forms
+          data: ["@tanstack/react-query", "react-hook-form", "@hookform/resolvers", "zod"],
+          // Charts (only loaded when needed)
+          charts: ["recharts"],
+          // Vendor-specific (Stripe - only on checkout pages)
+          stripe: ["@stripe/react-stripe-js", "@stripe/stripe-js"],
+        },
       },
     },
   },

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Account, OrderRoutingTarget, SalesOrder } from "@/data/mockData";
-import { orderCreatedByFromRole } from "@/lib/order-routing";
+import { orderCreatedByFromRole, isProxyOrder, getProxyAuditInfo } from "@/lib/order-routing";
 import { useAccounts, useProducts, useInventory } from "@/contexts/AppDataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/sonner";
 import { Link } from "react-router-dom";
 
@@ -118,7 +119,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   const [quantity, setQuantity] = useState("12");
   const [price, setPrice] = useState("");
   const [salesRep, setSalesRep] = useState<string>(SALES_REPS[0]);
-  const [status, setStatus] = useState<SalesOrder["status"]>("draft");
+  const [status, setStatus] = useState<SalesOrder["status"]("draft");
   const [paymentStatus, setPaymentStatus] = useState<SalesOrder["paymentStatus"]>("pending");
   const [error, setError] = useState<string | null>(null);
   /** Brand HQ: who this order is for. */
@@ -126,6 +127,10 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   /** Wholesaler: route via rep vs direct to retail. */
   const [wholesalerPath, setWholesalerPath] = useState<"rep" | "retail">("retail");
   const [wholesaleRep, setWholesaleRep] = useState<string>(SALES_REPS[0]);
+  
+  // NEW: Proxy mode state
+  const [isProxyMode, setIsProxyMode] = useState(false);
+  const [onBehalfOfAccountId, setOnBehalfOfAccountId] = useState<string>("");
 
   useEffect(() => {
     if (!open) return;
@@ -143,6 +148,9 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     setBrandPath("wholesaler");
     setWholesalerPath("retail");
     setWholesaleRep(SALES_REPS[0]);
+    // NEW: Reset proxy mode
+    setIsProxyMode(false);
+    setOnBehalfOfAccountId("");
   }, [open, variant]);
 
   useEffect(() => {
@@ -244,20 +252,36 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       status,
       paymentStatus,
       orderRoutingTarget: routingTarget,
-      orderCreatedByRole: orderCreatedByFromRole(user.role),
+      orderCreatedByRole: orderCreatedByFromRole(user?.role || "brand_operator"),
       repApprovalStatus: "not_required",
       assignedSalesRep,
       placedOnBehalfByRep: variant === "sales_rep",
+      // NEW: Proxy mode fields
+      placedByRole: isProxyMode ? orderCreatedByFromRole(user?.role || "brand_operator") : undefined,
+      onBehalfOfAccount: isProxyMode ? onBehalfOfAccountId || undefined : undefined,
     };
 
     onCreate(order);
-    toast.success(cfg.badge + " — order saved", { description: `${order.id} · ${order.account}` });
+    
+    // Show appropriate success message
+    if (isProxyMode && onBehalfOfAccountId) {
+      const auditInfo = getProxyAuditInfo(order);
+      toast.success(cfg.badge + " — Proxy order saved", { 
+        description: `${order.id} · ${order.account} · ${auditInfo.auditMessage}` 
+      });
+    } else {
+      toast.success(cfg.badge + " — Order saved", { description: `${order.id} · ${order.account}` });
+    }
+    
     onOpenChange(false);
   };
 
   const skuOptions = products.filter((p) => p.status === "active" || p.status === "development");
 
   const showLifecycleDetails = variant !== "manufacturer";
+  
+  // NEW: Proxy mode available for brand_operator and operations
+  const canUseProxyMode = user?.role === "brand_operator" || user?.role === "operations" || user?.role === "founder_admin";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -267,6 +291,11 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
             <Badge variant="secondary" className="font-normal">
               {cfg.badge}
             </Badge>
+            {isProxyMode && (
+              <Badge variant="outline" className="font-normal text-amber-600 border-amber-600">
+                Proxy Mode
+              </Badge>
+            )}
           </div>
           <DialogTitle className="font-display text-xl">{cfg.title}</DialogTitle>
           <DialogDescription className="text-pretty">{cfg.description}</DialogDescription>
@@ -295,7 +324,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
           {variant === "distributor" ? (
             <div className="space-y-3 rounded-lg border border-border/80 bg-muted/20 p-4">
               <Label htmlFor="so-wh-path">Place order for *</Label>
-              <p className="text-xs text-muted-foreground">Wholesalers route to a rep’s book or direct to a retail account.</p>
+              <p className="text-xs text-muted-foreground">Wholesalers route to a rep's book or direct to a retail account.</p>
               <Select value={wholesalerPath} onValueChange={(v) => setWholesalerPath(v as "rep" | "retail")}>
                 <SelectTrigger id="so-wh-path" className="touch-manipulation">
                   <SelectValue />
@@ -324,6 +353,54 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
               ) : null}
             </div>
           ) : null}
+          
+          {/* NEW: Proxy Mode Section for Brand Operator */}
+          {canUseProxyMode && (
+            <div className="space-y-3 rounded-lg border border-amber-600/30 bg-amber-50/30 p-4">
+              <div className="flex items-start gap-3">
+                <Checkbox 
+                  id="proxy-mode" 
+                  checked={isProxyMode} 
+                  onCheckedChange={(v) => {
+                    setIsProxyMode(v === true);
+                    if (!v) setOnBehalfOfAccountId("");
+                  }}
+                />
+                <div className="grid gap-1.5 leading-none">
+                  <label htmlFor="proxy-mode" className="text-sm font-medium">
+                    Proxy Mode — Place order on behalf of another account
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Order will be recorded as placed by {user?.role || "brand_operator"} on behalf of the selected account. 
+                    Downstream roles will see it as coming from the original account.
+                  </p>
+                </div>
+              </div>
+              
+              {isProxyMode && (
+                <div className="space-y-2 pl-6">
+                  <Label htmlFor="on-behalf-of">On behalf of account *</Label>
+                  <Select value={onBehalfOfAccountId || undefined} onValueChange={setOnBehalfOfAccountId}>
+                    <SelectTrigger id="on-behalf-of" className="touch-manipulation">
+                      <SelectValue placeholder="Select account..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allAccounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.tradingName || a.legalName} · {a.type} · {a.city}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {onBehalfOfAccountId && (
+                    <p className="text-xs text-amber-700">
+                      Audit trail: {user?.role || "brand_operator"} placing order for account {onBehalfOfAccountId}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-4">
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{cfg.customerSectionLabel}</p>
@@ -513,7 +590,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
               Cancel
             </Button>
             <Button type="submit" className="touch-manipulation">
-              {cfg.submitLabel}
+              {isProxyMode ? "Create Proxy Order" : cfg.submitLabel}
             </Button>
           </DialogFooter>
         </form>
