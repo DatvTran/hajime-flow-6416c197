@@ -48,7 +48,7 @@ const NewWholesaleOrderPage = lazy(() => import("./pages/NewWholesaleOrderPage")
 
 // Sales routes
 const SalesRepHomePage = lazy(() => import("./pages/SalesRepHomePage"));
-const SalesSectionPage = lazy(() => import("./pages/SalesSectionPage"));
+// SalesSectionPage removed — functionality covered by SalesOpportunitiesPage + SalesVisitNotesPage
 const SalesTargetsPage = lazy(() => import("./pages/SalesTargetsPage"));
 const SalesOpportunitiesPage = lazy(() => import("./pages/SalesOpportunitiesPage"));
 const SalesVisitNotesPage = lazy(() => import("./pages/SalesVisitNotesPage"));

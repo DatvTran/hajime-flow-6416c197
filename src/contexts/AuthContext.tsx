@@ -260,8 +260,6 @@ export function useAuth(): AuthContextValue {
 
 /** Get API fetch helper with auth */
 export function useApi() {
-  const { signOut } = useAuth();
-
   return useMemo(
     () => ({
       fetch: apiFetch,
@@ -270,7 +268,7 @@ export function useApi() {
         return response.json();
       },
     }),
-    [signOut]
+    [] // apiFetch is a stable module-level function; no reactive deps needed
   );
 }
 

@@ -27,7 +27,20 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAppData } from "@/contexts/AppDataContext";
 import { toast } from "@/components/ui/sonner";
-import type { Account, SalesRepNote } from "@/data/accounts";
+import type { Account } from "@/data/mockData";
+// SalesRepNote defined inline — this page is retained for potential future use but not currently routed
+type SalesRepNote = {
+  id: string;
+  accountId: string;
+  accountName: string;
+  authorRep: string;
+  visitDate: string;
+  visitType: string;
+  notes: string;
+  followUpDate?: string;
+  mood?: string;
+  createdAt: string;
+};
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
 
 interface Opportunity {

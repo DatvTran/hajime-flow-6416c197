@@ -111,7 +111,7 @@ export default function Reports() {
   );
   const inventoryByStatus = useMemo(
     () => (isSalesRep ? [] : inventoryByStatusForChart(computeInventorySummary(data.inventory, data.purchaseOrders))),
-    [data.inventory, isSalesRep],
+    [data.inventory, data.purchaseOrders, isSalesRep],
   );
   const topAccounts = useMemo(() => computeTopAccounts(analyticsOrders), [analyticsOrders]);
   const topRev = topAccounts[0]?.revenue ?? 1;
@@ -199,7 +199,7 @@ export default function Reports() {
       { label: "Open pipeline", value: String(data.salesOrders.filter((o) => !["delivered", "cancelled"].includes(o.status)).length), sub: "orders in flight" },
       { label: "Active accounts", value: String(data.accounts.filter((a) => a.status === "active").length), sub: "CRM" },
     ];
-  }, [isSalesRep, analyticsOrders, analyticsAccounts, analyticsAsOf, data.salesOrders, data.accounts, data.inventory]);
+  }, [isSalesRep, analyticsOrders, analyticsAccounts, analyticsAsOf, data.salesOrders, data.accounts, data.inventory, data.purchaseOrders]);
 
   const pageDescription = useMemo(() => {
     if (focus === "month") return "Monthly sell-in revenue from recorded orders.";

@@ -54,11 +54,14 @@ export default function RetailNewOrderPage() {
     [data.products],
   );
 
+  // Destructured so useCallback dep array is precise (avoids whole-data-object dep)
+  const { products } = data;
+
   const cartDetail = useMemo(() => {
     let subtotal = 0;
     const rows: { sku: string; name: string; cases: number; line: number }[] = [];
     for (const { sku, cases } of cart.lines) {
-      const p = data.products.find((x) => x.sku === sku);
+      const p = products.find((x) => x.sku === sku);
       if (!p) continue;
       const casePrice = p.wholesaleCasePrice ?? 0;
       const line = Math.round(cases * casePrice);
@@ -66,7 +69,7 @@ export default function RetailNewOrderPage() {
       rows.push({ sku, name: p.name, cases, line });
     }
     return { rows, subtotal };
-  }, [cart.lines, data.products]);
+  }, [cart.lines, products]);
 
   const submit = useCallback(() => {
     if (cart.lines.length === 0) {
@@ -76,10 +79,10 @@ export default function RetailNewOrderPage() {
     try {
       const lines = cart.lines
         .map((l) => {
-          const product = data.products.find((p) => p.sku === l.sku);
+          const product = products.find((p) => p.sku === l.sku);
           return product ? { sku: l.sku, cases: l.cases, product } : null;
         })
-        .filter(Boolean) as { sku: string; cases: number; product: (typeof data.products)[0] }[];
+        .filter(Boolean) as { sku: string; cases: number; product: (typeof products)[0] }[];
 
       const order = buildRetailCheckoutOrder({
         existingOrders: salesOrders,
@@ -101,7 +104,7 @@ export default function RetailNewOrderPage() {
     }
   }, [
     cart,
-    data.products,
+    products,
     salesOrders,
     accountName,
     accounts,
