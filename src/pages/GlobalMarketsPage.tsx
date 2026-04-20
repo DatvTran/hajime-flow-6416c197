@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppData } from "@/contexts/AppDataContext";
 import {
   computeAnchorMarketsSnapshot,
@@ -277,7 +277,9 @@ export default function GlobalMarketsPage() {
             </p>
             <Card className="relative min-h-[520px] overflow-hidden">
               <CardContent className="p-0">
-                <CartographicBoard panelRows={view.panelRows} anchorSnap={view.snap} />
+                <TooltipProvider>
+                  <CartographicBoard panelRows={view.panelRows} anchorSnap={view.snap} />
+                </TooltipProvider>
               </CardContent>
             </Card>
           </TabsContent>
@@ -304,6 +306,14 @@ function CartographicBoard({
   panelRows: MarketPanelRow[];
   anchorSnap: AnchorMarketSnapshotRow[];
 }) {
+  if (panelRows.length === 0) {
+    return (
+      <div className="flex min-h-[520px] items-center justify-center text-sm text-muted-foreground">
+        No market data in range — switch to Classic view.
+      </div>
+    );
+  }
+
   const maxSold = Math.max(...panelRows.map((r) => r.sold30dCases), 0.01);
   const sorted = [...panelRows].sort((a, b) => a.sold30dCases - b.sold30dCases);
 
