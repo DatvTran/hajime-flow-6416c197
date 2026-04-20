@@ -50,8 +50,23 @@ const MAP_POS_BY_PANEL_ID: Record<string, { left: string; top: string }> = {
   spain: { left: "44%", top: "45%" },
 };
 
-function mapPosForPanelRow(row: MarketPanelRow): { left: string; top: string } {
-  return MAP_POS_BY_PANEL_ID[row.id] ?? { left: "50%", top: "42%" };
+/**
+ * Fixed positions for known hubs; unknown panel ids (live data) are laid out on an ellipse
+ * so glyphs do not stack at the fallback center (which reads as an empty map).
+ */
+function mapPosForPanelRow(row: MarketPanelRow, index: number, total: number): { left: string; top: string } {
+  const fixed = MAP_POS_BY_PANEL_ID[row.id];
+  if (fixed) return fixed;
+
+  const n = Math.max(total, 1);
+  const t = (index / n) * 2 * Math.PI + Math.PI / 6;
+  const cx = 50;
+  const cy = 42;
+  const rx = 30;
+  const ry = 24;
+  const left = cx + rx * Math.cos(t);
+  const top = cy + ry * Math.sin(t);
+  return { left: `${Math.round(left * 10) / 10}%`, top: `${Math.round(top * 10) / 10}%` };
 }
 
 function anchorSnapForPanelRow(row: MarketPanelRow, snap: AnchorMarketSnapshotRow[]): AnchorMarketSnapshotRow | undefined {
@@ -346,8 +361,8 @@ function CartographicBoard({
         <div className="pointer-events-none absolute bottom-[12%] left-[8%] h-[35%] w-[38%] rounded-full bg-muted/20 blur-2xl" />
         <div className="pointer-events-none absolute right-[12%] top-[18%] h-[40%] w-[35%] rounded-full bg-muted/15 blur-2xl" />
 
-        {sorted.map((row) => {
-          const pos = mapPosForPanelRow(row);
+        {sorted.map((row, idx) => {
+          const pos = mapPosForPanelRow(row, idx, sorted.length);
           const t = row.sold30dCases / maxSold;
           const minS = 30;
           const maxS = 76;

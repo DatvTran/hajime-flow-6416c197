@@ -1048,9 +1048,11 @@ export function useSalesOrders() {
       const account = data.accounts.find((a) => a.accountNumber === o.account);
       
       // Call granular API
+      const orderNumber =
+        o.orderNumber ?? `SO-${Date.now().toString(36).toUpperCase()}`;
       const result = await apiCreateOrder({
-        order_number: o.orderNumber,
-        account_id: account?.id || o.accountId || "",
+        order_number: orderNumber,
+        account_id: account?.id ?? o.accountId ?? "",
         status: o.status,
         order_date: o.orderDate || new Date().toISOString(),
         sales_rep: o.salesRep,
@@ -1067,16 +1069,23 @@ export function useSalesOrders() {
         shippingCost: o.shippingCost || 0,
         totalAmount: o.totalAmount || o.price * (o.quantity || 1),
         shippingAddress: o.shippingAddress,
-        notes: o.notes,
+        notes: o.notes ?? o.orderNotes,
       });
-      
-      // Update local state with server response
+
+      const serverId = result?.data?.id != null ? String(result.data.id) : null;
+      if (!serverId) {
+        toast.error("Failed to create order", {
+          description: "Server did not return an order id — your order was not saved.",
+        });
+        return { success: false, error: "Missing order id from server" };
+      }
+
       updateData((d) => ({
         ...d,
-        salesOrders: [{ ...o, id: result.data.id }, ...d.salesOrders],
+        salesOrders: [{ ...o, id: serverId, orderNumber }, ...d.salesOrders],
       }));
-      
-      toast.success("Order created", { description: o.orderNumber });
+
+      toast.success("Order created", { description: orderNumber });
       return { success: true, data: result.data };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create order";

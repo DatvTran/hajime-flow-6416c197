@@ -86,6 +86,10 @@ export type RepApprovalStatus = "not_required" | "pending" | "approved";
 
 export type SalesOrder = {
   id: string;
+  /** Human-readable reference for APIs & exports (created clientside when absent). */
+  orderNumber?: string;
+  /** CRM account UUID when resolved (optional on drafts created from trading name only). */
+  accountId?: string;
   account: string;
   market: string;
   orderDate: string;
@@ -108,6 +112,14 @@ export type SalesOrder = {
   lines?: SalesOrderLine[];
   customerPoReference?: string;
   orderNotes?: string;
+  /** Order economics — used when syncing to granular order API */
+  subtotal?: number;
+  taxAmount?: number;
+  shippingCost?: number;
+  totalAmount?: number;
+  shippingAddress?: string;
+  /** Free-form notes for order payload (see also orderNotes). */
+  notes?: string;
   deliveryAddress?: string;
   invoiceStatus?: "not_invoiced" | "invoiced" | "paid";
   /** Sell-through (depletion) — optional Phase 1 field for account-level consumer movement */

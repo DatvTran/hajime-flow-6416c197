@@ -13,6 +13,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { InactivityWarningDialog } from "@/components/InactivityWarningDialog";
 import { useInactivityTimer } from "@/hooks/useInactivityTimer";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RouteErrorOutlet } from "@/components/RouteErrorOutlet";
 
 // Eagerly loaded (critical path)
 import Login from "./pages/Login";
@@ -118,7 +119,8 @@ const App = () => {
               <Routes>
               <Route path="/login" element={<Login />} />
               <Route element={<RequireAuth />}>
-                <Route element={<AppDataShell />}>
+                <Route element={<RouteErrorOutlet />}>
+                  <Route element={<AppDataShell />}>
                   <Route path="/" element={<RoleHomeEntry />} />
                   <Route path="/inventory" element={<Inventory />} />
                   <Route path="/orders" element={<Orders />} />
@@ -175,6 +177,7 @@ const App = () => {
                   <Route path="/retail/support" element={<RetailSupportPage />} />
                   <Route path="/retail/reorder" element={<RetailReorderPage />} />
                   <Route path="*" element={<NotFound />} />
+                  </Route>
                 </Route>
               </Route>
             </Routes>

@@ -82,5 +82,8 @@ export function normalizeAppData(raw: AppData): AppData {
     newProductRequests: pickOrSeed(raw.newProductRequests, DEFAULT_NEW_PRODUCT_REQUESTS),
     transferOrders: pickOrSeed(raw.transferOrders, DEFAULT_TRANSFER_ORDERS),
     depletionReports: pickOrSeed(raw.depletionReports, DEFAULT_DEPLETION_REPORTS),
+    purchaseOrders: pickOrSeed(raw.purchaseOrders, SEED.purchaseOrders),
+    shipments: pickOrSeed(raw.shipments, SEED.shipments),
+    productionStatuses: pickOrSeed(raw.productionStatuses, SEED.productionStatuses),
   };
 }
