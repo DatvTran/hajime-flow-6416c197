@@ -219,11 +219,10 @@ export default function Orders() {
     addSalesOrder(order);
   };
 
-  const patchOrder = (id: string, patch: Partial<SalesOrder>) => {
+  const patchOrder = async (id: string, patch: Partial<SalesOrder>) => {
     const o = orders.find((x) => x.id === id);
     if (!o) {
-      patchSalesOrder(id, patch);
-      return;
+      return patchSalesOrder(id, patch);
     }
     let merged: Partial<SalesOrder> = { ...patch };
     if (patch.paymentStatus === "paid" && o.status === "draft" && isRetailChannelOrder(o, accounts)) {
@@ -257,7 +256,7 @@ export default function Orders() {
       merged = { ...merged, wholesalerFulfillmentStatus: "pending_ack" };
     }
 
-    patchSalesOrder(id, merged);
+    const result = await patchSalesOrder(id, merged);
 
     // Auto-create shipment when order transitions to shipped
     if (merged.status === "shipped" && o.status !== "shipped") {
@@ -279,6 +278,8 @@ export default function Orders() {
         });
       }, 0);
     }
+
+    return result;
   };
 
   return (
@@ -387,10 +388,7 @@ export default function Orders() {
                           type="button"
                           size="sm"
                           className="touch-manipulation"
-                          onClick={() => {
-                            patchOrder(o.id, { status: "confirmed" });
-                            toast.success("Approved", { description: `${o.id} → confirmed` });
-                          }}
+                          onClick={() => void patchOrder(o.id, { status: "confirmed" })}
                         >
                           Approve
                         </Button>
@@ -399,10 +397,7 @@ export default function Orders() {
                           size="sm"
                           variant="outline"
                           className="touch-manipulation"
-                          onClick={() => {
-                            patchOrder(o.id, { status: "cancelled" });
-                            toast.info("Rejected", { description: `${o.id} → cancelled` });
-                          }}
+                          onClick={() => void patchOrder(o.id, { status: "cancelled" })}
                         >
                           Reject
                         </Button>

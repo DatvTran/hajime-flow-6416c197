@@ -3,22 +3,143 @@
  * Stage 4: Reads use granular APIs, Writes use api-v1-mutations
  * Legacy putAppData removed — all mutations go through granular endpoints
  */
-import { 
-  getProducts, 
-  getAccounts, 
-  getOrders, 
+import {
+  getProducts,
+  getAccounts,
+  getOrders,
   getInventory,
-  getDashboardStats,
   getDepletionReports,
+  getPurchaseOrders,
+  getShipments,
 } from "./api-v1";
 import { fetchAppData as fetchLegacyAppData } from "./api-app";
 import type { AppData } from "@/types/app-data";
+import type { PurchaseOrder, Shipment } from "@/data/mockData";
 
 // Feature flag to control granular API usage - Stage 3: Always use granular
 const USE_GRANULAR_API = true;
 
 // Dev mode flag for logging (kept for error logging)
 const isDev = process.env.NODE_ENV === 'development' || import.meta.env?.DEV;
+
+function sliceIsoDate(v: unknown): string {
+  if (v == null || v === "") return new Date().toISOString().slice(0, 10);
+  const s = String(v);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function mapRowToPurchaseOrder(po: Record<string, unknown>): PurchaseOrder {
+  const id = po.po_number != null ? String(po.po_number) : String(po.id ?? "");
+  const rawStatus = String(po.status ?? "draft").toLowerCase().replace(/-/g, "_");
+
+  let status: PurchaseOrder["status"] = "draft";
+  if (rawStatus === "approved" || rawStatus === "acknowledged") {
+    status = "approved";
+  } else if (rawStatus === "submitted") {
+    status = "draft";
+  } else if (rawStatus === "in_production") {
+    status = "in-production";
+  } else if (rawStatus === "completed") {
+    status = "completed";
+  } else if (rawStatus === "ready_for_shipment") {
+    status = "shipped";
+  } else if (rawStatus === "shipped") {
+    status = "shipped";
+  } else if (rawStatus === "delivered") {
+    status = "delivered";
+  } else if (rawStatus === "delayed" || rawStatus === "exception") {
+    status = "delayed";
+  }
+
+  const manufacturer = String(
+    po.supplier_name ?? po.manufacturer ?? po.manufacturer_name ?? "Manufacturer",
+  );
+
+  const issueDate = sliceIsoDate(po.order_date ?? po.issue_date);
+  const requiredDate = sliceIsoDate(
+    po.expected_delivery_date ?? po.delivery_date ?? po.required_date ?? issueDate,
+  );
+
+  const poTypeRaw = po.po_type;
+  const poType =
+    poTypeRaw === "sales" || poTypeRaw === "production"
+      ? poTypeRaw
+      : undefined;
+
+  return {
+    id,
+    manufacturer,
+    issueDate,
+    requiredDate,
+    requestedShipDate: requiredDate,
+    sku: "—",
+    quantity: 0,
+    packagingInstructions: "",
+    labelVersion: "",
+    marketDestination: String(po.market_destination ?? po.marketDestination ?? "—"),
+    status,
+    notes: String(po.notes ?? ""),
+    poType,
+    distributorAccountId:
+      po.distributor_account_id != null ? String(po.distributor_account_id) : undefined,
+    brandOperatorAcknowledgedAt:
+      po.brand_operator_acknowledged_at != null
+        ? String(po.brand_operator_acknowledged_at)
+        : undefined,
+  };
+}
+
+function productionStageLabel(po: PurchaseOrder): string {
+  switch (po.status) {
+    case "in-production":
+      return "In Production";
+    case "shipped":
+      return "Shipped";
+    case "delivered":
+      return "Delivered";
+    case "delayed":
+      return "Delayed / Issue";
+    case "completed":
+      return "Ready to Ship";
+    case "approved":
+      return "Scheduled";
+    default:
+      return "PO Received";
+  }
+}
+
+function mapRowToShipment(s: Record<string, unknown>): Shipment {
+  const orderType = String(s.order_type ?? "");
+  const type: Shipment["type"] = orderType === "purchase_order" ? "inbound" : "outbound";
+
+  const rawStatus = String(s.status ?? "packed").toLowerCase();
+  let status: Shipment["status"] = "preparing";
+  if (rawStatus === "in_transit" || rawStatus === "out_for_delivery") {
+    status = "in-transit";
+  } else if (rawStatus === "delivered") {
+    status = "delivered";
+  } else if (rawStatus === "exception" || rawStatus === "cancelled") {
+    status = "delayed";
+  }
+
+  const shipTs = s.ship_date ?? s.shipped_at;
+  const etaTs = s.estimated_delivery ?? s.eta;
+  const delTs = s.delivered_at;
+
+  return {
+    id: s.shipment_number != null ? String(s.shipment_number) : String(s.id ?? ""),
+    origin: String(s.from_location ?? s.fromLocation ?? "—"),
+    destination: String(s.to_location ?? s.toLocation ?? "—"),
+    carrier: String(s.carrier ?? ""),
+    shipDate: shipTs ? String(shipTs).slice(0, 10) : "",
+    eta: etaTs ? String(etaTs).slice(0, 10) : "",
+    actualDelivery: delTs ? String(delTs).slice(0, 10) : "",
+    linkedOrder: String(s.order_id ?? ""),
+    type,
+    status,
+    notes: String(s.notes ?? ""),
+  };
+}
 
 /**
  * Transform API v1 data to AppData format
@@ -33,10 +154,20 @@ function transformToAppData(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   inventory: any[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  depletionReports?: any[]
+  depletionReports?: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  purchaseOrdersRaw?: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  shipmentsRaw?: any[],
 ): Partial<AppData> {
   try {
     const accountById = new Map((accounts || []).map((a) => [String(a.id), a]));
+    const purchaseOrdersMapped = (purchaseOrdersRaw || []).map((po) =>
+      mapRowToPurchaseOrder(po as Record<string, unknown>),
+    );
+    const shipmentsMapped = (shipmentsRaw || []).map((sh) =>
+      mapRowToShipment(sh as Record<string, unknown>),
+    );
     const result = {
       products: (products || []).map(p => ({
         id: p.id,
@@ -147,10 +278,14 @@ function transformToAppData(
         reportedAt: r.reported_at,
         flaggedForReplenishment: r.flagged_for_replenishment || false,
       })),
-      // Empty arrays for entities not yet migrated
-      purchaseOrders: [],
-      shipments: [],
-      productionStatuses: [],
+      purchaseOrders: purchaseOrdersMapped,
+      shipments: shipmentsMapped,
+      productionStatuses: purchaseOrdersMapped.map((p) => ({
+        poId: p.id,
+        stage: productionStageLabel(p),
+        updatedAt: p.issueDate,
+        notes: p.notes,
+      })),
       retailerShelfStock: {},
       financingLedger: [],
     };
@@ -173,6 +308,8 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     getOrders({ limit: 100 }),
     getInventory({ limit: 100 }),
     getDepletionReports({ limit: 200 }),
+    getPurchaseOrders({ limit: 100 }),
+    getShipments({ limit: 100 }),
   ]);
   
   const productsRes = results[0].status === 'fulfilled' ? results[0].value : { data: [] };
@@ -180,6 +317,8 @@ export async function fetchAppDataGranular(): Promise<AppData> {
   const ordersRes = results[2].status === 'fulfilled' ? results[2].value : { data: [] };
   const inventoryRes = results[3].status === 'fulfilled' ? results[3].value : { data: [] };
   const depletionReportsRes = results[4].status === 'fulfilled' ? results[4].value : { data: [] };
+  const purchaseOrdersRes = results[5].status === 'fulfilled' ? results[5].value : { data: [] };
+  const shipmentsRes = results[6].status === 'fulfilled' ? results[6].value : { data: [] };
   
   // Log any failures
   results.forEach((result, index) => {
@@ -193,7 +332,9 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     accountsRes.data || [],
     ordersRes.data || [],
     inventoryRes.data || [],
-    depletionReportsRes.data || []
+    depletionReportsRes.data || [],
+    purchaseOrdersRes.data || [],
+    shipmentsRes.data || [],
   );
   
   return data as AppData;

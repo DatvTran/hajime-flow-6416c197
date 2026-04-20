@@ -1054,12 +1054,14 @@ export function useSalesOrders() {
         status: o.status,
         order_date: o.orderDate || new Date().toISOString(),
         sales_rep: o.salesRep,
-        items: o.items?.map((item) => ({
-          sku: item.sku,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.unitPrice,
-        })) || [],
+        items:
+          o.lines?.map((l) => ({
+            sku: l.sku,
+            name: l.sku,
+            quantity: l.quantityBottles,
+            price: l.lineTotal,
+          })) ||
+          (o.sku ? [{ sku: o.sku, name: o.sku, quantity: o.quantity, price: o.price }] : []),
         subtotal: o.subtotal || o.price * (o.quantity || 1),
         taxAmount: o.taxAmount || 0,
         shippingCost: o.shippingCost || 0,
