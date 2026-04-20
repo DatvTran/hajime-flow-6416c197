@@ -36,6 +36,7 @@ function transformToAppData(
   depletionReports?: any[]
 ): Partial<AppData> {
   try {
+    const accountById = new Map((accounts || []).map((a) => [String(a.id), a]));
     const result = {
       products: (products || []).map(p => ({
         id: p.id,
@@ -93,25 +94,34 @@ function transformToAppData(
           lastOrderDate: a.last_order_date || new Date().toISOString(),
         };
       }),
-      salesOrders: (orders || []).map(o => ({
-        id: o.id,
-        orderNumber: o.order_number,
-        accountNumber: o.account_number,
-        accountId: o.account_id,
+      salesOrders: (orders || []).map((o) => {
+        const account = accountById.get(String(o.account_id));
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        items: o.items?.map((i: any) => ({
-          sku: i.sku,
-          name: i.product_name,
-          quantity: i.quantity_ordered,
-          unitPrice: i.unit_price,
-        })) || [],
-        status: o.status,
-        orderDate: o.order_date,
-        subtotal: o.subtotal,
-        taxAmount: o.tax_amount,
-        shippingCost: o.shipping_cost,
-        totalAmount: o.total_amount,
-      })),
+        const firstLine = Array.isArray(o.items) && o.items.length > 0 ? (o.items[0] as any) : null;
+        const quantity = firstLine?.quantity_ordered ?? 0;
+        const price = Number(o.total_amount ?? o.subtotal ?? 0);
+        return {
+          id: String(o.id),
+          account: o.account_trading_name || o.account_name || o.account_number || "Unknown account",
+          market: account?.market || "Unknown",
+          orderDate: o.order_date ? String(o.order_date).slice(0, 10) : new Date().toISOString().slice(0, 10),
+          requestedDelivery: o.requested_delivery_date
+            ? String(o.requested_delivery_date).slice(0, 10)
+            : new Date().toISOString().slice(0, 10),
+          sku: firstLine?.sku || "—",
+          quantity,
+          price,
+          salesRep: o.sales_rep || "—",
+          status: o.status || "draft",
+          paymentStatus: "pending",
+          accountId: String(o.account_id || ""),
+          orderNumber: o.order_number || String(o.id),
+          subtotal: Number(o.subtotal ?? price),
+          taxAmount: Number(o.tax_amount ?? 0),
+          shippingCost: Number(o.shipping_cost ?? 0),
+          totalAmount: price,
+        };
+      }),
       inventory: (inventory || []).map(i => ({
         id: i.id,
         sku: i.sku,

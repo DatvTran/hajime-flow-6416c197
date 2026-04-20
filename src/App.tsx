@@ -30,6 +30,7 @@ const Reports = lazy(() => import("./pages/Reports"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
 const AlertsHubPage = lazy(() => import("./pages/AlertsHubPage"));
 const MarketsPage = lazy(() => import("./pages/MarketsPage"));
+const GlobalMarketsPage = lazy(() => import("./pages/GlobalMarketsPage"));
 
 // Manufacturer routes
 const ManufacturerMarketDemandPage = lazy(() => import("./pages/ManufacturerMarketDemandPage"));
@@ -124,6 +125,7 @@ const App = () => {
                   <Route path="/orders/new-wholesale" element={<NewWholesaleOrderPage />} />
                   <Route path="/accounts" element={<Accounts />} />
                   <Route path="/markets" element={<MarketsPage />} />
+                  <Route path="/global-markets" element={<GlobalMarketsPage />} />
                   <Route path="/shipments" element={<Shipments />} />
                   <Route path="/purchase-orders" element={<PurchaseOrders />} />
                   <Route path="/product-development" element={<ProductDevelopmentPage />} />

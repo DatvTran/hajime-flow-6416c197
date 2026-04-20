@@ -17,8 +17,8 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Search, Download } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -28,7 +28,6 @@ import { apiListCardLast4s, apiVerifyCheckoutSession } from "@/lib/stripe-api";
 import { setStoredCardLast4, setStoredCustomerId } from "@/lib/stripe-local";
 import { buildOutboundShipmentForOrder } from "@/lib/order-shipment";
 import { downloadSalesOrdersCsv } from "@/lib/export-orders-csv";
-import { Download } from "lucide-react";
 
 export default function Orders() {
   const { user } = useAuth();
@@ -68,6 +67,8 @@ export default function Orders() {
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [billingUiTick, setBillingUiTick] = useState(0);
+  const safeNumber = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+  const safeText = (value: unknown): string => (typeof value === "string" ? value : String(value ?? ""));
 
   const detailOrder = useMemo(
     () => (selectedOrderId ? orders.find((o) => o.id === selectedOrderId) ?? null : null),
@@ -194,10 +195,12 @@ export default function Orders() {
   const tabCounts = useMemo(() => computeOrderTabCounts(orders), [orders]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = safeText(search).toLowerCase();
     return orders.filter((o) => {
       if (!matchesOrderTab(o, orderTab)) return false;
-      return (o.account?.toLowerCase() || "").includes(q) || (o.id?.toLowerCase() || "").includes(q);
+      const accountText = safeText(o.account).toLowerCase();
+      const idText = safeText(o.id).toLowerCase();
+      return accountText.includes(q) || idText.includes(q);
     });
   }, [search, orderTab, orders]);
 
@@ -372,9 +375,11 @@ export default function Orders() {
                         {o.id}
                       </button>
                       <span className="text-muted-foreground"> · </span>
-                      <span className="font-medium">{o.account}</span>
-                      <span className="text-muted-foreground"> · {o.market}</span>
-                      <span className="block text-xs text-muted-foreground">${o.price.toLocaleString()} · {o.quantity} bottles</span>
+                      <span className="font-medium">{o.account ?? "Unknown account"}</span>
+                      <span className="text-muted-foreground"> · {o.market ?? "—"}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        ${safeNumber(o.price).toLocaleString()} · {safeNumber(o.quantity)} bottles
+                      </span>
                     </div>
                     {canApproveDraftQueue ? (
                       <div className="flex shrink-0 flex-wrap gap-2">
@@ -412,20 +417,29 @@ export default function Orders() {
               </ul>
             </div>
           )}
-          <Tabs value={orderTab} onValueChange={(v) => setOrderTab(v as OrderTabId)} className="mb-4 w-full">
-            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/40 p-1">
-              {ORDER_TABS.map((t) => (
-                <TabsTrigger
+          <div role="tablist" aria-label="Order lifecycle" className="mb-4 flex h-auto w-full flex-wrap justify-start gap-1 rounded-lg bg-muted/40 p-1">
+            {ORDER_TABS.map((t) => {
+              const selected = orderTab === t.id;
+              return (
+                <button
                   key={t.id}
-                  value={t.id}
-                  className="touch-manipulation px-3 py-2 text-xs data-[state=active]:bg-background"
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  id={`orders-tab-${t.id}`}
+                  tabIndex={selected ? 0 : -1}
+                  className={cn(
+                    "touch-manipulation rounded-md px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    selected ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setOrderTab(t.id)}
                 >
                   {t.label}
                   <span className="ml-1.5 tabular-nums text-muted-foreground">({tabCounts[t.id]})</span>
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+                </button>
+              );
+            })}
+          </div>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative w-full sm:max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -469,12 +483,12 @@ export default function Orders() {
                         {order.id}
                       </button>
                     </td>
-                    <td className="py-3 font-medium">{order.account}</td>
-                    <td className="py-3">{order.market}</td>
-                    <td className="py-3 font-mono text-xs">{order.sku}</td>
-                    <td className="py-3">{order.quantity}</td>
-                    <td className="py-3">${order.price.toLocaleString()}</td>
-                    <td className="py-3">{order.salesRep}</td>
+                    <td className="py-3 font-medium">{order.account ?? "Unknown account"}</td>
+                    <td className="py-3">{order.market ?? "—"}</td>
+                    <td className="py-3 font-mono text-xs">{order.sku ?? "—"}</td>
+                    <td className="py-3">{safeNumber(order.quantity)}</td>
+                    <td className="py-3">${safeNumber(order.price).toLocaleString()}</td>
+                    <td className="py-3">{order.salesRep ?? "—"}</td>
                     <td className="py-3 max-w-[100px] truncate text-xs text-muted-foreground" title={order.orderRoutingTarget ?? ""}>
                       {order.orderRoutingTarget ? routingTargetLabel(order.orderRoutingTarget) : "—"}
                     </td>

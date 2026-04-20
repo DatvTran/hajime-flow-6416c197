@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { useAppData } from "@/contexts/AppDataContext";
+import { useAccounts, useInventory, useProducts, useSalesOrders } from "@/contexts/AppDataContext";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +66,7 @@ import {
   Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { SalesOrder } from "@/data/mockData";
 
 // Order routing pathways
 type OrderPathway = "direct_to_retail" | "via_distributor" | "via_manufacturer";
@@ -92,7 +93,10 @@ interface AccountOption {
 export default function NewWholesaleOrderPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { accounts, products, inventory, addSalesOrder } = useAppData();
+  const { accounts } = useAccounts();
+  const { products } = useProducts();
+  const { items: inventory } = useInventory();
+  const { addSalesOrder } = useSalesOrders();
   const { toast } = useToast();
 
   // Form state
@@ -116,7 +120,7 @@ export default function NewWholesaleOrderPage() {
   // Derived data
   const wholesaleAccounts = useMemo(() => {
     return (accounts || [])
-      .filter(a => a.deletedAt === null)
+      .filter(a => a.deletedAt == null)
       .map(a => ({
         id: a.id,
         name: a.name,
@@ -141,6 +145,9 @@ export default function NewWholesaleOrderPage() {
   }, [wholesaleAccounts, market]);
 
   // Customer accounts filtered by pathway and market
+  const selectedCustomer = wholesaleAccounts.find(a => a.id === customerId);
+  const selectedDistributor = wholesaleAccounts.find(a => a.id === distributorId);
+
   const eligibleCustomerAccounts = useMemo(() => {
     let eligible = wholesaleAccounts;
     
@@ -174,9 +181,6 @@ export default function NewWholesaleOrderPage() {
     return eligible;
   }, [wholesaleAccounts, orderPathway, distributorId, selectedDistributor, market]);
 
-  const selectedCustomer = wholesaleAccounts.find(a => a.id === customerId);
-  const selectedDistributor = wholesaleAccounts.find(a => a.id === distributorId);
-
   // Available markets from accounts for filtering
   const availableMarkets = useMemo(() => {
     const markets = new Set<string>();
@@ -189,14 +193,14 @@ export default function NewWholesaleOrderPage() {
 
   const availableProducts = useMemo(() => {
     return (products || [])
-      .filter(p => p.deletedAt === null)
+      .filter(p => p.deletedAt == null)
       .map(p => ({
         id: p.id,
         sku: p.sku,
         name: p.name,
         unitSize: p.unitSize || "750ml",
         wholesalePrice: p.metadata?.wholesalePrice || 24.99,
-        availableQty: inventory?.filter(i => i.productId === p.id && i.locationType === "distributor_warehouse")
+        availableQty: inventory?.filter(i => i.sku === p.sku && i.locationType === "distributor_warehouse")
           .reduce((sum, i) => sum + (i.availableQuantity || 0), 0) || 0,
       }));
   }, [products, inventory]);
@@ -268,29 +272,26 @@ export default function NewWholesaleOrderPage() {
     setIsSubmitting(true);
     
     try {
-      const order = {
+      const draftStatus: SalesOrder["status"] = initialStatus === "pending_review" ? "confirmed" : "draft";
+      const firstLine = orderLines.find((l) => l.productId);
+      const order: SalesOrder = {
+        id: `SO-${Date.now().toString(36).toUpperCase()}`,
         orderNumber: `SO-${Date.now().toString(36).toUpperCase()}`,
         accountId: customerId,
-        status: initialStatus,
-        orderDate: new Date(),
-        salesRep: user?.id,
+        account: selectedCustomer?.tradingName || selectedCustomer?.name || "Unknown account",
+        market: market || selectedCustomer?.market || "Unknown",
+        orderDate: new Date().toISOString().slice(0, 10),
+        requestedDelivery: new Date().toISOString().slice(0, 10),
+        sku: firstLine?.sku || "—",
+        quantity: orderTotals.totalBottles,
+        price: orderTotals.total,
+        salesRep: user?.displayName || "—",
+        status: draftStatus,
+        paymentStatus: "pending",
         subtotal: orderTotals.subtotal,
         taxAmount: orderTotals.taxAmount,
         totalAmount: orderTotals.total,
-        notes,
-        items: orderLines
-          .filter(l => l.productId)
-          .map(l => ({
-            productId: l.productId,
-            sku: l.sku,
-            productName: l.productName,
-            quantity: l.quantity,
-            unitPrice: l.unitPrice,
-          })),
-        routing: {
-          pathway: orderPathway,
-          distributorId: orderPathway === "via_distributor" ? distributorId : undefined,
-        },
+        orderNotes: notes,
       };
 
       await addSalesOrder(order);
