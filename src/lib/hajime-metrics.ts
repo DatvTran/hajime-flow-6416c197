@@ -431,8 +431,18 @@ export function countDelayedShipments(shipments: AppData["shipments"]) {
 export function cityKeyFromMarket(market: string): "Toronto" | "Milan" | "Paris" | null {
   if (!market) return null;
   const m = market.trim().toLowerCase();
-  if (m.includes("toronto") || m.includes("ontario")) return "Toronto";
-  if (m.includes("milan") || m.includes("milano")) return "Milan";
+  // Canada / Ontario corridor → Toronto anchor (LCBO, GTA, etc.)
+  if (
+    m.includes("toronto") ||
+    m.includes("ontario") ||
+    m.includes("gta") ||
+    m.includes("lcbo") ||
+    m.includes("ottawa") ||
+    m.includes("hamilton")
+  ) {
+    return "Toronto";
+  }
+  if (m.includes("milan") || m.includes("milano") || m.includes("lombard")) return "Milan";
   if (m.includes("paris") || m.includes("île-de-france") || m.includes("ile-de-france")) return "Paris";
   return null;
 }
@@ -465,7 +475,8 @@ export function computeAnchorMarketsSnapshot(
     if (!c) continue;
     map[c].revenue += o.price;
     map[c].orderCount += 1;
-    map[c].bottles += o.quantity;
+    const bt = orderLineEntries(o).reduce((a, l) => a + l.quantityBottles, o.quantity);
+    map[c].bottles += bt;
   }
   return keys.map((city) => ({ city, ...map[city] }));
 }

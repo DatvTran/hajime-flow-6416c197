@@ -348,14 +348,28 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
   }
 
   if (role === "distributor") {
-    if (pathMatches(p, "/settings") || pathMatches(p, "/manufacturer") || pathMatches(p, "/markets") || pathMatches(p, "/retail") || pathMatches(p, "/sales")) {
+    if (
+      pathMatches(p, "/settings") ||
+      pathMatches(p, "/manufacturer") ||
+      pathMatches(p, "/markets") ||
+      pathMatches(p, "/global-markets") ||
+      pathMatches(p, "/retail") ||
+      pathMatches(p, "/sales")
+    ) {
       return false;
     }
     return true;
   }
 
   if (role === "sales_rep" || role === "sales") {
-    if (pathMatches(p, "/settings") || pathMatches(p, "/manufacturer") || pathMatches(p, "/purchase-orders") || pathMatches(p, "/markets") || pathMatches(p, "/retail")) {
+    if (
+      pathMatches(p, "/settings") ||
+      pathMatches(p, "/manufacturer") ||
+      pathMatches(p, "/purchase-orders") ||
+      pathMatches(p, "/markets") ||
+      pathMatches(p, "/global-markets") ||
+      pathMatches(p, "/retail")
+    ) {
       return false;
     }
     return true;

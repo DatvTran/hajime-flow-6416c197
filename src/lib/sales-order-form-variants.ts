@@ -87,17 +87,19 @@ export function accountsForSalesOrderVariant(accounts: Account[], variant: NewSa
   return accounts;
 }
 
-export function mapRoleToSalesOrderFormVariant(
-  role: "brand_operator" | "distributor" | "manufacturer" | "sales_rep" | "retail",
-): NewSalesOrderFormVariant {
+export function mapRoleToSalesOrderFormVariant(role: string): NewSalesOrderFormVariant {
   switch (role) {
     case "brand_operator":
+    case "founder_admin":
+    case "operations":
+    case "finance":
       return "brand";
     case "distributor":
       return "distributor";
     case "manufacturer":
       return "manufacturer";
     case "sales_rep":
+    case "sales":
       return "sales_rep";
     default:
       return "brand";

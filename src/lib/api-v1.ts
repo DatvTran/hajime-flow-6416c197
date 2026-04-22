@@ -230,6 +230,62 @@ export function getOrders(params?: {
   return apiFetch(`/api/v1/orders?${query.toString()}`);
 }
 
+export interface PurchaseOrdersResponse {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export function getPurchaseOrders(params?: {
+  page?: number;
+  limit?: number;
+  status?: string;
+  manufacturer_id?: string;
+}): Promise<PurchaseOrdersResponse> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.status) query.set("status", params.status);
+  if (params?.manufacturer_id) query.set("manufacturer_id", params.manufacturer_id);
+
+  return apiFetch(`/api/v1/purchase-orders?${query.toString()}`);
+}
+
+export interface ShipmentsResponse {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export function getShipments(params?: {
+  page?: number;
+  limit?: number;
+  status?: string;
+  carrier?: string;
+  order_id?: string;
+  order_type?: string;
+}): Promise<ShipmentsResponse> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.status) query.set("status", params.status);
+  if (params?.carrier) query.set("carrier", params.carrier);
+  if (params?.order_id) query.set("order_id", params.order_id);
+  if (params?.order_type) query.set("order_type", params.order_type);
+
+  return apiFetch(`/api/v1/shipments?${query.toString()}`);
+}
+
 export function getOrder(id: string): Promise<{ data: Order }> {
   return apiFetch(`/api/v1/orders/${id}`);
 }

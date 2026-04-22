@@ -988,15 +988,14 @@ router.get('/depletion-reports', requirePermission(Permission.REPORTS_READ), asy
     const { page = 1, limit = 50, account_id, sku, flagged, start_date, end_date } = req.query;
     
     let query = db('depletion_reports')
-      .where({ tenant_id: tenantId })
-      .whereNull('deleted_at')
-      .orderBy('reported_at', 'desc');
+      .where('depletion_reports.tenant_id', tenantId)
+      .whereNull('depletion_reports.deleted_at');
     
-    if (account_id) query = query.where('account_id', account_id);
-    if (sku) query = query.where('sku', sku);
-    if (flagged === 'true') query = query.where('flagged_for_replenishment', true);
-    if (start_date) query = query.where('period_end', '>=', start_date);
-    if (end_date) query = query.where('period_start', '<=', end_date);
+    if (account_id) query = query.where('depletion_reports.account_id', account_id);
+    if (sku) query = query.where('depletion_reports.sku', sku);
+    if (flagged === 'true') query = query.where('depletion_reports.flagged_for_replenishment', true);
+    if (start_date) query = query.where('depletion_reports.period_end', '>=', start_date);
+    if (end_date) query = query.where('depletion_reports.period_start', '<=', end_date);
     
     const offset = (Number(page) - 1) * Number(limit);
     
@@ -1009,6 +1008,7 @@ router.get('/depletion-reports', requirePermission(Permission.REPORTS_READ), asy
         'accounts.trading_name as account_trading_name'
       )
       .leftJoin('accounts', 'depletion_reports.account_id', 'accounts.id')
+      .orderBy('depletion_reports.reported_at', 'desc')
       .limit(Number(limit))
       .offset(offset);
     

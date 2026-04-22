@@ -13,6 +13,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { InactivityWarningDialog } from "@/components/InactivityWarningDialog";
 import { useInactivityTimer } from "@/hooks/useInactivityTimer";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RouteErrorOutlet } from "@/components/RouteErrorOutlet";
 
 // Eagerly loaded (critical path)
 import Login from "./pages/Login";
@@ -30,6 +31,7 @@ const Reports = lazy(() => import("./pages/Reports"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
 const AlertsHubPage = lazy(() => import("./pages/AlertsHubPage"));
 const MarketsPage = lazy(() => import("./pages/MarketsPage"));
+const GlobalMarketsPage = lazy(() => import("./pages/GlobalMarketsPage"));
 
 // Manufacturer routes
 const ManufacturerMarketDemandPage = lazy(() => import("./pages/ManufacturerMarketDemandPage"));
@@ -117,13 +119,15 @@ const App = () => {
               <Routes>
               <Route path="/login" element={<Login />} />
               <Route element={<RequireAuth />}>
-                <Route element={<AppDataShell />}>
+                <Route element={<RouteErrorOutlet />}>
+                  <Route element={<AppDataShell />}>
                   <Route path="/" element={<RoleHomeEntry />} />
                   <Route path="/inventory" element={<Inventory />} />
                   <Route path="/orders" element={<Orders />} />
                   <Route path="/orders/new-wholesale" element={<NewWholesaleOrderPage />} />
                   <Route path="/accounts" element={<Accounts />} />
                   <Route path="/markets" element={<MarketsPage />} />
+                  <Route path="/global-markets" element={<GlobalMarketsPage />} />
                   <Route path="/shipments" element={<Shipments />} />
                   <Route path="/purchase-orders" element={<PurchaseOrders />} />
                   <Route path="/product-development" element={<ProductDevelopmentPage />} />
@@ -173,6 +177,7 @@ const App = () => {
                   <Route path="/retail/support" element={<RetailSupportPage />} />
                   <Route path="/retail/reorder" element={<RetailReorderPage />} />
                   <Route path="*" element={<NotFound />} />
+                  </Route>
                 </Route>
               </Route>
             </Routes>

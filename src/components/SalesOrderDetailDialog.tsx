@@ -47,7 +47,7 @@ type Props = {
   order: SalesOrder | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onPatch: (id: string, patch: Partial<SalesOrder>) => void;
+  onPatch: (id: string, patch: Partial<SalesOrder>) => void | Promise<void>;
   /** Used to detect retail-channel drafts for approval actions. */
   accounts?: Account[];
   onStripeBillingUpdated?: () => void;

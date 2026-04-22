@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { NewSalesOrderDialog } from "@/components/NewSalesOrderDialog";
 import { SalesOrderDetailDialog } from "@/components/SalesOrderDetailDialog";
+import type { SalesOrder } from "@/data/mockData";
 import { isRetailChannelOrder } from "@/lib/hajime-metrics";
 import { effectiveRepApprovalStatus, routingTargetLabel } from "@/lib/order-routing";
 import { useAccounts, useAppData, useFinancingLedger, useSalesOrders } from "@/contexts/AppDataContext";
@@ -16,8 +17,8 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Search, Download } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -30,18 +31,15 @@ import { downloadSalesOrdersCsv } from "@/lib/export-orders-csv";
 
 export default function Orders() {
   const { user } = useAuth();
-  const { salesOrders: ordersRaw, addSalesOrder, patchSalesOrder } = useSalesOrders();
+  const { salesOrders: orders, addSalesOrder, patchSalesOrder } = useSalesOrders();
   const { accounts } = useAccounts();
   const { appendEntry } = useFinancingLedger();
   const { updateData } = useAppData();
   
-  // Safety: ensure orders is always an array
-  const orders = ordersRaw ?? [];
-  
   // Only brand_operator can approve/reject draft orders (HQ allocation authority)
   const canApproveDraftQueue = user?.role === "brand_operator";
   
-  const newOrderVariant = useMemo(() => mapRoleToSalesOrderFormVariant(user?.role ?? "brand_operator"), [user?.role]);
+  const newOrderVariant = useMemo(() => mapRoleToSalesOrderFormVariant(user.role), [user.role]);
   const [searchParams, setSearchParams] = useSearchParams();
   const accountFromUrl = searchParams.get("account");
 
@@ -69,6 +67,8 @@ export default function Orders() {
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [billingUiTick, setBillingUiTick] = useState(0);
+  const safeNumber = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+  const safeText = (value: unknown): string => (typeof value === "string" ? value : String(value ?? ""));
 
   const detailOrder = useMemo(
     () => (selectedOrderId ? orders.find((o) => o.id === selectedOrderId) ?? null : null),
@@ -195,10 +195,12 @@ export default function Orders() {
   const tabCounts = useMemo(() => computeOrderTabCounts(orders), [orders]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = safeText(search).toLowerCase();
     return orders.filter((o) => {
       if (!matchesOrderTab(o, orderTab)) return false;
-      return (o.account?.toLowerCase() || "").includes(q) || (o.id?.toLowerCase() || "").includes(q);
+      const accountText = safeText(o.account).toLowerCase();
+      const idText = safeText(o.id).toLowerCase();
+      return accountText.includes(q) || idText.includes(q);
     });
   }, [search, orderTab, orders]);
 
@@ -213,17 +215,16 @@ export default function Orders() {
     );
   };
 
-  const handleCreateOrder = (order: typeof orders[number]) => {
+  const handleCreateOrder = (order: SalesOrder) => {
     addSalesOrder(order);
   };
 
-  const patchOrder = (id: string, patch: Partial<typeof orders[number]>) => {
+  const patchOrder = async (id: string, patch: Partial<SalesOrder>) => {
     const o = orders.find((x) => x.id === id);
     if (!o) {
-      patchSalesOrder(id, patch);
-      return;
+      return patchSalesOrder(id, patch);
     }
-    let merged: Partial<typeof orders[number]> = { ...patch };
+    let merged: Partial<SalesOrder> = { ...patch };
     if (patch.paymentStatus === "paid" && o.status === "draft" && isRetailChannelOrder(o, accounts)) {
       const rep = effectiveRepApprovalStatus(o, accounts);
       if (rep === "approved" || rep === "not_required") {
@@ -245,7 +246,7 @@ export default function Orders() {
       });
     }
 
-    const interim: typeof orders[number] = { ...o, ...merged };
+    const interim: SalesOrder = { ...o, ...merged };
     if (
       interim.paymentStatus === "paid" &&
       interim.status === "confirmed" &&
@@ -255,7 +256,7 @@ export default function Orders() {
       merged = { ...merged, wholesalerFulfillmentStatus: "pending_ack" };
     }
 
-    patchSalesOrder(id, merged);
+    const result = await patchSalesOrder(id, merged);
 
     // Auto-create shipment when order transitions to shipped
     if (merged.status === "shipped" && o.status !== "shipped") {
@@ -277,6 +278,8 @@ export default function Orders() {
         });
       }, 0);
     }
+
+    return result;
   };
 
   return (
@@ -284,13 +287,13 @@ export default function Orders() {
       <PageHeader
         title="Orders"
         description={
-          user?.role === "brand_operator"
+          user.role === "brand_operator"
             ? "Brand HQ — monitor every pathway (manufacturer, wholesaler, rep, retail) and all payment states in one list."
-            : user?.role === "distributor"
+            : user.role === "distributor"
               ? "Wholesaler — after retail pays, create delivery and process shipping (confirmed + paid orders)."
-              : user?.role === "manufacturer"
+              : user.role === "manufacturer"
                 ? "Sell-in visibility — mirror lines for planning alongside Production orders."
-                : user?.role === "sales_rep"
+                : user.role === "sales_rep"
                   ? "Approve retail drafts, then payment releases the order to the wholesaler for delivery."
                   : "Order lifecycle and fulfillment."
         }
@@ -373,9 +376,11 @@ export default function Orders() {
                         {o.id}
                       </button>
                       <span className="text-muted-foreground"> · </span>
-                      <span className="font-medium">{o.account}</span>
-                      <span className="text-muted-foreground"> · {o.market}</span>
-                      <span className="block text-xs text-muted-foreground">${o.price.toLocaleString()} · {o.quantity} bottles</span>
+                      <span className="font-medium">{o.account ?? "Unknown account"}</span>
+                      <span className="text-muted-foreground"> · {o.market ?? "—"}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        ${safeNumber(o.price).toLocaleString()} · {safeNumber(o.quantity)} bottles
+                      </span>
                     </div>
                     {canApproveDraftQueue ? (
                       <div className="flex shrink-0 flex-wrap gap-2">
@@ -383,10 +388,7 @@ export default function Orders() {
                           type="button"
                           size="sm"
                           className="touch-manipulation"
-                          onClick={() => {
-                            patchOrder(o.id, { status: "confirmed" });
-                            toast.success("Approved", { description: `${o.id} → confirmed` });
-                          }}
+                          onClick={() => void patchOrder(o.id, { status: "confirmed" })}
                         >
                           Approve
                         </Button>
@@ -395,10 +397,7 @@ export default function Orders() {
                           size="sm"
                           variant="outline"
                           className="touch-manipulation"
-                          onClick={() => {
-                            patchOrder(o.id, { status: "cancelled" });
-                            toast.info("Rejected", { description: `${o.id} → cancelled` });
-                          }}
+                          onClick={() => void patchOrder(o.id, { status: "cancelled" })}
                         >
                           Reject
                         </Button>
@@ -413,20 +412,29 @@ export default function Orders() {
               </ul>
             </div>
           )}
-          <Tabs value={orderTab} onValueChange={(v) => setOrderTab(v as OrderTabId)} className="mb-4 w-full">
-            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/40 p-1">
-              {ORDER_TABS.map((t) => (
-                <TabsTrigger
+          <div role="tablist" aria-label="Order lifecycle" className="mb-4 flex h-auto w-full flex-wrap justify-start gap-1 rounded-lg bg-muted/40 p-1">
+            {ORDER_TABS.map((t) => {
+              const selected = orderTab === t.id;
+              return (
+                <button
                   key={t.id}
-                  value={t.id}
-                  className="touch-manipulation px-3 py-2 text-xs data-[state=active]:bg-background"
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  id={`orders-tab-${t.id}`}
+                  tabIndex={selected ? 0 : -1}
+                  className={cn(
+                    "touch-manipulation rounded-md px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    selected ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setOrderTab(t.id)}
                 >
                   {t.label}
                   <span className="ml-1.5 tabular-nums text-muted-foreground">({tabCounts[t.id]})</span>
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+                </button>
+              );
+            })}
+          </div>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative w-full sm:max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -470,12 +478,12 @@ export default function Orders() {
                         {order.id}
                       </button>
                     </td>
-                    <td className="py-3 font-medium">{order.account}</td>
-                    <td className="py-3">{order.market}</td>
-                    <td className="py-3 font-mono text-xs">{order.sku}</td>
-                    <td className="py-3">{order.quantity}</td>
-                    <td className="py-3">${order.price.toLocaleString()}</td>
-                    <td className="py-3">{order.salesRep}</td>
+                    <td className="py-3 font-medium">{order.account ?? "Unknown account"}</td>
+                    <td className="py-3">{order.market ?? "—"}</td>
+                    <td className="py-3 font-mono text-xs">{order.sku ?? "—"}</td>
+                    <td className="py-3">{safeNumber(order.quantity)}</td>
+                    <td className="py-3">${safeNumber(order.price).toLocaleString()}</td>
+                    <td className="py-3">{order.salesRep ?? "—"}</td>
                     <td className="py-3 max-w-[100px] truncate text-xs text-muted-foreground" title={order.orderRoutingTarget ?? ""}>
                       {order.orderRoutingTarget ? routingTargetLabel(order.orderRoutingTarget) : "—"}
                     </td>
