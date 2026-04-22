@@ -325,9 +325,6 @@ export default function SalesTargetsPage() {
                   <p className="font-display text-2xl font-semibold tabular-nums">{performance.ytdOrders}</p>
                 </div>
               </div>
-                  <p className="text-2xl font-bold">{performance.ytdOrders}</p>
-                </div>
-              </div>
             </CardContent>
           </Card>
         </>
