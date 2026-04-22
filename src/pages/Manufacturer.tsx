@@ -219,9 +219,8 @@ export default function Manufacturer() {
       </div>
 
       {replenishmentSuggestions.length > 0 ? (
-        <div className="card-elevated mb-6">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
+        <Card className="card-elevated mb-6">
+          <CardHeader className="border-b border-border/50 p-5 pb-3">
             <CardTitle className="font-display text-sm font-medium">When wholesaler / DC stock is low</CardTitle>
             <p className="text-xs text-muted-foreground">
               HQ opens a production request — links pre-fill SKU and suggested bottle quantity from the same reorder model as the command center.
@@ -283,9 +282,8 @@ export default function Manufacturer() {
       </div>
 
       {user.role === "manufacturer" || user.role === "brand_operator" ? (
-        <div className="card-elevated mb-6">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3>
+        <Card className="card-elevated mb-6">
+          <CardHeader className="border-b border-border/50 p-5 pb-3">
             <CardTitle className="font-display text-base">Post production update</CardTitle>
             <p className="text-sm text-muted-foreground">Log stage changes for audit trail (brief §6, §8).</p>
           </CardHeader>
