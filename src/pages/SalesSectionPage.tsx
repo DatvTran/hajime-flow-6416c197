@@ -537,20 +537,18 @@ export default function SalesSectionPage() {
         description="Field visit log tied to accounts."
       />
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="font-display flex items-center gap-2 text-base">
-              <Users className="h-4 w-4" />
-              Recent Visits
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+      <div className="grid gap-4 lg:grid-cols-5">
+        <div className="card-elevated lg:col-span-3">
+          <div className="flex items-center gap-2 border-b border-border/50 p-5 pb-3">
+            <Users className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-base font-semibold">Recent Visits</h3>
+          </div>
+          <div className="p-5">
             {myVisitNotes.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12">
-                <Phone className="mb-4 h-12 w-12 text-muted-foreground" />
-                <p className="text-lg font-medium">No visit notes yet</p>
-                <p className="text-sm text-muted-foreground">
+              <div className="flex flex-col items-center gap-2 py-12 text-center">
+                <Phone className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                <p className="text-sm font-medium text-muted-foreground">No visit notes yet</p>
+                <p className="text-xs text-muted-foreground">
                   Visit notes from the Sales Rep Home page appear here.
                 </p>
               </div>
@@ -558,7 +556,7 @@ export default function SalesSectionPage() {
               <ScrollArea className="h-[400px]">
                 <div className="space-y-4">
                   {myVisitNotes.map((note) => (
-                    <div key={note.id} className="rounded-lg border p-4">
+                    <div key={note.id} className="rounded-lg border border-border/50 p-4">
                       <div className="mb-2 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{note.account}</span>
@@ -572,24 +570,22 @@ export default function SalesSectionPage() {
                 </div>
               </ScrollArea>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-display flex items-center gap-2 text-base">
-              <Calendar className="h-4 w-4" />
-              Quick Stats
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">Total Visits Logged</p>
-              <p className="font-display text-2xl font-bold">{myVisitNotes.length}</p>
+        <div className="card-elevated lg:col-span-2">
+          <div className="flex items-center gap-2 border-b border-border/50 p-5 pb-3">
+            <Calendar className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-base font-semibold">Quick Stats</h3>
+          </div>
+          <div className="space-y-4 p-5">
+            <div className="space-y-1">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Total Visits Logged</p>
+              <p className="font-display text-2xl font-semibold tabular-nums">{myVisitNotes.length}</p>
             </div>
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">This Week</p>
-              <p className="font-display text-2xl font-bold">
+            <div className="space-y-1">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">This Week</p>
+              <p className="font-display text-2xl font-semibold tabular-nums">
                 {
                   myVisitNotes.filter((n) => {
                     const noteDate = new Date(n.at);
@@ -600,14 +596,14 @@ export default function SalesSectionPage() {
                 }
               </p>
             </div>
-            <Button className="w-full" asChild>
+            <Button className="w-full touch-manipulation" asChild>
               <Link to="/sales">
                 <Plus className="mr-2 h-4 w-4" />
                 Log New Visit
               </Link>
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   );

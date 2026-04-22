@@ -624,17 +624,17 @@ export default function ManufacturerProfilePage() {
           </CardHeader>
           <CardContent>
             {formData.certifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-8">
-                <Award className="mb-2 h-8 w-8 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">No certifications added yet.</p>
+              <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-8 text-center">
+                <Award className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                <p className="text-sm text-muted-foreground">No certifications added yet</p>
                 <p className="text-xs text-muted-foreground">
                   Add organic, quality, safety, and export certifications.
                 </p>
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {formData.certifications.map((cert) => (
-                  <div key={cert.id} className="rounded-lg border p-4">
+                  <div key={cert.id} className="card-interactive p-4">
                     {isEditing ? (
                       <div className="space-y-2">
                         <Input

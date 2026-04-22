@@ -31,7 +31,6 @@ import {
   Scale,
   Store,
 } from "lucide-react";
-import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
   SidebarContent,
@@ -48,6 +47,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { HajimeLogo } from "@/components/HajimeLogo";
 import { useAuth, type HajimeRole } from "@/contexts/AuthContext";
+import { useNavigate, useLocation } from "react-router-dom";
 
 export type NavItem = { title: string; url: string; icon: LucideIcon };
 
@@ -274,6 +274,8 @@ function NavSection({
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
+  const navigate = useNavigate();
+  const location = useLocation();
   if (items.length === 0) return null;
   return (
     <SidebarGroup className={cn(collapsed && "px-0")}>
@@ -282,25 +284,35 @@ function NavSection({
       )}
       <SidebarGroupContent>
         <SidebarMenu className={cn(collapsed && "items-center")}>
-          {items.map((item) => (
-            <SidebarMenuItem key={item.title + item.url} className={cn(collapsed && "flex w-full justify-center")}>
-              <SidebarMenuButton asChild>
-                <NavLink
-                  to={item.url}
-                  end={item.url === "/" || item.url === "/manufacturer" || item.url === "/distributor" || item.url === "/sales"}
-                  onClick={onNavigate}
-                  className={cn(
-                    "flex items-center rounded-md text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    collapsed ? "size-8 shrink-0 justify-center gap-0 p-0" : "min-h-10 gap-3 px-3 py-2",
-                  )}
-                  activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
+          {items.map((item) => {
+            const isActive =
+              item.url === "/"
+                ? location.pathname === "/"
+                : location.pathname === item.url || location.pathname.startsWith(item.url + "/");
+            return (
+              <SidebarMenuItem key={item.title + item.url} className={cn(collapsed && "flex w-full justify-center")}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isActive}
                 >
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  {!collapsed && <span className="leading-snug">{item.title}</span>}
-                </NavLink>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
+                  <button
+                    onClick={() => {
+                      navigate(item.url);
+                      onNavigate?.();
+                    }}
+                    className={cn(
+                      "flex items-center rounded-md text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground w-full text-left",
+                      collapsed ? "size-8 shrink-0 justify-center gap-0 p-0" : "min-h-10 gap-3 px-3 py-2",
+                      isActive && "bg-sidebar-accent text-sidebar-primary font-medium",
+                    )}
+                  >
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    {!collapsed && <span className="leading-snug">{item.title}</span>}
+                  </button>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>

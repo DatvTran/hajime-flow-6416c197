@@ -226,9 +226,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    // Clear all storage
     storeTokens(null);
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Clear any cookies
+    document.cookie.split(";").forEach((cookie) => {
+      const [name] = cookie.split("=");
+      document.cookie = `${name.trim()}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+    });
+
     setUser(null);
     setError(null);
+    
+    // Hard redirect to login (no history preservation)
+    window.location.href = "/login";
   }, []);
 
   const clearError = useCallback(() => {

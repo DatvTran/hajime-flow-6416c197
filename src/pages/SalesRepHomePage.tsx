@@ -371,17 +371,18 @@ export default function SalesRepHomePage() {
         description="Bridge visits, notes, and draft orders — the same order objects HQ approves and distributors fulfill."
       />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="border-border/70">
-          <CardHeader className="pb-2">
-            <CardTitle className="font-display flex items-center gap-2 text-base">
-              <Users className="h-4 w-4" />
-              My accounts
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+      <div className="grid gap-4 lg:grid-cols-5">
+        <div className="card-elevated lg:col-span-2">
+          <div className="flex items-center gap-2 border-b border-border/50 p-4 pb-2">
+            <Users className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-base font-semibold">My accounts</h3>
+          </div>
+          <div className="space-y-2 p-4 pt-2 text-sm">
             {myAccounts.length === 0 ? (
-              <p className="text-muted-foreground">No accounts assigned to {rep} in seed data.</p>
+              <div className="flex flex-col items-center gap-2 py-6 text-center">
+                <Users className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                <p className="text-sm text-muted-foreground">No accounts assigned to {rep}</p>
+              </div>
             ) : (
               myAccounts.slice(0, 6).map((a) => (
                 <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg border border-border/50 px-2 py-1.5">
@@ -393,19 +394,27 @@ export default function SalesRepHomePage() {
             <Button variant="link" className="h-auto px-0 text-xs" asChild>
               <Link to="/sales/accounts">Full directory</Link>
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="border-border/70">
-          <CardHeader className="pb-2">
+        <div className="card-elevated border-border/70">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
             <CardTitle className="font-display flex items-center gap-2 text-base">
               <Target className="h-4 w-4" />
               Accounts needing reorder
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+        <div className="card-elevated lg:col-span-1">
+          <div className="flex items-center gap-2 border-b border-border/50 p-4 pb-2">
+            <Target className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-base font-semibold">Need reorder</h3>
+          </div>
+          <div className="space-y-2 p-4 pt-2 text-sm">
             {needsReorder.length === 0 ? (
-              <p className="text-muted-foreground">No accounts flagged on 40d quiet rule.</p>
+              <div className="flex flex-col items-center gap-2 py-6 text-center">
+                <CheckCircle2 className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                <p className="text-sm text-muted-foreground">No accounts flagged</p>
+                <p className="text-[11px] text-muted-foreground/60">40-day quiet rule — all accounts active</p>
+              </div>
             ) : (
               needsReorder.slice(0, 5).map((a) => (
                 <div key={a.id} className="rounded-lg border border-border/50 px-2 py-1.5">
@@ -417,17 +426,15 @@ export default function SalesRepHomePage() {
                 </div>
               ))
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="border-border/70">
-          <CardHeader className="pb-2">
-            <CardTitle className="font-display flex items-center gap-2 text-base">
-              <FileEdit className="h-4 w-4" />
-              Draft orders
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+        <div className="card-elevated lg:col-span-2">
+          <div className="flex items-center gap-2 border-b border-border/50 p-4 pb-2">
+            <FileEdit className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-base font-semibold">Draft orders</h3>
+          </div>
+          <div className="space-y-2 p-4 pt-2 text-sm">
             <p className="font-display text-2xl font-semibold">{myDrafts.length}</p>
             <p className="text-xs text-muted-foreground">Awaiting customer or HQ confirmation</p>
             {myDrafts.slice(0, 4).map((o) => (
@@ -443,8 +450,8 @@ export default function SalesRepHomePage() {
                 <Link to="/sales/orders?new=1">New draft</Link>
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {/* NEW: Pending Orders with Inventory Widget */}
@@ -538,8 +545,9 @@ export default function SalesRepHomePage() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="border-border/70">
-          <CardHeader className="pb-2">
+        <div className="card-elevated border-border/70">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="font-display flex items-center gap-2 text-base">
                 <Calendar className="h-4 w-4" />
@@ -661,8 +669,9 @@ export default function SalesRepHomePage() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70">
-          <CardHeader className="pb-2">
+        <div className="card-elevated border-border/70">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
             <CardTitle className="font-display flex items-center gap-2 text-base">
               <StickyNote className="h-4 w-4" />
               Visit notes
@@ -703,8 +712,9 @@ export default function SalesRepHomePage() {
         </Card>
       </div>
 
-      <Card className="border-border/70">
-        <CardHeader className="pb-2">
+      <div className="card-elevated border-border/70">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
           <CardTitle className="font-display flex items-center gap-2 text-base">
             <Sparkles className="h-4 w-4" />
             Opportunities
@@ -720,8 +730,9 @@ export default function SalesRepHomePage() {
         </CardContent>
       </Card>
 
-      <Card className="border-border/70">
-        <CardHeader className="pb-2">
+      <div className="card-elevated border-border/70">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
           <CardTitle className="font-display flex items-center gap-2 text-base">
             <Gift className="h-4 w-4" />
             Partner Incentives

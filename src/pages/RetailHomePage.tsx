@@ -5,7 +5,6 @@ import { useRetailAccountTradingName } from "@/contexts/AuthContext";
 import { orderLineEntries, retailOrderDisplayId } from "@/lib/order-lines";
 import { RetailStatusChip, retailBucketFromStatus } from "@/components/retail/RetailStatusChip";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { ArrowRight, Headphones, Package, Sparkles } from "lucide-react";
 import type { Product, SalesOrder } from "@/data/mockData";
 
@@ -98,7 +97,7 @@ export default function RetailHomePage() {
       {featured ? (
         <section>
           <div className="mb-3 flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-amber-600" />
+            <Sparkles className="h-4 w-4 text-accent" strokeWidth={1.5} />
             <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-muted-foreground">Featured</h2>
           </div>
           <Link
@@ -134,7 +133,13 @@ export default function RetailHomePage() {
         </div>
         <div className="space-y-2">
           {recent.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No orders yet — start with a quick order.</p>
+            <div className="flex flex-col items-center gap-2 py-8 text-center">
+              <Package className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+              <p className="text-sm text-muted-foreground">No orders yet</p>
+              <Button variant="link" className="h-auto px-0 text-xs" asChild>
+                <Link to="/retail/new-order">Start with a quick order</Link>
+              </Button>
+            </div>
           ) : (
             recent.map((o) => (
               <Link
@@ -153,7 +158,7 @@ export default function RetailHomePage() {
 
       <section className="rounded-2xl border border-dashed border-border bg-muted/30 p-5">
         <div className="flex items-start gap-3">
-          <Headphones className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+          <Headphones className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
           <div>
             <p className="font-medium">Support</p>
             <p className="mt-1 text-sm text-muted-foreground">Questions on delivery or invoicing? Your Hajime rep will confirm every request.</p>
@@ -164,7 +169,7 @@ export default function RetailHomePage() {
         </div>
       </section>
 
-      <p className="text-center text-xs text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         {pendingPipeline > 0
           ? `${pendingPipeline} open order${pendingPipeline !== 1 ? "s" : ""} in progress.`
           : "You’re all caught up on shipments."}
@@ -176,19 +181,17 @@ export default function RetailHomePage() {
 function MetricCard({ title, value, hint, to }: { title: string; value?: string; hint: string; to: string }) {
   return (
     <Link to={to} className="group no-underline">
-      <Card className="h-full transition-shadow hover:shadow-md">
-        <CardContent className="flex h-full flex-col justify-between p-4">
-          <div className="flex items-start justify-between gap-2">
-            <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-          </div>
-          <div className="mt-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</p>
-            <p className="mt-1 font-display text-2xl font-semibold tabular-nums">{value ?? "Shop"}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="card-interactive h-full flex flex-col justify-between p-4">
+        <div className="flex items-start justify-between gap-2">
+          <Package className="h-4 w-4 shrink-0 text-accent" strokeWidth={1.5} />
+          <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+        </div>
+        <div className="mt-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{title}</p>
+          <p className="mt-1 font-display text-2xl font-semibold tabular-nums">{value ?? "Shop"}</p>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">{hint}</p>
+        </div>
+      </div>
     </Link>
   );
 }

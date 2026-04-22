@@ -47,85 +47,76 @@ export default function DistributorHomePage() {
         description="Execution-first: pick, pack, ship, and clear backorders — same inventory and orders as HQ."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
-            <Warehouse className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="font-display text-sm font-medium">Warehouse inventory</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-display text-2xl font-semibold tabular-nums">{inv.available.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground">available bottles</p>
-            <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-              <Link to="/distributor/inventory">Stock positions</Link>
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
-            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="font-display text-sm font-medium">Awaiting fulfillment</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-display text-2xl font-semibold tabular-nums">{awaitingFulfillment.length}</p>
-            <p className="text-xs text-muted-foreground">approved / ready to pick</p>
-            <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-              <Link to="/distributor/orders?tab=approved">Open queue</Link>
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
-            <Truck className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="font-display text-sm font-medium">In motion</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-display text-2xl font-semibold tabular-nums">{activeShipments.length}</p>
-            <p className="text-xs text-muted-foreground">active shipments</p>
-            <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-              <Link to="/distributor/orders?tab=distributor">Distributor processing</Link>
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
-            <Users className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="font-display text-sm font-medium">Retail accounts</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-display text-2xl font-semibold tabular-nums">{retailAccounts.length}</p>
-            <p className="text-xs text-muted-foreground">active (non-distributor)</p>
-            <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-              <Link to="/distributor/accounts">Directory</Link>
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
-            <TrendingDown className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="font-display text-sm font-medium">Depletion reports</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-display text-2xl font-semibold tabular-nums">{depletionFlags}</p>
-            <p className="text-xs text-muted-foreground">flagged for replenishment</p>
-            <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-              <Link to="/distributor/depletions">Report sell-through</Link>
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="card-interactive p-4">
+          <div className="flex items-center gap-2">
+            <Warehouse className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Warehouse inventory</p>
+          </div>
+          <p className="mt-2 font-display text-2xl font-semibold tabular-nums">{inv.available.toLocaleString()}</p>
+          <p className="text-[10px] text-muted-foreground">available bottles</p>
+          <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
+            <Link to="/distributor/inventory">Stock positions</Link>
+          </Button>
+        </div>
+        <div className="card-interactive p-4">
+          <div className="flex items-center gap-2">
+            <ShoppingCart className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Awaiting fulfillment</p>
+          </div>
+          <p className="mt-2 font-display text-2xl font-semibold tabular-nums">{awaitingFulfillment.length}</p>
+          <p className="text-[10px] text-muted-foreground">approved / ready to pick</p>
+          <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
+            <Link to="/distributor/orders?tab=approved">Open queue</Link>
+          </Button>
+        </div>
+        <div className="card-interactive p-4">
+          <div className="flex items-center gap-2">
+            <Truck className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">In motion</p>
+          </div>
+          <p className="mt-2 font-display text-2xl font-semibold tabular-nums">{activeShipments.length}</p>
+          <p className="text-[10px] text-muted-foreground">active shipments</p>
+          <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
+            <Link to="/distributor/orders?tab=distributor">Distributor processing</Link>
+          </Button>
+        </div>
+        <div className="card-interactive p-4">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Retail accounts</p>
+          </div>
+          <p className="mt-2 font-display text-2xl font-semibold tabular-nums">{retailAccounts.length}</p>
+          <p className="text-[10px] text-muted-foreground">active (non-distributor)</p>
+          <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
+            <Link to="/distributor/accounts">Directory</Link>
+          </Button>
+        </div>
+        <div className="card-interactive p-4">
+          <div className="flex items-center gap-2">
+            <TrendingDown className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Depletion reports</p>
+          </div>
+          <p className="mt-2 font-display text-2xl font-semibold tabular-nums">{depletionFlags}</p>
+          <p className="text-[10px] text-muted-foreground">flagged for replenishment</p>
+          <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
+            <Link to="/distributor/depletions">Report sell-through</Link>
+          </Button>
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-display flex items-center gap-2 text-lg">
-              <Package className="h-5 w-5" />
-              Orders awaiting fulfillment
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="card-elevated">
+          <div className="flex items-center gap-2 border-b border-border/50 p-5 pb-3">
+            <Package className="h-5 w-5 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-lg font-semibold">Orders awaiting fulfillment</h3>
+          </div>
+          <div className="space-y-2 p-5 pt-3 text-sm">
             {awaitingFulfillment.length === 0 ? (
-              <p className="text-muted-foreground">No orders in pick/pack stage.</p>
+              <div className="flex flex-col items-center gap-2 py-6 text-center">
+                <Package className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                <p className="text-sm text-muted-foreground">No orders in pick/pack stage</p>
+              </div>
             ) : (
               awaitingFulfillment.map((o) => (
                 <div
@@ -141,18 +132,15 @@ export default function DistributorHomePage() {
                 </div>
               ))
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-display flex items-center gap-2 text-lg">
-              <Calendar className="h-5 w-5" />
-              Delivery schedule
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">Outbound and inbound ETAs from shared shipment records.</p>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+        <div className="card-elevated">
+          <div className="flex items-center gap-2 border-b border-border/50 p-5 pb-3">
+            <Calendar className="h-5 w-5 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-lg font-semibold">Delivery schedule</h3>
+          </div>
+          <div className="space-y-2 p-5 pt-3 text-sm">
             {activeShipments.slice(0, 6).map((s) => (
               <div key={s.id} className="rounded-lg border border-border/50 px-3 py-2">
                 <div className="flex items-center justify-between gap-2">
@@ -167,23 +155,24 @@ export default function DistributorHomePage() {
             <Button variant="link" className="h-auto px-0 text-xs" asChild>
               <Link to="/distributor/shipments">Full tracker</Link>
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="font-display flex items-center gap-2 text-lg">
-              <AlertTriangle className="h-5 w-5" />
-              Backorder & risk alerts
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="card-elevated lg:col-span-2">
+          <div className="flex items-center gap-2 border-b border-border/50 p-5 pb-3">
+            <AlertTriangle className="h-5 w-5 text-destructive" strokeWidth={1.5} />
+            <h3 className="font-display text-lg font-semibold">Backorder & risk alerts</h3>
+          </div>
+          <div className="flex flex-col gap-3 p-5 pt-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2 text-sm">
               {alerts.length === 0 ? (
-                <p className="text-muted-foreground">No alerts.</p>
+                <div className="flex flex-col items-center gap-2 py-6 text-center">
+                  <AlertTriangle className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                  <p className="text-sm text-muted-foreground">No alerts</p>
+                </div>
               ) : (
                 alerts.map((a) => (
-                  <div key={a.id} className="rounded-lg border px-3 py-2">
+                  <div key={a.id} className="rounded-lg border border-border/50 px-3 py-2">
                     {a.message}
                   </div>
                 ))
@@ -192,8 +181,8 @@ export default function DistributorHomePage() {
             <Button variant="secondary" size="sm" className="shrink-0 touch-manipulation" asChild>
               <Link to="/distributor/backorders">Backorder desk</Link>
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   );

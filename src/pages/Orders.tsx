@@ -2,7 +2,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { NewSalesOrderDialog } from "@/components/NewSalesOrderDialog";
 import { SalesOrderDetailDialog } from "@/components/SalesOrderDetailDialog";
-import type { SalesOrder } from "@/data/mockData";
 import { isRetailChannelOrder } from "@/lib/hajime-metrics";
 import { effectiveRepApprovalStatus, routingTargetLabel } from "@/lib/order-routing";
 import { useAccounts, useAppData, useFinancingLedger, useSalesOrders } from "@/contexts/AppDataContext";
@@ -28,19 +27,21 @@ import { apiListCardLast4s, apiVerifyCheckoutSession } from "@/lib/stripe-api";
 import { setStoredCardLast4, setStoredCustomerId } from "@/lib/stripe-local";
 import { buildOutboundShipmentForOrder } from "@/lib/order-shipment";
 import { downloadSalesOrdersCsv } from "@/lib/export-orders-csv";
-import { Download } from "lucide-react";
 
 export default function Orders() {
   const { user } = useAuth();
-  const { salesOrders: orders, addSalesOrder, patchSalesOrder } = useSalesOrders();
+  const { salesOrders: ordersRaw, addSalesOrder, patchSalesOrder } = useSalesOrders();
   const { accounts } = useAccounts();
   const { appendEntry } = useFinancingLedger();
   const { updateData } = useAppData();
   
+  // Safety: ensure orders is always an array
+  const orders = ordersRaw ?? [];
+  
   // Only brand_operator can approve/reject draft orders (HQ allocation authority)
   const canApproveDraftQueue = user?.role === "brand_operator";
   
-  const newOrderVariant = useMemo(() => mapRoleToSalesOrderFormVariant(user.role), [user.role]);
+  const newOrderVariant = useMemo(() => mapRoleToSalesOrderFormVariant(user?.role ?? "brand_operator"), [user?.role]);
   const [searchParams, setSearchParams] = useSearchParams();
   const accountFromUrl = searchParams.get("account");
 
@@ -212,17 +213,17 @@ export default function Orders() {
     );
   };
 
-  const handleCreateOrder = (order: SalesOrder) => {
+  const handleCreateOrder = (order: typeof orders[number]) => {
     addSalesOrder(order);
   };
 
-  const patchOrder = (id: string, patch: Partial<SalesOrder>) => {
+  const patchOrder = (id: string, patch: Partial<typeof orders[number]>) => {
     const o = orders.find((x) => x.id === id);
     if (!o) {
       patchSalesOrder(id, patch);
       return;
     }
-    let merged: Partial<SalesOrder> = { ...patch };
+    let merged: Partial<typeof orders[number]> = { ...patch };
     if (patch.paymentStatus === "paid" && o.status === "draft" && isRetailChannelOrder(o, accounts)) {
       const rep = effectiveRepApprovalStatus(o, accounts);
       if (rep === "approved" || rep === "not_required") {
@@ -244,7 +245,7 @@ export default function Orders() {
       });
     }
 
-    const interim: SalesOrder = { ...o, ...merged };
+    const interim: typeof orders[number] = { ...o, ...merged };
     if (
       interim.paymentStatus === "paid" &&
       interim.status === "confirmed" &&
@@ -283,13 +284,13 @@ export default function Orders() {
       <PageHeader
         title="Orders"
         description={
-          user.role === "brand_operator"
+          user?.role === "brand_operator"
             ? "Brand HQ — monitor every pathway (manufacturer, wholesaler, rep, retail) and all payment states in one list."
-            : user.role === "distributor"
+            : user?.role === "distributor"
               ? "Wholesaler — after retail pays, create delivery and process shipping (confirmed + paid orders)."
-              : user.role === "manufacturer"
+              : user?.role === "manufacturer"
                 ? "Sell-in visibility — mirror lines for planning alongside Production orders."
-                : user.role === "sales_rep"
+                : user?.role === "sales_rep"
                   ? "Approve retail drafts, then payment releases the order to the wholesaler for delivery."
                   : "Order lifecycle and fulfillment."
         }

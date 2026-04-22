@@ -89,17 +89,19 @@ export default function Manufacturer() {
         description="Fulfillment view for open production requests raised by Hajime HQ — batch schedule, inbound shipment queue, demand by market, and alerts. Logistics can record carrier and ETA on Shipments."
       />
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="font-display flex items-center gap-2 text-sm font-medium">
-              <Factory className="h-4 w-4" />
-              Active production requests
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs">
+      <div className="mb-6 grid gap-4 lg:grid-cols-5">
+        {/* Active POs — featured, spans 2 */}
+        <div className="card-elevated lg:col-span-2">
+          <div className="flex items-center gap-2 border-b border-border/50 p-4 pb-2">
+            <Factory className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-sm font-semibold">Active production requests</h3>
+          </div>
+          <div className="space-y-2 p-4 pt-2 text-xs">
             {activePOs.length === 0 ? (
-              <p className="text-muted-foreground">No active POs.</p>
+              <div className="flex flex-col items-center gap-2 py-6 text-center">
+                <CheckCircle className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                <p className="text-sm text-muted-foreground">No active POs</p>
+              </div>
             ) : (
               activePOs.slice(0, 5).map((po) => (
                 <div key={po.id} className="flex justify-between gap-2 border-b border-border/40 py-1.5 last:border-0">
@@ -113,36 +115,37 @@ export default function Manufacturer() {
             <Button variant="link" className="h-auto px-0 text-xs" asChild>
               <Link to="/manufacturer/purchase-orders">All requests</Link>
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="font-display flex items-center gap-2 text-sm font-medium">
-              <Clock className="h-4 w-4" />
-              Scheduled batches
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs">
+        {/* Scheduled batches */}
+        <div className="card-elevated lg:col-span-1">
+          <div className="flex items-center gap-2 border-b border-border/50 p-4 pb-2">
+            <Clock className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-sm font-semibold">Scheduled batches</h3>
+          </div>
+          <div className="space-y-2 p-4 pt-2 text-xs">
             {activePOs.slice(0, 6).map((po) => (
               <div key={po.id} className="flex justify-between gap-2 border-b border-border/40 py-1.5 last:border-0">
                 <span className="min-w-0 truncate font-mono">{po.id}</span>
                 <span className="shrink-0 text-muted-foreground">Req {po.requiredDate}</span>
               </div>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="font-display flex items-center gap-2 text-sm font-medium">
-              <Truck className="h-4 w-4" />
-              Shipment queue (inbound)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs">
+        {/* Shipment queue — spans 2 */}
+        <div className="card-elevated lg:col-span-2">
+          <div className="flex items-center gap-2 border-b border-border/50 p-4 pb-2">
+            <Truck className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-sm font-semibold">Shipment queue (inbound)</h3>
+          </div>
+          <div className="space-y-2 p-4 pt-2 text-xs">
             {inboundQueue.length === 0 ? (
-              <p className="text-muted-foreground">No open inbound shipments.</p>
+              <div className="flex flex-col items-center gap-2 py-6 text-center">
+                <Truck className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                <p className="text-sm text-muted-foreground">No open inbound shipments</p>
+              </div>
             ) : (
               inboundQueue.map((s) => (
                 <div key={s.id} className="border-b border-border/40 py-1.5 last:border-0">
@@ -156,48 +159,51 @@ export default function Manufacturer() {
             <Button variant="link" className="h-auto px-0 text-xs" asChild>
               <Link to="/manufacturer/shipments">Shipments</Link>
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="font-display flex items-center gap-2 text-sm font-medium">
-              <Globe className="h-4 w-4" />
-              Requested by market
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs">
+        {/* Requested by market */}
+        <div className="card-elevated lg:col-span-2">
+          <div className="flex items-center gap-2 border-b border-border/50 p-4 pb-2">
+            <Globe className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-sm font-semibold">Requested by market</h3>
+          </div>
+          <div className="space-y-2 p-4 pt-2 text-xs">
             {requestedByMarket.map((r) => (
               <div key={r.market} className="flex justify-between gap-2 border-b border-border/40 py-1.5 last:border-0">
                 <span>{r.market}</span>
                 <span className="tabular-nums text-muted-foreground">{r.bottles.toLocaleString()} btl</span>
               </div>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="font-display text-sm font-medium">Lead times</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
+        {/* Lead times */}
+        <div className="card-elevated lg:col-span-1">
+          <div className="flex items-center gap-2 border-b border-border/50 p-4 pb-2">
+            <Clock className="h-4 w-4 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-sm font-semibold">Lead times</h3>
+          </div>
+          <div className="p-4 pt-2 text-sm text-muted-foreground">
             <p>
               Planning lead time: <span className="font-semibold text-foreground">{leadDays} days</span> (HQ settings).
             </p>
             <p className="mt-2 text-xs">Use with open PO required dates to prioritize batches and materials.</p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="font-display flex items-center gap-2 text-sm font-medium">
-              <AlertTriangle className="h-4 w-4" />
-              Alerts
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs">
+        {/* Alerts */}
+        <div className="card-elevated lg:col-span-2">
+          <div className="flex items-center gap-2 border-b border-border/50 p-4 pb-2">
+            <AlertTriangle className="h-4 w-4 text-destructive" strokeWidth={1.5} />
+            <h3 className="font-display text-sm font-semibold">Alerts</h3>
+          </div>
+          <div className="space-y-2 p-4 pt-2 text-xs">
             {mfgAlerts.length === 0 ? (
-              <p className="text-muted-foreground">No operational alerts.</p>
+              <div className="flex flex-col items-center gap-2 py-6 text-center">
+                <CheckCircle className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                <p className="text-sm text-muted-foreground">No operational alerts</p>
+              </div>
             ) : (
               mfgAlerts.map((a) => (
                 <div key={a.id} className="rounded-md border border-border/50 px-2 py-1.5">
@@ -208,13 +214,14 @@ export default function Manufacturer() {
             <Button variant="link" className="h-auto px-0 text-xs" asChild>
               <Link to="/manufacturer/alerts">Alerts hub</Link>
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {replenishmentSuggestions.length > 0 ? (
-        <Card className="mb-6">
-          <CardHeader className="pb-2">
+        <div className="card-elevated mb-6">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
             <CardTitle className="font-display text-sm font-medium">When wholesaler / DC stock is low</CardTitle>
             <p className="text-xs text-muted-foreground">
               HQ opens a production request — links pre-fill SKU and suggested bottle quantity from the same reorder model as the command center.
@@ -276,8 +283,9 @@ export default function Manufacturer() {
       </div>
 
       {user.role === "manufacturer" || user.role === "brand_operator" ? (
-        <Card className="mb-6">
-          <CardHeader>
+        <div className="card-elevated mb-6">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3>
             <CardTitle className="font-display text-base">Post production update</CardTitle>
             <p className="text-sm text-muted-foreground">Log stage changes for audit trail (brief §6, §8).</p>
           </CardHeader>

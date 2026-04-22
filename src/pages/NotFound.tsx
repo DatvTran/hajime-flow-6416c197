@@ -1,9 +1,8 @@
 import { useLocation, Link } from "react-router-dom";
 import { useEffect } from "react";
 import { PageHeader } from "@/components/PageHeader";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Home, AlertCircle } from "lucide-react";
+import { Home, Compass, ArrowLeft } from "lucide-react";
 
 const NotFound = () => {
   const location = useLocation();
@@ -15,32 +14,36 @@ const NotFound = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Page Not Found"
-        description="The page you're looking for doesn't exist or has been moved."
+        title="Page not found"
+        description="That path doesn't exist in the Hajime portal."
       />
 
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-muted">
-            <AlertCircle className="h-10 w-10 text-muted-foreground" />
-          </div>
+      <div className="card-elevated flex flex-col items-center justify-center py-20 text-center">
+        <div className="mb-8 flex h-24 w-24 items-center justify-center rounded-2xl bg-accent/10">
+          <Compass className="h-12 w-12 text-accent/70" strokeWidth={1} />
+        </div>
 
-          <h1 className="font-display text-6xl font-semibold tracking-tight">404</h1>
-          <p className="mt-2 text-lg text-muted-foreground">
-            Oops! Page not found
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Path: <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{location.pathname}</code>
-          </p>
+        <h2 className="font-display text-7xl font-semibold tracking-tight text-foreground">404</h2>
+        <p className="mt-3 text-lg text-muted-foreground max-w-md">
+          The page you're looking for doesn't exist or has been moved.
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground/60 font-mono">
+          {location.pathname}
+        </p>
 
-          <Button className="mt-8" asChild>
+        <div className="mt-10 flex flex-col gap-2 sm:flex-row">
+          <Button className="h-11 touch-manipulation" asChild>
             <Link to="/">
-              <Home className="mr-2 h-4 w-4" />
-              Return to Home
+              <Home className="mr-2 h-4 w-4" strokeWidth={1.5} />
+              Return home
             </Link>
           </Button>
-        </CardContent>
-      </Card>
+          <Button variant="ghost" className="h-11 touch-manipulation" onClick={() => window.history.back()}>
+            <ArrowLeft className="mr-2 h-4 w-4" strokeWidth={1.5} />
+            Go back
+          </Button>
+        </div>
+      </div>
     </div>
   );
 };

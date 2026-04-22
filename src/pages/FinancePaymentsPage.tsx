@@ -95,31 +95,19 @@ export default function FinancePaymentsPage() {
       />
 
       {user.role === "brand_operator" ? (
-        <div className="mb-6 grid gap-4 sm:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Retail → wholesaler (captured)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="font-display text-2xl font-semibold tabular-nums">${totalRetailToWh.toLocaleString()} CAD</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Wholesaler → manufacturer</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="font-display text-2xl font-semibold tabular-nums">${totalWhToMfg.toLocaleString()} CAD</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Ledger lines</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="font-display text-2xl font-semibold tabular-nums">{entries.length}</p>
-            </CardContent>
-          </Card>
+        <div className="mb-6 grid gap-3 sm:grid-cols-3">
+          <div className="card-interactive p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Retail → wholesaler (captured)</p>
+            <p className="mt-2 font-display text-2xl font-semibold tabular-nums">${totalRetailToWh.toLocaleString()} CAD</p>
+          </div>
+          <div className="card-interactive p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Wholesaler → manufacturer</p>
+            <p className="mt-2 font-display text-2xl font-semibold tabular-nums">${totalWhToMfg.toLocaleString()} CAD</p>
+          </div>
+          <div className="card-interactive p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Ledger lines</p>
+            <p className="mt-2 font-display text-2xl font-semibold tabular-nums">{entries.length}</p>
+          </div>
         </div>
       ) : null}
 

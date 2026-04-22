@@ -6,7 +6,8 @@ export function RequireAuth() {
   const loc = useLocation();
 
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: loc.pathname }} />;
+    // No state preservation - always redirect clean to login
+    return <Navigate to="/login" replace />;
   }
 
   if (!canAccessPath(user.role, loc.pathname)) {

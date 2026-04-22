@@ -221,59 +221,53 @@ export default function SalesTargetsPage() {
                     </div>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <Card>
-                      <CardContent className="pt-6">
-                        <div className="flex items-center gap-2">
-                          {achievedAmount >= targetAmount ? (
-                            <Award className="h-8 w-8 text-green-500" />
-                          ) : (
-                            <TrendingUp className="h-8 w-8 text-blue-500" />
-                          )}
-                          <div>
-                            <p className="text-sm text-muted-foreground">Status</p>
-                            <p className="text-lg font-semibold">
-                              {achievedAmount >= targetAmount ? "Target Met! 🎉" : "In Progress"}
-                            </p>
-                          </div>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="card-interactive p-4">
+                      <div className="flex items-center gap-3">
+                        {achievedAmount >= targetAmount ? (
+                          <Award className="h-8 w-8 text-success" strokeWidth={1.5} />
+                        ) : (
+                          <TrendingUp className="h-8 w-8 text-accent" strokeWidth={1.5} />
+                        )}
+                        <div>
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
+                          <p className="font-display text-lg font-semibold">
+                            {achievedAmount >= targetAmount ? "Target Met" : "In Progress"}
+                          </p>
                         </div>
-                      </CardContent>
-                    </Card>
+                      </div>
+                    </div>
 
-                    <Card>
-                      <CardContent className="pt-6">
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="h-8 w-8 text-amber-500" />
-                          <div>
-                            <p className="text-sm text-muted-foreground">Remaining</p>
-                            <p className="text-lg font-semibold">
-                              ${remaining.toLocaleString()}
-                            </p>
-                          </div>
+                    <div className="card-interactive p-4">
+                      <div className="flex items-center gap-3">
+                        <DollarSign className="h-8 w-8 text-accent" strokeWidth={1.5} />
+                        <div>
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Remaining</p>
+                          <p className="font-display text-lg font-semibold">
+                            ${remaining.toLocaleString()}
+                          </p>
                         </div>
-                      </CardContent>
-                    </Card>
+                      </div>
+                    </div>
 
-                    <Card>
-                      <CardContent className="pt-6">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-8 w-8 text-purple-500" />
-                          <div>
-                            <p className="text-sm text-muted-foreground">Orders</p>
-                            <p className="text-lg font-semibold">
-                              {performance.quarterOrders}
-                            </p>
-                          </div>
+                    <div className="card-interactive p-4">
+                      <div className="flex items-center gap-3">
+                        <Calendar className="h-8 w-8 text-accent" strokeWidth={1.5} />
+                        <div>
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Orders</p>
+                          <p className="font-display text-lg font-semibold">
+                            {performance.quarterOrders}
+                          </p>
                         </div>
-                      </CardContent>
-                    </Card>
+                      </div>
+                    </div>
                   </div>
                 </>
               ) : (
-                <div className="text-center py-8">
-                  <Target className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-lg font-medium">No target set</p>
-                  <p className="text-muted-foreground">
+                <div className="flex flex-col items-center gap-2 py-8 text-center">
+                  <Target className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                  <p className="text-sm font-medium text-muted-foreground">No target set</p>
+                  <p className="text-xs text-muted-foreground">
                     Contact your manager to set a Q{selectedQuarter} {selectedYear} target.
                   </p>
                 </div>
@@ -290,12 +284,12 @@ export default function SalesTargetsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {monthlyBreakdown.map((month) => (
-                  <div key={month.name} className="space-y-2">
-                    <p className="font-medium">{month.name}</p>
-                    <p className="text-2xl font-bold">${month.revenue.toLocaleString()}</p>
-                    <p className="text-sm text-muted-foreground">
+                  <div key={month.name} className="card-interactive p-4 space-y-1">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{month.name}</p>
+                    <p className="font-display text-2xl font-semibold tabular-nums">${month.revenue.toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">
                       {month.orders} orders
                     </p>
                   </div>
@@ -310,24 +304,27 @@ export default function SalesTargetsPage() {
               <CardTitle>Performance Summary</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Quarter Revenue</p>
-                  <p className="text-2xl font-bold">${performance.quarterAchieved.toLocaleString()}</p>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="card-interactive p-4 space-y-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Quarter Revenue</p>
+                  <p className="font-display text-2xl font-semibold tabular-nums">${performance.quarterAchieved.toLocaleString()}</p>
                 </div>
                 
-                <div>
-                  <p className="text-sm text-muted-foreground">YTD Revenue</p>
-                  <p className="text-2xl font-bold">${performance.ytdAchieved.toLocaleString()}</p>
+                <div className="card-interactive p-4 space-y-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">YTD Revenue</p>
+                  <p className="font-display text-2xl font-semibold tabular-nums">${performance.ytdAchieved.toLocaleString()}</p>
                 </div>
                 
-                <div>
-                  <p className="text-sm text-muted-foreground">Avg Order Value</p>
-                  <p className="text-2xl font-bold">${performance.avgOrderValue.toFixed(0)}</p>
+                <div className="card-interactive p-4 space-y-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Avg Order Value</p>
+                  <p className="font-display text-2xl font-semibold tabular-nums">${performance.avgOrderValue.toFixed(0)}</p>
                 </div>
                 
-                <div>
-                  <p className="text-sm text-muted-foreground">YTD Orders</p>
+                <div className="card-interactive p-4 space-y-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">YTD Orders</p>
+                  <p className="font-display text-2xl font-semibold tabular-nums">{performance.ytdOrders}</p>
+                </div>
+              </div>
                   <p className="text-2xl font-bold">{performance.ytdOrders}</p>
                 </div>
               </div>

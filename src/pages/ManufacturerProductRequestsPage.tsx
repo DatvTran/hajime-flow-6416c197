@@ -1,10 +1,9 @@
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useNewProductRequests } from "@/contexts/AppDataContext";
-import { Factory, FileText, ChevronRight, Plus } from "lucide-react";
+import { Factory, FileText, ChevronRight, Plus, Calendar, Package, DollarSign } from "lucide-react";
 import { ManufacturerProposalDialog } from "@/components/ManufacturerProposalDialog";
 import { ManufacturerNewProductDialog } from "@/components/ManufacturerNewProductDialog";
 
@@ -64,38 +63,32 @@ export default function ManufacturerProductRequestsPage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-xs text-muted-foreground">Pending Review</p>
-            <p className="font-display text-2xl font-semibold">{pendingCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-xs text-muted-foreground">In Review</p>
-            <p className="font-display text-2xl font-semibold">{inReviewCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-xs text-muted-foreground">Total Active</p>
-            <p className="font-display text-2xl font-semibold">{assigned.length}</p>
-          </CardContent>
-        </Card>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="card-interactive p-4 space-y-1">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Pending Review</p>
+          <p className="font-display text-2xl font-semibold tabular-nums">{pendingCount}</p>
+        </div>
+        <div className="card-interactive p-4 space-y-1">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">In Review</p>
+          <p className="font-display text-2xl font-semibold tabular-nums">{inReviewCount}</p>
+        </div>
+        <div className="card-interactive p-4 space-y-1">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Total Active</p>
+          <p className="font-display text-2xl font-semibold tabular-nums">{assigned.length}</p>
+        </div>
       </div>
 
       {assigned.length === 0 ? (
-        <Card className="py-12">
-          <CardContent className="text-center">
-            <Factory className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-            <p className="text-muted-foreground">No active product requests from Hajime HQ.</p>
-          </CardContent>
-        </Card>
+        <div className="card-elevated py-12">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <Factory className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+            <p className="text-sm text-muted-foreground">No active product requests from Hajime HQ</p>
+          </div>
+        </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {assigned.map((npr) => (
-            <Card
+            <div
               key={npr.id}
               role="button"
               tabIndex={0}
@@ -106,9 +99,9 @@ export default function ManufacturerProductRequestsPage() {
                   setSelectedId(npr.id);
                 }
               }}
-              className="group cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="card-interactive group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              <CardContent className="pt-5">
+              <div className="p-5">
                 <div className="mb-3 flex items-start justify-between">
                   <div>
                     <h3 className="font-display font-semibold underline-offset-2 group-hover:underline">
@@ -122,21 +115,22 @@ export default function ManufacturerProductRequestsPage() {
                 </div>
                 <div className="space-y-1.5 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
-                    <FileText className="h-3.5 w-3.5" />
+                    <FileText className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
                     {npr.specs.baseSpirit.replace(/_/g, " ")} · {npr.specs.targetAbv}% ABV
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs">📅</span>
+                    <Calendar className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
                     Target launch: {npr.specs.targetLaunchDate}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs">📦</span>
+                    <Package className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
                     MOQ: {npr.specs.minimumOrderQuantity.toLocaleString()} bottles
                   </div>
                   {npr.manufacturerProposal ? (
                     <div className="flex items-center gap-2 text-xs">
+                      <DollarSign className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
                       <span>
-                        💰 Proposal: ${npr.manufacturerProposal.costs.totalPerBottle.toFixed(2)}/bottle
+                        Proposal: ${npr.manufacturerProposal.costs.totalPerBottle.toFixed(2)}/bottle
                       </span>
                     </div>
                   ) : null}
@@ -147,8 +141,8 @@ export default function ManufacturerProductRequestsPage() {
                     : "View details"}{" "}
                   <ChevronRight className="ml-1 h-3.5 w-3.5" />
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
         </div>
       )}

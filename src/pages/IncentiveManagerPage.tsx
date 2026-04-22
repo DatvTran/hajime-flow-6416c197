@@ -601,18 +601,18 @@ export default function IncentiveManagerPage() {
               </div>
 
               {/* Summary Stats */}
-              <div className="grid gap-4 md:grid-cols-3 pt-4 border-t">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Gross Margin</p>
-                  <p className="text-2xl font-bold">${dashboardMetrics.totalGrossMargin.toLocaleString()}</p>
+              <div className="grid gap-3 sm:grid-cols-3 pt-4 border-t">
+                <div className="card-interactive p-4 space-y-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Total Gross Margin</p>
+                  <p className="font-display text-2xl font-semibold tabular-nums">${dashboardMetrics.totalGrossMargin.toLocaleString()}</p>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Incentive Cost</p>
-                  <p className="text-2xl font-bold text-red-600">${dashboardMetrics.totalIncentiveCost.toLocaleString()}</p>
+                <div className="card-interactive p-4 space-y-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Total Incentive Cost</p>
+                  <p className="font-display text-2xl font-semibold tabular-nums text-destructive">${dashboardMetrics.totalIncentiveCost.toLocaleString()}</p>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Net Margin</p>
-                  <p className={`text-2xl font-bold ${getHealthScoreColor(dashboardMetrics.costPercentage)}`}>
+                <div className="card-interactive p-4 space-y-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Net Margin</p>
+                  <p className={`font-display text-2xl font-semibold tabular-nums ${getHealthScoreColor(dashboardMetrics.costPercentage)}`}>
                     ${dashboardMetrics.netMargin.toLocaleString()}
                   </p>
                 </div>
@@ -870,13 +870,13 @@ export default function IncentiveManagerPage() {
           </div>
 
           {partners.length === 0 && (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-lg font-medium">No partners yet</p>
-                <p className="text-muted-foreground">Add your first distributor or importer to start tracking.</p>
-              </CardContent>
-            </Card>
+            <div className="card-elevated py-12">
+              <div className="flex flex-col items-center gap-2 text-center">
+                <Users className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                <p className="text-sm font-medium text-muted-foreground">No partners yet</p>
+                <p className="text-xs text-muted-foreground">Add your first distributor or importer to start tracking.</p>
+              </div>
+            </div>
           )}
         </TabsContent>
 
@@ -999,13 +999,13 @@ export default function IncentiveManagerPage() {
           {/* SPIF Entries */}
           <div className="space-y-4">
             {spifs.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-lg font-medium">No SPIF payouts yet</p>
-                  <p className="text-muted-foreground">Log your first SPIF to start tracking distributor rep incentives.</p>
-                </CardContent>
-              </Card>
+              <div className="card-elevated py-12">
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <DollarSign className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                  <p className="text-sm font-medium text-muted-foreground">No SPIF payouts yet</p>
+                  <p className="text-xs text-muted-foreground">Log your first SPIF to start tracking distributor rep incentives.</p>
+                </div>
+              </div>
             ) : (
               spifs.map(spif => (
                 <Card key={spif.id}>
@@ -1117,55 +1117,55 @@ export default function IncentiveManagerPage() {
           </Card>
 
           {/* Scenario Analysis */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {marginScenarios.map(scenario => (
-              <Card key={scenario.name}>
-                <CardHeader>
-                  <CardTitle className="font-display text-base">{scenario.name}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{scenario.description}</p>
-                </CardHeader>
-                <CardContent className="space-y-4">
+              <div key={scenario.name} className="card-elevated">
+                <div className="border-b border-border/50 p-5 pb-3">
+                  <h3 className="font-display text-base font-semibold">{scenario.name}</h3>
+                  <p className="text-xs text-muted-foreground">{scenario.description}</p>
+                </div>
+                <div className="space-y-4 p-5">
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span>SPIFs</span>
+                      <span className="text-muted-foreground">SPIFs</span>
                       <span>${scenario.spifs}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span>Volume Bonus</span>
+                      <span className="text-muted-foreground">Volume Bonus</span>
                       <span>${scenario.volumeBonus}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span>ADF Spend</span>
+                      <span className="text-muted-foreground">ADF Spend</span>
                       <span>${scenario.adfSpend}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span>Quarterly Bonus</span>
+                      <span className="text-muted-foreground">Quarterly Bonus</span>
                       <span>${scenario.quarterlyBonus}</span>
                     </div>
                   </div>
                   
                   <div className="pt-4 border-t space-y-2">
-                    <div className="flex justify-between">
+                    <div className="flex justify-between text-sm">
                       <span className="font-medium">Total Incentive Cost</span>
-                      <span className="font-semibold text-red-600">${scenario.totalIncentiveCost}</span>
+                      <span className="font-semibold text-destructive">${scenario.totalIncentiveCost}</span>
                     </div>
                     
-                    <div className="flex justify-between">
+                    <div className="flex justify-between text-sm">
                       <span className="font-medium">Net Margin</span>
                       <span className={`font-semibold ${getHealthScoreColor(scenario.costPercentage)}`}>
                         ${scenario.netMargin}
                       </span>
                     </div>
                     
-                    <div className="flex justify-between">
+                    <div className="flex justify-between text-sm">
                       <span className="font-medium">Cost %</span>
                       <Badge variant={scenario.costPercentage <= 15 ? "default" : "destructive"}>
                         {scenario.costPercentage.toFixed(1)}%
                       </Badge>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             ))}
           </div>
 

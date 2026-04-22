@@ -89,46 +89,37 @@ export default function MarketsPage() {
         </Alert>
       ) : null}
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-xs text-muted-foreground">Active regions (90d)</p>
-            <p className="font-display text-2xl font-semibold">{view.active}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-xs text-muted-foreground">Sell-in (30d)</p>
-            <p className="font-display text-2xl font-semibold">${view.rev30.toLocaleString()}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-xs text-muted-foreground">Sell-in vs prior 30d</p>
-            <p className="flex items-center gap-2 font-display text-2xl font-semibold">
-              <TrendingUp className="h-5 w-5 text-muted-foreground" aria-hidden />
-              {view.growth30 >= 0 ? "+" : ""}
-              {view.growth30}%
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 pt-5">
-            <Globe className="h-8 w-8 shrink-0 text-muted-foreground" aria-hidden />
-            <p className="text-sm text-muted-foreground">
-              Toronto hub covers Ontario LCBO + GTA retail; Milan and Paris use depot-level allocation from the same
-              inventory model.
-            </p>
-          </CardContent>
-        </Card>
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="card-interactive p-4">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Active regions (90d)</p>
+          <p className="font-display text-2xl font-semibold tabular-nums">{view.active}</p>
+        </div>
+        <div className="card-interactive p-4">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Sell-in (30d)</p>
+          <p className="font-display text-2xl font-semibold tabular-nums">${view.rev30.toLocaleString()}</p>
+        </div>
+        <div className="card-interactive p-4">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Sell-in vs prior 30d</p>
+          <p className="flex items-center gap-2 font-display text-2xl font-semibold tabular-nums">
+            <TrendingUp className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} aria-hidden />
+            {view.growth30 >= 0 ? "+" : ""}
+            {view.growth30}%
+          </p>
+        </div>
+        <div className="card-interactive p-4">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Hub coverage</p>
+          <p className="mt-1 text-sm text-muted-foreground leading-snug">
+            Toronto hub covers Ontario LCBO + GTA retail; Milan and Paris use depot-level allocation.
+          </p>
+        </div>
       </div>
 
-      <div className="mb-6 grid min-w-0 gap-4 lg:grid-cols-3">
-        <Card className="min-w-0 lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="font-display text-lg">Anchor hubs — sell-in (30d)</CardTitle>
-          </CardHeader>
-          <CardContent className="min-w-0">
+      <div className="mb-6 grid min-w-0 gap-4 lg:grid-cols-5">
+        <div className="card-elevated min-w-0 lg:col-span-3">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="font-display text-lg font-semibold">Anchor hubs — sell-in (30d)</h3>
+          </div>
+          <div className="min-w-0 p-5">
             <div className="h-[280px] w-full min-h-[240px] min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
@@ -148,9 +139,9 @@ export default function MarketsPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {view.snap.map((row) => (
-                <div key={row.city} className="rounded-lg border bg-muted/20 p-3 text-sm">
+                <div key={row.city} className="card-interactive p-3 text-sm">
                   <p className="font-medium">{row.city}</p>
                   <p className="text-muted-foreground">
                     {row.orderCount} orders · {row.bottles.toLocaleString()} bottles
@@ -159,20 +150,24 @@ export default function MarketsPage() {
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="min-w-0">
-          <CardHeader>
-            <CardTitle className="font-display text-lg">Replenishment queue</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="card-elevated min-w-0 lg:col-span-2">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="font-display text-lg font-semibold">Replenishment queue</h3>
+          </div>
+          <div className="p-5">
             {view.replenishment.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No replenishment rows — check production requests and inventory.</p>
+              <div className="flex flex-col items-center gap-2 py-8 text-center">
+                <Globe className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                <p className="text-sm text-muted-foreground">No replenishment rows</p>
+                <p className="text-[11px] text-muted-foreground/60">Check production requests and inventory.</p>
+              </div>
             ) : (
               <ul className="space-y-3 text-sm">
                 {view.replenishment.map((r) => (
-                  <li key={r.id} className="rounded-lg border p-3">
+                  <li key={r.id} className="card-interactive p-3">
                     <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                       <span className="font-medium">{r.market}</span>
                       <StatusBadge status={r.urgency} />
@@ -185,15 +180,15 @@ export default function MarketsPage() {
                 ))}
               </ul>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-display text-lg">Hub health &amp; cover (30d velocity)</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="card-elevated overflow-hidden">
+        <div className="border-b border-border/50 p-5 pb-3">
+          <h3 className="font-display text-lg font-semibold">Hub health &amp; cover (30d velocity)</h3>
+        </div>
+        <div className="overflow-x-auto p-5">
           <Table>
             <TableHeader>
               <TableRow>
@@ -224,8 +219,8 @@ export default function MarketsPage() {
               ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

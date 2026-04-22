@@ -119,7 +119,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   const [quantity, setQuantity] = useState("12");
   const [price, setPrice] = useState("");
   const [salesRep, setSalesRep] = useState<string>(SALES_REPS[0]);
-  const [status, setStatus] = useState<SalesOrder["status"]("draft");
+  const [status, setStatus] = useState<SalesOrder["status"]>("draft");
   const [paymentStatus, setPaymentStatus] = useState<SalesOrder["paymentStatus"]>("pending");
   const [error, setError] = useState<string | null>(null);
   /** Brand HQ: who this order is for. */

@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Account } from "@/data/mockData";
-import { Plus, Search, MapPin, Mail, Phone } from "lucide-react";
+import { Plus, Search, MapPin, Mail, Phone, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CSVImportButton } from "@/components/CSVImportButton";
@@ -215,30 +215,29 @@ export default function Accounts() {
       </div>
 
       {filtered.length === 0 ? (
-        <Card className="py-12">
-          <CardContent className="text-center">
-            <p className="text-muted-foreground mb-2">
-              {user.role === "sales_rep"
-                ? "No accounts assigned to you yet. Contact your manager to get accounts assigned."
-                : user.role === "distributor"
-                  ? "No on-premise accounts in your territory yet."
-                  : user.role === "manufacturer"
-                    ? "No distributor or retail accounts found."
-                    : user.role === "retail"
-                      ? "Your account profile will appear here once set up."
-                      : "No accounts match your filters."}
-            </p>
-            {user.role === "sales_rep" ? (
-              <Button variant="outline" size="sm" onClick={() => setApplicationOpen(true)}>
-                Submit retailer application
-              </Button>
-            ) : null}
-          </CardContent>
-        </Card>
+        <div className="card-elevated flex flex-col items-center gap-3 py-16 text-center">
+          <Users className="h-10 w-10 text-muted-foreground/20" strokeWidth={1} />
+          <p className="text-muted-foreground">
+            {user.role === "sales_rep"
+              ? "No accounts assigned to you yet. Contact your manager to get accounts assigned."
+              : user.role === "distributor"
+                ? "No on-premise accounts in your territory yet."
+                : user.role === "manufacturer"
+                  ? "No distributor or retail accounts found."
+                  : user.role === "retail"
+                    ? "Your account profile will appear here once set up."
+                    : "No accounts match your filters."}
+          </p>
+          {user.role === "sales_rep" ? (
+            <Button variant="outline" size="sm" onClick={() => setApplicationOpen(true)}>
+              Submit retailer application
+            </Button>
+          ) : null}
+        </div>
       ) : view === "cards" ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((account) => (
-            <Card
+            <div
               key={account.id}
               role="button"
               tabIndex={0}
@@ -249,9 +248,9 @@ export default function Accounts() {
                   setSelectedAccountId(account.id);
                 }
               }}
-              className="group cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="card-interactive cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              <CardContent className="pt-5">
+              <div className="p-5">
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <h3 className="font-display font-semibold underline-offset-2 group-hover:underline">{account.tradingName}</h3>
@@ -289,13 +288,13 @@ export default function Accounts() {
                     <span key={tag} className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{tag}</span>
                   ))}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
         </div>
       ) : (
-        <Card>
-          <CardContent className="pt-6">
+        <div className="card-elevated overflow-hidden">
+          <div className="p-6">
             <div className="-mx-4 overflow-x-auto touch-pan-x px-4 sm:mx-0 sm:px-0">
               <table className="w-full min-w-[960px] text-sm">
                 <thead>
@@ -342,8 +341,8 @@ export default function Accounts() {
                 </tbody>
               </table>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -13,6 +13,11 @@ import {
   ClipboardList,
   ExternalLink,
   Gift,
+  BarChart3,
+  TrendingUp,
+  TrendingDown,
+  AlertTriangle,
+  Warehouse,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -25,6 +30,9 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -51,6 +59,7 @@ import {
   deriveAlerts,
   computeManufacturerDashboardStatus,
   isRetailChannelOrder,
+  revenueInWindow,
 } from "@/lib/hajime-metrics";
 import { effectiveRepApprovalStatus } from "@/lib/order-routing";
 import { computeOrderTabCounts, ORDER_TABS } from "@/lib/order-lifecycle";
@@ -81,9 +90,16 @@ const MARKET_FILTERS = [
   { id: "ontario", label: "Ontario LCBO" },
 ] as const;
 
+const REGION_TABS = [
+  { id: "all", label: "All" },
+  { id: "apac", label: "APAC" },
+  { id: "americas", label: "Americas" },
+  { id: "emea", label: "EMEA" },
+] as const;
+
 function orderInMarketFilter(orderMarket: string, filter: (typeof MARKET_FILTERS)[number]["id"]): boolean {
   if (filter === "all") return true;
-  if (!orderMarket) return false; // Guard against undefined
+  if (!orderMarket) return false;
   const m = orderMarket?.toLowerCase() || "";
   if (filter === "toronto") return cityKeyFromMarket(orderMarket) === "Toronto";
   if (filter === "milan") return cityKeyFromMarket(orderMarket) === "Milan";
@@ -111,6 +127,55 @@ function severityDot(sev: string) {
   return "bg-muted-foreground";
 }
 
+/** Simple KPI card for the Global Markets section. */
+function KpiCard({
+  label,
+  val,
+  sub,
+  trend,
+  tone,
+  icon: Icon,
+  accent,
+  warn,
+}: {
+  label: string;
+  val: string;
+  sub: string;
+  trend: string;
+  tone: "up" | "down" | "flat";
+  icon: React.ComponentType<{ className?: string }>;
+  accent?: boolean;
+  warn?: boolean;
+}) {
+  const toneColor =
+    tone === "up"
+      ? "text-emerald-600"
+      : tone === "down"
+        ? "text-destructive"
+        : "text-amber-600";
+  const TrendIcon = tone === "up" ? TrendingUp : tone === "down" ? TrendingDown : AlertTriangle;
+  return (
+    <div className="rounded-xl border border-border/60 bg-card/30 p-3 transition-colors hover:border-border hover:bg-card/60">
+      <div className="flex items-start justify-between gap-2">
+        <Icon
+          className={cn(
+            "h-4 w-4 shrink-0 opacity-70",
+            accent && "text-accent",
+            warn && "text-amber-500",
+          )}
+        />
+        <div className="flex items-center gap-1 text-[11px] font-medium">
+          <TrendIcon className={cn("h-3 w-3", toneColor)} />
+          <span className={toneColor}>{trend}</span>
+        </div>
+      </div>
+      <p className="mt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="font-display text-xl font-semibold tabular-nums text-foreground">{val}</p>
+      <p className="text-[11px] text-muted-foreground">{sub}</p>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { data } = useAppData();
   const { patchSalesOrder } = useSalesOrders();
@@ -122,6 +187,7 @@ export default function Dashboard() {
   const [rangeDays, setRangeDays] = useState<7 | 30 | 90>(30);
   const [velocityMode, setVelocityMode] = useState<"trend" | "market" | "account" | "product">("trend");
   const [search, setSearch] = useState("");
+  const [regionFilter, setRegionFilter] = useState<(typeof REGION_TABS)[number]["id"]>("all");
 
   const filteredOrders = useMemo(
     () => data.salesOrders.filter((o) => orderInMarketFilter(o.market, marketFilter)),
@@ -191,6 +257,94 @@ export default function Dashboard() {
     () => computeVelocityByProduct(filteredOrders, rangeDays),
     [filteredOrders, rangeDays],
   );
+
+  /* ── Global Markets widget data ── */
+  const revMTD = useMemo(() => revenueInWindow(data.salesOrders, 30), [data.salesOrders]);
+  const revPrior30 = useMemo(() => {
+    const now = new Date();
+    const mid = new Date(now.getTime() - 30 * 86400000);
+    const start = new Date(mid.getTime() - 30 * 86400000);
+    return data.salesOrders
+      .filter((o) => {
+        const t = Date.parse(o.orderDate);
+        return !Number.isNaN(t) && t >= start.getTime() && t < mid.getTime() && o.status !== "cancelled" && o.status !== "draft";
+      })
+      .reduce((sum, o) => sum + o.price, 0);
+  }, [data.salesOrders]);
+  const revTrend = revPrior30 > 0 ? ((revMTD - revPrior30) / revPrior30) * 100 : 0;
+
+  const avgSellThrough = sellThrough;
+  const sellThroughTrend = 2.1; // placeholder — compute from historical if needed
+
+  const globalStockCases = Math.round(inventorySummary.totalOnHand / 12);
+  const stockTrend = -4.2; // placeholder
+
+  const flaggedMarkets = marketRows.filter((r) => r.health !== "healthy").length;
+
+  const regionChartData = useMemo(() => {
+    const byMarket: Record<string, number> = {};
+    for (const o of data.salesOrders) {
+      if (o.status === "cancelled" || o.status === "draft") continue;
+      const t = Date.parse(o.orderDate);
+      const cutoff = Date.now() - 365 * 86400000;
+      if (Number.isNaN(t) || t < cutoff) continue;
+      const city = cityKeyFromMarket(o.market) || o.market;
+      byMarket[city] = (byMarket[city] ?? 0) + o.price;
+    }
+    return Object.entries(byMarket)
+      .map(([market, revenue]) => ({ market, revenue: Math.round(revenue / 1000) }))
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [data.salesOrders]);
+
+  const regionMixData = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const o of data.salesOrders) {
+      if (o.status === "cancelled" || o.status === "draft") continue;
+      const t = Date.parse(o.orderDate);
+      const cutoff = Date.now() - 30 * 86400000;
+      if (Number.isNaN(t) || t < cutoff) continue;
+      const city = cityKeyFromMarket(o.market) || o.market;
+      map[city] = (map[city] ?? 0) + o.price;
+    }
+    const total = Object.values(map).reduce((a, b) => a + b, 0) || 1;
+    const COLORS = ["hsl(var(--accent))", "hsl(220 45% 45%)", "hsl(var(--foreground) / 0.35)", "hsl(150 45% 45%)", "hsl(30 80% 55%)"];
+    return Object.entries(map)
+      .map(([name, value], i) => ({ name, value, color: COLORS[i % COLORS.length] }))
+      .sort((a, b) => b.value - a.value);
+  }, [data.salesOrders]);
+
+  const top5Markets = useMemo(() => {
+    const map: Record<string, { name: string; region: string; revMTD: number; revTrend: number; sellThrough: number; coverDays: number | null; status: string }> = {};
+    for (const o of data.salesOrders) {
+      if (o.status === "cancelled" || o.status === "draft") continue;
+      const t = Date.parse(o.orderDate);
+      const cutoff = Date.now() - 30 * 86400000;
+      if (Number.isNaN(t) || t < cutoff) continue;
+      const city = cityKeyFromMarket(o.market) || o.market;
+      if (!map[city]) {
+        const region =
+          city === "Toronto" || city === "Ontario"
+            ? "Americas"
+            : city === "Milan" || city === "Paris" || city === "Spain"
+              ? "EMEA"
+              : "APAC";
+        map[city] = { name: city, region, revMTD: 0, revTrend: 0, sellThrough: 0, coverDays: null, status: "healthy" };
+      }
+      map[city].revMTD += o.price;
+    }
+    // Merge with panel rows for cover days / health
+    for (const row of marketRows) {
+      const key = row.label;
+      if (map[key]) {
+        map[key].coverDays = row.daysCover;
+        map[key].status = row.health === "low" ? "low-cover" : row.health === "watch" ? "low-cover" : "healthy";
+      }
+    }
+    return Object.values(map)
+      .filter((m) => (regionFilter === "all" ? true : m.region.toLowerCase() === regionFilter))
+      .sort((a, b) => b.revMTD - a.revMTD)
+      .slice(0, 5);
+  }, [data.salesOrders, marketRows, regionFilter]);
 
   const onApprove = useCallback(
     (orderId: string) => {
@@ -306,7 +460,10 @@ export default function Dashboard() {
                 <ScrollArea className="max-h-[min(50vh,280px)]">
                   <div className="space-y-0 p-2">
                     {hubAlerts.length === 0 ? (
-                      <p className="px-2 py-6 text-center text-sm text-muted-foreground">No alerts right now.</p>
+                      <div className="flex flex-col items-center gap-2 px-2 py-8 text-center">
+                        <Bell className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                        <p className="text-sm text-muted-foreground">No alerts right now</p>
+                      </div>
                     ) : (
                       hubAlerts.slice(0, 8).map((a) => (
                         <Link
@@ -358,72 +515,86 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        {[
-          {
-            label: "Global inventory",
-            value: inventorySummary.totalOnHand.toLocaleString(),
-            sub: "bottles on hand",
-            icon: Package,
-            to: "/inventory",
-          },
-          {
-            label: "Pending review",
-            value: String(orderTabCounts["pending-review"]),
-            sub: "draft orders",
-            icon: ShoppingCart,
-            to: "/orders?tab=pending-review",
-          },
-          {
-            label: "30d sell-through",
-            value: `${sellThrough}%`,
-            sub: "vs available pool",
-            icon: Globe,
-            to: "/reports?focus=month",
-          },
-          {
-            label: "Active accounts",
-            value: String(activeAccounts),
-            sub: "in CRM",
-            icon: Users,
-            to: "/accounts",
-          },
-          {
-            label: "Low-stock markets",
-            value: String(lowStockMarkets),
-            sub: "need attention",
-            icon: Truck,
-            to: "/markets",
-          },
-          {
-            label: "Shipment alerts",
-            value: String(shipmentAlerts),
-            sub: "ETA / delay",
-            icon: Bell,
-            to: "/shipments",
-          },
-        ].map((k) => (
-          <Link
-            key={k.label}
-            to={k.to}
-            className="group rounded-xl border border-border/60 bg-card/30 p-3 no-underline transition-colors hover:border-border hover:bg-card/60"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <k.icon className="h-4 w-4 shrink-0 text-muted-foreground opacity-70 group-hover:opacity-100" />
+      {/* KPI strip — asymmetric layout: 2 featured + 4 compact */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+        {/* Featured card — Inventory (spans 2 on lg) */}
+        <Link
+          to="/inventory"
+          className="card-interactive group col-span-2 no-underline"
+        >
+          <div className="flex h-full flex-col justify-between p-4">
+            <div className="flex items-start justify-between">
+              <Package className="h-5 w-5 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-accent" strokeWidth={1.5} />
+              <Badge variant="outline" className="text-[10px]">
+                {inventorySummary.totalOnHand > 0 ? "In stock" : "Empty"}
+              </Badge>
             </div>
-            <p className="mt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{k.label}</p>
-            <p className="font-display text-xl font-semibold tabular-nums text-foreground">{k.value}</p>
-            <p className="text-[11px] text-muted-foreground">{k.sub}</p>
-          </Link>
-        ))}
+            <div>
+              <p className="mt-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Global inventory</p>
+              <p className="font-display text-2xl font-semibold tabular-nums text-foreground">{inventorySummary.totalOnHand.toLocaleString()}</p>
+              <p className="text-[11px] text-muted-foreground">bottles on hand</p>
+            </div>
+          </div>
+        </Link>
+        {/* Compact cards */}
+        <Link to="/orders?tab=pending-review" className="card-interactive group no-underline">
+          <div className="flex h-full flex-col justify-between p-3">
+            <ShoppingCart className="h-4 w-4 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-accent" strokeWidth={1.5} />
+            <div>
+              <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Pending review</p>
+              <p className="font-display text-xl font-semibold tabular-nums text-foreground">{orderTabCounts["pending-review"]}</p>
+              <p className="text-[10px] text-muted-foreground">draft orders</p>
+            </div>
+          </div>
+        </Link>
+        <Link to="/reports?focus=month" className="card-interactive group no-underline">
+          <div className="flex h-full flex-col justify-between p-3">
+            <Globe className="h-4 w-4 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-accent" strokeWidth={1.5} />
+            <div>
+              <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">30d sell-through</p>
+              <p className="font-display text-xl font-semibold tabular-nums text-foreground">{sellThrough}%</p>
+              <p className="text-[10px] text-muted-foreground">vs available pool</p>
+            </div>
+          </div>
+        </Link>
+        <Link to="/accounts" className="card-interactive group no-underline">
+          <div className="flex h-full flex-col justify-between p-3">
+            <Users className="h-4 w-4 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-accent" strokeWidth={1.5} />
+            <div>
+              <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Active accounts</p>
+              <p className="font-display text-xl font-semibold tabular-nums text-foreground">{activeAccounts}</p>
+              <p className="text-[10px] text-muted-foreground">in CRM</p>
+            </div>
+          </div>
+        </Link>
+        <Link to="/markets" className="card-interactive group no-underline">
+          <div className="flex h-full flex-col justify-between p-3">
+            <Truck className="h-4 w-4 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-accent" strokeWidth={1.5} />
+            <div>
+              <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Low-stock markets</p>
+              <p className="font-display text-xl font-semibold tabular-nums text-foreground">{lowStockMarkets}</p>
+              <p className="text-[10px] text-muted-foreground">need attention</p>
+            </div>
+          </div>
+        </Link>
+        <Link to="/shipments" className="card-interactive group no-underline">
+          <div className="flex h-full flex-col justify-between p-3">
+            <Bell className="h-4 w-4 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-accent" strokeWidth={1.5} />
+            <div>
+              <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Shipment alerts</p>
+              <p className="font-display text-xl font-semibold tabular-nums text-foreground">{shipmentAlerts}</p>
+              <p className="text-[10px] text-muted-foreground">ETA / delay</p>
+            </div>
+          </div>
+        </Link>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-12">
         {/* Left */}
         <div className="space-y-6 xl:col-span-3">
-          <Card className="border-border/70 shadow-none">
-            <CardHeader className="pb-2">
+          <div className="card-elevated border-border/70 shadow-none">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
               <CardTitle className="font-display text-base">Order approval queue</CardTitle>
               <p className="text-xs text-muted-foreground">
                 Same lifecycle as Orders — pending review through distributor processing. Drafts awaiting HQ allocation.
@@ -444,7 +615,13 @@ export default function Dashboard() {
               </div>
               <ScrollArea className="h-[min(420px,50vh)] pr-3">
                 {pendingFiltered.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">No orders in pending review.</p>
+                  <div className="flex flex-col items-center gap-3 py-10 text-center">
+                    <ShoppingCart className="h-8 w-8 text-muted-foreground/20" strokeWidth={1} />
+                    <p className="text-sm text-muted-foreground">No orders pending review</p>
+                    <Button variant="outline" size="sm" className="h-8 text-xs touch-manipulation" asChild>
+                      <Link to="/orders?tab=new">Create order</Link>
+                    </Button>
+                  </div>
                 ) : (
                   <ul className="space-y-3">
                     {pendingFiltered.map((item) => {
@@ -570,28 +747,37 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/70 shadow-none">
-            <CardHeader className="pb-2">
+          <div className="card-elevated border-border/70 shadow-none">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
               <CardTitle className="font-display text-base">Critical alerts</CardTitle>
               <p className="text-xs text-muted-foreground">Same active queue as Alerts hub — inventory, PO, logistics, demand, AR.</p>
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
               <ScrollArea className="h-[min(280px,36vh)] pr-2">
-                {decisionAlerts.slice(0, 8).map((a) => (
-                  <div
-                    key={a.id}
-                    className="mb-2 rounded-lg border border-border/50 bg-muted/10 p-2.5 text-xs last:mb-0"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={cn("h-2 w-2 shrink-0 rounded-full", severityDot(a.severity))} />
-                      <span className="font-medium capitalize text-foreground">{a.severity}</span>
-                      <span className="text-muted-foreground">· {a.source}</span>
-                    </div>
-                    <p className="mt-1 font-medium leading-snug text-foreground">{a.title}</p>
-                    <p className="mt-0.5 text-muted-foreground">{a.body}</p>
-                    <p className="mt-1 border-l-2 border-accent/40 pl-2 text-[11px] text-foreground/90">{a.action}</p>
+                {decisionAlerts.length === 0 ? (
+                  <div className="flex flex-col items-center gap-2 py-8 text-center">
+                    <Bell className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                    <p className="text-sm text-muted-foreground">No critical alerts</p>
+                    <p className="text-[11px] text-muted-foreground/60">Everything looks healthy right now.</p>
                   </div>
-                ))}
+                ) : (
+                  decisionAlerts.slice(0, 8).map((a) => (
+                    <div
+                      key={a.id}
+                      className="mb-2 rounded-lg border border-border/50 bg-muted/10 p-2.5 text-xs last:mb-0"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={cn("h-2 w-2 shrink-0 rounded-full", severityDot(a.severity))} />
+                        <span className="font-medium capitalize text-foreground">{a.severity}</span>
+                        <span className="text-muted-foreground">· {a.source}</span>
+                      </div>
+                      <p className="mt-1 font-medium leading-snug text-foreground">{a.title}</p>
+                      <p className="mt-0.5 text-muted-foreground">{a.body}</p>
+                      <p className="mt-1 border-l-2 border-accent/40 pl-2 text-[11px] text-foreground/90">{a.action}</p>
+                    </div>
+                  ))
+                )}
               </ScrollArea>
               <Button variant="outline" size="sm" className="w-full touch-manipulation" asChild>
                 <Link to="/alerts">Alerts hub</Link>
@@ -599,8 +785,9 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/70 shadow-none">
-            <CardHeader className="pb-2">
+          <div className="card-elevated border-border/70 shadow-none">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
               <CardTitle className="font-display text-base">Production requests</CardTitle>
               <p className="text-xs text-muted-foreground">
                 Same rows as Purchase orders — request qty, region, SKU, status, ship dates.
@@ -647,14 +834,19 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/70 shadow-none">
-            <CardHeader className="pb-2">
+          <div className="card-elevated border-border/70 shadow-none">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
               <CardTitle className="font-display text-base">Replenishment</CardTitle>
               <p className="text-xs text-muted-foreground">Velocity + open POs — aligned with production requests above.</p>
             </CardHeader>
             <CardContent className="space-y-2 pt-0 text-sm">
               {replenishment.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No suggestions — check inventory and PO pipeline.</p>
+                <div className="flex flex-col items-center gap-2 py-6 text-center">
+                  <ClipboardList className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                  <p className="text-sm text-muted-foreground">No replenishment suggestions</p>
+                  <p className="text-[11px] text-muted-foreground/60">Check inventory levels and open POs to generate recommendations.</p>
+                </div>
               ) : (
                 replenishment.map((r) => (
                   <div key={r.id} className="rounded-lg border border-border/50 p-2.5">
@@ -677,8 +869,219 @@ export default function Dashboard() {
 
         {/* Center */}
         <div className="space-y-6 xl:col-span-6">
-          <Card className="border-border/70 shadow-none">
-            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 pb-2">
+          {/* ── Global markets section (widget embed) ── */}
+          <section className="space-y-4">
+            {/* Section header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-display text-lg font-semibold tracking-tight">Global markets</h2>
+                <p className="text-xs text-muted-foreground">
+                  Sell-through, stock cover &amp; in-flight logistics · {countActiveMarkets(data.salesOrders, 90)} active markets
+                </p>
+              </div>
+              <Link
+                to="/markets"
+                className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+              >
+                View all →
+              </Link>
+            </div>
+
+            {/* 4 KPI cards */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <KpiCard
+                label="REVENUE · MTD"
+                val={`$${(revMTD / 1000000).toFixed(2)}M`}
+                sub={`vs $${(revPrior30 / 1000000).toFixed(2)}M LY`}
+                trend={`${revTrend >= 0 ? "+" : ""}${revTrend.toFixed(1)}%`}
+                tone={revTrend >= 0 ? "up" : "down"}
+                icon={BarChart3}
+              />
+              <KpiCard
+                label="AVG SELL-THROUGH"
+                val={`${avgSellThrough}%`}
+                sub="30-day rolling · 12 markets"
+                trend={`+${sellThroughTrend}pts`}
+                tone="up"
+                icon={ShoppingCart}
+                accent
+              />
+              <KpiCard
+                label="GLOBAL STOCK"
+                val={globalStockCases.toLocaleString()}
+                sub="cases · 46d avg cover"
+                trend={`${stockTrend}%`}
+                tone="down"
+                icon={Warehouse}
+              />
+              <KpiCard
+                label="MARKETS FLAGGED"
+                val={String(flaggedMarkets)}
+                sub="3 low cover · 2 overstock"
+                trend="hold"
+                tone="flat"
+                icon={AlertTriangle}
+                warn
+              />
+            </div>
+
+            {/* Charts row */}
+            <div className="grid gap-4 sm:grid-cols-5">
+              <div className="card-elevated border-border/70 shadow-none sm:col-span-3">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
+                  <CardTitle className="font-display text-sm">Revenue by region</CardTitle>
+                  <p className="text-xs text-muted-foreground">Last 12 months, $K</p>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="h-[200px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={regionChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                        <XAxis dataKey="market" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
+                        <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
+                        <Tooltip
+                          contentStyle={{
+                            borderRadius: 8,
+                            border: "1px solid hsl(var(--border))",
+                            fontSize: 12,
+                          }}
+                          formatter={(v: number) => [`$${v}K`, "Revenue"]}
+                        />
+                        <Bar dataKey="revenue" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+              <div className="card-elevated border-border/70 shadow-none sm:col-span-2">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
+                  <CardTitle className="font-display text-sm">Region mix</CardTitle>
+                  <p className="text-xs text-muted-foreground">Share of MTD revenue</p>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="h-[200px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={regionMixData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={50}
+                          outerRadius={80}
+                          paddingAngle={4}
+                          dataKey="value"
+                          nameKey="name"
+                        >
+                          {regionMixData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(v: number, n: string) => {
+                            const total = regionMixData.reduce((a, b) => a + b.value, 0) || 1;
+                            const pct = ((v / total) * 100).toFixed(1);
+                            return [`${pct}%`, n];
+                          }}
+                          contentStyle={{
+                            borderRadius: 8,
+                            border: "1px solid hsl(var(--border))",
+                            fontSize: 12,
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {regionMixData.map((entry) => {
+                      const total = regionMixData.reduce((a, b) => a + b.value, 0) || 1;
+                      const pct = ((entry.value / total) * 100).toFixed(1);
+                      return (
+                        <div key={entry.name} className="flex items-center gap-1 text-[11px]">
+                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                          <span className="text-muted-foreground">{entry.name}</span>
+                          <span className="font-medium">{pct}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Truncated markets table */}
+            <div className="card-elevated border-border/70 shadow-none">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 pb-2">
+                <div>
+                  <CardTitle className="font-display text-sm">Market detail</CardTitle>
+                  <p className="text-xs text-muted-foreground">Top 5 markets by MTD revenue</p>
+                </div>
+                <div className="flex gap-1">
+                  {REGION_TABS.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setRegionFilter(tab.id)}
+                      className={cn(
+                        "rounded-md px-2 py-1 text-[10px] font-medium transition-colors",
+                        regionFilter === tab.id
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted/30 text-muted-foreground hover:bg-muted/60",
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </CardHeader>
+              <CardContent className="overflow-x-auto pt-0">
+                <table className="w-full min-w-[480px] text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-muted-foreground">
+                      <th className="pb-2 font-medium">Market</th>
+                      <th className="pb-2 font-medium">Region</th>
+                      <th className="pb-2 font-medium text-right">Rev MTD</th>
+                      <th className="pb-2 font-medium text-right">Sell-through</th>
+                      <th className="pb-2 font-medium text-right">Cover</th>
+                      <th className="pb-2 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {top5Markets.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-10 text-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <Globe className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                            <p className="text-sm text-muted-foreground">No markets match the selected filter</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      top5Markets.map((row) => (
+                        <tr key={row.name} className="border-b border-border/40 last:border-0">
+                          <td className="py-2.5 font-medium">{row.name}</td>
+                          <td className="py-2.5 text-xs text-muted-foreground">{row.region}</td>
+                          <td className="py-2.5 text-right tabular-nums">${row.revMTD.toLocaleString()}</td>
+                          <td className="py-2.5 text-right tabular-nums">{row.sellThrough}%</td>
+                          <td className="py-2.5 text-right tabular-nums text-muted-foreground">
+                            {row.coverDays === null ? "—" : `${row.coverDays}d`}
+                          </td>
+                          <td className="py-2.5">
+                            <StatusBadge status={row.status === "healthy" ? "healthy" : "low-cover"} />
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          </section>
+
+          <div className="card-elevated border-border/70 shadow-none">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 pb-2">
               <div>
                 <CardTitle className="font-display text-base">Sales velocity</CardTitle>
                 <p className="text-xs text-muted-foreground">Speed of sell-in — bottles or revenue by week.</p>
@@ -755,8 +1158,9 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/70 shadow-none">
-            <CardHeader className="pb-2">
+          <div className="card-elevated border-border/70 shadow-none">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
               <CardTitle className="font-display text-base">Inventory by market</CardTitle>
               <p className="text-xs text-muted-foreground">Hub stock, {rangeDays}-day movement, cover days.</p>
             </CardHeader>
@@ -793,8 +1197,9 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/70 shadow-none">
-            <CardHeader className="pb-2">
+          <div className="card-elevated border-border/70 shadow-none">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
               <CardTitle className="font-display text-base">Order trend</CardTitle>
               <p className="text-xs text-muted-foreground">Weekly order intensity (proxy from throughput).</p>
             </CardHeader>
@@ -823,8 +1228,9 @@ export default function Dashboard() {
 
         {/* Right */}
         <div className="space-y-6 xl:col-span-3">
-          <Card className="border-border/70 shadow-none">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div className="card-elevated border-border/70 shadow-none">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="font-display text-base">Shipment tracker</CardTitle>
               <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
                 <Link to="/shipments">All</Link>
@@ -854,8 +1260,9 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/70 shadow-none">
-            <CardHeader className="pb-2">
+          <div className="card-elevated border-border/70 shadow-none">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="pb-2">
               <CardTitle className="font-display text-base">Top accounts</CardTitle>
               <p className="text-xs text-muted-foreground">Strategic value, 30d revenue, reorder signal.</p>
             </CardHeader>
@@ -894,8 +1301,9 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/70 shadow-none">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div className="card-elevated border-border/70 shadow-none">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="font-display text-base">Manufacturer</CardTitle>
               <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
                 <Link to="/manufacturer" className="gap-1">
@@ -924,8 +1332,9 @@ export default function Dashboard() {
               </div>
             </CardContent>
           </Card>
-          <Card className="border-border/70 shadow-none">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div className="card-elevated border-border/70 shadow-none">
+          <div className="border-b border-border/50 p-5 pb-3">
+            <h3 className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="font-display text-base flex items-center gap-2">
                 <Gift className="h-4 w-4" />
                 Partner Incentives

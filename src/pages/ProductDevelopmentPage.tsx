@@ -1,10 +1,9 @@
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useNewProductRequests } from "@/contexts/AppDataContext";
-import { Plus, FileText, ChevronRight } from "lucide-react";
+import { Plus, FileText, ChevronRight, Factory, Calendar, DollarSign, FlaskConical } from "lucide-react";
 import { NewProductRequestDialog } from "@/components/NewProductRequestDialog";
 import { ProductRequestDetailDialog } from "@/components/ProductRequestDetailDialog";
 
@@ -89,18 +88,19 @@ export default function ProductDevelopmentPage() {
       </div>
 
       {filtered.length === 0 ? (
-        <Card className="py-12">
-          <CardContent className="text-center">
-            <p className="text-muted-foreground mb-2">No product requests match this filter.</p>
+        <div className="card-elevated py-12">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <FlaskConical className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+            <p className="text-sm text-muted-foreground">No product requests match this filter</p>
             <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)}>
               Create your first request
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((npr) => (
-            <Card
+            <div
               key={npr.id}
               role="button"
               tabIndex={0}
@@ -111,9 +111,9 @@ export default function ProductDevelopmentPage() {
                   setSelectedId(npr.id);
                 }
               }}
-              className="group cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="card-interactive group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              <CardContent className="pt-5">
+              <div className="p-5">
                 <div className="mb-3 flex items-start justify-between">
                   <div>
                     <h3 className="font-display font-semibold underline-offset-2 group-hover:underline">
@@ -127,21 +127,22 @@ export default function ProductDevelopmentPage() {
                 </div>
                 <div className="space-y-1.5 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
-                    <FileText className="h-3.5 w-3.5" />
+                    <FileText className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
                     {npr.specs.baseSpirit.replace(/_/g, " ")} · {npr.specs.targetAbv}% ABV
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs">🏭</span>
+                    <Factory className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
                     {npr.assignedManufacturer || "Unassigned"}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs">📅</span>
+                    <Calendar className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
                     Target: {npr.specs.targetLaunchDate}
                   </div>
                   {npr.manufacturerProposal ? (
                     <div className="flex items-center gap-2 text-xs">
+                      <DollarSign className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
                       <span>
-                        💰 ${npr.manufacturerProposal.costs.totalPerBottle.toFixed(2)}/bottle
+                        ${npr.manufacturerProposal.costs.totalPerBottle.toFixed(2)}/bottle
                       </span>
                     </div>
                   ) : null}
@@ -149,8 +150,8 @@ export default function ProductDevelopmentPage() {
                 <div className="mt-4 flex items-center text-xs font-medium text-primary">
                   View details <ChevronRight className="ml-1 h-3.5 w-3.5" />
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
         </div>
       )}

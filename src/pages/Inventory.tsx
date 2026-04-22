@@ -49,10 +49,10 @@ const LOCATION_TYPE_ICONS: Record<InventoryItem["locationType"], typeof Package>
 };
 
 const LOCATION_TYPE_COLORS: Record<InventoryItem["locationType"], string> = {
-  manufacturer: "bg-amber-100 text-amber-800",
-  distributor_warehouse: "bg-blue-100 text-blue-800",
-  in_transit: "bg-purple-100 text-purple-800",
-  retail_shelf: "bg-green-100 text-green-800",
+  manufacturer: "bg-accent/10 text-accent",
+  distributor_warehouse: "bg-muted/80 text-foreground",
+  in_transit: "bg-primary/10 text-primary",
+  retail_shelf: "bg-success/10 text-success",
 };
 
 /** Roles allowed to receive stock (matches server-side inventory:write permission)
@@ -225,7 +225,7 @@ export default function Inventory() {
                   All Inventory
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => downloadLowStockCsv(items)}>
-                  <FileSpreadsheet className="mr-2 h-4 w-4 text-amber-500" />
+                  <FileSpreadsheet className="mr-2 h-4 w-4 text-warning" />
                   Low Stock Only
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -242,7 +242,7 @@ export default function Inventory() {
 
       {/* Role-based view indicator */}
       {isShowingFilteredView && (
-        <div className="mb-4 rounded-lg border bg-blue-50 p-3 text-sm text-blue-800">
+        <div className="mb-4 rounded-lg border bg-info/10 p-3 text-sm text-info-foreground">
           <p className="font-medium">Role-based view</p>
           <p>Showing inventory visible to {user?.role?.replace(/_/g, " ")} role. Some locations may be hidden based on permissions.</p>
         </div>

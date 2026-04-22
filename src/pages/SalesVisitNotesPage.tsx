@@ -342,14 +342,16 @@ export default function SalesVisitNotesPage() {
         <TabsContent value="timeline">
           {filteredNotes.length === 0 ? (
             <Card>
-              <CardContent className="py-12 text-center">
-                <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-lg font-medium">No visit notes found</p>
-                <p className="text-muted-foreground">
-                  {search || accountFilter !== "all" 
-                    ? "Try adjusting your filters"
-                    : "Start logging your field visits to build a history with your accounts."}
-                </p>
+              <CardContent className="py-12">
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <MessageSquare className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                  <p className="text-sm font-medium text-muted-foreground">No visit notes found</p>
+                  <p className="text-xs text-muted-foreground">
+                    {search || accountFilter !== "all" 
+                      ? "Try adjusting your filters"
+                      : "Start logging your field visits to build a history with your accounts."}
+                  </p>
+                </div>
               </CardContent>
             </Card>
           ) : (
@@ -406,9 +408,11 @@ export default function SalesVisitNotesPage() {
         <TabsContent value="by-account">
           {Object.keys(notesByAccount).length === 0 ? (
             <Card>
-              <CardContent className="py-12 text-center">
-                <Store className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-lg font-medium">No accounts with visits</p>
+              <CardContent className="py-12">
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <Store className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                  <p className="text-sm font-medium text-muted-foreground">No accounts with visits</p>
+                </div>
               </CardContent>
             </Card>
           ) : (
@@ -480,9 +484,10 @@ export default function SalesVisitNotesPage() {
             </CardHeader>
             <CardContent>
               {recentVisits.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
-                  No recent visits logged
-                </p>
+                <div className="flex flex-col items-center gap-2 py-8 text-center">
+                  <MessageSquare className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
+                  <p className="text-sm text-muted-foreground">No recent visits logged</p>
+                </div>
               ) : (
                 <div className="space-y-4">
                   {recentVisits.map((note, index) => (
