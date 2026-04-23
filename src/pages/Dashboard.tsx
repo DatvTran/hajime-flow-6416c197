@@ -592,9 +592,8 @@ export default function Dashboard() {
       <div className="grid gap-6 xl:grid-cols-12">
         {/* Left */}
         <div className="space-y-6 xl:col-span-3">
-          <div className="card-elevated border-border/70 shadow-none">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
+          <Card className="card-elevated border-border/70 shadow-none">
+            <CardHeader className="border-b border-border/50 p-5 pb-3">
               <CardTitle className="font-display text-base">Order approval queue</CardTitle>
               <p className="text-xs text-muted-foreground">
                 Same lifecycle as Orders — pending review through distributor processing. Drafts awaiting HQ allocation.
@@ -747,9 +746,8 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <div className="card-elevated border-border/70 shadow-none">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
+          <Card className="card-elevated border-border/70 shadow-none">
+            <CardHeader className="border-b border-border/50 p-5 pb-3">
               <CardTitle className="font-display text-base">Critical alerts</CardTitle>
               <p className="text-xs text-muted-foreground">Same active queue as Alerts hub — inventory, PO, logistics, demand, AR.</p>
             </CardHeader>
@@ -785,9 +783,8 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <div className="card-elevated border-border/70 shadow-none">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
+          <Card className="card-elevated border-border/70 shadow-none">
+            <CardHeader className="border-b border-border/50 p-5 pb-3">
               <CardTitle className="font-display text-base">Production requests</CardTitle>
               <p className="text-xs text-muted-foreground">
                 Same rows as Purchase orders — request qty, region, SKU, status, ship dates.
@@ -834,9 +831,8 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <div className="card-elevated border-border/70 shadow-none">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
+          <Card className="card-elevated border-border/70 shadow-none">
+            <CardHeader className="border-b border-border/50 p-5 pb-3">
               <CardTitle className="font-display text-base">Replenishment</CardTitle>
               <p className="text-xs text-muted-foreground">Velocity + open POs — aligned with production requests above.</p>
             </CardHeader>
@@ -927,12 +923,11 @@ export default function Dashboard() {
 
             {/* Charts row */}
             <div className="grid gap-4 sm:grid-cols-5">
-              <div className="card-elevated border-border/70 shadow-none sm:col-span-3">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
-                  <CardTitle className="font-display text-sm">Revenue by region</CardTitle>
-                  <p className="text-xs text-muted-foreground">Last 12 months, $K</p>
-                </CardHeader>
+              <Card className="card-elevated border-border/70 shadow-none sm:col-span-3">
+            <CardHeader className="border-b border-border/50 p-5 pb-3">
+              <CardTitle className="font-display text-sm">Revenue by region</CardTitle>
+              <p className="text-xs text-muted-foreground">Last 12 months, $K</p>
+            </CardHeader>
                 <CardContent className="pt-0">
                   <div className="h-[200px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
@@ -954,12 +949,11 @@ export default function Dashboard() {
                   </div>
                 </CardContent>
               </Card>
-              <div className="card-elevated border-border/70 shadow-none sm:col-span-2">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
-                  <CardTitle className="font-display text-sm">Region mix</CardTitle>
-                  <p className="text-xs text-muted-foreground">Share of MTD revenue</p>
-                </CardHeader>
+              <Card className="card-elevated border-border/70 shadow-none sm:col-span-2">
+            <CardHeader className="border-b border-border/50 p-5 pb-3">
+              <CardTitle className="font-display text-sm">Region mix</CardTitle>
+              <p className="text-xs text-muted-foreground">Share of MTD revenue</p>
+            </CardHeader>
                 <CardContent className="pt-0">
                   <div className="h-[200px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
@@ -1011,13 +1005,12 @@ export default function Dashboard() {
             </div>
 
             {/* Truncated markets table */}
-            <div className="card-elevated border-border/70 shadow-none">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 pb-2">
-                <div>
-                  <CardTitle className="font-display text-sm">Market detail</CardTitle>
-                  <p className="text-xs text-muted-foreground">Top 5 markets by MTD revenue</p>
-                </div>
+            <Card className="card-elevated border-border/70 shadow-none">
+            <CardHeader className="border-b border-border/50 p-5 pb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 pb-2">
+              <div>
+                <CardTitle className="font-display text-sm">Market detail</CardTitle>
+                <p className="text-xs text-muted-foreground">Top 5 markets by MTD revenue</p>
+              </div>
                 <div className="flex gap-1">
                   {REGION_TABS.map((tab) => (
                     <button
@@ -1079,9 +1072,8 @@ export default function Dashboard() {
             </Card>
           </section>
 
-          <div className="card-elevated border-border/70 shadow-none">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 pb-2">
+          <Card className="card-elevated border-border/70 shadow-none">
+            <CardHeader className="border-b border-border/50 p-5 pb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 pb-2">
               <div>
                 <CardTitle className="font-display text-base">Sales velocity</CardTitle>
                 <p className="text-xs text-muted-foreground">Speed of sell-in — bottles or revenue by week.</p>
@@ -1158,9 +1150,8 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <div className="card-elevated border-border/70 shadow-none">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
+          <Card className="card-elevated border-border/70 shadow-none">
+            <CardHeader className="border-b border-border/50 p-5 pb-3">
               <CardTitle className="font-display text-base">Inventory by market</CardTitle>
               <p className="text-xs text-muted-foreground">Hub stock, {rangeDays}-day movement, cover days.</p>
             </CardHeader>
@@ -1197,9 +1188,8 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <div className="card-elevated border-border/70 shadow-none">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
+          <Card className="card-elevated border-border/70 shadow-none">
+            <CardHeader className="border-b border-border/50 p-5 pb-3">
               <CardTitle className="font-display text-base">Order trend</CardTitle>
               <p className="text-xs text-muted-foreground">Weekly order intensity (proxy from throughput).</p>
             </CardHeader>
@@ -1228,9 +1218,8 @@ export default function Dashboard() {
 
         {/* Right */}
         <div className="space-y-6 xl:col-span-3">
-          <div className="card-elevated border-border/70 shadow-none">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <Card className="card-elevated border-border/70 shadow-none">
+            <CardHeader className="border-b border-border/50 p-5 pb-3 flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="font-display text-base">Shipment tracker</CardTitle>
               <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
                 <Link to="/shipments">All</Link>
@@ -1260,9 +1249,8 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <div className="card-elevated border-border/70 shadow-none">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
+          <Card className="card-elevated border-border/70 shadow-none">
+            <CardHeader className="border-b border-border/50 p-5 pb-3">
               <CardTitle className="font-display text-base">Top accounts</CardTitle>
               <p className="text-xs text-muted-foreground">Strategic value, 30d revenue, reorder signal.</p>
             </CardHeader>
@@ -1301,9 +1289,8 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <div className="card-elevated border-border/70 shadow-none">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <Card className="card-elevated border-border/70 shadow-none">
+            <CardHeader className="border-b border-border/50 p-5 pb-3 flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="font-display text-base">Manufacturer</CardTitle>
               <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
                 <Link to="/manufacturer" className="gap-1">
@@ -1332,9 +1319,8 @@ export default function Dashboard() {
               </div>
             </CardContent>
           </Card>
-          <div className="card-elevated border-border/70 shadow-none">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <Card className="card-elevated border-border/70 shadow-none">
+            <CardHeader className="border-b border-border/50 p-5 pb-3 flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="font-display text-base flex items-center gap-2">
                 <Gift className="h-4 w-4" />
                 Partner Incentives

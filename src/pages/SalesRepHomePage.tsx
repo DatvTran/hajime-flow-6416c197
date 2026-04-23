@@ -397,12 +397,6 @@ export default function SalesRepHomePage() {
           </div>
         </div>
 
-        <div className="card-elevated border-border/70">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
-            <CardTitle className="font-display flex items-center gap-2 text-base">
-              <Target className="h-4 w-4" />
-              Accounts needing reorder
         <div className="card-elevated lg:col-span-1">
           <div className="flex items-center gap-2 border-b border-border/50 p-4 pb-2">
             <Target className="h-4 w-4 text-accent" strokeWidth={1.5} />
@@ -545,9 +539,8 @@ export default function SalesRepHomePage() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="card-elevated border-border/70">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
+        <Card className="card-elevated border-border/70">
+          <CardHeader className="border-b border-border/50 p-5 pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="font-display flex items-center gap-2 text-base">
                 <Calendar className="h-4 w-4" />
@@ -669,9 +662,8 @@ export default function SalesRepHomePage() {
           </CardContent>
         </Card>
 
-        <div className="card-elevated border-border/70">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
+        <Card className="card-elevated border-border/70">
+          <CardHeader className="border-b border-border/50 p-5 pb-3">
             <CardTitle className="font-display flex items-center gap-2 text-base">
               <StickyNote className="h-4 w-4" />
               Visit notes
@@ -712,14 +704,13 @@ export default function SalesRepHomePage() {
         </Card>
       </div>
 
-      <div className="card-elevated border-border/70">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
-          <CardTitle className="font-display flex items-center gap-2 text-base">
-            <Sparkles className="h-4 w-4" />
-            Opportunities
-          </CardTitle>
-        </CardHeader>
+      <Card className="card-elevated border-border/70">
+          <CardHeader className="border-b border-border/50 p-5 pb-3">
+            <CardTitle className="font-display flex items-center gap-2 text-base">
+              <Sparkles className="h-4 w-4" />
+              Opportunities
+            </CardTitle>
+          </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
             Premium placements, seasonal packs, and new SKU intros — track in CRM and convert to draft orders.
@@ -730,14 +721,13 @@ export default function SalesRepHomePage() {
         </CardContent>
       </Card>
 
-      <div className="card-elevated border-border/70">
-          <div className="border-b border-border/50 p-5 pb-3">
-            <h3 className="pb-2">
-          <CardTitle className="font-display flex items-center gap-2 text-base">
-            <Gift className="h-4 w-4" />
-            Partner Incentives
-          </CardTitle>
-        </CardHeader>
+      <Card className="card-elevated border-border/70">
+          <CardHeader className="border-b border-border/50 p-5 pb-3">
+            <CardTitle className="font-display flex items-center gap-2 text-base">
+              <Gift className="h-4 w-4" />
+              Partner Incentives
+            </CardTitle>
+          </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
             Track SPIF payouts, partner tiers, and margin impact across your distributor network.
