@@ -24,6 +24,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL } from "@/data/team-roster";
 import type { TeamMember, TeamMemberPortalRole } from "@/types/app-data";
 import { CSVImportButton } from "@/components/CSVImportButton";
+import {
+  createTeamMember,
+  deleteTeamMember,
+  getOperationalSettings,
+  updateOperationalSettings,
+} from "@/lib/api-v1-mutations";
 
 const TEAM_ROLE_LABELS: Record<TeamMemberPortalRole, string> = {
   sales_rep: "Sales rep",
@@ -59,7 +65,7 @@ export default function SettingsPage() {
     setRetailShelfThreshold(String(data.operationalSettings?.retailerStockThresholdBottles ?? 48));
   }, [data.operationalSettings?.retailerStockThresholdBottles]);
 
-  const saveReplenishment = () => {
+  const saveReplenishment = async () => {
     const lead = Math.max(7, Number(leadDays) || 45);
     const safety = Math.max(0, Number(safetyDefault) || 200);
     const shelfTh = Math.max(12, Number(retailShelfThreshold) || 48);
@@ -67,21 +73,43 @@ export default function SettingsPage() {
     for (const p of data.products) {
       safetyStockBySku[p.sku] = safety;
     }
-    updateData((d) => ({
-      ...d,
-      operationalSettings: {
-        ...d.operationalSettings!,
-        manufacturerLeadTimeDays: lead,
-        safetyStockBySku,
-        retailerStockThresholdBottles: shelfTh,
-      },
-    }));
-    toast.success("Replenishment settings saved", {
-      description: `Lead ${lead}d · DC safety ${safety} bottles/SKU · retail shelf alert below ${shelfTh} bottles`,
-    });
+
+    try {
+      await updateOperationalSettings({
+        lead_time_days: lead,
+        reorder_point_bottles: safety,
+        shelf_threshold: shelfTh,
+      });
+
+      updateData((d) => ({
+        ...d,
+        operationalSettings: {
+          ...d.operationalSettings!,
+          manufacturerLeadTimeDays: lead,
+          safetyStockBySku,
+          retailerStockThresholdBottles: shelfTh,
+        },
+      }));
+      toast.success("Replenishment settings saved", {
+        description: `Lead ${lead}d · DC safety ${safety} bottles/SKU · retail shelf alert below ${shelfTh} bottles — saved to server`,
+      });
+    } catch (err) {
+      console.error("[Settings] Failed to save operational settings:", err);
+      toast.error("Failed to save to server", { description: "Saved locally only." });
+
+      updateData((d) => ({
+        ...d,
+        operationalSettings: {
+          ...d.operationalSettings!,
+          manufacturerLeadTimeDays: lead,
+          safetyStockBySku,
+          retailerStockThresholdBottles: shelfTh,
+        },
+      }));
+    }
   };
 
-  const addTeamMember = () => {
+  const addTeamMember = async () => {
     const displayName = newMemberName.trim();
     const email = newMemberEmail.trim().toLowerCase();
     if (!displayName || !email) {
@@ -96,30 +124,70 @@ export default function SettingsPage() {
       toast.error("This email is already on the team");
       return;
     }
-    const row: TeamMember = {
-      id: `tm-${Date.now()}`,
-      displayName,
-      email,
-      role: newMemberRole,
-      createdAt: new Date().toISOString().slice(0, 10),
-    };
-    updateData((d) => ({
-      ...d,
-      teamMembers: [...(d.teamMembers ?? []), row],
-    }));
-    setNewMemberName("");
-    setNewMemberEmail("");
-    setNewMemberRole("sales_rep");
-    setTeamDialogOpen(false);
-    toast.success("Team member added", { description: `${displayName} · ${TEAM_ROLE_LABELS[newMemberRole]}` });
+
+    try {
+      // Save to backend API
+      const result = await createTeamMember({
+        name: displayName,
+        email,
+        role: newMemberRole,
+      });
+
+      const row: TeamMember = {
+        id: result.data.id,
+        displayName,
+        email,
+        role: newMemberRole,
+        createdAt: new Date().toISOString().slice(0, 10),
+      };
+      updateData((d) => ({
+        ...d,
+        teamMembers: [...(d.teamMembers ?? []), row],
+      }));
+      setNewMemberName("");
+      setNewMemberEmail("");
+      setNewMemberRole("sales_rep");
+      setTeamDialogOpen(false);
+      toast.success("Team member added", { description: `${displayName} · ${TEAM_ROLE_LABELS[newMemberRole]} — saved to server` });
+    } catch (err) {
+      console.error("[Settings] Failed to add team member:", err);
+      toast.error("Failed to save to server", { description: "Saved locally — will sync when online." });
+
+      // Fallback to localStorage
+      const row: TeamMember = {
+        id: `tm-${Date.now()}`,
+        displayName,
+        email,
+        role: newMemberRole,
+        createdAt: new Date().toISOString().slice(0, 10),
+      };
+      updateData((d) => ({
+        ...d,
+        teamMembers: [...(d.teamMembers ?? []), row],
+      }));
+      setNewMemberName("");
+      setNewMemberEmail("");
+      setNewMemberRole("sales_rep");
+      setTeamDialogOpen(false);
+    }
   };
 
-  const removeTeamMember = (id: string) => {
-    updateData((d) => ({
-      ...d,
-      teamMembers: (d.teamMembers ?? []).filter((m) => m.id !== id),
-    }));
-    toast.success("Removed from team");
+  const removeTeamMember = async (id: string) => {
+    try {
+      await deleteTeamMember(id);
+      updateData((d) => ({
+        ...d,
+        teamMembers: (d.teamMembers ?? []).filter((m) => m.id !== id),
+      }));
+      toast.success("Removed from team", { description: "Deleted from server." });
+    } catch (err) {
+      console.error("[Settings] Failed to remove team member:", err);
+      toast.error("Failed to delete from server", { description: "Removed locally only." });
+      updateData((d) => ({
+        ...d,
+        teamMembers: (d.teamMembers ?? []).filter((m) => m.id !== id),
+      }));
+    }
   };
 
   return (

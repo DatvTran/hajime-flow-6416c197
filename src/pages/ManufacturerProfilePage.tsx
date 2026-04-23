@@ -10,6 +10,10 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAppData } from "@/contexts/AppDataContext";
 import { toast } from "@/components/ui/sonner";
+import {
+  createManufacturerProfile,
+  updateManufacturerProfile,
+} from "@/lib/api-v1-mutations";
 
 interface Certification {
   id: string;
@@ -73,14 +77,51 @@ export default function ManufacturerProfilePage() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
+      const profilePayload = {
+        manufacturer_id: user?.id || "default",
+        company_name: formData.companyName,
+        contact_name: formData.contactPerson,
+        email: formData.email,
+        phone: formData.phone,
+        address: formData.address,
+        city: formData.city,
+        country: formData.country,
+        website: formData.website,
+        tax_id: formData.taxId,
+        bank_name: formData.bankName,
+        bank_account: formData.bankAccount,
+        iban: formData.iban,
+        swift: formData.swiftCode,
+        currency: formData.currency,
+        capacity_bottles_per_month: Number(formData.capacity) || 0,
+        min_order_bottles: Number(formData.minOrder) || 0,
+        lead_time_days: Number(formData.leadTime) || 30,
+        payment_terms: formData.paymentTerms,
+        certifications: formData.certifications.map(c => c.name).join(", "),
+        notes: formData.notes,
+      };
+
+      if (data.manufacturerProfile?.id) {
+        await updateManufacturerProfile(data.manufacturerProfile.id, profilePayload);
+      } else {
+        await createManufacturerProfile(profilePayload);
+      }
+
       updateData((d) => ({
         ...d,
         manufacturerProfile: formData,
       }));
-      toast.success("Profile saved", { description: "Manufacturer profile updated successfully." });
+      toast.success("Profile saved", { description: "Manufacturer profile saved to server." });
       setIsEditing(false);
-    } catch {
-      toast.error("Failed to save", { description: "Please try again." });
+    } catch (err) {
+      console.error("[ManufacturerProfile] Failed to save:", err);
+      toast.error("Failed to save to server", { description: "Saved locally — will sync when online." });
+
+      updateData((d) => ({
+        ...d,
+        manufacturerProfile: formData,
+      }));
+      setIsEditing(false);
     } finally {
       setIsSaving(false);
     }

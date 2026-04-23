@@ -27,6 +27,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAppData } from "@/contexts/AppDataContext";
 import { toast } from "@/components/ui/sonner";
+import {
+  createTask,
+  updateTaskStatus,
+  createOpportunity,
+  updateOpportunityStatus,
+} from "@/lib/api-v1-mutations";
 import type { Account } from "@/data/mockData";
 // SalesRepNote defined inline — this page is retained for potential future use but not currently routed
 type SalesRepNote = {
@@ -197,46 +203,99 @@ export default function SalesSectionPage() {
   const visitNotes: SalesRepNote[] = data.visitNotes || [];
   const myVisitNotes = visitNotes.filter((n) => n.authorRep === user.email);
 
-  const handleCreateTask = () => {
+  const handleCreateTask = async () => {
     if (!selectedOpportunity || !newTask.type || !newTask.dueDate) return;
 
-    const task: Task = {
-      id: `task-${Date.now()}`,
-      accountId: selectedOpportunity.accountId,
-      accountName: selectedOpportunity.account.tradingName,
-      type: newTask.type as Task["type"],
-      priority: (newTask.priority as Task["priority"]) || "medium",
-      dueDate: newTask.dueDate,
-      notes: newTask.notes || "",
-      completed: false,
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      const result = await createTask({
+        title: `${TASK_TYPE_LABELS[newTask.type as Task["type"]]} — ${selectedOpportunity.account.tradingName}`,
+        description: newTask.notes || "",
+        priority: (newTask.priority as string) || "medium",
+        due_date: newTask.dueDate,
+      });
 
-    updateData((d) => ({
-      ...d,
-      salesTasks: [task, ...(d.salesTasks || [])],
-    }));
+      const task: Task = {
+        id: result.data.id,
+        accountId: selectedOpportunity.accountId,
+        accountName: selectedOpportunity.account.tradingName,
+        type: newTask.type as Task["type"],
+        priority: (newTask.priority as Task["priority"]) || "medium",
+        dueDate: newTask.dueDate,
+        notes: newTask.notes || "",
+        completed: false,
+        createdAt: new Date().toISOString(),
+      };
 
-    toast.success("Task created", { description: `Scheduled ${TASK_TYPE_LABELS[task.type]} for ${task.accountName}` });
-    setShowTaskModal(false);
-    setSelectedOpportunity(null);
-    setNewTask({ type: "call", priority: "medium", dueDate: new Date().toISOString().split("T")[0], notes: "" });
+      updateData((d) => ({
+        ...d,
+        salesTasks: [task, ...(d.salesTasks || [])],
+      }));
+
+      toast.success("Task created", { description: `Scheduled ${TASK_TYPE_LABELS[task.type]} for ${task.accountName} — saved to server` });
+      setShowTaskModal(false);
+      setSelectedOpportunity(null);
+      setNewTask({ type: "call", priority: "medium", dueDate: new Date().toISOString().split("T")[0], notes: "" });
+    } catch (err) {
+      console.error("[SalesSection] Failed to create task:", err);
+      toast.error("Failed to save to server", { description: "Task saved locally." });
+
+      const task: Task = {
+        id: `task-${Date.now()}`,
+        accountId: selectedOpportunity.accountId,
+        accountName: selectedOpportunity.account.tradingName,
+        type: newTask.type as Task["type"],
+        priority: (newTask.priority as Task["priority"]) || "medium",
+        dueDate: newTask.dueDate,
+        notes: newTask.notes || "",
+        completed: false,
+        createdAt: new Date().toISOString(),
+      };
+
+      updateData((d) => ({
+        ...d,
+        salesTasks: [task, ...(d.salesTasks || [])],
+      }));
+
+      setShowTaskModal(false);
+      setSelectedOpportunity(null);
+      setNewTask({ type: "call", priority: "medium", dueDate: new Date().toISOString().split("T")[0], notes: "" });
+    }
   };
 
-  const completeTask = (taskId: string) => {
-    updateData((d) => ({
-      ...d,
-      salesTasks: d.salesTasks?.map((t) => (t.id === taskId ? { ...t, completed: true } : t)) || [],
-    }));
-    toast.success("Task completed");
+  const completeTask = async (taskId: string) => {
+    try {
+      await updateTaskStatus(taskId, "done");
+      updateData((d) => ({
+        ...d,
+        salesTasks: d.salesTasks?.map((t) => (t.id === taskId ? { ...t, completed: true } : t)) || [],
+      }));
+      toast.success("Task completed", { description: "Saved to server." });
+    } catch (err) {
+      console.error("[SalesSection] Failed to complete task:", err);
+      toast.error("Failed to sync with server", { description: "Marked locally." });
+      updateData((d) => ({
+        ...d,
+        salesTasks: d.salesTasks?.map((t) => (t.id === taskId ? { ...t, completed: true } : t)) || [],
+      }));
+    }
   };
 
-  const deleteTask = (taskId: string) => {
-    updateData((d) => ({
-      ...d,
-      salesTasks: d.salesTasks?.filter((t) => t.id !== taskId) || [],
-    }));
-    toast.success("Task deleted");
+  const deleteTask = async (taskId: string) => {
+    try {
+      await updateTaskStatus(taskId, "cancelled");
+      updateData((d) => ({
+        ...d,
+        salesTasks: d.salesTasks?.filter((t) => t.id !== taskId) || [],
+      }));
+      toast.success("Task deleted", { description: "Saved to server." });
+    } catch (err) {
+      console.error("[SalesSection] Failed to delete task:", err);
+      toast.error("Failed to sync with server", { description: "Deleted locally." });
+      updateData((d) => ({
+        ...d,
+        salesTasks: d.salesTasks?.filter((t) => t.id !== taskId) || [],
+      }));
+    }
   };
 
   if (isOpportunities) {

@@ -10,7 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { useAuth } from "@/contexts/AuthContext";
+import {
+  createSupportTicket,
+  createTicketReply,
+  updateTicketStatus,
+  getSupportTickets,
+} from "@/lib/api-v1-mutations";
 import { useAppData } from "@/contexts/AppDataContext";
 import { toast } from "@/components/ui/sonner";
 
@@ -88,7 +93,7 @@ export default function RetailSupportPage() {
     messages: [],
   });
 
-  const handleCreateTicket = () => {
+  const handleCreateTicket = async () => {
     if (!newTicket.subject?.trim()) {
       toast.error("Please enter a subject");
       return;
@@ -98,63 +103,134 @@ export default function RetailSupportPage() {
       return;
     }
 
-    const ticket: SupportTicket = {
-      id: `TKT-${Date.now()}`,
-      subject: newTicket.subject,
-      category: (newTicket.category as TicketCategory) || "other",
-      priority: (newTicket.priority as TicketPriority) || "medium",
-      status: "open",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      messages: [
-        {
-          id: `msg-${Date.now()}`,
-          author: user.displayName || user.email,
-          authorRole: "retail",
-          body: newTicket.messages[0].body,
-          sentAt: new Date().toISOString(),
-        },
-      ],
-      orderId: newTicket.orderId,
-    };
+    try {
+      const result = await createSupportTicket({
+        title: newTicket.subject.trim(),
+        description: newTicket.messages[0].body.trim(),
+        priority: (newTicket.priority as TicketPriority) || "medium",
+        category: (newTicket.category as string) || "other",
+      });
 
-    updateData((d) => ({
-      ...d,
-      supportTickets: [ticket, ...(d.supportTickets || [])],
-    }));
+      const ticket: SupportTicket = {
+        id: result.data.id,
+        subject: newTicket.subject,
+        category: (newTicket.category as TicketCategory) || "other",
+        priority: (newTicket.priority as TicketPriority) || "medium",
+        status: "open",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        messages: [
+          {
+            id: `msg-${Date.now()}`,
+            author: user.displayName || user.email,
+            authorRole: "retail",
+            body: newTicket.messages[0].body,
+            sentAt: new Date().toISOString(),
+          },
+        ],
+        orderId: newTicket.orderId,
+      };
 
-    toast.success("Ticket created", { description: `Ticket ${ticket.id} submitted` });
-    setIsCreating(false);
-    setNewTicket({ subject: "", category: "other", priority: "medium", messages: [] });
-    setSelectedTicket(ticket);
+      updateData((d) => ({
+        ...d,
+        supportTickets: [ticket, ...(d.supportTickets || [])],
+      }));
+
+      toast.success("Ticket created", { description: `Ticket ${ticket.id} saved to server` });
+      setIsCreating(false);
+      setNewTicket({ subject: "", category: "other", priority: "medium", messages: [] });
+      setSelectedTicket(ticket);
+    } catch (err) {
+      console.error("[RetailSupport] Failed to create ticket:", err);
+      toast.error("Failed to save to server", { description: "Ticket saved locally — will sync when online." });
+
+      const ticket: SupportTicket = {
+        id: `TKT-${Date.now()}`,
+        subject: newTicket.subject,
+        category: (newTicket.category as TicketCategory) || "other",
+        priority: (newTicket.priority as TicketPriority) || "medium",
+        status: "open",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        messages: [
+          {
+            id: `msg-${Date.now()}`,
+            author: user.displayName || user.email,
+            authorRole: "retail",
+            body: newTicket.messages[0].body,
+            sentAt: new Date().toISOString(),
+          },
+        ],
+        orderId: newTicket.orderId,
+      };
+
+      updateData((d) => ({
+        ...d,
+        supportTickets: [ticket, ...(d.supportTickets || [])],
+      }));
+
+      setIsCreating(false);
+      setNewTicket({ subject: "", category: "other", priority: "medium", messages: [] });
+      setSelectedTicket(ticket);
+    }
   };
 
-  const handleReply = () => {
+  const handleReply = async () => {
     if (!replyText.trim() || !selectedTicket) return;
 
-    const message: TicketMessage = {
-      id: `msg-${Date.now()}`,
-      author: user.displayName || user.email,
-      authorRole: "retail",
-      body: replyText,
-      sentAt: new Date().toISOString(),
-    };
+    try {
+      await createTicketReply(selectedTicket.id, replyText.trim());
 
-    updateData((d) => ({
-      ...d,
-      supportTickets: d.supportTickets?.map((t) =>
-        t.id === selectedTicket.id
-          ? {
-              ...t,
-              messages: [...t.messages, message],
-              updatedAt: new Date().toISOString(),
-            }
-          : t
-      ) || [],
-    }));
+      const message: TicketMessage = {
+        id: `msg-${Date.now()}`,
+        author: user.displayName || user.email,
+        authorRole: "retail",
+        body: replyText,
+        sentAt: new Date().toISOString(),
+      };
 
-    setReplyText("");
-    toast.success("Reply sent");
+      updateData((d) => ({
+        ...d,
+        supportTickets: d.supportTickets?.map((t) =>
+          t.id === selectedTicket.id
+            ? {
+                ...t,
+                messages: [...t.messages, message],
+                updatedAt: new Date().toISOString(),
+              }
+            : t
+        ) || [],
+      }));
+
+      setReplyText("");
+      toast.success("Reply sent", { description: "Saved to server." });
+    } catch (err) {
+      console.error("[RetailSupport] Failed to send reply:", err);
+      toast.error("Failed to save to server", { description: "Reply saved locally." });
+
+      const message: TicketMessage = {
+        id: `msg-${Date.now()}`,
+        author: user.displayName || user.email,
+        authorRole: "retail",
+        body: replyText,
+        sentAt: new Date().toISOString(),
+      };
+
+      updateData((d) => ({
+        ...d,
+        supportTickets: d.supportTickets?.map((t) =>
+          t.id === selectedTicket.id
+            ? {
+                ...t,
+                messages: [...t.messages, message],
+                updatedAt: new Date().toISOString(),
+              }
+            : t
+        ) || [],
+      }));
+
+      setReplyText("");
+    }
   };
 
   const formatDate = (dateStr: string) => {

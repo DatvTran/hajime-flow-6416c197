@@ -2647,4 +2647,657 @@ router.delete('/incentives/:id', requirePermission(Permission.SETTINGS_WRITE), a
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+// PHASE 2 — NEW TABLES (Migration 009)
+// ═══════════════════════════════════════════════════════════════════════
+
+// ===== TEAM MEMBERS =====
+
+// GET /api/v1/team-members
+router.get('/team-members', requirePermission(Permission.SETTINGS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    
+    const members = await db('team_members')
+      .where({ tenant_id: tenantId })
+      .where('is_active', true)
+      .orderBy('created_at', 'desc');
+    
+    res.json({ data: members });
+  } catch (err) {
+    console.error('[API v1] Error fetching team members:', err);
+    res.status(500).json({ error: 'Failed to fetch team members' });
+  }
+});
+
+// POST /api/v1/team-members
+router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { name, email, role, phone, department } = req.body;
+    
+    if (!name || !email || !role) {
+      return res.status(400).json({ error: 'name, email, and role are required' });
+    }
+    
+    const id = `tm-${Date.now()}`;
+    const [member] = await db('team_members')
+      .insert({
+        id,
+        tenant_id: tenantId,
+        name,
+        email,
+        role,
+        phone,
+        department,
+        is_active: true,
+        created_by: req.user?.userId,
+        created_at: new Date(),
+        updated_at: new Date()
+      })
+      .returning('*');
+    
+    res.status(201).json({ data: member });
+  } catch (err) {
+    console.error('[API v1] Error creating team member:', err);
+    res.status(500).json({ error: 'Failed to create team member' });
+  }
+});
+
+// DELETE /api/v1/team-members/:id
+router.delete('/team-members/:id', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    
+    const [member] = await db('team_members')
+      .where({ id, tenant_id: tenantId })
+      .update({ is_active: false, updated_at: new Date() })
+      .returning('*');
+    
+    if (!member) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+    
+    res.json({ data: member, message: 'Team member deactivated' });
+  } catch (err) {
+    console.error('[API v1] Error deleting team member:', err);
+    res.status(500).json({ error: 'Failed to delete team member' });
+  }
+});
+
+// ===== OPERATIONAL SETTINGS (singleton per tenant) =====
+
+// GET /api/v1/operational-settings
+router.get('/operational-settings', requirePermission(Permission.SETTINGS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    
+    let settings = await db('operational_settings')
+      .where({ tenant_id: tenantId })
+      .first();
+    
+    if (!settings) {
+      // Auto-create defaults
+      const [created] = await db('operational_settings')
+        .insert({ tenant_id: tenantId, updated_at: new Date() })
+        .returning('*');
+      settings = created;
+    }
+    
+    res.json({ data: settings });
+  } catch (err) {
+    console.error('[API v1] Error fetching operational settings:', err);
+    res.status(500).json({ error: 'Failed to fetch operational settings' });
+  }
+});
+
+// PUT /api/v1/operational-settings
+router.put('/operational-settings', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const updates = req.body;
+    
+    delete updates.tenant_id;
+    delete updates.created_at;
+    updates.updated_at = new Date();
+    
+    const [settings] = await db('operational_settings')
+      .where({ tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+    
+    if (!settings) {
+      // Create if missing
+      const [created] = await db('operational_settings')
+        .insert({ ...updates, tenant_id: tenantId })
+        .returning('*');
+      return res.json({ data: created });
+    }
+    
+    res.json({ data: settings });
+  } catch (err) {
+    console.error('[API v1] Error updating operational settings:', err);
+    res.status(500).json({ error: 'Failed to update operational settings' });
+  }
+});
+
+// ===== SUPPORT TICKETS =====
+
+// GET /api/v1/support-tickets
+router.get('/support-tickets', requirePermission(Permission.SETTINGS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { status, priority, account_id } = req.query;
+    
+    let query = db('support_tickets')
+      .where({ tenant_id: tenantId })
+      .orderBy('created_at', 'desc');
+    
+    if (status) query = query.where('status', status);
+    if (priority) query = query.where('priority', priority);
+    if (account_id) query = query.where('account_id', account_id);
+    
+    const tickets = await query;
+    res.json({ data: tickets });
+  } catch (err) {
+    console.error('[API v1] Error fetching support tickets:', err);
+    res.status(500).json({ error: 'Failed to fetch support tickets' });
+  }
+});
+
+// GET /api/v1/support-tickets/:id
+router.get('/support-tickets/:id', requirePermission(Permission.SETTINGS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    
+    const ticket = await db('support_tickets')
+      .where({ id, tenant_id: tenantId })
+      .first();
+    
+    if (!ticket) {
+      return res.status(404).json({ error: 'Support ticket not found' });
+    }
+    
+    const replies = await db('support_ticket_replies')
+      .where({ ticket_id: id, tenant_id: tenantId })
+      .orderBy('created_at', 'asc');
+    
+    res.json({ data: { ...ticket, replies } });
+  } catch (err) {
+    console.error('[API v1] Error fetching support ticket:', err);
+    res.status(500).json({ error: 'Failed to fetch support ticket' });
+  }
+});
+
+// POST /api/v1/support-tickets
+router.post('/support-tickets', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { title, description, priority, category, account_id } = req.body;
+    
+    if (!title || !description) {
+      return res.status(400).json({ error: 'title and description are required' });
+    }
+    
+    const id = `st-${Date.now()}`;
+    const [ticket] = await db('support_tickets')
+      .insert({
+        id,
+        tenant_id: tenantId,
+        title,
+        description,
+        status: 'open',
+        priority: priority || 'medium',
+        category,
+        account_id,
+        created_by: req.user?.userId,
+        created_at: new Date(),
+        updated_at: new Date()
+      })
+      .returning('*');
+    
+    res.status(201).json({ data: ticket });
+  } catch (err) {
+    console.error('[API v1] Error creating support ticket:', err);
+    res.status(500).json({ error: 'Failed to create support ticket' });
+  }
+});
+
+// POST /api/v1/support-tickets/:id/replies
+router.post('/support-tickets/:id/replies', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    const { message } = req.body;
+    
+    if (!message) {
+      return res.status(400).json({ error: 'message is required' });
+    }
+    
+    const [reply] = await db('support_ticket_replies')
+      .insert({
+        tenant_id: tenantId,
+        ticket_id: id,
+        message,
+        created_by: req.user?.userId,
+        created_at: new Date()
+      })
+      .returning('*');
+    
+    // Update ticket status to in_progress if it was open
+    await db('support_tickets')
+      .where({ id, tenant_id: tenantId, status: 'open' })
+      .update({ status: 'in_progress', updated_at: new Date() });
+    
+    res.status(201).json({ data: reply });
+  } catch (err) {
+    console.error('[API v1] Error creating ticket reply:', err);
+    res.status(500).json({ error: 'Failed to create ticket reply' });
+  }
+});
+
+// PATCH /api/v1/support-tickets/:id/status
+router.patch('/support-tickets/:id/status', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    const valid = ['open', 'in_progress', 'resolved', 'closed'];
+    if (!valid.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const updates = { status, updated_at: new Date() };
+    if (status === 'resolved') updates.resolved_at = new Date();
+    
+    const [ticket] = await db('support_tickets')
+      .where({ id, tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+    
+    if (!ticket) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+    
+    res.json({ data: ticket });
+  } catch (err) {
+    console.error('[API v1] Error updating ticket status:', err);
+    res.status(500).json({ error: 'Failed to update ticket status' });
+  }
+});
+
+// ===== MANUFACTURER PROFILES =====
+
+// GET /api/v1/manufacturer-profiles
+router.get('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    
+    const profiles = await db('manufacturer_profiles')
+      .where({ tenant_id: tenantId })
+      .orderBy('created_at', 'desc');
+    
+    res.json({ data: profiles });
+  } catch (err) {
+    console.error('[API v1] Error fetching manufacturer profiles:', err);
+    res.status(500).json({ error: 'Failed to fetch manufacturer profiles' });
+  }
+});
+
+// GET /api/v1/manufacturer-profiles/:id
+router.get('/manufacturer-profiles/:id', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    
+    const profile = await db('manufacturer_profiles')
+      .where({ id, tenant_id: tenantId })
+      .first();
+    
+    if (!profile) {
+      return res.status(404).json({ error: 'Manufacturer profile not found' });
+    }
+    
+    res.json({ data: profile });
+  } catch (err) {
+    console.error('[API v1] Error fetching manufacturer profile:', err);
+    res.status(500).json({ error: 'Failed to fetch manufacturer profile' });
+  }
+});
+
+// POST /api/v1/manufacturer-profiles
+router.post('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const data = req.body;
+    
+    if (!data.manufacturer_id) {
+      return res.status(400).json({ error: 'manufacturer_id is required' });
+    }
+    
+    const id = `mp-${Date.now()}`;
+    const [profile] = await db('manufacturer_profiles')
+      .insert({
+        id,
+        tenant_id: tenantId,
+        manufacturer_id: data.manufacturer_id,
+        company_name: data.company_name,
+        contact_name: data.contact_name,
+        email: data.email,
+        phone: data.phone,
+        address: data.address,
+        city: data.city,
+        country: data.country,
+        website: data.website,
+        tax_id: data.tax_id,
+        bank_name: data.bank_name,
+        bank_account: data.bank_account,
+        iban: data.iban,
+        swift: data.swift,
+        currency: data.currency || 'USD',
+        capacity_bottles_per_month: data.capacity_bottles_per_month,
+        min_order_bottles: data.min_order_bottles,
+        lead_time_days: data.lead_time_days,
+        payment_terms: data.payment_terms,
+        certifications: data.certifications,
+        notes: data.notes,
+        created_at: new Date(),
+        updated_at: new Date()
+      })
+      .returning('*');
+    
+    res.status(201).json({ data: profile });
+  } catch (err) {
+    console.error('[API v1] Error creating manufacturer profile:', err);
+    res.status(500).json({ error: 'Failed to create manufacturer profile' });
+  }
+});
+
+// PUT /api/v1/manufacturer-profiles/:id
+router.put('/manufacturer-profiles/:id', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    const updates = req.body;
+    
+    delete updates.id;
+    delete updates.tenant_id;
+    delete updates.created_at;
+    updates.updated_at = new Date();
+    
+    const [profile] = await db('manufacturer_profiles')
+      .where({ id, tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+    
+    if (!profile) {
+      return res.status(404).json({ error: 'Manufacturer profile not found' });
+    }
+    
+    res.json({ data: profile });
+  } catch (err) {
+    console.error('[API v1] Error updating manufacturer profile:', err);
+    res.status(500).json({ error: 'Failed to update manufacturer profile' });
+  }
+});
+
+// ===== TASKS =====
+
+// GET /api/v1/tasks
+router.get('/tasks', requirePermission(Permission.ACCOUNTS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { status, assigned_to, account_id } = req.query;
+    
+    let query = db('tasks')
+      .where({ tenant_id: tenantId })
+      .orderBy('created_at', 'desc');
+    
+    if (status) query = query.where('status', status);
+    if (assigned_to) query = query.where('assigned_to', assigned_to);
+    if (account_id) query = query.where('account_id', account_id);
+    
+    const tasks = await query;
+    res.json({ data: tasks });
+  } catch (err) {
+    console.error('[API v1] Error fetching tasks:', err);
+    res.status(500).json({ error: 'Failed to fetch tasks' });
+  }
+});
+
+// POST /api/v1/tasks
+router.post('/tasks', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { title, description, priority, assigned_to, account_id, due_date } = req.body;
+    
+    if (!title) {
+      return res.status(400).json({ error: 'title is required' });
+    }
+    
+    const id = `tk-${Date.now()}`;
+    const [task] = await db('tasks')
+      .insert({
+        id,
+        tenant_id: tenantId,
+        title,
+        description,
+        status: 'todo',
+        priority: priority || 'medium',
+        assigned_to,
+        account_id,
+        due_date,
+        created_by: req.user?.userId,
+        created_at: new Date(),
+        updated_at: new Date()
+      })
+      .returning('*');
+    
+    res.status(201).json({ data: task });
+  } catch (err) {
+    console.error('[API v1] Error creating task:', err);
+    res.status(500).json({ error: 'Failed to create task' });
+  }
+});
+
+// PATCH /api/v1/tasks/:id/status
+router.patch('/tasks/:id/status', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    const valid = ['todo', 'in_progress', 'done', 'cancelled'];
+    if (!valid.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const updates = { status, updated_at: new Date() };
+    if (status === 'done') updates.completed_at = new Date();
+    
+    const [task] = await db('tasks')
+      .where({ id, tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+    
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    
+    res.json({ data: task });
+  } catch (err) {
+    console.error('[API v1] Error updating task status:', err);
+    res.status(500).json({ error: 'Failed to update task status' });
+  }
+});
+
+// PUT /api/v1/tasks/:id
+router.put('/tasks/:id', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    const updates = req.body;
+    
+    delete updates.id;
+    delete updates.tenant_id;
+    delete updates.created_at;
+    updates.updated_at = new Date();
+    
+    const [task] = await db('tasks')
+      .where({ id, tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+    
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    
+    res.json({ data: task });
+  } catch (err) {
+    console.error('[API v1] Error updating task:', err);
+    res.status(500).json({ error: 'Failed to update task' });
+  }
+});
+
+// ===== OPPORTUNITIES =====
+
+// GET /api/v1/opportunities
+router.get('/opportunities', requirePermission(Permission.ACCOUNTS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { status, assigned_to, account_id } = req.query;
+    
+    let query = db('opportunities')
+      .where({ tenant_id: tenantId })
+      .orderBy('created_at', 'desc');
+    
+    if (status) query = query.where('status', status);
+    if (assigned_to) query = query.where('assigned_to', assigned_to);
+    if (account_id) query = query.where('account_id', account_id);
+    
+    const opportunities = await query;
+    res.json({ data: opportunities });
+  } catch (err) {
+    console.error('[API v1] Error fetching opportunities:', err);
+    res.status(500).json({ error: 'Failed to fetch opportunities' });
+  }
+});
+
+// POST /api/v1/opportunities
+router.post('/opportunities', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { title, description, value, currency, account_id, expected_close_date, assigned_to } = req.body;
+    
+    if (!title) {
+      return res.status(400).json({ error: 'title is required' });
+    }
+    
+    const id = `op-${Date.now()}`;
+    const [opportunity] = await db('opportunities')
+      .insert({
+        id,
+        tenant_id: tenantId,
+        title,
+        description,
+        status: 'prospecting',
+        value: value || 0,
+        currency: currency || 'USD',
+        account_id,
+        expected_close_date,
+        assigned_to,
+        created_by: req.user?.userId,
+        created_at: new Date(),
+        updated_at: new Date()
+      })
+      .returning('*');
+    
+    res.status(201).json({ data: opportunity });
+  } catch (err) {
+    console.error('[API v1] Error creating opportunity:', err);
+    res.status(500).json({ error: 'Failed to create opportunity' });
+  }
+});
+
+// PUT /api/v1/opportunities/:id
+router.put('/opportunities/:id', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    const updates = req.body;
+    
+    delete updates.id;
+    delete updates.tenant_id;
+    delete updates.created_at;
+    updates.updated_at = new Date();
+    
+    const [opportunity] = await db('opportunities')
+      .where({ id, tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+    
+    if (!opportunity) {
+      return res.status(404).json({ error: 'Opportunity not found' });
+    }
+    
+    res.json({ data: opportunity });
+  } catch (err) {
+    console.error('[API v1] Error updating opportunity:', err);
+    res.status(500).json({ error: 'Failed to update opportunity' });
+  }
+});
+
+// PATCH /api/v1/opportunities/:id/status
+router.patch('/opportunities/:id/status', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    const valid = ['prospecting', 'qualified', 'proposal', 'negotiation', 'closed_won', 'closed_lost'];
+    if (!valid.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const [opportunity] = await db('opportunities')
+      .where({ id, tenant_id: tenantId })
+      .update({ status, updated_at: new Date() })
+      .returning('*');
+    
+    if (!opportunity) {
+      return res.status(404).json({ error: 'Opportunity not found' });
+    }
+    
+    res.json({ data: opportunity });
+  } catch (err) {
+    console.error('[API v1] Error updating opportunity status:', err);
+    res.status(500).json({ error: 'Failed to update opportunity status' });
+  }
+});
+
 export default router;
