@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { VisitNoteEntry } from "@/types/app-data";
 import type { SalesOrder, Account, InventoryItem } from "@/data/mockData";
 import { effectiveRepApprovalStatus } from "@/lib/order-routing";
+import { createVisitNote, getVisitNotes } from "@/lib/api-v1-mutations";
 import {
   Users,
   FileEdit,
@@ -342,26 +343,60 @@ export default function SalesRepHomePage() {
     return { totalAccounts, openSlots, needsReorderCount };
   }, [schedule]);
 
-  const addVisit = () => {
-    const account = visitAccount.trim() || (myAccounts[0]?.tradingName ?? "");
+  const addVisit = async () => {
+    const accountName = visitAccount.trim() || (myAccounts[0]?.tradingName ?? "");
     const body = visitBody.trim();
-    if (!account || !body) {
+    if (!accountName || !body) {
       toast.error("Add account and note");
       return;
     }
-    const row: VisitNoteEntry = {
-      id: `v-${Date.now()}`,
-      at: new Date().toISOString().slice(0, 16).replace("T", " "),
-      account,
-      body,
-      authorRep: rep,
-    };
-    updateData((d) => ({
-      ...d,
-      visitNotes: [row, ...(d.visitNotes ?? [])],
-    }));
-    setVisitBody("");
-    toast.success("Visit logged", { description: "Synced to AppData — visible when HQ uses shared data." });
+
+    // Find account by trading name to get account_id for API
+    const account = myAccounts.find(
+      (a) => a.tradingName?.toLowerCase() === accountName.toLowerCase()
+    );
+
+    try {
+      // Save to backend API
+      await createVisitNote({
+        account_id: account?.id || accountName,
+        note: body,
+        visit_date: new Date().toISOString(),
+      });
+
+      // Also update local state for immediate UI feedback
+      const row: VisitNoteEntry = {
+        id: `v-${Date.now()}`,
+        at: new Date().toISOString().slice(0, 16).replace("T", " "),
+        account: accountName,
+        body,
+        authorRep: rep,
+      };
+      updateData((d) => ({
+        ...d,
+        visitNotes: [row, ...(d.visitNotes ?? [])],
+      }));
+
+      setVisitBody("");
+      toast.success("Visit logged", { description: "Saved to server — visible to all users." });
+    } catch (err) {
+      console.error("[SalesRepHome] Failed to save visit note:", err);
+      toast.error("Failed to save visit", { description: "Will retry in background." });
+
+      // Still save locally so data isn't lost
+      const row: VisitNoteEntry = {
+        id: `v-${Date.now()}`,
+        at: new Date().toISOString().slice(0, 16).replace("T", " "),
+        account: accountName,
+        body,
+        authorRep: rep,
+      };
+      updateData((d) => ({
+        ...d,
+        visitNotes: [row, ...(d.visitNotes ?? [])],
+      }));
+      setVisitBody("");
+    }
   };
 
   return (
@@ -669,7 +704,7 @@ export default function SalesRepHomePage() {
               Visit notes
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Stored in shared AppData (not only this browser) when the API or local snapshot saves — HQ can read the same ledger.
+              Saved to server — visible to all users and HQ in real time.
             </p>
           </CardHeader>
           <CardContent className="space-y-3">

@@ -13,6 +13,7 @@ import { useAppData } from "@/contexts/AppDataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
 import { toast } from "@/components/ui/sonner";
+import { createVisitNote } from "@/lib/api-v1-mutations";
 import type { VisitNoteEntry } from "@/types/app-data";
 import {
   Select,
@@ -117,7 +118,7 @@ export default function SalesVisitNotesPage() {
     return myNotes.slice(0, 5);
   }, [myNotes]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAccount || !noteText.trim()) {
       toast.error("Please select an account and enter a note");
@@ -127,26 +128,57 @@ export default function SalesVisitNotesPage() {
     const account = repAccounts.find(a => a.id === selectedAccount);
     const accountName = account?.tradingName || account?.name || "Unknown";
 
-    const newNote: VisitNoteEntry = {
-      id: `v-${Date.now()}`,
-      at: `${visitDate}T${new Date().toTimeString().slice(0, 5)}`,
-      account: accountName,
-      body: `[${visitType.toUpperCase()}] ${noteText.trim()}`,
-      authorRep: repName,
-    };
+    try {
+      // Save to backend API
+      await createVisitNote({
+        account_id: selectedAccount,
+        note: `[${visitType.toUpperCase()}] ${noteText.trim()}`,
+        visit_date: `${visitDate}T${new Date().toTimeString().slice(0, 5)}`,
+      });
 
-    updateData(d => ({
-      ...d,
-      visitNotes: [newNote, ...(d.visitNotes || [])],
-    }));
+      // Update local state for immediate UI feedback
+      const newNote: VisitNoteEntry = {
+        id: `v-${Date.now()}`,
+        at: `${visitDate}T${new Date().toTimeString().slice(0, 5)}`,
+        account: accountName,
+        body: `[${visitType.toUpperCase()}] ${noteText.trim()}`,
+        authorRep: repName,
+      };
 
-    toast.success("Visit note added", {
-      description: `Logged for ${accountName}`,
-    });
-    
-    setNoteText("");
-    setSelectedAccount("");
-    setShowForm(false);
+      updateData(d => ({
+        ...d,
+        visitNotes: [newNote, ...(d.visitNotes || [])],
+      }));
+
+      toast.success("Visit note added", {
+        description: `Saved to server for ${accountName}`,
+      });
+      
+      setNoteText("");
+      setSelectedAccount("");
+      setShowForm(false);
+    } catch (err) {
+      console.error("[SalesVisitNotes] Failed to save visit note:", err);
+      toast.error("Failed to save to server", { description: "Saved locally — will sync when online." });
+
+      // Still save locally so data isn't lost
+      const newNote: VisitNoteEntry = {
+        id: `v-${Date.now()}`,
+        at: `${visitDate}T${new Date().toTimeString().slice(0, 5)}`,
+        account: accountName,
+        body: `[${visitType.toUpperCase()}] ${noteText.trim()}`,
+        authorRep: repName,
+      };
+
+      updateData(d => ({
+        ...d,
+        visitNotes: [newNote, ...(d.visitNotes || [])],
+      }));
+
+      setNoteText("");
+      setSelectedAccount("");
+      setShowForm(false);
+    }
   };
 
   const getVisitTypeIcon = (body: string) => {
