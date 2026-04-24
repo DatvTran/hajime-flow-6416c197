@@ -5,7 +5,7 @@ import { NewAccountDialog } from "@/components/NewAccountDialog";
 import { useAccounts, useSalesOrders, useAppData } from "@/contexts/AppDataContext";
 import { AccountsSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
-import { RetailerApplicationDialog } from "@/components/RetailerApplicationDialog";
+
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -146,24 +146,12 @@ export default function Accounts() {
               size="sm"
               onSuccess={() => toast.success("Accounts imported", { description: "Refresh to see changes" })}
             />
-            {user.role === "sales_rep" ? (
-              <Button type="button" size="sm" variant="secondary" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setApplicationOpen(true)}>
-                Submit retailer application
-              </Button>
-            ) : null}
             <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setNewAccountOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               New Account
             </Button>
           </div>
         }
-      />
-
-      <RetailerApplicationDialog
-        open={applicationOpen}
-        onOpenChange={setApplicationOpen}
-        accounts={accounts}
-        onCreate={addAccount}
       />
 
       <NewAccountDialog
@@ -235,11 +223,6 @@ export default function Accounts() {
                     ? "Your account profile will appear here once set up."
                     : "No accounts match your filters."}
           </p>
-          {user.role === "sales_rep" ? (
-            <Button variant="outline" size="sm" onClick={() => setApplicationOpen(true)}>
-              Submit retailer application
-            </Button>
-          ) : null}
         </div>
       ) : view === "cards" ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
