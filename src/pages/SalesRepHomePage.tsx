@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useAppData, useInventory } from "@/contexts/AppDataContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { SalesRepSkeleton } from "@/components/skeletons";
 import type { VisitNoteEntry } from "@/types/app-data";
 import type { SalesOrder, Account, InventoryItem } from "@/data/mockData";
 import { effectiveRepApprovalStatus } from "@/lib/order-routing";
