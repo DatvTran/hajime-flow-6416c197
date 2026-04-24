@@ -146,6 +146,7 @@ export default function Accounts() {
               size="sm"
               onSuccess={() => toast.success("Accounts imported", { description: "Refresh to see changes" })}
             />
+            {/* Sales reps submit applications; direct account creation is hidden for this role. */}
             {user.role === "sales_rep" ? (
               <Button type="button" size="sm" variant="secondary" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setApplicationOpen(true)}>
                 Submit retailer application
