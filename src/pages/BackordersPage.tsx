@@ -53,7 +53,12 @@ const statusColors = {
 };
 
 export default function BackordersPage() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <BackordersSkeleton />;
+  }
+
   const [backorders, setBackorders] = useState<BackorderLine[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");

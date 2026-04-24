@@ -2,7 +2,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AccountDetailDialog } from "@/components/AccountDetailDialog";
 import { NewAccountDialog } from "@/components/NewAccountDialog";
-import { useAccounts, useSalesOrders } from "@/contexts/AppDataContext";
+import { useAccounts, useSalesOrders, useAppData } from "@/contexts/AppDataContext";
+import { AccountsSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 import { RetailerApplicationDialog } from "@/components/RetailerApplicationDialog";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,6 +32,12 @@ export default function Accounts() {
   const { user } = useAuth();
   const { accounts, updateAccount, addAccount } = useAccounts();
   const { salesOrders } = useSalesOrders();
+  const { loading } = useAppData();
+
+  if (loading) {
+    return <AccountsSkeleton />;
+  }
+
   const [searchParams, setSearchParams] = useSearchParams();
   const activeOnly = searchParams.get("status") === "active";
   const pipelineOnboarding = searchParams.get("pipeline") === "onboarding";

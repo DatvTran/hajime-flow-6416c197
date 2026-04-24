@@ -9,7 +9,12 @@ import { Package, ShoppingCart, Truck, Users, AlertTriangle, Warehouse, Calendar
 import { useMemo } from "react";
 
 export default function DistributorHomePage() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <DistributorSkeleton />;
+  }
+
   const { salesOrders } = useSalesOrders();
   const { depletionReports } = useDepletionReports();
   const inv = useMemo(() => computeInventorySummary(data.inventory, data.purchaseOrders), [data.inventory, data.purchaseOrders]);

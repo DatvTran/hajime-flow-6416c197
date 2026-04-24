@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAppData } from "@/contexts/AppDataContext";
+import { ManufacturerSkeleton } from "@/components/skeletons";
 import { toast } from "@/components/ui/sonner";
 import {
   createManufacturerProfile,
@@ -33,7 +34,12 @@ interface Equipment {
 
 export default function ManufacturerProfilePage() {
   const { user } = useAuth();
-  const { data, updateData } = useAppData();
+  const { data, updateData, loading } = useAppData();
+
+  if (loading) {
+    return <ManufacturerSkeleton />;
+  }
+
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 

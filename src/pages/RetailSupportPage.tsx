@@ -17,6 +17,8 @@ import {
   getSupportTickets,
 } from "@/lib/api-v1-mutations";
 import { useAppData } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { RetailSkeleton } from "@/components/skeletons";
 import { toast } from "@/components/ui/sonner";
 
 type TicketStatus = "open" | "in-progress" | "resolved" | "closed";
@@ -68,7 +70,12 @@ const PRIORITY_COLORS: Record<TicketPriority, string> = {
 
 export default function RetailSupportPage() {
   const { user } = useAuth();
-  const { data, updateData } = useAppData();
+  const { data, updateData, loading } = useAppData();
+
+  if (loading) {
+    return <RetailSkeleton />;
+  }
+
   const [isCreating, setIsCreating] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   const [filterStatus, setFilterStatus] = useState<TicketStatus | "all">("all");

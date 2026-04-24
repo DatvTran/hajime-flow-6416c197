@@ -3,6 +3,7 @@ import { ReceiveStockDialog } from "@/components/ReceiveStockDialog";
 import { StatCard } from "@/components/StatCard";
 import type { InventoryItem } from "@/data/mockData";
 import { useAppData, useInventoryForRole } from "@/contexts/AppDataContext";
+import { InventorySkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   healthForInventoryRow,
@@ -105,7 +106,7 @@ function parseLocationTypeParam(raw: string | null): InventoryItem["locationType
 }
 
 export default function Inventory() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
   const { 
     items, 
     allItems,
@@ -114,6 +115,10 @@ export default function Inventory() {
     availableSourceWarehouses,
   } = useInventoryForRole();
   const { user } = useAuth();
+
+  if (loading) {
+    return <InventorySkeleton />;
+  }
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = parseStatusParam(searchParams.get("status"));
   const locationTypeFilter = parseLocationTypeParam(searchParams.get("location"));

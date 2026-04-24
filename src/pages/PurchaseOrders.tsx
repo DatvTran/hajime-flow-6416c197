@@ -11,7 +11,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Download, Factory, Truck } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
-import { useInventory, usePurchaseOrders, useTransferOrders } from "@/contexts/AppDataContext";
+import { useInventory, usePurchaseOrders, useTransferOrders, useAppData } from "@/contexts/AppDataContext";
+import { PurchaseOrdersSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 
 function shouldAddInventoryForTransition(p: PurchaseOrder, nextStatus: PurchaseOrder["status"]): boolean {
@@ -35,6 +36,12 @@ function getWarehouseForMarket(market: string): string {
 
 export default function PurchaseOrders() {
   const { user } = useAuth();
+  const { loading } = useAppData();
+
+  if (loading) {
+    return <PurchaseOrdersSkeleton />;
+  }
+
   const canCreateProductionRequest = user.role === "brand_operator" || user.role === "operations" || user.role === "founder_admin";
   const canCreateTransfer = user.role === "brand_operator" || user.role === "operations" || user.role === "distributor" || user.role === "founder_admin";
   const canEditPoStatus = user.role === "brand_operator" || user.role === "founder_admin";

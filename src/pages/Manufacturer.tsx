@@ -19,7 +19,12 @@ import { useAppData } from "@/contexts/AppDataContext";
 export default function Manufacturer() {
   const { purchaseOrders } = usePurchaseOrders();
   const { productionStatuses, addProductionStatus } = useProductionStatuses();
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <ManufacturerSkeleton />;
+  }
+
   const { user } = useAuth();
   const logAudit = useAuditLog();
 

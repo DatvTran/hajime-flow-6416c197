@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppData } from "@/contexts/AppDataContext";
+import { DistributorSkeleton } from "@/components/skeletons";
 import {
   TrendingUp,
   TrendingDown,
@@ -36,7 +37,12 @@ import {
 type PeriodFilter = "7d" | "30d" | "90d" | "all";
 
 export default function DistributorSellThroughPage() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <DistributorSkeleton />;
+  }
+
   const [period, setPeriod] = useState<PeriodFilter>("30d");
   const [groupBy, setGroupBy] = useState<"account" | "sku" | "time">("account");
 

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppData } from "@/contexts/AppDataContext";
+import { GlobalMarketsSkeleton } from "@/components/skeletons";
 import {
   computeAnchorMarketsSnapshot,
   countActiveMarkets,
@@ -84,7 +85,11 @@ function formatCasesGlyph(n: number): string {
 }
 
 export default function GlobalMarketsPage() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <GlobalMarketsSkeleton />;
+  }
 
   const view = useMemo(() => {
     const mode = resolveMarketsHqMode(data.salesOrders);

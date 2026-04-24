@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAppData } from "@/contexts/AppDataContext";
+import { MarketsSkeleton } from "@/components/skeletons";
 import {
   computeAnchorMarketsSnapshot,
   countActiveMarkets,
@@ -31,7 +32,11 @@ import { Globe, Info, TrendingUp } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 
 export default function MarketsPage() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <MarketsSkeleton />;
+  }
 
   const view = useMemo(() => {
     const mode = resolveMarketsHqMode(data.salesOrders);

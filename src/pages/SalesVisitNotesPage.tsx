@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppData } from "@/contexts/AppDataContext";
+import { SalesRepSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
 import { toast } from "@/components/ui/sonner";
@@ -38,7 +39,12 @@ import {
 } from "lucide-react";
 
 export default function SalesVisitNotesPage() {
-  const { data, updateData } = useAppData();
+  const { data, updateData, loading } = useAppData();
+
+  if (loading) {
+    return <SalesRepSkeleton />;
+  }
+
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [accountFilter, setAccountFilter] = useState<string>("all");

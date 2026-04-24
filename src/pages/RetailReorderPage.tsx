@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAppData } from "@/contexts/AppDataContext";
+import { RetailSkeleton } from "@/components/skeletons";
 import { useRetailAccountTradingName } from "@/contexts/AuthContext";
 import { orderLineEntries, retailOrderDisplayId } from "@/lib/order-lines";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,12 @@ import type { Product, SalesOrder } from "@/data/mockData";
 type Agg = { sku: string; lastOrder: SalesOrder; lastCases: number; daysAgo: number; product: Product };
 
 export default function RetailReorderPage() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <RetailSkeleton />;
+  }
+
   const accountName = useRetailAccountTradingName();
   const [searchParams] = useSearchParams();
   const fromOrderId = searchParams.get("from");

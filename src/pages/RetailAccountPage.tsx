@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth, useRetailAccountTradingName } from "@/contexts/AuthContext";
 import { useAccounts, useAppData, useRetailerShelfStock } from "@/contexts/AppDataContext";
+import { RetailSkeleton } from "@/components/skeletons";
 import { useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +11,12 @@ export default function RetailAccountPage() {
   const { user } = useAuth();
   const tradingName = useRetailAccountTradingName();
   const { accounts } = useAccounts();
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <RetailSkeleton />;
+  }
+
   const { shelf, setShelfBottles } = useRetailerShelfStock();
   const acc = useMemo(() => accounts.find((a) => a.tradingName === tradingName), [accounts, tradingName]);
 

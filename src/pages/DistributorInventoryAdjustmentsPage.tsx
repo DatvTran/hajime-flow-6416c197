@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { InventoryAdjustmentDialog } from "@/components/InventoryAdjustmentDialog";
 import { useInventoryAdjustments, useAppData } from "@/contexts/AppDataContext";
+import { DistributorSkeleton } from "@/components/skeletons";
 import { ClipboardList, Plus, Scale } from "lucide-react";
 
 const statusStyles: Record<string, string> = {
@@ -22,7 +23,11 @@ const statusStyles: Record<string, string> = {
 export default function DistributorInventoryAdjustmentsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const { adjustments, fetchAdjustments } = useInventoryAdjustments();
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <DistributorSkeleton />;
+  }
 
   useEffect(() => {
     fetchAdjustments();

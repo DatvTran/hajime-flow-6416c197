@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAppData } from "@/contexts/AppDataContext";
+import { RetailSkeleton } from "@/components/skeletons";
 import { useRetailAccountTradingName } from "@/contexts/AuthContext";
 import { retailOrderDisplayId, orderLineEntries } from "@/lib/order-lines";
 import { RetailStatusChip, retailStatusLabel } from "@/components/retail/RetailStatusChip";
@@ -19,7 +20,12 @@ function stepIndex(status: SalesOrder["status"]): number {
 
 export default function RetailOrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <RetailSkeleton />;
+  }
+
   const accountName = useRetailAccountTradingName();
 
   const order = useMemo(() => {

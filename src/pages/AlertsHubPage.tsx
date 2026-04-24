@@ -4,14 +4,20 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAppData } from "@/contexts/AppDataContext";
+import { AlertsHubSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 import { deriveAlerts } from "@/lib/hajime-metrics";
 import { resolveAlertHref } from "@/lib/alert-links";
 import { AlertTriangle, ChevronRight } from "lucide-react";
 
 export default function AlertsHubPage() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
   const { user } = useAuth();
+
+  if (loading) {
+    return <AlertsHubSkeleton />;
+  }
+
   const location = useLocation();
 
   const alerts = useMemo(() => {

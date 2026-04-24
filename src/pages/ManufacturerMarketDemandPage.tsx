@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAppData } from "@/contexts/AppDataContext";
+import { ManufacturerSkeleton } from "@/components/skeletons";
 import type { SalesOrder } from "@/data/mockData";
 import {
   MANUFACTURER_DEMAND_DEMO_30,
@@ -34,7 +35,12 @@ function aggregateByMarket(orders: SalesOrder[], days: number, now = new Date())
 }
 
 export default function ManufacturerMarketDemandPage() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <ManufacturerSkeleton />;
+  }
+
   const demand = useMemo(() => {
     const mode = resolveMarketsHqMode(data.salesOrders);
     const asOf = marketsAsOfDate(mode);

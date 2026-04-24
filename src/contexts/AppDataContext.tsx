@@ -50,6 +50,27 @@ import {
   deleteDepletionReport as apiDeleteDepletionReport,
   createInventoryAdjustmentRequest as apiCreateInventoryAdjustmentRequest,
   getInventoryAdjustmentRequests as apiGetInventoryAdjustmentRequests,
+  createPurchaseOrder as apiCreatePurchaseOrder,
+  updatePurchaseOrder as apiUpdatePurchaseOrder,
+  updatePurchaseOrderStatus as apiUpdatePurchaseOrderStatus,
+  deletePurchaseOrder as apiDeletePurchaseOrder,
+  createTransferOrder as apiCreateTransferOrder,
+  updateTransferOrder as apiUpdateTransferOrder,
+  updateTransferOrderStatus as apiUpdateTransferOrderStatus,
+  deleteTransferOrder as apiDeleteTransferOrder,
+  createShipment as apiCreateShipment,
+  updateShipment as apiUpdateShipment,
+  updateShipmentStatus as apiUpdateShipmentStatus,
+  deleteShipment as apiDeleteShipment,
+  createIncentive as apiCreateIncentive,
+  updateIncentive as apiUpdateIncentive,
+  updateIncentiveStatus as apiUpdateIncentiveStatus,
+  deleteIncentive as apiDeleteIncentive,
+  getIncentives as apiGetIncentives,
+  createProductionStatus as apiCreateProductionStatus,
+  updateProductionStatus as apiUpdateProductionStatus,
+  deleteProductionStatus as apiDeleteProductionStatus,
+  getProductionStatuses as apiGetProductionStatuses,
 } from "@/lib/api-v1-mutations";
 import {
   getNewProductRequests,
@@ -1135,18 +1156,95 @@ export function useSalesOrders() {
 
 export function usePurchaseOrders() {
   const { data, updateData } = useAppData();
+
+  const addPurchaseOrder = useCallback(async (po: PurchaseOrder) => {
+    try {
+      const result = await apiCreatePurchaseOrder({
+        po_number: po.poNumber || po.id,
+        supplier_id: po.supplierId,
+        supplier_name: po.supplierName,
+        po_type: po.poType || "production",
+        status: po.status,
+        order_date: po.orderDate,
+        expected_delivery_date: po.expectedDeliveryDate,
+        items: po.lines?.map((l) => ({
+          sku: l.sku,
+          product_name: l.productName,
+          quantity: l.quantity,
+          unit_price: l.unitPrice,
+        })),
+        total_amount: po.totalAmount,
+        notes: po.notes,
+      });
+
+      updateData((d) => ({
+        ...d,
+        purchaseOrders: [{
+          ...po,
+          id: String(result.data.id),
+          poNumber: result.data.po_number,
+        }, ...d.purchaseOrders],
+      }));
+      toast.success("Purchase order created", { description: result.data.po_number });
+      return { success: true, data: result.data };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create purchase order";
+      toast.error("Failed to create purchase order", { description: message });
+      return { success: false, error: message };
+    }
+  }, [updateData]);
+
+  const patchPurchaseOrder = useCallback(async (id: string, patch: Partial<PurchaseOrder>) => {
+    try {
+      if (patch.status && Object.keys(patch).length === 1) {
+        await apiUpdatePurchaseOrderStatus(id, patch.status);
+      } else {
+        await apiUpdatePurchaseOrder(id, {
+          po_number: patch.poNumber,
+          status: patch.status,
+          expected_delivery_date: patch.expectedDeliveryDate,
+          total_amount: patch.totalAmount,
+          notes: patch.notes,
+        });
+      }
+
+      updateData((d) => ({
+        ...d,
+        purchaseOrders: d.purchaseOrders.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+      }));
+      toast.success("Purchase order updated");
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update purchase order";
+      toast.error("Failed to update purchase order", { description: message });
+      return { success: false, error: message };
+    }
+  }, [updateData]);
+
+  const removePurchaseOrder = useCallback(async (id: string) => {
+    try {
+      await apiDeletePurchaseOrder(id);
+      updateData((d) => ({
+        ...d,
+        purchaseOrders: d.purchaseOrders.filter((p) => p.id !== id),
+      }));
+      toast.success("Purchase order deleted");
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete purchase order";
+      toast.error("Failed to delete purchase order", { description: message });
+      return { success: false, error: message };
+    }
+  }, [updateData]);
+
   return useMemo(
     () => ({
       purchaseOrders: data.purchaseOrders,
-      addPurchaseOrder: (po: PurchaseOrder) =>
-        updateData((d) => ({ ...d, purchaseOrders: [po, ...d.purchaseOrders] })),
-      patchPurchaseOrder: (id: string, patch: Partial<PurchaseOrder>) =>
-        updateData((d) => ({
-          ...d,
-          purchaseOrders: d.purchaseOrders.map((p) => (p.id === id ? { ...p, ...patch } : p)),
-        })),
+      addPurchaseOrder,
+      patchPurchaseOrder,
+      removePurchaseOrder,
     }),
-    [data.purchaseOrders, updateData],
+    [data.purchaseOrders, addPurchaseOrder, patchPurchaseOrder, removePurchaseOrder]
   );
 }
 

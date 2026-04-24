@@ -26,6 +26,7 @@ import {
 import { useSearchParams } from "react-router-dom";
 import { CSVExportSalesReportButton } from "@/components/CSVExportButtons";
 import { useAppData } from "@/contexts/AppDataContext";
+import { ReportsSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 import { ANALYTICS_DEMO_REP_BOOK, resolveSalesRepLabelForSession } from "@/data/team-roster";
 import {
@@ -66,7 +67,12 @@ function quarterSellInCad(orders: Parameters<typeof computeSalesByMonth>[0], now
 }
 
 export default function Reports() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <ReportsSkeleton />;
+  }
+
   const { user } = useAuth();
   const rep = useMemo(
     () => resolveSalesRepLabelForSession(user?.email, user?.displayName ?? ""),

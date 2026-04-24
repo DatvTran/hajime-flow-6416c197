@@ -6,6 +6,7 @@ import type { SalesOrder } from "@/data/mockData";
 import { isRetailChannelOrder } from "@/lib/hajime-metrics";
 import { effectiveRepApprovalStatus, routingTargetLabel } from "@/lib/order-routing";
 import { useAccounts, useAppData, useFinancingLedger, useSalesOrders } from "@/contexts/AppDataContext";
+import { OrdersSkeleton } from "@/components/skeletons";
 import {
   computeOrderTabCounts,
   isOrderTabId,
@@ -34,7 +35,11 @@ export default function Orders() {
   const { salesOrders: orders, addSalesOrder, patchSalesOrder } = useSalesOrders();
   const { accounts } = useAccounts();
   const { appendEntry } = useFinancingLedger();
-  const { updateData } = useAppData();
+  const { updateData, loading } = useAppData();
+
+  if (loading) {
+    return <OrdersSkeleton />;
+  }
   
   // Only brand_operator can approve/reject draft orders (HQ allocation authority)
   const canApproveDraftQueue = user?.role === "brand_operator";

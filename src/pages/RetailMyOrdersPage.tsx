@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAppData } from "@/contexts/AppDataContext";
+import { RetailSkeleton } from "@/components/skeletons";
 import { useRetailAccountTradingName } from "@/contexts/AuthContext";
 import { retailOrderDisplayId, orderLineEntries } from "@/lib/order-lines";
 import { RetailStatusChip, retailBucketFromStatus, type RetailOrderFilter } from "@/components/retail/RetailStatusChip";
@@ -31,7 +32,12 @@ function etaForOrder(o: SalesOrder, shipments: { linkedOrder: string; eta: strin
 }
 
 export default function RetailMyOrdersPage() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <RetailSkeleton />;
+  }
+
   const accountName = useRetailAccountTradingName();
   const [searchParams, setSearchParams] = useSearchParams();
   const filter = filterKey(searchParams.get("filter"));

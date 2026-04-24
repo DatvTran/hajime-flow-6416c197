@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { NewProductDialog } from "@/components/NewProductDialog";
 import { EditProductDialog } from "@/components/EditProductDialog";
 import { useProducts, useAppData } from "@/contexts/AppDataContext";
+import { SettingsSkeleton } from "@/components/skeletons";
 import type { Product } from "@/data/mockData";
 import { Trash2, UserPlus, Users } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
@@ -42,7 +43,12 @@ const TEAM_ROLE_ORDER: TeamMemberPortalRole[] = ["sales_rep", "retail", "distrib
 
 export default function SettingsPage() {
   const { products, addProduct, removeProduct, patchProduct } = useProducts();
-  const { data, updateData } = useAppData();
+  const { data, updateData, loading } = useAppData();
+
+  if (loading) {
+    return <SettingsSkeleton />;
+  }
+
   const [newProductOpen, setNewProductOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);

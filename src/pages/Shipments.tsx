@@ -2,12 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useShipments } from "@/contexts/AppDataContext";
+import { useShipments, useAppData } from "@/contexts/AppDataContext";
+import { ShipmentsSkeleton } from "@/components/skeletons";
 import { Input } from "@/components/ui/input";
 import { Truck, Package, Search, ArrowRight, Clock, CheckCircle2, AlertTriangle, Navigation } from "lucide-react";
 
 export default function Shipments() {
   const { shipments } = useShipments();
+  const { loading } = useAppData();
+
+  if (loading) {
+    return <ShipmentsSkeleton />;
+  }
+
   const [searchParams] = useSearchParams();
   const [q, setQ] = useState(() => searchParams.get("q") ?? "");
   useEffect(() => {

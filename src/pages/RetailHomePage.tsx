@@ -60,7 +60,12 @@ function primaryLineSummary(o: SalesOrder): string {
 }
 
 export default function RetailHomePage() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <RetailSkeleton />;
+  }
+
   const { accounts } = useAccounts();
   const cart = useRetailCart();
   const { user } = useAuth();

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAppData, useAccounts, useSalesOrders } from "@/contexts/AppDataContext";
+import { RetailSkeleton } from "@/components/skeletons";
 import { useRetailAccountTradingName } from "@/contexts/AuthContext";
 import { useRetailCart } from "@/contexts/RetailCartContext";
 import { RetailProductCard } from "@/components/retail/RetailProductCard";
@@ -16,7 +17,12 @@ import { CheckCircle2, ChevronRight, Store, Trash2 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
 export default function RetailNewOrderPage() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
+
+  if (loading) {
+    return <RetailSkeleton />;
+  }
+
   const { accounts } = useAccounts();
   const { salesOrders, addSalesOrder } = useSalesOrders();
   const accountName = useRetailAccountTradingName();

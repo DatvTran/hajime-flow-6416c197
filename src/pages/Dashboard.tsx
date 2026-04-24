@@ -51,6 +51,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { useAppData, useSalesOrders } from "@/contexts/AppDataContext";
+import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   cityKeyFromMarket,
@@ -177,8 +178,12 @@ function KpiCard({
 }
 
 export default function Dashboard() {
-  const { data } = useAppData();
+  const { data, loading } = useAppData();
   const { patchSalesOrder } = useSalesOrders();
+
+  if (loading) {
+    return <DashboardSkeleton />;
+  }
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const canApproveDraftQueue = user?.role === "brand_operator";

@@ -13,7 +13,7 @@ export function AppLayout() {
             Hajime
           </span>
         </header>
-        <div className="scrollbar-thin relative flex-1 overflow-x-hidden overflow-y-auto p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:p-6 lg:p-8">
+        <div className="texture-noise scrollbar-thin relative flex-1 overflow-x-hidden overflow-y-auto p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:p-6 lg:p-8">
           <Outlet />
         </div>
       </SidebarInset>
