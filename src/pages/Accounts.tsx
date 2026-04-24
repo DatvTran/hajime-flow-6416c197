@@ -34,10 +34,6 @@ export default function Accounts() {
   const { salesOrders } = useSalesOrders();
   const { loading } = useAppData();
 
-  if (loading) {
-    return <AccountsSkeleton />;
-  }
-
   const [searchParams, setSearchParams] = useSearchParams();
   const activeOnly = searchParams.get("status") === "active";
   const pipelineOnboarding = searchParams.get("pipeline") === "onboarding";
@@ -123,6 +119,10 @@ export default function Accounts() {
     );
   };
 
+  if (loading) {
+    return <AccountsSkeleton />;
+  }
+
   return (
     <div>
       <PageHeader
@@ -151,10 +151,12 @@ export default function Accounts() {
                 Submit retailer application
               </Button>
             ) : null}
-            <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setNewAccountOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              New Account
-            </Button>
+            {user.role !== "sales_rep" ? (
+              <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setNewAccountOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                New Account
+              </Button>
+            ) : null}
           </div>
         }
       />
@@ -166,12 +168,14 @@ export default function Accounts() {
         onCreate={addAccount}
       />
 
-      <NewAccountDialog
-        open={newAccountOpen}
-        onOpenChange={setNewAccountOpen}
-        accounts={accounts}
-        onCreate={addAccount}
-      />
+      {user.role !== "sales_rep" ? (
+        <NewAccountDialog
+          open={newAccountOpen}
+          onOpenChange={setNewAccountOpen}
+          accounts={accounts}
+          onCreate={addAccount}
+        />
+      ) : null}
 
       <AccountDetailDialog
         account={detailAccount}

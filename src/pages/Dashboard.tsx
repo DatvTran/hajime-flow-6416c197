@@ -180,10 +180,6 @@ function KpiCard({
 export default function Dashboard() {
   const { data, loading } = useAppData();
   const { patchSalesOrder } = useSalesOrders();
-
-  if (loading) {
-    return <DashboardSkeleton />;
-  }
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const canApproveDraftQueue = user?.role === "brand_operator";
@@ -383,6 +379,10 @@ export default function Dashboard() {
     () => Math.min(99, hubAlerts.filter((a) => a.severity === "high").length + shipmentAlerts),
     [hubAlerts, shipmentAlerts],
   );
+
+  if (loading) {
+    return <DashboardSkeleton />;
+  }
 
   return (
     <div className="min-w-0 space-y-6">

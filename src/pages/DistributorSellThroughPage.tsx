@@ -39,10 +39,6 @@ type PeriodFilter = "7d" | "30d" | "90d" | "all";
 export default function DistributorSellThroughPage() {
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <DistributorSkeleton />;
-  }
-
   const [period, setPeriod] = useState<PeriodFilter>("30d");
   const [groupBy, setGroupBy] = useState<"account" | "sku" | "time">("account");
 
@@ -148,6 +144,10 @@ export default function DistributorSellThroughPage() {
         onHand: stats.onHand,
       }));
   }, [byAccount, bySku, filteredReports, groupBy]);
+
+  if (loading) {
+    return <DistributorSkeleton />;
+  }
 
   return (
     <div className="space-y-6">

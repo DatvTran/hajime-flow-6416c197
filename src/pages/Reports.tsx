@@ -69,10 +69,6 @@ function quarterSellInCad(orders: Parameters<typeof computeSalesByMonth>[0], now
 export default function Reports() {
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <ReportsSkeleton />;
-  }
-
   const { user } = useAuth();
   const rep = useMemo(
     () => resolveSalesRepLabelForSession(user?.email, user?.displayName ?? ""),
@@ -212,6 +208,10 @@ export default function Reports() {
     if (focus === "quarter") return "Quarter context — top accounts by sell-in.";
     return ANALYTICS_TAGLINE;
   }, [focus]);
+
+  if (loading) {
+    return <ReportsSkeleton />;
+  }
 
   return (
     <div>

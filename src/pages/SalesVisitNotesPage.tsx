@@ -41,10 +41,6 @@ import {
 export default function SalesVisitNotesPage() {
   const { data, updateData, loading } = useAppData();
 
-  if (loading) {
-    return <SalesRepSkeleton />;
-  }
-
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [accountFilter, setAccountFilter] = useState<string>("all");
@@ -197,6 +193,10 @@ export default function SalesVisitNotesPage() {
   const stripTypePrefix = (body: string) => {
     return body.replace(/^\[(IN-PERSON|PHONE|EMAIL|VIDEO)\]\s*/, "");
   };
+
+  if (loading) {
+    return <SalesRepSkeleton />;
+  }
 
   return (
     <div className="space-y-6">

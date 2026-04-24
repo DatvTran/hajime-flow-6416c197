@@ -2790,7 +2790,7 @@ router.put('/operational-settings', requirePermission(Permission.SETTINGS_WRITE)
 // ===== SUPPORT TICKETS =====
 
 // GET /api/v1/support-tickets
-router.get('/support-tickets', requirePermission(Permission.SETTINGS_READ), async (req, res) => {
+router.get('/support-tickets', requirePermission(Permission.ORDERS_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -2813,7 +2813,7 @@ router.get('/support-tickets', requirePermission(Permission.SETTINGS_READ), asyn
 });
 
 // GET /api/v1/support-tickets/:id
-router.get('/support-tickets/:id', requirePermission(Permission.SETTINGS_READ), async (req, res) => {
+router.get('/support-tickets/:id', requirePermission(Permission.ORDERS_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -2839,7 +2839,7 @@ router.get('/support-tickets/:id', requirePermission(Permission.SETTINGS_READ), 
 });
 
 // POST /api/v1/support-tickets
-router.post('/support-tickets', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+router.post('/support-tickets', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -2874,7 +2874,7 @@ router.post('/support-tickets', requirePermission(Permission.SETTINGS_WRITE), as
 });
 
 // POST /api/v1/support-tickets/:id/replies
-router.post('/support-tickets/:id/replies', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+router.post('/support-tickets/:id/replies', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -2908,7 +2908,7 @@ router.post('/support-tickets/:id/replies', requirePermission(Permission.SETTING
 });
 
 // PATCH /api/v1/support-tickets/:id/status
-router.patch('/support-tickets/:id/status', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+router.patch('/support-tickets/:id/status', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;

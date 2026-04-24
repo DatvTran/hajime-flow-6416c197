@@ -11,10 +11,6 @@ import { useMemo } from "react";
 export default function DistributorHomePage() {
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <DistributorSkeleton />;
-  }
-
   const { salesOrders } = useSalesOrders();
   const { depletionReports } = useDepletionReports();
   const inv = useMemo(() => computeInventorySummary(data.inventory, data.purchaseOrders), [data.inventory, data.purchaseOrders]);
@@ -44,6 +40,10 @@ export default function DistributorHomePage() {
     () => depletionReports.slice(0, 5),
     [depletionReports],
   );
+
+  if (loading) {
+    return <DistributorSkeleton />;
+  }
 
   return (
     <div className="space-y-6">

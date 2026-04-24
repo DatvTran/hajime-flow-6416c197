@@ -11,10 +11,6 @@ export default function Shipments() {
   const { shipments } = useShipments();
   const { loading } = useAppData();
 
-  if (loading) {
-    return <ShipmentsSkeleton />;
-  }
-
   const [searchParams] = useSearchParams();
   const [q, setQ] = useState(() => searchParams.get("q") ?? "");
   useEffect(() => {
@@ -46,6 +42,10 @@ export default function Shipments() {
     const done = filtered.filter((s) => s.status === "delivered");
     return { activeShipments: active, completedShipments: done };
   }, [filtered]);
+
+  if (loading) {
+    return <ShipmentsSkeleton />;
+  }
 
   return (
     <div>
