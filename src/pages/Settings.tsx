@@ -45,10 +45,6 @@ export default function SettingsPage() {
   const { products, addProduct, removeProduct, patchProduct } = useProducts();
   const { data, updateData, loading } = useAppData();
 
-  if (loading) {
-    return <SettingsSkeleton />;
-  }
-
   const [newProductOpen, setNewProductOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
@@ -195,6 +191,10 @@ export default function SettingsPage() {
       }));
     }
   };
+
+  if (loading) {
+    return <SettingsSkeleton />;
+  }
 
   return (
     <div>

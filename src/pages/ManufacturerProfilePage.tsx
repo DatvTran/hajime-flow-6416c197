@@ -36,10 +36,6 @@ export default function ManufacturerProfilePage() {
   const { user } = useAuth();
   const { data, updateData, loading } = useAppData();
 
-  if (loading) {
-    return <ManufacturerSkeleton />;
-  }
-
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -192,6 +188,10 @@ export default function ManufacturerProfilePage() {
       equipment: prev.equipment.filter((e) => e.id !== id),
     }));
   };
+
+  if (loading) {
+    return <ManufacturerSkeleton />;
+  }
 
   return (
     <div className="space-y-6">

@@ -13,16 +13,16 @@ export default function RetailAccountPage() {
   const { accounts } = useAccounts();
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <RetailSkeleton />;
-  }
-
   const { shelf, setShelfBottles } = useRetailerShelfStock();
   const acc = useMemo(() => accounts.find((a) => a.tradingName === tradingName), [accounts, tradingName]);
 
   const accShelf = acc && shelf ? shelf[acc.id] ?? {} : {};
   const activeProducts = useMemo(() => (data?.products || []).filter((p) => p.status === "active"), [data?.products]);
   const shelfTh = data?.operationalSettings?.retailerStockThresholdBottles ?? 48;
+
+  if (loading) {
+    return <RetailSkeleton />;
+  }
 
   return (
     <div>
