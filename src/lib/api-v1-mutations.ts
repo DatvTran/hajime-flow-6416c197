@@ -1,17 +1,26 @@
-import { toast } from "@/components/ui/sonner";
+const API_URL = import.meta.env.VITE_API_URL || "";
+
+function getAuthToken(): string | null {
+  try {
+    // Keep backward compatibility with legacy token key used in older dev builds
+    return localStorage.getItem("hajime_access_token") || localStorage.getItem("token");
+  } catch {
+    return null;
+  }
+}
 
 /**
  * apiFetch wraps fetch with auth headers and error handling
  */
 export async function apiFetch(url: string, options: RequestInit = {}) {
-  const token = localStorage.getItem("token");
+  const token = getAuthToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...((options.headers as Record<string, string>) || {}),
   };
 
-  const response = await fetch(url, {
+  const response = await fetch(`${API_URL}${url}`, {
     ...options,
     headers,
   });

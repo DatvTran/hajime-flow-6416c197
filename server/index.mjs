@@ -3,6 +3,7 @@
  * Features: Auth/RBAC, PostgreSQL, CSV Import/Export, Stripe
  */
 import express from 'express';
+import compression from 'compression';
 import Stripe from 'stripe';
 import fs from 'fs';
 import path from 'path';
@@ -104,6 +105,17 @@ function requireStripe(_req, res, next) {
 // Initialize Express
 const app = express();
 app.set('trust proxy', 1);
+app.set('etag', 'strong');
+
+app.use(
+  compression({
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.headers['x-no-compression']) return false;
+      return compression.filter(req, res);
+    },
+  })
+);
 
 // Security middleware
 setupSecurityMiddleware(app);
@@ -111,11 +123,9 @@ setupSecurityMiddleware(app);
 // Body parsing
 app.use(express.json({ limit: '2mb' }));
 
-// Disable caching for API routes
+// Allow conditional revalidation while avoiding stale cache.
 app.use('/api', (_req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
+  res.set('Cache-Control', 'private, no-cache, must-revalidate');
   next();
 });
 
@@ -148,6 +158,17 @@ app.get('/api/app', authenticateToken, async (req, res) => {
       // Never fall back to a hardcoded UUID — reject to prevent cross-tenant data leakage
       return res.status(403).json({ error: 'Tenant identity missing from token' });
     }
+    const meta = dataMigrationService.getDataMetaIfJSON();
+    if (meta) {
+      const ifNoneMatch = req.headers['if-none-match'];
+      res.set('ETag', meta.etag);
+      if (ifNoneMatch && ifNoneMatch === meta.etag) {
+        return res.status(304).end();
+      }
+      res.type('application/json').send(meta.jsonString);
+      return;
+    }
+
     const data = await dataMigrationService.getData(tenantId);
     res.json(data);
   } catch (e) {
@@ -389,11 +410,32 @@ app.get('/api/stripe/payment-methods/:customerId', requireStripe, async (req, re
 
 // ===== PRODUCTION STATIC FILES =====
 const DIST_DIR = path.join(__dirname, '..', 'dist');
+const ONE_YEAR = '365d';
 if (fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
-  app.use(express.static(DIST_DIR));
+  app.use(
+    '/assets',
+    express.static(path.join(DIST_DIR, 'assets'), {
+      immutable: true,
+      maxAge: ONE_YEAR,
+      etag: false,
+      lastModified: false,
+    })
+  );
+  app.use(
+    express.static(DIST_DIR, {
+      etag: true,
+      lastModified: true,
+      setHeaders(res, filePath) {
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+        }
+      },
+    })
+  );
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     if (req.path.startsWith('/api')) return next();
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     res.sendFile(path.join(DIST_DIR, 'index.html'));
   });
 }

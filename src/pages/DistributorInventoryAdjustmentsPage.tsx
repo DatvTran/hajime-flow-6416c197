@@ -25,15 +25,15 @@ export default function DistributorInventoryAdjustmentsPage() {
   const { adjustments, fetchAdjustments } = useInventoryAdjustments();
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <DistributorSkeleton />;
-  }
-
   useEffect(() => {
     fetchAdjustments();
   }, [fetchAdjustments]);
 
   const pendingCount = adjustments.filter((a) => a.status === "pending").length;
+
+  if (loading) {
+    return <DistributorSkeleton />;
+  }
 
   return (
     <div className="space-y-6">
