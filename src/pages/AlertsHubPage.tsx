@@ -14,10 +14,6 @@ export default function AlertsHubPage() {
   const { data, loading } = useAppData();
   const { user } = useAuth();
 
-  if (loading) {
-    return <AlertsHubSkeleton />;
-  }
-
   const location = useLocation();
 
   const alerts = useMemo(() => {
@@ -40,6 +36,10 @@ export default function AlertsHubPage() {
     const el = document.getElementById("active-queue");
     if (el) requestAnimationFrame(() => el.scrollIntoView({ behavior: "smooth", block: "start" }));
   }, [location.hash]);
+
+  if (loading) {
+    return <AlertsHubSkeleton />;
+  }
 
   return (
     <div>

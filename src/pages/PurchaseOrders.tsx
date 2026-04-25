@@ -38,10 +38,6 @@ export default function PurchaseOrders() {
   const { user } = useAuth();
   const { loading } = useAppData();
 
-  if (loading) {
-    return <PurchaseOrdersSkeleton />;
-  }
-
   const canCreateProductionRequest = user.role === "brand_operator" || user.role === "operations" || user.role === "founder_admin";
   const canCreateTransfer = user.role === "brand_operator" || user.role === "operations" || user.role === "distributor" || user.role === "founder_admin";
   const canEditPoStatus = user.role === "brand_operator" || user.role === "founder_admin";
@@ -272,6 +268,10 @@ export default function PurchaseOrders() {
     addTransferOrder(to);
     toast.success("Transfer order created");
   };
+
+  if (loading) {
+    return <PurchaseOrdersSkeleton />;
+  }
 
   return (
     <div className="space-y-6">

@@ -36,10 +36,6 @@ export default function Orders() {
   const { accounts } = useAccounts();
   const { appendEntry } = useFinancingLedger();
   const { updateData, loading } = useAppData();
-
-  if (loading) {
-    return <OrdersSkeleton />;
-  }
   
   // Only brand_operator can approve/reject draft orders (HQ allocation authority)
   const canApproveDraftQueue = user?.role === "brand_operator";
@@ -286,6 +282,10 @@ export default function Orders() {
 
     return result;
   };
+
+  if (loading) {
+    return <OrdersSkeleton />;
+  }
 
   return (
     <div>

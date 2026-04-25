@@ -115,10 +115,6 @@ export default function Inventory() {
     availableSourceWarehouses,
   } = useInventoryForRole();
   const { user } = useAuth();
-
-  if (loading) {
-    return <InventorySkeleton />;
-  }
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = parseStatusParam(searchParams.get("status"));
   const locationTypeFilter = parseLocationTypeParam(searchParams.get("location"));
@@ -194,6 +190,10 @@ export default function Inventory() {
     { id: "in_transit", label: "In Transit", icon: Truck },
     { id: "retail_shelf", label: "Retail", icon: Store },
   ];
+
+  if (loading) {
+    return <InventorySkeleton />;
+  }
 
   return (
     <div>

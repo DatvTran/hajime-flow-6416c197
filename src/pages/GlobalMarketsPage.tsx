@@ -87,10 +87,6 @@ function formatCasesGlyph(n: number): string {
 export default function GlobalMarketsPage() {
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <GlobalMarketsSkeleton />;
-  }
-
   const view = useMemo(() => {
     const mode = resolveMarketsHqMode(data.salesOrders);
     const asOf = marketsAsOfDate(mode);
@@ -445,6 +441,10 @@ function OpsTimeline({
 }) {
   if (shipments.length === 0) {
     return <p className="text-sm text-muted-foreground">No shipments in app data — check Shipments after orders flow.</p>;
+  }
+
+  if (loading) {
+    return <GlobalMarketsSkeleton />;
   }
 
   return (
