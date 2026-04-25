@@ -256,6 +256,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             });
           }
         }
+      } finally {
+        // Without this, first-time visitors (no localStorage) never leave loading: true after a successful fetch.
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     })();
     
