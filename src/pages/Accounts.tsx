@@ -162,7 +162,6 @@ export default function Accounts() {
               </Button>
             ) : null}
             {user.role !== "sales_rep" ? (
-              <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setNewAccountOpen(true)}>
               <Button
                 type="button"
                 size="sm"
