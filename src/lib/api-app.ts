@@ -24,20 +24,14 @@ function getAuthHeaders(): Record<string, string> {
 
 export async function fetchAppData(): Promise<AppData> {
   const headers = getAuthHeaders();
-  
-  // Add cache-busting query param to prevent 304 caching issues
-  const cacheBuster = `?_cb=${Date.now()}`;
-  
-  const res = await fetch(apiUrl(`/api/app${cacheBuster}`), {
-    headers,
-    cache: "no-store",
-  });
-  
+
+  const res = await fetch(apiUrl("/api/app"), { headers });
+
   if (!res.ok) {
     const text = await res.text();
     throw new Error(text || `HTTP ${res.status}`);
   }
-  
+
   const data = await res.json();
   return data as AppData;
 }
