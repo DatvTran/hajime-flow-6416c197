@@ -91,7 +91,7 @@ export default function Manufacturer() {
     <div>
       <PageHeader
         title="Manufacturer"
-        description="Fulfillment view for open production requests raised by Hajime HQ — batch schedule, inbound shipment queue, demand by market, and alerts. Logistics can record carrier and ETA on Shipments."
+        description="Production-board view: what’s approved to run, what’s on the floor, and what ships this week — tied to HQ requests, inbound freight, and market demand. Logistics can record carrier and ETA on Shipments."
       />
 
       <div className="mb-6 grid gap-4 lg:grid-cols-5">

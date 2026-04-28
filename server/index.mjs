@@ -390,10 +390,29 @@ app.get('/api/stripe/payment-methods/:customerId', requireStripe, async (req, re
 // ===== PRODUCTION STATIC FILES =====
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
-  app.use(express.static(DIST_DIR));
+  // Never cache the shell: stale index.html → broken hashed chunk URLs after deploy.
+  // Hashed files under /assets/ are safe to cache forever.
+  app.use(
+    express.static(DIST_DIR, {
+      index: false,
+      setHeaders(res, filePath) {
+        const normalized = filePath.replace(/\\/g, '/');
+        if (normalized.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        } else if (normalized.includes('/assets/')) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      },
+    }),
+  );
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     if (req.path.startsWith('/api')) return next();
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(DIST_DIR, 'index.html'));
   });
 }

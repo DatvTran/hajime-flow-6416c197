@@ -409,7 +409,7 @@ export default function SalesRepHomePage() {
     <div className="space-y-6">
       <PageHeader
         title="Field sales"
-        description="Bridge visits, notes, and draft orders — the same order objects HQ approves and distributors fulfill."
+        description="Walk-in → stock check → draft order → offline-safe capture. Same order objects HQ approves and distributors fulfill — no duplicate entry between your notes and the live queue."
       />
 
       <div className="grid gap-4 lg:grid-cols-5">
