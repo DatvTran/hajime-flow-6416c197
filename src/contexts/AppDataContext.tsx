@@ -105,28 +105,30 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
     ...local.retailerShelfStock,
   };
   
-  // For accounts: preserve onboardingPipeline status from local if server account doesn't have it
-  if (local.accounts?.length && server.accounts?.length) {
-    const localAccountsById = new Map(local.accounts.map(a => [a.id, a]));
-    merged.accounts = server.accounts.map(serverAccount => {
+  // For accounts: preserve onboardingPipeline status from local if server account doesn't have it.
+  // Important: do NOT require server.accounts.length > 0; otherwise an empty server response can wipe local-only data.
+  if (local.accounts?.length && Array.isArray(server.accounts)) {
+    const localAccountsById = new Map(local.accounts.map((a) => [a.id, a]));
+    merged.accounts = (server.accounts ?? []).map((serverAccount) => {
       const localAccount = localAccountsById.get(serverAccount.id);
-      if (localAccount && localAccount.onboardingPipeline && !serverAccount.onboardingPipeline) {
+      if (localAccount?.onboardingPipeline && !serverAccount.onboardingPipeline) {
         return { ...serverAccount, onboardingPipeline: localAccount.onboardingPipeline };
       }
       return serverAccount;
     });
-    
+
     // Add local-only accounts (new accounts created while offline)
-    const serverIds = new Set(server.accounts.map(a => a.id));
-    const localOnlyAccounts = local.accounts.filter(a => !serverIds.has(a.id));
+    const serverIds = new Set((server.accounts ?? []).map((a) => a.id));
+    const localOnlyAccounts = local.accounts.filter((a) => !serverIds.has(a.id));
     merged.accounts = [...merged.accounts, ...localOnlyAccounts];
   }
   
-  // For orders: preserve local-only orders (created while offline)
-  if (local.salesOrders?.length && server.salesOrders?.length) {
-    const serverIds = new Set(server.salesOrders.map(o => o.id));
-    const localOnlyOrders = local.salesOrders.filter(o => !serverIds.has(o.id));
-    merged.salesOrders = [...server.salesOrders, ...localOnlyOrders];
+  // For orders: preserve local-only orders (created while offline).
+  // Same rule: don't require server array length, just require the array to exist.
+  if (local.salesOrders?.length && Array.isArray(server.salesOrders)) {
+    const serverIds = new Set((server.salesOrders ?? []).map((o) => o.id));
+    const localOnlyOrders = local.salesOrders.filter((o) => !serverIds.has(o.id));
+    merged.salesOrders = [...(server.salesOrders ?? []), ...localOnlyOrders];
   }
   
   return merged;
@@ -255,6 +257,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
               description: "Your changes are saved in this browser. Connect to server to sync.",
             });
           }
+        }
+      } finally {
+        // Without this, first-time visitors (no localStorage) never leave loading: true after a successful fetch.
+        if (!cancelled) {
+          setLoading(false);
         }
       }
     })();
