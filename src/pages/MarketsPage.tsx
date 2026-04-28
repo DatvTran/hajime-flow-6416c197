@@ -34,10 +34,6 @@ import { StatusBadge } from "@/components/StatusBadge";
 export default function MarketsPage() {
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <MarketsSkeleton />;
-  }
-
   const view = useMemo(() => {
     const mode = resolveMarketsHqMode(data.salesOrders);
     const asOf = marketsAsOfDate(mode);
@@ -64,6 +60,10 @@ export default function MarketsPage() {
   }, [data]);
 
   const chartData = useMemo(() => view.snap.map((r) => ({ market: r.city, revenue: r.revenue })), [view.snap]);
+
+  if (loading) {
+    return <MarketsSkeleton />;
+  }
 
   return (
     <div>

@@ -12,10 +12,6 @@ type Agg = { sku: string; lastOrder: SalesOrder; lastCases: number; daysAgo: num
 export default function RetailReorderPage() {
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <RetailSkeleton />;
-  }
-
   const accountName = useRetailAccountTradingName();
   const [searchParams] = useSearchParams();
   const fromOrderId = searchParams.get("from");
@@ -45,6 +41,10 @@ export default function RetailReorderPage() {
     }
     return [...map.values()].sort((a, b) => a.daysAgo - b.daysAgo);
   }, [myOrders, data?.products]);
+
+  if (loading) {
+    return <RetailSkeleton />;
+  }
 
   return (
     <div>

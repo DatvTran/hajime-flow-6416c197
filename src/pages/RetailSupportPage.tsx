@@ -72,10 +72,6 @@ export default function RetailSupportPage() {
   const { user } = useAuth();
   const { data, updateData, loading } = useAppData();
 
-  if (loading) {
-    return <RetailSkeleton />;
-  }
-
   const [isCreating, setIsCreating] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   const [filterStatus, setFilterStatus] = useState<TicketStatus | "all">("all");
@@ -244,6 +240,10 @@ export default function RetailSupportPage() {
     const date = new Date(dateStr);
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   };
+
+  if (loading) {
+    return <RetailSkeleton />;
+  }
 
   return (
     <div className="space-y-6">

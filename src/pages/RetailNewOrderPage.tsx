@@ -19,10 +19,6 @@ import { toast } from "@/components/ui/sonner";
 export default function RetailNewOrderPage() {
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <RetailSkeleton />;
-  }
-
   const { accounts } = useAccounts();
   const { salesOrders, addSalesOrder } = useSalesOrders();
   const accountName = useRetailAccountTradingName();
@@ -142,6 +138,10 @@ export default function RetailNewOrderPage() {
         </div>
       </div>
     );
+  }
+
+  if (loading) {
+    return <RetailSkeleton />;
   }
 
   return (

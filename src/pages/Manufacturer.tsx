@@ -21,10 +21,6 @@ export default function Manufacturer() {
   const { productionStatuses, addProductionStatus } = useProductionStatuses();
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <ManufacturerSkeleton />;
-  }
-
   const { user } = useAuth();
   const logAudit = useAuditLog();
 
@@ -86,6 +82,10 @@ export default function Manufacturer() {
     setNotes("");
     toast.success("Production status recorded");
   };
+
+  if (loading) {
+    return <ManufacturerSkeleton />;
+  }
 
   return (
     <div>

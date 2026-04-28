@@ -146,10 +146,6 @@ function isToday(date: Date): boolean {
 export default function SalesRepHomePage() {
   const { data, updateData, loading } = useAppData();
 
-  if (loading) {
-    return <SalesRepSkeleton />;
-  }
-
   const { items: inventoryItems } = useInventory();
   const { user } = useAuth();
   const rep = useMemo(
@@ -403,6 +399,10 @@ export default function SalesRepHomePage() {
       setVisitBody("");
     }
   };
+
+  if (loading) {
+    return <SalesRepSkeleton />;
+  }
 
   return (
     <div className="space-y-6">

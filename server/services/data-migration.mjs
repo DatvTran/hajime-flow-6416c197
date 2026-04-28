@@ -1,5 +1,5 @@
 import { db } from '../config/database.mjs';
-import { readAppState } from '../app-store.mjs';
+import { readAppState, readAppStateMeta } from '../app-store.mjs';
 
 /**
  * Data Migration Service
@@ -230,6 +230,17 @@ export class DataMigrationService {
       default:
         return this.getDataJSON(tenantId);
     }
+  }
+
+  /**
+   * Returns ETag + canonical JSON bytes for JSON-backed stages so
+   * API handlers can perform conditional GET.
+   */
+  getDataMetaIfJSON() {
+    if (this.stage <= 2) {
+      return readAppStateMeta();
+    }
+    return null;
   }
 
   /**

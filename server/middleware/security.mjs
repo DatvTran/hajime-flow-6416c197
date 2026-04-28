@@ -53,7 +53,7 @@ export const rateLimiters = {
   // General API rate limit
   api: rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
+    max: 600,
     message: {
       error: 'Too many requests from this IP',
       code: 'RATE_LIMIT_EXCEEDED',
