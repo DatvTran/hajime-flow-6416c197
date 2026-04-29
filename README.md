@@ -19,7 +19,7 @@ The live app persists state via `GET/PUT /api/app` (with optional `operationalSe
 
 ### Backend & persistence
 
-From `server/`: `npm install && npm start`. The API stores **inventory, products, accounts, sales orders, purchase orders, shipments, and production statuses** in `server/data/app-state.json` (created on first run from `src/data/seed-app.json`).
+From `server/`: `npm install && node index.mjs` (or `npm start`, which maps to `node index.mjs`). The API stores **inventory, products, accounts, sales orders, purchase orders, shipments, and production statuses** in `server/data/app-state.json` (created on first run from `src/data/seed-app.json`).
 
 - `GET /api/app` — load full state
 - `PUT /api/app` — save full state (the app debounces writes after edits)
@@ -27,6 +27,8 @@ From `server/`: `npm install && npm start`. The API stores **inventory, products
 Vite proxies `/api` to `localhost:4242` in development. For production, serve the API behind the same host or set `VITE_API_BASE_URL` to your API origin.
 
 Stripe billing still uses the same server; configure `STRIPE_SECRET_KEY` in `server/.env`.
+
+> ⚠️ `server/stripe-server.mjs` is a deprecated legacy entrypoint. It now refuses startup by default and requires `HAJIME_ALLOW_UNSAFE_LEGACY_SERVER=true` to run for explicit dev-only debugging. Operators should not use it in normal workflows or deployment.
 
 If you use Bun, run `bun install` to generate a fresh `bun.lock` from the public npm registry.
 

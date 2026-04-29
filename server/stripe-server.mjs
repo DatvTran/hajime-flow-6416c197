@@ -13,6 +13,15 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { readAppState, writeAppState } from "./app-store.mjs";
 
+const legacyStartupAllowed = process.env.HAJIME_ALLOW_UNSAFE_LEGACY_SERVER === "true";
+if (!legacyStartupAllowed) {
+  console.error(
+    "[DEPRECATED] stripe-server.mjs startup refused. This legacy entrypoint is dev-only and unsafe. Use `node index.mjs` instead. " +
+      "If you explicitly need legacy debugging, set HAJIME_ALLOW_UNSAFE_LEGACY_SERVER=true and rerun.",
+  );
+  process.exit(1);
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, ".env") });
 
