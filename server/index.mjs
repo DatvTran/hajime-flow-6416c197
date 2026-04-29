@@ -11,7 +11,6 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 // Services
-import { readAppState, writeAppState } from './app-store.mjs';
 import { db } from './config/database.mjs';
 import { dataMigrationService } from './services/data-migration.mjs';
 
@@ -31,6 +30,8 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 // Fail fast: crash at boot rather than silently allowing unsigned JWTs
 const REQUIRED_ENV = ['ACCESS_TOKEN_SECRET'];
 const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
+const nodeEnv = String(process.env.NODE_ENV ?? 'development').toLowerCase();
+const migrationStage = Number(process.env.FEATURE_FLAG_DB_MIGRATION_STAGE ?? 0);
 if (missingEnv.length > 0) {
   console.error(
     `FATAL: Missing required environment variables: ${missingEnv.join(', ')}\n` +
@@ -42,6 +43,14 @@ if (missingEnv.length > 0) {
 // Warn if the secret is too short (minimum 32 chars recommended)
 if ((process.env.ACCESS_TOKEN_SECRET ?? '').length < 32) {
   console.warn('WARNING: ACCESS_TOKEN_SECRET is shorter than 32 characters — use a longer secret in production');
+}
+
+if ((nodeEnv === 'production' || nodeEnv === 'staging') && migrationStage <= 2) {
+  console.error(
+    `FATAL: FEATURE_FLAG_DB_MIGRATION_STAGE=${migrationStage} is not allowed in ${nodeEnv}. ` +
+    'Shared environments must run migration stage 3 or higher.'
+  );
+  process.exit(1);
 }
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -153,19 +162,35 @@ console.log('[hajime-api] Granular API v1 enabled');
 // ===== APP DATA API (with migration stages) =====
 app.get('/api/app', authenticateToken, async (req, res) => {
   try {
+    if (dataMigrationService.isDbPrimaryEnabled()) {
+      return res.status(410).json({
+        error: '/api/app is deprecated once DB-primary migration is enabled.',
+        migration: {
+          stage: dataMigrationService.stage,
+          dbPrimary: true,
+          readPath: '/api/v1/*',
+          writePath: '/api/v1/*',
+        },
+      });
+    }
+
     const tenantId = req.user?.tenantId;
     if (!tenantId) {
       // Never fall back to a hardcoded UUID — reject to prevent cross-tenant data leakage
       return res.status(403).json({ error: 'Tenant identity missing from token' });
     }
-    const meta = dataMigrationService.getDataMetaIfJSON();
-    if (meta) {
+    const tenantScopedMeta = dataMigrationService.getDataMetaIfJSON(tenantId);
+    if (dataMigrationService.stage <= 2 && !tenantScopedMeta) {
+      return res.status(503).json({ error: 'Tenant-scoped JSON unavailable for active migration stage' });
+    }
+
+    if (tenantScopedMeta) {
       const ifNoneMatch = req.headers['if-none-match'];
-      res.set('ETag', meta.etag);
-      if (ifNoneMatch && ifNoneMatch === meta.etag) {
+      res.set('ETag', tenantScopedMeta.etag);
+      if (ifNoneMatch && ifNoneMatch === tenantScopedMeta.etag) {
         return res.status(304).end();
       }
-      res.type('application/json').send(meta.jsonString);
+      res.type('application/json').send(tenantScopedMeta.jsonString);
       return;
     }
 
@@ -179,6 +204,17 @@ app.get('/api/app', authenticateToken, async (req, res) => {
 
 app.put('/api/app', authenticateToken, async (req, res) => {
   try {
+    if (dataMigrationService.isDbPrimaryEnabled()) {
+      return res.status(410).json({
+        error: '/api/app is deprecated once DB-primary migration is enabled.',
+        migration: {
+          stage: dataMigrationService.stage,
+          dbPrimary: true,
+          writePath: '/api/v1/*',
+        },
+      });
+    }
+
     const body = req.body;
     if (!body || typeof body !== 'object') {
       return res.status(400).json({ error: 'Expected JSON object' });
@@ -195,6 +231,11 @@ app.put('/api/app', authenticateToken, async (req, res) => {
     if (!tenantId) {
       return res.status(403).json({ error: 'Tenant identity missing from token' });
     }
+
+    if (dataMigrationService.stage <= 4 && !dataMigrationService.resolveTenantJSONFileKey(tenantId)) {
+      return res.status(503).json({ error: 'Tenant-scoped JSON unavailable for active migration stage' });
+    }
+
     await dataMigrationService.saveData(body, tenantId);
 
     res.json({ ok: true });
@@ -221,6 +262,10 @@ app.get('/api/health', async (_req, res) => {
     features: {
       auth: FEATURE_FLAG_AUTH_ENABLED,
       csv: FEATURE_FLAG_CSV_ENABLED,
+    },
+    migration: {
+      activeStage: dataMigrationService.stage,
+      dbPrimaryModeEnabled: dataMigrationService.stage >= 3,
     },
     migrationStage: dataMigrationService.stage,
   });

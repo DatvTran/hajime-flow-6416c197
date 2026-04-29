@@ -13,7 +13,6 @@ import {
   getShipments,
   getNewProductRequests,
 } from "./api-v1";
-import { fetchAppData as fetchLegacyAppData } from "./api-app";
 import type { AppData } from "@/types/app-data";
 import type { NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
 
