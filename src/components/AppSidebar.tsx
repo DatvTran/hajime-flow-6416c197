@@ -78,7 +78,6 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           label: "Operations",
           items: [
             { title: "Today · command center", url: "/", icon: LayoutDashboard },
-            { title: "New wholesale order", url: "/orders/new-wholesale", icon: Store },
             { title: "Inventory", url: "/inventory", icon: Package },
             { title: "Orders", url: "/orders", icon: ShoppingCart },
             { title: "Markets", url: "/markets", icon: Globe },
@@ -106,7 +105,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
         },
         {
           label: "HQ",
-          items: [{ title: "Team / settings", url: "/settings", icon: Settings }],
+          items: [{ title: "CRM / settings", url: "/settings", icon: Settings }],
         },
       ];
     case "manufacturer":
@@ -305,7 +304,7 @@ function NavSection({
                   >
                     <item.icon className="h-4 w-4 shrink-0" />
                     {!collapsed && <span className="leading-snug">{t(item.title)}</span>}
-                  </button>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             );

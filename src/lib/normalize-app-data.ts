@@ -1,8 +1,9 @@
 import type { AppData, TeamMember } from "@/types/app-data";
 import { TEAM_ROSTER } from "@/data/team-roster";
 import seedJson from "@/data/seed-app.json";
-import type { Product } from "@/data/mockData";
+import type { Account, Product } from "@/data/mockData";
 import { products as PRODUCT_DEFAULTS, newProductRequests as DEFAULT_NEW_PRODUCT_REQUESTS, transferOrders as DEFAULT_TRANSFER_ORDERS, depletionReports as DEFAULT_DEPLETION_REPORTS } from "@/data/mockData";
+import { isDistributorAccountType } from "@/lib/distributor-accounts";
 
 const ROSTER_EMAILS = new Set(TEAM_ROSTER.map((m) => m.email?.toLowerCase()).filter(Boolean));
 
@@ -49,6 +50,22 @@ function mergeTeamMembersWithRoster(fromPayload: TeamMember[]): TeamMember[] {
   return [...TEAM_ROSTER, ...extras];
 }
 
+/**
+ * When the API returns accounts but none are wholesalers, `pickOrSeed` keeps only
+ * API rows — wholesale flows lose distributor options. Backfill distributor rows
+ * from seed so DC selection and demos stay usable.
+ */
+function mergeSeedDistributorsWhenAbsent(accounts: Account[]): Account[] {
+  if (!Array.isArray(accounts) || accounts.length === 0) return accounts;
+  if (accounts.some((a) => isDistributorAccountType(a.type))) return accounts;
+  const seedAccounts = SEED.accounts ?? [];
+  const ids = new Set(accounts.map((a) => a.id));
+  const extras = seedAccounts.filter(
+    (a) => isDistributorAccountType(a.type) && !ids.has(a.id),
+  );
+  return extras.length ? [...accounts, ...extras] : accounts;
+}
+
 export function normalizeAppData(raw: AppData): AppData {
   const teamFromPayload = Array.isArray(raw.teamMembers) ? raw.teamMembers : [];
   const teamMembers =
@@ -66,11 +83,15 @@ export function normalizeAppData(raw: AppData): AppData {
     ...(typeof raw.retailerShelfStock === "object" && raw.retailerShelfStock ? raw.retailerShelfStock : {}),
   };
 
+  const accountsMerged = mergeSeedDistributorsWhenAbsent(
+    pickOrSeed(raw.accounts, SEED.accounts),
+  );
+
   return {
     ...raw,
     products: mergeProducts(raw.products, SEED.products),
     salesOrders: pickOrSeed(raw.salesOrders, SEED.salesOrders),
-    accounts: pickOrSeed(raw.accounts, SEED.accounts),
+    accounts: accountsMerged,
     inventory: pickOrSeed(raw.inventory, SEED.inventory),
     version: raw.version ?? 1,
     operationalSettings,

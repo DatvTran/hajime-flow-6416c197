@@ -123,7 +123,7 @@ export default function SettingsPage() {
       return;
     }
     if (teamMembers.some((m) => (m.email?.toLowerCase() || "") === email)) {
-      toast.error("This email is already on the team");
+      toast.error("This email is already in CRM contacts");
       return;
     }
 
@@ -150,9 +150,9 @@ export default function SettingsPage() {
       setNewMemberEmail("");
       setNewMemberRole("sales_rep");
       setTeamDialogOpen(false);
-      toast.success("Team member added", { description: `${displayName} · ${TEAM_ROLE_LABELS[newMemberRole]} — saved to server` });
+      toast.success("CRM contact added", { description: `${displayName} · ${TEAM_ROLE_LABELS[newMemberRole]} — saved to server` });
     } catch (err) {
-      console.error("[Settings] Failed to add team member:", err);
+      console.error("[Settings] Failed to add CRM contact:", err);
       toast.error("Failed to save to server", { description: "Saved locally — will sync when online." });
 
       // Fallback to localStorage
@@ -181,9 +181,9 @@ export default function SettingsPage() {
         ...d,
         teamMembers: (d.teamMembers ?? []).filter((m) => m.id !== id),
       }));
-      toast.success("Removed from team", { description: "Deleted from server." });
+      toast.success("Removed from CRM contacts", { description: "Deleted from server." });
     } catch (err) {
-      console.error("[Settings] Failed to remove team member:", err);
+      console.error("[Settings] Failed to remove CRM contact:", err);
       toast.error("Failed to delete from server", { description: "Removed locally only." });
       updateData((d) => ({
         ...d,
@@ -199,8 +199,8 @@ export default function SettingsPage() {
   return (
     <div>
       <PageHeader
-        title="Team & settings"
-        description="Team roster, catalog, replenishment rules, and audit trail — Brand Operator (HQ)."
+        title="CRM & settings"
+        description="CRM contacts, catalog, replenishment rules, and audit trail — Brand Operator (HQ)."
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -209,24 +209,24 @@ export default function SettingsPage() {
             <div>
               <CardTitle className="font-display flex items-center gap-2 text-lg">
                 <Users className="h-5 w-5" />
-                Team
+                CRM contacts
               </CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                People and partner orgs that use Hajime portals. Add sales reps, retail accounts, distributors, and manufacturer contacts — roles match sign-in personas (invites are V1 roster only).
+                CRM directory for partner contacts and portal identities. Add sales reps, retail accounts, distributors, and manufacturer contacts — roles map to sign-in personas.
               </p>
             </div>
             <Button type="button" className="w-full shrink-0 touch-manipulation sm:w-auto" onClick={() => setTeamDialogOpen(true)}>
               <UserPlus className="mr-2 h-4 w-4" />
-              Add team member
+              Add CRM contact
             </Button>
           </CardHeader>
           <CardContent>
             <Dialog open={teamDialogOpen} onOpenChange={setTeamDialogOpen}>
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                  <DialogTitle className="font-display">Add team member</DialogTitle>
+                  <DialogTitle className="font-display">Add CRM contact</DialogTitle>
                   <DialogDescription>
-                    Choose their portal role. They will use this role when signing in (demo auth uses email + name you provide at login).
+                    Choose their portal role for sign-in and workflow routing.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-2">
@@ -273,7 +273,7 @@ export default function SettingsPage() {
                     Cancel
                   </Button>
                   <Button type="button" className="touch-manipulation" onClick={addTeamMember}>
-                    Add to team
+                    Add contact
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -281,7 +281,7 @@ export default function SettingsPage() {
 
             {teamMembers.length === 0 ? (
               <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
-                No team members yet. Add sales reps, retail accounts, distributors, or manufacturer contacts.
+                No CRM contacts yet. Add sales reps, retail accounts, distributors, or manufacturer contacts.
               </p>
             ) : (
               <div className="-mx-4 overflow-x-auto touch-pan-x px-4 sm:mx-0 sm:px-0">
