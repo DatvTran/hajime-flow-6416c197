@@ -120,14 +120,14 @@ app.get('/api/reports',
 
 ### Migration Stages
 
-The implementation uses a **6-stage incremental migration** approach:
+The implementation uses a **6-stage incremental migration** approach. Stages 0-2 are legacy/local-only modes and must not be used in shared environments (staging/production):
 
 | Stage | Reads From | Writes To | Duration |
 |-------|------------|-----------|----------|
-| 0 | JSON | JSON | Baseline |
-| 1 | JSON | JSON + PostgreSQL | 2 weeks |
-| 2 | JSON (compared) | JSON + PostgreSQL | 2 weeks |
-| 3 | PostgreSQL | JSON + PostgreSQL | 4 weeks |
+| 0 | JSON | JSON | Legacy/local-only baseline |
+| 1 | JSON | JSON + PostgreSQL | Legacy/local-only shadow write |
+| 2 | JSON (compared) | JSON + PostgreSQL | Legacy/local-only comparison |
+| 3 | PostgreSQL | JSON + PostgreSQL | **Required minimum for shared environments** |
 | 4 | PostgreSQL | PostgreSQL only | 2 weeks |
 | 5 | PostgreSQL | PostgreSQL only (deprecated warning) | 2 weeks |
 | 6 | PostgreSQL | PostgreSQL only (JSON removed) | Complete |
@@ -172,14 +172,13 @@ npm run db:reset
 Set `FEATURE_FLAG_DB_MIGRATION_STAGE` in `.env`:
 
 ```bash
-# Stage 0: JSON only
-FEATURE_FLAG_DB_MIGRATION_STAGE=0
+# Stage 0-2: legacy/local-only modes (do not use in shared envs)
 
-# Stage 1: Shadow writes to PostgreSQL
-FEATURE_FLAG_DB_MIGRATION_STAGE=1
-
-# Stage 3: PostgreSQL as primary
+# Stage 3+: PostgreSQL as primary (required for staging/production)
 FEATURE_FLAG_DB_MIGRATION_STAGE=3
+
+# Optional production startup guard (hard-fail if stage <=2 in production)
+REQUIRE_DB_PRIMARY_IN_PRODUCTION=true
 ```
 
 ## 📊 Priority Area 3: CSV Import/Export
@@ -265,7 +264,8 @@ SESSION_SECRET=...
 # Feature Flags
 FEATURE_FLAG_AUTH_ENABLED=true
 FEATURE_FLAG_CSV_ENABLED=true
-FEATURE_FLAG_DB_MIGRATION_STAGE=1
+FEATURE_FLAG_DB_MIGRATION_STAGE=3
+REQUIRE_DB_PRIMARY_IN_PRODUCTION=true
 
 # Rate Limiting (optional)
 RATE_LIMIT_WINDOW_MS=900000
@@ -322,7 +322,7 @@ Response:
     "auth": true,
     "csv": true
   },
-  "migrationStage": 1
+  "migrationStage": 3
 }
 ```
 
@@ -364,7 +364,8 @@ Before enabling in production:
 - [ ] Rate limiting verified
 - [ ] Security headers confirmed
 - [ ] Health check endpoint responding
-- [ ] Feature flags configured for gradual rollout
+- [ ] Production uses FEATURE_FLAG_DB_MIGRATION_STAGE=3 (or higher)
+- [ ] Stage 0 is used only for local legacy troubleshooting
 
 ## 🆘 Rollback Procedures
 
@@ -376,12 +377,20 @@ fly secrets set FEATURE_FLAG_AUTH_ENABLED=false
 
 ### Revert Database Migration
 ```bash
-# Stage 3 → Stage 2 (revert reads to JSON)
+# Stage 3+ → Stage 2 (re-enable JSON reads/writes)
 fly secrets set FEATURE_FLAG_DB_MIGRATION_STAGE=2
 
-# Emergency: Full rollback to JSON
+# Emergency local-legacy fallback only (JSON-backed)
 fly secrets set FEATURE_FLAG_DB_MIGRATION_STAGE=0
 ```
+
+#### Stage downgrade expectations (data integrity)
+
+- **Stage 3+ behavior**: `/api/app` reads and writes are PostgreSQL-only. JSON app-state is intentionally not updated in these stages.
+- **Downgrade risk (3+ → 2/1/0)**: JSON can be stale relative to PostgreSQL. Before lowering the stage, export current tenant data from PostgreSQL and reseed/refresh `server/data/app-state.json` from that export.
+- **Tenant safety**: never copy one tenant's export into another tenant's seed payload. Validate tenant IDs during any backfill before re-enabling JSON-backed stages.
+- **Rollback target recommendation**: prefer **3 → 2** only as a short-lived mitigation. Return to stage 3+ after data reconciliation.
+- **Verification after downgrade**: run a tenant-by-tenant sanity check (record counts + spot checks for inventory, orders, and accounts) and confirm `/api/app` responses match expected tenant data.
 
 ### Database Rollback
 ```bash

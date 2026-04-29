@@ -9,16 +9,16 @@ function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  
+
   try {
     const token = localStorage.getItem("hajime_access_token");
     if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
+      headers.Authorization = `Bearer ${token}`;
     }
   } catch {
     // Ignore localStorage errors
   }
-  
+
   return headers;
 }
 
@@ -43,6 +43,7 @@ export async function fetchAppData(): Promise<AppData> {
   assertLegacyAppApiEnabled();
   const headers = getAuthHeaders();
 
+  const headers = getAuthHeaders();
   const res = await fetch(apiUrl("/api/app"), { headers });
 
   if (!res.ok) {
