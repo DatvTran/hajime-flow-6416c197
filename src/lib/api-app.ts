@@ -22,7 +22,18 @@ function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
+function assertLegacyAppApiAllowed(): void {
+  const legacyOverride = import.meta.env.VITE_ENABLE_LEGACY_APP_API === "true";
+  if (!legacyOverride) {
+    throw new Error(
+      "[api-app] Legacy /api/app endpoints are disabled. Use granular API clients instead.",
+    );
+  }
+}
+
+/** @deprecated Legacy-only API. Prefer granular api-v1 data services. */
 export async function fetchAppData(): Promise<AppData> {
+  assertLegacyAppApiAllowed();
   const headers = getAuthHeaders();
 
   const res = await fetch(apiUrl("/api/app"), { headers });
@@ -36,7 +47,9 @@ export async function fetchAppData(): Promise<AppData> {
   return data as AppData;
 }
 
+/** @deprecated Legacy-only API. Prefer granular api-v1 mutations. */
 export async function putAppData(data: AppData): Promise<void> {
+  assertLegacyAppApiAllowed();
   const res = await fetch(apiUrl("/api/app"), {
     method: "PUT",
     headers: getAuthHeaders(),

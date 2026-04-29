@@ -16,6 +16,14 @@ import { readAppState, writeAppState } from "./app-store.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, ".env") });
 
+const isNodeDev = (process.env.NODE_ENV ?? "development") !== "production";
+const legacyStripeOverride = process.env.LEGACY_STRIPE_SERVER_DEV_OVERRIDE === "true";
+if (!isNodeDev || !legacyStripeOverride) {
+  throw new Error(
+    "[stripe-server] Deprecated legacy server is blocked. It can run only in non-production with LEGACY_STRIPE_SERVER_DEV_OVERRIDE=true.",
+  );
+}
+
 const PORT = Number(process.env.PORT) || 4242;
 
 /** Comma-separated list of browser origins allowed to call this API (e.g. https://drinkhajime.jp). Required for production; localhost is always allowed. */
