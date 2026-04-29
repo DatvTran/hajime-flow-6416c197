@@ -16,13 +16,8 @@ import {
 import type { AppData } from "@/types/app-data";
 import type { NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
 
-const isDev = process.env.NODE_ENV === 'development' || import.meta.env?.DEV;
-const isLocalHost = (() => {
-  if (typeof window === "undefined") return false;
-  const host = window.location.hostname;
-  return host === "localhost" || host === "127.0.0.1";
-})();
-const canUseLegacyFallback = isDev || isLocalHost;
+// Feature flag to control granular API usage - Stage 3: Always use granular
+const USE_GRANULAR_API = true;
 
 function sliceIsoDate(v: unknown): string {
   if (v == null || v === "") return new Date().toISOString().slice(0, 10);
@@ -417,21 +412,10 @@ export async function fetchAppDataGranular(): Promise<AppData> {
 }
 
 /**
- * Fetch data - Stage 4: Use granular APIs.
- * Legacy fallback is only allowed in local/dev to aid migration debugging.
+ * Fetch data - Stage 4+: Use granular APIs only.
  */
 export async function fetchAppData(): Promise<AppData> {
-  try {
-    return await fetchAppDataGranular();
-  } catch (err) {
-    if (!canUseLegacyFallback) {
-      throw err;
-    }
-    if (isDev) {
-      console.warn("[DataService] Granular APIs failed in local/dev mode, falling back to legacy:", err);
-    }
-    return fetchLegacyAppData();
-  }
+  return fetchAppDataGranular();
 }
 
 // Stage 4: putAppData removed — use api-v1-mutations for all writes

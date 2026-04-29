@@ -22,18 +22,25 @@ function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
-function assertLegacyAppApiAllowed(): void {
-  const legacyOverride = import.meta.env.VITE_ENABLE_LEGACY_APP_API === "true";
-  if (!legacyOverride) {
+function assertLegacyAppApiEnabled(): void {
+  const isLocalDev =
+    Boolean(import.meta.env?.DEV) &&
+    (import.meta.env.VITE_ENABLE_LEGACY_APP_API === "true" ||
+      import.meta.env.VITE_ENABLE_LEGACY_APP_API === "1");
+
+  if (!isLocalDev) {
     throw new Error(
-      "[api-app] Legacy /api/app endpoints are disabled. Use granular API clients instead.",
+      "Legacy app API is disabled. Use src/lib/api-v1.ts and src/lib/api-v1-mutations.ts.",
     );
   }
 }
 
-/** @deprecated Legacy-only API. Prefer granular api-v1 data services. */
+/**
+ * @deprecated Internal-only legacy API. Do not use in normal app flow.
+ * @internal
+ */
 export async function fetchAppData(): Promise<AppData> {
-  assertLegacyAppApiAllowed();
+  assertLegacyAppApiEnabled();
   const headers = getAuthHeaders();
 
   const headers = getAuthHeaders();
@@ -48,9 +55,12 @@ export async function fetchAppData(): Promise<AppData> {
   return data as AppData;
 }
 
-/** @deprecated Legacy-only API. Prefer granular api-v1 mutations. */
+/**
+ * @deprecated Internal-only legacy API. Do not use in normal app flow.
+ * @internal
+ */
 export async function putAppData(data: AppData): Promise<void> {
-  assertLegacyAppApiAllowed();
+  assertLegacyAppApiEnabled();
   const res = await fetch(apiUrl("/api/app"), {
     method: "PUT",
     headers: getAuthHeaders(),
