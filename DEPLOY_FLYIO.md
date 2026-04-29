@@ -46,18 +46,21 @@ export REFRESH_TOKEN_SECRET=$(openssl rand -base64 64)
 export SESSION_SECRET=$(openssl rand -base64 64)
 ```
 
-Set all secrets:
+Set all secrets (production standard is DB-primary stage 3+):
 ```bash
 fly secrets set --app hajime-app \
   NODE_ENV=production \
   FEATURE_FLAG_AUTH_ENABLED=true \
   FEATURE_FLAG_CSV_ENABLED=true \
-  FEATURE_FLAG_DB_MIGRATION_STAGE=0 \
+  FEATURE_FLAG_DB_MIGRATION_STAGE=3 \
+  REQUIRE_DB_PRIMARY_IN_PRODUCTION=true \
   ACCESS_TOKEN_SECRET="$ACCESS_TOKEN_SECRET" \
   REFRESH_TOKEN_SECRET="$REFRESH_TOKEN_SECRET" \
   SESSION_SECRET="$SESSION_SECRET" \
   STRIPE_SECRET_KEY="sk_live_your_key_here"
 ```
+
+> Stage 0 (JSON-backed) should be treated as local legacy troubleshooting only.
 
 ---
 
@@ -70,6 +73,11 @@ fly deploy --app hajime-app
 # Or with Stripe publishable key for frontend
 fly deploy --app hajime-app --build-arg VITE_STRIPE_PUBLISHABLE_KEY=pk_live_your_key
 ```
+
+Runtime entrypoint policy:
+
+- Use only `node index.mjs` (or `npm start` in `server/`, which resolves to `node index.mjs`).
+- Do **not** use `stripe-server.mjs` for deploys or normal operations; it is deprecated and blocked by default.
 
 ---
 
