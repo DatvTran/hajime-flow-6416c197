@@ -22,7 +22,7 @@ function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
-function assertLegacyAppApiEnabled(): void {
+export function assertLegacyAppApiEnabled(): void {
   const isLocalDev =
     Boolean(import.meta.env?.DEV) &&
     (import.meta.env.VITE_ENABLE_LEGACY_APP_API === "true" ||
@@ -41,8 +41,6 @@ function assertLegacyAppApiEnabled(): void {
  */
 export async function fetchAppData(): Promise<AppData> {
   assertLegacyAppApiEnabled();
-  const headers = getAuthHeaders();
-
   const headers = getAuthHeaders();
   const res = await fetch(apiUrl("/api/app"), { headers });
 
