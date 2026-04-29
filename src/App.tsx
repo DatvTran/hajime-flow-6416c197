@@ -48,7 +48,6 @@ const BackordersPage = lazyWithChunkReload(() => import("./pages/BackordersPage"
 const DistributorDepletionsPage = lazyWithChunkReload(() => import("./pages/DistributorDepletionsPage"));
 const DistributorInventoryAdjustmentsPage = lazyWithChunkReload(() => import("./pages/DistributorInventoryAdjustmentsPage"));
 const DistributorSellThroughPage = lazyWithChunkReload(() => import("./pages/DistributorSellThroughPage"));
-const NewWholesaleOrderPage = lazyWithChunkReload(() => import("./pages/NewWholesaleOrderPage"));
 
 // Sales routes
 const SalesRepHomePage = lazyWithChunkReload(() => import("./pages/SalesRepHomePage"));
@@ -127,7 +126,6 @@ const App = () => {
                   <Route path="/" element={<RoleHomeEntry />} />
                   <Route path="/inventory" element={<Inventory />} />
                   <Route path="/orders" element={<Orders />} />
-                  <Route path="/orders/new-wholesale" element={<NewWholesaleOrderPage />} />
                   <Route path="/accounts" element={<Accounts />} />
                   <Route path="/markets" element={<MarketsPage />} />
                   <Route path="/global-markets" element={<GlobalMarketsPage />} />
