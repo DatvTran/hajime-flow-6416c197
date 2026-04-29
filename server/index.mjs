@@ -206,16 +206,6 @@ app.get('/api/app', authenticateToken, async (req, res) => {
         return res.status(409).json({ error: '/api/app JSON snapshot is disabled in deployed environments' });
       }
       const ifNoneMatch = req.headers['if-none-match'];
-      res.set('ETag', tenantScopedMeta.etag);
-      if (ifNoneMatch && ifNoneMatch === tenantScopedMeta.etag) {
-        return res.status(304).end();
-      }
-      res.type('application/json').send(tenantScopedMeta.jsonString);
-      return;
-    }
-    const meta = dataMigrationService.getDataMetaIfJSON();
-    if (meta) {
-      const ifNoneMatch = req.headers['if-none-match'];
       res.set('ETag', meta.etag);
       if (ifNoneMatch && ifNoneMatch === meta.etag) {
         return res.status(304).end();
