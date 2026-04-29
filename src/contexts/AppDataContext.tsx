@@ -35,6 +35,7 @@ import seedJson from "@/data/seed-app.json";
 import { toast } from "@/components/ui/sonner";
 import { normalizeAppData } from "@/lib/normalize-app-data";
 import { loadLocalAppData, saveLocalAppData } from "@/lib/local-app-data";
+import { resolveAccountForSalesOrder } from "@/lib/sales-order-utils";
 import { useAuth } from "./AuthContext";
 import {
   createProduct as apiCreateProduct,
@@ -1072,26 +1073,57 @@ export function useSalesOrders() {
   
   const addSalesOrder = useCallback(async (o: SalesOrder) => {
     try {
-      // Find account ID from account number
-      const account = data.accounts.find((a) => a.accountNumber === o.account);
-      
+      const account = resolveAccountForSalesOrder(o, data.accounts);
+      const accountId = account?.id ?? o.accountId ?? "";
+      if (!accountId) {
+        toast.error("Failed to create order", {
+          description:
+            "Could not resolve this customer to an account id. The order form stores the account name — refresh accounts or pick the customer again.",
+        });
+        return { success: false, error: "Missing account id" };
+      }
+
+      const productIdForSku = (sku: string): string | undefined => {
+        const p = data.products.find((x) => x.sku === sku) as { id?: string } | undefined;
+        return p?.id;
+      };
+
+      const itemsPayload =
+        o.lines?.map((l) => {
+          const product_id = productIdForSku(l.sku);
+          return {
+            sku: l.sku,
+            name: l.sku,
+            quantity: l.quantityBottles,
+            price: l.lineTotal,
+            ...(product_id ? { product_id } : {}),
+          };
+        }) ??
+        (o.sku
+          ? (() => {
+              const product_id = productIdForSku(o.sku);
+              return [
+                {
+                  sku: o.sku,
+                  name: o.sku,
+                  quantity: o.quantity,
+                  price: o.price,
+                  ...(product_id ? { product_id } : {}),
+                },
+              ];
+            })()
+          : []);
+
       // Call granular API
       const orderNumber =
         o.orderNumber ?? `SO-${Date.now().toString(36).toUpperCase()}`;
       const result = await apiCreateOrder({
         order_number: orderNumber,
-        account_id: account?.id ?? o.accountId ?? "",
+        account_id: accountId,
         status: o.status,
         order_date: o.orderDate || new Date().toISOString(),
         sales_rep: o.salesRep,
-        items:
-          o.lines?.map((l) => ({
-            sku: l.sku,
-            name: l.sku,
-            quantity: l.quantityBottles,
-            price: l.lineTotal,
-          })) ||
-          (o.sku ? [{ sku: o.sku, name: o.sku, quantity: o.quantity, price: o.price }] : []),
+        items: itemsPayload,
         subtotal: o.subtotal || o.price * (o.quantity || 1),
         taxAmount: o.taxAmount || 0,
         shippingCost: o.shippingCost || 0,
@@ -1120,7 +1152,7 @@ export function useSalesOrders() {
       toast.error("Failed to create order", { description: message });
       return { success: false, error: message };
     }
-  }, [data.accounts, updateData]);
+  }, [data.accounts, data.products, updateData]);
   
   const patchSalesOrder = useCallback(async (id: string, patch: Partial<SalesOrder>) => {
     // If only status is being updated, use the status endpoint
