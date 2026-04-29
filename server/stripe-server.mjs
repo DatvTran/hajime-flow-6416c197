@@ -2,7 +2,8 @@
  * Hajime API — Stripe + persisted app data (inventory, orders, catalog, etc.).
  * - STRIPE_SECRET_KEY in server/.env (never in Vite).
  * - App state: GET/PUT /api/app → server/data/app-state.json (seeded from src/data/seed-app.json).
- * Legacy runtime only. Preferred runtime is: node index.mjs.
+ * Legacy runtime (JSON persistence path).
+ * Refuses startup by default; for local debugging only set ALLOW_LEGACY_JSON_RUNTIME=true.
  */
 import express from "express";
 import cors from "cors";
@@ -24,6 +25,17 @@ if (!legacyStartupAllowed) {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, ".env") });
+
+
+const allowLegacyRuntime = process.env.ALLOW_LEGACY_JSON_RUNTIME === "true";
+const isProduction = process.env.NODE_ENV === "production";
+if (!allowLegacyRuntime || isProduction) {
+  console.error(
+    "[stripe-server] Legacy JSON runtime is disabled. Use `node index.mjs` / `npm start`. " +
+      "For local development only, set ALLOW_LEGACY_JSON_RUNTIME=true with NODE_ENV not set to production.",
+  );
+  process.exit(1);
+}
 
 const PORT = Number(process.env.PORT) || 4242;
 
