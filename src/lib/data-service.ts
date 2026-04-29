@@ -16,9 +16,6 @@ import {
 import type { AppData } from "@/types/app-data";
 import type { NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
 
-// Feature flag to control granular API usage - Stage 3: Always use granular
-const USE_GRANULAR_API = true;
-
 function sliceIsoDate(v: unknown): string {
   if (v == null || v === "") return new Date().toISOString().slice(0, 10);
   const s = String(v);
