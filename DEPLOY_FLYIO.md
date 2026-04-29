@@ -71,6 +71,11 @@ fly deploy --app hajime-app
 fly deploy --app hajime-app --build-arg VITE_STRIPE_PUBLISHABLE_KEY=pk_live_your_key
 ```
 
+Runtime entrypoint policy:
+
+- Use only `node index.mjs` (or `npm start` in `server/`, which resolves to `node index.mjs`).
+- Do **not** use `stripe-server.mjs` for deploys or normal operations; it is deprecated and blocked by default.
+
 ---
 
 ## Step 5: Run Migrations
