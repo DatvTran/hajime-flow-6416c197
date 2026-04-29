@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Badge } from "@/components/ui/badge";
 import { NewProductDialog } from "@/components/NewProductDialog";
 import { EditProductDialog } from "@/components/EditProductDialog";
 import { useProducts, useAppData } from "@/contexts/AppDataContext";
@@ -31,6 +32,7 @@ import {
   getOperationalSettings,
   updateOperationalSettings,
 } from "@/lib/api-v1-mutations";
+import { fetchApiHealth } from "@/lib/api-health";
 
 const TEAM_ROLE_LABELS: Record<TeamMemberPortalRole, string> = {
   sales_rep: "Sales rep",
@@ -58,6 +60,26 @@ export default function SettingsPage() {
   const [leadDays, setLeadDays] = useState(String(os.manufacturerLeadTimeDays));
   const [safetyDefault, setSafetyDefault] = useState("500");
   const [retailShelfThreshold, setRetailShelfThreshold] = useState(String(os.retailerStockThresholdBottles ?? 48));
+  const [dbHealth, setDbHealth] = useState<"checking" | "ok" | "error">("checking");
+  const [dbHealthDetail, setDbHealthDetail] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchApiHealth()
+      .then((h) => {
+        if (cancelled) return;
+        setDbHealth("ok");
+        setDbHealthDetail(h.dbNow ? `Postgres time ${h.dbNow}` : "Postgres reachable");
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setDbHealth("error");
+        setDbHealthDetail(e instanceof Error ? e.message : "Database unreachable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setLeadDays(String(data.operationalSettings!.manufacturerLeadTimeDays));
@@ -97,17 +119,9 @@ export default function SettingsPage() {
       });
     } catch (err) {
       console.error("[Settings] Failed to save operational settings:", err);
-      toast.error("Failed to save to server", { description: "Saved locally only." });
-
-      updateData((d) => ({
-        ...d,
-        operationalSettings: {
-          ...d.operationalSettings!,
-          manufacturerLeadTimeDays: lead,
-          safetyStockBySku,
-          retailerStockThresholdBottles: shelfTh,
-        },
-      }));
+      toast.error("Failed to save to server", {
+        description: "Nothing was changed — fix the connection and try again.",
+      });
     }
   };
 
@@ -153,24 +167,9 @@ export default function SettingsPage() {
       toast.success("CRM contact added", { description: `${displayName} · ${TEAM_ROLE_LABELS[newMemberRole]} — saved to server` });
     } catch (err) {
       console.error("[Settings] Failed to add CRM contact:", err);
-      toast.error("Failed to save to server", { description: "Saved locally — will sync when online." });
-
-      // Fallback to localStorage
-      const row: TeamMember = {
-        id: `tm-${Date.now()}`,
-        displayName,
-        email,
-        role: newMemberRole,
-        createdAt: new Date().toISOString().slice(0, 10),
-      };
-      updateData((d) => ({
-        ...d,
-        teamMembers: [...(d.teamMembers ?? []), row],
-      }));
-      setNewMemberName("");
-      setNewMemberEmail("");
-      setNewMemberRole("sales_rep");
-      setTeamDialogOpen(false);
+      toast.error("Failed to save to server", {
+        description: "Contact was not added — check connection and try again.",
+      });
     }
   };
 
@@ -184,11 +183,9 @@ export default function SettingsPage() {
       toast.success("Removed from CRM contacts", { description: "Deleted from server." });
     } catch (err) {
       console.error("[Settings] Failed to remove CRM contact:", err);
-      toast.error("Failed to delete from server", { description: "Removed locally only." });
-      updateData((d) => ({
-        ...d,
-        teamMembers: (d.teamMembers ?? []).filter((m) => m.id !== id),
-      }));
+      toast.error("Failed to delete from server", {
+        description: "Contact was not removed — try again.",
+      });
     }
   };
 
@@ -202,6 +199,54 @@ export default function SettingsPage() {
         title="CRM & settings"
         description="CRM contacts, catalog, replenishment rules, and audit trail — Brand Operator (HQ)."
       />
+
+      <Card className="border-border/80">
+        <CardHeader className="pb-3">
+          <CardTitle className="font-display text-base">Storage</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Confirms the API can read/write Postgres (not just your browser cache).
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant={
+                dbHealth === "ok" ? "default" : dbHealth === "error" ? "destructive" : "secondary"
+              }
+            >
+              {dbHealth === "checking"
+                ? "Checking database…"
+                : dbHealth === "ok"
+                  ? "Postgres connected"
+                  : "Database unreachable"}
+            </Badge>
+            {dbHealthDetail ? (
+              <span className="text-xs text-muted-foreground">{dbHealthDetail}</span>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="touch-manipulation shrink-0"
+            onClick={() => {
+              setDbHealth("checking");
+              setDbHealthDetail(null);
+              fetchApiHealth()
+                .then((h) => {
+                  setDbHealth("ok");
+                  setDbHealthDetail(h.dbNow ? `Postgres time ${h.dbNow}` : "Postgres reachable");
+                })
+                .catch((e) => {
+                  setDbHealth("error");
+                  setDbHealthDetail(e instanceof Error ? e.message : "Database unreachable");
+                });
+            }}
+          >
+            Re-check
+          </Button>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="lg:col-span-2 border-border/80">
