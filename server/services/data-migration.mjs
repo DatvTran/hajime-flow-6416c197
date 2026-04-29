@@ -22,11 +22,27 @@ export class DataMigrationService {
     return this.stage >= 3;
   }
 
+  resolveTenantJSONFileKey(tenantId) {
+    if (!tenantId || typeof tenantId !== 'string') return null;
+    return `app-state.${tenantId}`;
+  }
+
+  assertTenantScopedJSON(tenantId) {
+    const tenantFileKey = this.resolveTenantJSONFileKey(tenantId);
+    if (!tenantFileKey) {
+      throw new Error('Tenant-scoped JSON is required but tenantId is missing');
+    }
+    return tenantFileKey;
+  }
   /**
    * Stage 0: JSON only (baseline)
    */
   async getDataJSON(tenantId) {
-    return readAppState();
+    if (this.stage > 2) {
+      throw new Error(`JSON reads unavailable at migration stage ${this.stage}`);
+    }
+    const tenantFileKey = this.assertTenantScopedJSON(tenantId);
+    return readAppState(tenantFileKey);
   }
 
   /**
@@ -158,7 +174,8 @@ export class DataMigrationService {
    * Stage 2: Compare JSON and PostgreSQL data
    */
   async compareData(tenantId) {
-    const jsonData = readAppState();
+    const tenantFileKey = this.assertTenantScopedJSON(tenantId);
+    const jsonData = readAppState(tenantFileKey);
     // This would compare and log discrepancies
     console.log('[DataMigration] Data comparison logged');
     return { discrepancies: [] };
@@ -243,9 +260,10 @@ export class DataMigrationService {
    * Returns ETag + canonical JSON bytes for JSON-backed stages so
    * API handlers can perform conditional GET.
    */
-  getDataMetaIfJSON() {
+  getDataMetaIfJSON(tenantId) {
     if (this.stage <= 2) {
-      return readAppStateMeta();
+      const tenantFileKey = this.assertTenantScopedJSON(tenantId);
+      return readAppStateMeta(tenantFileKey);
     }
     return null;
   }
