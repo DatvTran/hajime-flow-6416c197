@@ -50,7 +50,8 @@ import { HajimeLogo } from "@/components/HajimeLogo";
 import { useAuth, type HajimeRole } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useNavigate, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { isSidebarNavItemActive, navPathEndFlag } from "@/lib/sidebar-nav-active";
 
 export type NavItem = { title: string; url: string; icon: LucideIcon };
 
@@ -270,11 +271,13 @@ function NavSection({
   items,
   label,
   collapsed,
+  allUrls,
   onNavigate,
 }: {
   items: NavItem[];
   label: string;
   collapsed: boolean;
+  allUrls: readonly string[];
   onNavigate?: () => void;
 }) {
   const location = useLocation();
@@ -325,6 +328,7 @@ export function AppSidebar() {
   };
 
   const groups = navGroupsForRole(user.role);
+  const allUrls = useMemo(() => groups.flatMap((g) => g.items.map((i) => i.url)), [groups]);
   const initials =
     user.displayName
       .split(/\s+/)
@@ -351,7 +355,14 @@ export function AppSidebar() {
 
       <SidebarContent className={cn("px-2", collapsed && "px-0")}>
         {groups.map((g) => (
-          <NavSection key={g.label} label={g.label} items={g.items} collapsed={collapsed} onNavigate={closeMobileNav} />
+          <NavSection
+            key={g.label}
+            label={g.label}
+            items={g.items}
+            collapsed={collapsed}
+            allUrls={allUrls}
+            onNavigate={closeMobileNav}
+          />
         ))}
       </SidebarContent>
 
