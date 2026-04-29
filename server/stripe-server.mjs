@@ -2,7 +2,7 @@
  * Hajime API — Stripe + persisted app data (inventory, orders, catalog, etc.).
  * - STRIPE_SECRET_KEY in server/.env (never in Vite).
  * - App state: GET/PUT /api/app → server/data/app-state.json (seeded from src/data/seed-app.json).
- * Run: cd server && npm install && npm start   (or from repo root: npm run dev:api)
+ * Legacy entrypoint (deprecated): startup is blocked unless ALLOW_STRIPE_SERVER_LEGACY_LOCAL_DEV=true.
  */
 import express from "express";
 import cors from "cors";
@@ -15,6 +15,15 @@ import { readAppState, writeAppState } from "./app-store.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, ".env") });
+
+const legacyLocalDevOverride = process.env.ALLOW_STRIPE_SERVER_LEGACY_LOCAL_DEV === "true";
+if (!legacyLocalDevOverride) {
+  console.error(
+    "[stripe-server] Refusing startup: stripe-server.mjs is legacy. Use `node index.mjs` / `npm start` instead. " +
+    "To run this file for local debugging only, set ALLOW_STRIPE_SERVER_LEGACY_LOCAL_DEV=true.",
+  );
+  process.exit(1);
+}
 
 const PORT = Number(process.env.PORT) || 4242;
 
