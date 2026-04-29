@@ -120,14 +120,14 @@ app.get('/api/reports',
 
 ### Migration Stages
 
-The implementation uses a **6-stage incremental migration** approach:
+The implementation uses a **6-stage incremental migration** approach. Stages 0-2 are legacy/local-only modes and must not be used in shared environments (staging/production):
 
 | Stage | Reads From | Writes To | Duration |
 |-------|------------|-----------|----------|
-| 0 | JSON | JSON | Baseline |
-| 1 | JSON | JSON + PostgreSQL | 2 weeks |
-| 2 | JSON (compared) | JSON + PostgreSQL | 2 weeks |
-| 3 | PostgreSQL | JSON + PostgreSQL | 4 weeks |
+| 0 | JSON | JSON | Legacy/local-only baseline |
+| 1 | JSON | JSON + PostgreSQL | Legacy/local-only shadow write |
+| 2 | JSON (compared) | JSON + PostgreSQL | Legacy/local-only comparison |
+| 3 | PostgreSQL | JSON + PostgreSQL | **Required minimum for shared environments** |
 | 4 | PostgreSQL | PostgreSQL only | 2 weeks |
 | 5 | PostgreSQL | PostgreSQL only (deprecated warning) | 2 weeks |
 | 6 | PostgreSQL | PostgreSQL only (JSON removed) | Complete |
@@ -172,13 +172,9 @@ npm run db:reset
 Set `FEATURE_FLAG_DB_MIGRATION_STAGE` in `.env`:
 
 ```bash
-# Stage 0: JSON-only legacy mode (local development only)
-FEATURE_FLAG_DB_MIGRATION_STAGE=0
+# Stage 0-2: legacy/local-only modes (do not use in shared envs)
 
-# Stage 1-2: Transitional migration stages (non-production)
-FEATURE_FLAG_DB_MIGRATION_STAGE=1
-
-# Stage 3+: PostgreSQL as primary (standard for deployed environments)
+# Stage 3+: PostgreSQL as primary (required for staging/production)
 FEATURE_FLAG_DB_MIGRATION_STAGE=3
 
 # Optional production startup guard (hard-fail if stage <=2 in production)

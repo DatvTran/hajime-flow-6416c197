@@ -30,6 +30,8 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 // Fail fast: crash at boot rather than silently allowing unsigned JWTs
 const REQUIRED_ENV = ['ACCESS_TOKEN_SECRET'];
 const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
+const nodeEnv = String(process.env.NODE_ENV ?? 'development').toLowerCase();
+const migrationStage = Number(process.env.FEATURE_FLAG_DB_MIGRATION_STAGE ?? 0);
 if (missingEnv.length > 0) {
   console.error(
     `FATAL: Missing required environment variables: ${missingEnv.join(', ')}\n` +
@@ -43,22 +45,10 @@ if ((process.env.ACCESS_TOKEN_SECRET ?? '').length < 32) {
   console.warn('WARNING: ACCESS_TOKEN_SECRET is shorter than 32 characters — use a longer secret in production');
 }
 
-const migrationStage = dataMigrationService.stage;
-const isJsonBackedStage = migrationStage <= 2;
-const requireDbPrimaryInProduction = process.env.REQUIRE_DB_PRIMARY_IN_PRODUCTION === 'true';
-const isProduction = process.env.NODE_ENV === 'production';
-
-if (isJsonBackedStage) {
-  console.warn(
-    `[hajime-api] WARNING: FEATURE_FLAG_DB_MIGRATION_STAGE=${migrationStage} is JSON-backed (legacy mode). ` +
-    'This environment is not running DB-primary reads/writes. Use stage 3+ for deployed environments.'
-  );
-}
-
-if (requireDbPrimaryInProduction && isProduction && isJsonBackedStage) {
+if ((nodeEnv === 'production' || nodeEnv === 'staging') && migrationStage <= 2) {
   console.error(
-    `[hajime-api] FATAL: REQUIRE_DB_PRIMARY_IN_PRODUCTION=true but FEATURE_FLAG_DB_MIGRATION_STAGE=${migrationStage}. ` +
-    'Production requires DB-primary mode (stage 3+). Refusing to start.'
+    `FATAL: FEATURE_FLAG_DB_MIGRATION_STAGE=${migrationStage} is not allowed in ${nodeEnv}. ` +
+    'Shared environments must run migration stage 3 or higher.'
   );
   process.exit(1);
 }
@@ -272,6 +262,10 @@ app.get('/api/health', async (_req, res) => {
     features: {
       auth: FEATURE_FLAG_AUTH_ENABLED,
       csv: FEATURE_FLAG_CSV_ENABLED,
+    },
+    migration: {
+      activeStage: dataMigrationService.stage,
+      dbPrimaryModeEnabled: dataMigrationService.stage >= 3,
     },
     migrationStage: dataMigrationService.stage,
   });
