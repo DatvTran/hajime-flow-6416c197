@@ -26,15 +26,12 @@ if (!legacyStartupAllowed) {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, ".env") });
 
-
-const allowLegacyRuntime = process.env.ALLOW_LEGACY_JSON_RUNTIME === "true";
-const isProduction = process.env.NODE_ENV === "production";
-if (!allowLegacyRuntime || isProduction) {
-  console.error(
-    "[stripe-server] Legacy JSON runtime is disabled. Use `node index.mjs` / `npm start`. " +
-      "For local development only, set ALLOW_LEGACY_JSON_RUNTIME=true with NODE_ENV not set to production.",
+const isNodeDev = (process.env.NODE_ENV ?? "development") !== "production";
+const legacyStripeOverride = process.env.LEGACY_STRIPE_SERVER_DEV_OVERRIDE === "true";
+if (!isNodeDev || !legacyStripeOverride) {
+  throw new Error(
+    "[stripe-server] Deprecated legacy server is blocked. It can run only in non-production with LEGACY_STRIPE_SERVER_DEV_OVERRIDE=true.",
   );
-  process.exit(1);
 }
 
 const PORT = Number(process.env.PORT) || 4242;
