@@ -11,7 +11,6 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 // Services
-import { readAppState, writeAppState } from './app-store.mjs';
 import { db } from './config/database.mjs';
 import { dataMigrationService } from './services/data-migration.mjs';
 
@@ -42,6 +41,26 @@ if (missingEnv.length > 0) {
 // Warn if the secret is too short (minimum 32 chars recommended)
 if ((process.env.ACCESS_TOKEN_SECRET ?? '').length < 32) {
   console.warn('WARNING: ACCESS_TOKEN_SECRET is shorter than 32 characters — use a longer secret in production');
+}
+
+const migrationStage = dataMigrationService.stage;
+const isJsonBackedStage = migrationStage <= 2;
+const requireDbPrimaryInProduction = process.env.REQUIRE_DB_PRIMARY_IN_PRODUCTION === 'true';
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isJsonBackedStage) {
+  console.warn(
+    `[hajime-api] WARNING: FEATURE_FLAG_DB_MIGRATION_STAGE=${migrationStage} is JSON-backed (legacy mode). ` +
+    'This environment is not running DB-primary reads/writes. Use stage 3+ for deployed environments.'
+  );
+}
+
+if (requireDbPrimaryInProduction && isProduction && isJsonBackedStage) {
+  console.error(
+    `[hajime-api] FATAL: REQUIRE_DB_PRIMARY_IN_PRODUCTION=true but FEATURE_FLAG_DB_MIGRATION_STAGE=${migrationStage}. ` +
+    'Production requires DB-primary mode (stage 3+). Refusing to start.'
+  );
+  process.exit(1);
 }
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -158,14 +177,18 @@ app.get('/api/app', authenticateToken, async (req, res) => {
       // Never fall back to a hardcoded UUID — reject to prevent cross-tenant data leakage
       return res.status(403).json({ error: 'Tenant identity missing from token' });
     }
-    const meta = dataMigrationService.getDataMetaIfJSON();
-    if (meta) {
+    const tenantScopedMeta = dataMigrationService.getDataMetaIfJSON(tenantId);
+    if (dataMigrationService.stage <= 2 && !tenantScopedMeta) {
+      return res.status(503).json({ error: 'Tenant-scoped JSON unavailable for active migration stage' });
+    }
+
+    if (tenantScopedMeta) {
       const ifNoneMatch = req.headers['if-none-match'];
-      res.set('ETag', meta.etag);
-      if (ifNoneMatch && ifNoneMatch === meta.etag) {
+      res.set('ETag', tenantScopedMeta.etag);
+      if (ifNoneMatch && ifNoneMatch === tenantScopedMeta.etag) {
         return res.status(304).end();
       }
-      res.type('application/json').send(meta.jsonString);
+      res.type('application/json').send(tenantScopedMeta.jsonString);
       return;
     }
 
@@ -195,6 +218,11 @@ app.put('/api/app', authenticateToken, async (req, res) => {
     if (!tenantId) {
       return res.status(403).json({ error: 'Tenant identity missing from token' });
     }
+
+    if (dataMigrationService.stage <= 4 && !dataMigrationService.resolveTenantJSONFileKey(tenantId)) {
+      return res.status(503).json({ error: 'Tenant-scoped JSON unavailable for active migration stage' });
+    }
+
     await dataMigrationService.saveData(body, tenantId);
 
     res.json({ ok: true });

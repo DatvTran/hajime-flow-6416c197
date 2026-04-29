@@ -1,82 +1,24 @@
 import express from 'express';
-import { z } from 'zod';
 import { authService } from '../services/auth.mjs';
 import { db } from '../config/database.mjs';
-import { Role, normalizeRole } from '../rbac/permissions.mjs';
+import { normalizeRole } from '../rbac/permissions.mjs';
 import { authenticateToken, requirePermission } from '../middleware/auth.mjs';
+import {
+  registerSchema,
+  adminCreateUserSchema,
+  loginSchema,
+  refreshSchema,
+  passwordResetRequestSchema,
+  passwordResetSchema,
+} from './auth.schemas.mjs';
 
 const router = express.Router();
-
-/**
- * Roles that can self-register (open registration).
- * FOUNDER_ADMIN and BRAND_OPERATOR must be created by an existing admin.
- */
-const SELF_REGISTERABLE_ROLES = [
-  Role.SALES,
-  Role.OPERATIONS,
-  Role.MANUFACTURER,
-  Role.FINANCE,
-  Role.DISTRIBUTOR,
-  Role.RETAIL,
-  Role.SALES_REP,
-];
-
-/**
- * Roles that can only be assigned by an existing FOUNDER_ADMIN or BRAND_OPERATOR.
- */
-const ADMIN_ASSIGNABLE_ROLES = [
-  Role.FOUNDER_ADMIN,
-  Role.BRAND_OPERATOR,
-  Role.SALES,
-  Role.OPERATIONS,
-  Role.MANUFACTURER,
-  Role.FINANCE,
-  Role.DISTRIBUTOR,
-  Role.RETAIL,
-  Role.SALES_REP,
-];
-
-// Validation schemas
-const registerSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-  displayName: z.string().min(1),
-  role: z.enum(SELF_REGISTERABLE_ROLES),
-  tenantId: z.string().uuid().optional(), // Optional: create new tenant if not provided
-  inviteToken: z.string().optional(), // Required when joining an existing tenant
-});
-
-// Admin-only user creation schema (all roles allowed)
-const adminCreateUserSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-  displayName: z.string().min(1),
-  role: z.enum(ADMIN_ASSIGNABLE_ROLES),
-  tenantId: z.string().uuid().optional(), // Defaults to admin's own tenant
-});
-
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string(),
-});
-
-const refreshSchema = z.object({
-  refreshToken: z.string(),
-});
-
-const passwordResetRequestSchema = z.object({
-  email: z.string().email(),
-});
-
-const passwordResetSchema = z.object({
-  token: z.string(),
-  newPassword: z.string().min(8),
-});
 
 /**
  * POST /api/auth/register
  * Open self-registration — limited to partner roles only.
  * Brand Operator and Founder Admin can only be created via admin-create-user.
+ * Accepts inviteToken for join flow; tenantId is not accepted in this endpoint.
  */
 router.post('/register', async (req, res) => {
   try {
