@@ -8,7 +8,8 @@
     "migrate:rollback": "knex migrate:rollback --knexfile knexfile.mjs",
     "migrate:make": "knex migrate:make --knexfile knexfile.mjs",
     "seed": "knex seed:run --knexfile knexfile.mjs",
-    "db:reset": "npm run migrate:rollback && npm run migrate && npm run seed"
+    "db:reset": "npm run migrate:rollback && npm run migrate && npm run seed",
+    "test:integration": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "argon2": "^0.44.0",

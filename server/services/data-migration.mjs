@@ -8,6 +8,18 @@ import { readAppState, readAppStateMeta, writeAppState } from '../app-store.mjs'
 export class DataMigrationService {
   constructor() {
     this.stage = Number(process.env.FEATURE_FLAG_DB_MIGRATION_STAGE) || 0;
+    this.isProduction = process.env.NODE_ENV === 'production';
+
+    if (this.isProduction && this.stage < 3) {
+      console.warn(
+        `[DataMigration] FEATURE_FLAG_DB_MIGRATION_STAGE=${this.stage} is unsupported in production; forcing stage 3 (DB primary).`
+      );
+      this.stage = 3;
+    }
+  }
+
+  isDbPrimaryEnabled() {
+    return this.stage >= 3;
   }
 
   resolveTenantJSONFileKey(tenantId) {
@@ -231,19 +243,14 @@ export class DataMigrationService {
    * Get data based on current migration stage
    */
   async getData(tenantId) {
+    if (this.stage >= 3) {
+      return this.getDataPostgreSQL(tenantId);
+    }
+
     switch (this.stage) {
       case 0:
-        return this.getDataJSON(tenantId);
       case 1:
       case 2:
-        // Return JSON but sync to PostgreSQL
-        return this.getDataJSON(tenantId);
-      case 3:
-      case 4:
-      case 5:
-      case 6:
-        // Return PostgreSQL data
-        return this.getDataPostgreSQL(tenantId);
       default:
         return this.getDataJSON(tenantId);
     }
@@ -265,25 +272,19 @@ export class DataMigrationService {
    * Save data based on current migration stage
    */
   async saveData(data, tenantId) {
-    // Always write to JSON (Stage 0-4), but never shared across tenants
-    if (this.stage <= 4) {
-      const tenantFileKey = this.assertTenantScopedJSON(tenantId);
-      writeAppState(data, tenantFileKey);
+    if (this.stage >= 3) {
+      throw new Error('Legacy /api/app write path is disabled when DB-primary migration is enabled. Use /api/v1/* mutations.');
     }
 
-    // Shadow write to PostgreSQL (Stage 1-4)
-    if (this.stage >= 1 && this.stage <= 4) {
+    writeAppState(data);
+
+    // Shadow write to PostgreSQL (Stage 1-2)
+    if (this.stage >= 1 && this.stage <= 2) {
       try {
         await this.syncToPostgreSQL(data, tenantId);
       } catch (err) {
         console.error('[DataMigration] Shadow write failed:', err);
       }
-    }
-
-    // Stage 5+: Write only to PostgreSQL
-    if (this.stage >= 5) {
-      // In Stage 5+, we would only write to PostgreSQL
-      // This is handled by granular APIs
     }
   }
 }
