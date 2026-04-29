@@ -120,7 +120,7 @@ app.get('/api/reports',
 
 ### Migration Stages
 
-The implementation uses a **6-stage incremental migration** approach:
+The implementation uses a **6-stage incremental migration** approach. Stages 0-2 are legacy/local-only modes and must not be used in shared environments (staging/production):
 
 | Stage | Reads From | Writes To | Duration |
 |-------|------------|-----------|----------|
@@ -180,6 +180,9 @@ FEATURE_FLAG_DB_MIGRATION_STAGE=1
 
 # Stage 3: PostgreSQL as primary (required for staging/production)
 FEATURE_FLAG_DB_MIGRATION_STAGE=3
+
+# Optional production startup guard (hard-fail if stage <=2 in production)
+REQUIRE_DB_PRIMARY_IN_PRODUCTION=true
 ```
 
 ## 📊 Priority Area 3: CSV Import/Export
@@ -265,7 +268,8 @@ SESSION_SECRET=...
 # Feature Flags
 FEATURE_FLAG_AUTH_ENABLED=true
 FEATURE_FLAG_CSV_ENABLED=true
-FEATURE_FLAG_DB_MIGRATION_STAGE=1
+FEATURE_FLAG_DB_MIGRATION_STAGE=3
+REQUIRE_DB_PRIMARY_IN_PRODUCTION=true
 
 # Rate Limiting (optional)
 RATE_LIMIT_WINDOW_MS=900000
@@ -370,7 +374,8 @@ Before enabling in production:
 - [ ] Rate limiting verified
 - [ ] Security headers confirmed
 - [ ] Health check endpoint responding
-- [ ] Feature flags configured for gradual rollout
+- [ ] Production uses FEATURE_FLAG_DB_MIGRATION_STAGE=3 (or higher)
+- [ ] Stage 0 is used only for local legacy troubleshooting
 
 ## 🆘 Rollback Procedures
 
@@ -388,6 +393,14 @@ fly secrets set FEATURE_FLAG_DB_MIGRATION_STAGE=2
 # Emergency local rollback to JSON compatibility mode
 fly secrets set FEATURE_FLAG_DB_MIGRATION_STAGE=0
 ```
+
+#### Stage downgrade expectations (data integrity)
+
+- **Stage 3+ behavior**: `/api/app` reads and writes are PostgreSQL-only. JSON app-state is intentionally not updated in these stages.
+- **Downgrade risk (3+ → 2/1/0)**: JSON can be stale relative to PostgreSQL. Before lowering the stage, export current tenant data from PostgreSQL and reseed/refresh `server/data/app-state.json` from that export.
+- **Tenant safety**: never copy one tenant's export into another tenant's seed payload. Validate tenant IDs during any backfill before re-enabling JSON-backed stages.
+- **Rollback target recommendation**: prefer **3 → 2** only as a short-lived mitigation. Return to stage 3+ after data reconciliation.
+- **Verification after downgrade**: run a tenant-by-tenant sanity check (record counts + spot checks for inventory, orders, and accounts) and confirm `/api/app` responses match expected tenant data.
 
 ### Database Rollback
 ```bash

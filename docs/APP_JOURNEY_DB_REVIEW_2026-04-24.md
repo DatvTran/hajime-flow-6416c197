@@ -83,3 +83,97 @@
 4. Conflict-safe merge strategy using timestamps/versioning
 5. Schema additions (operational settings, support tickets, tasks/opportunities)
 
+## Post-Deploy Validation Runbook (DB Migration Stage 3+)
+
+Use this checklist immediately after deploys that touch API persistence, migration flags, or database connectivity.
+
+### 1) Health gate: confirm migration stage
+- Call API health endpoint:
+  - `curl -sS "$API_BASE_URL/api/health" | jq`
+- Confirm reported migration stage is **3 or higher** before running write tests.
+- Expected indicators:
+  - `FEATURE_FLAG_DB_MIGRATION_STAGE >= 3`
+  - DB-backed subsystem checks are green/ok.
+
+### 2) Write through app APIs (sample records)
+- Create (or update) sample tenant-scoped records through app APIs for:
+  - products
+  - accounts
+  - sales orders
+  - inventory
+  - shipments
+- Use a dedicated test tenant and deterministic IDs/refs (for easy lookup).
+- Capture request/response payloads and status codes in deploy notes.
+
+### 3) Restart API process
+- Restart the running API service/process using the environment-standard mechanism (systemd/PM2/container rollout).
+- Verify process comes back healthy (`/api/health` still stage 3+).
+
+### 4) Re-read records to verify persistence after restart
+- Re-fetch each previously created/updated record via app APIs.
+- Validate:
+  - records still exist;
+  - key fields are unchanged;
+  - tenant scoping is correct;
+  - no fallback-to-local behavior is masking server failures.
+
+### 5) Pass criteria
+- All sample writes succeed before restart.
+- All sample records remain readable and unchanged after restart.
+- Health endpoint remains at stage 3+ throughout.
+
+## SQL Verification Snippets (Tenant Scoped)
+
+> Replace `:tenant_id` with the tenant used in your post-deploy API checks.
+
+```sql
+-- products
+SELECT id, tenant_id, sku, name, updated_at
+FROM products
+WHERE tenant_id = :tenant_id
+ORDER BY updated_at DESC
+LIMIT 50;
+
+-- accounts
+SELECT id, tenant_id, account_code, name, updated_at
+FROM accounts
+WHERE tenant_id = :tenant_id
+ORDER BY updated_at DESC
+LIMIT 50;
+
+-- sales_orders
+SELECT id, tenant_id, order_number, status, updated_at
+FROM sales_orders
+WHERE tenant_id = :tenant_id
+ORDER BY updated_at DESC
+LIMIT 50;
+
+-- inventory
+SELECT id, tenant_id, product_id, quantity_on_hand, updated_at
+FROM inventory
+WHERE tenant_id = :tenant_id
+ORDER BY updated_at DESC
+LIMIT 50;
+
+-- shipments
+SELECT id, tenant_id, shipment_number, status, updated_at
+FROM shipments
+WHERE tenant_id = :tenant_id
+ORDER BY updated_at DESC
+LIMIT 50;
+```
+
+## Failure Triage (Symptoms → Likely Causes)
+
+| Symptom | Likely Cause | What to Check First |
+|---|---|---|
+| `/api/health` shows stage `< 3` | `FEATURE_FLAG_DB_MIGRATION_STAGE` not set or misconfigured in runtime env | Compare deploy env var values vs expected; confirm process picked up latest env on restart |
+| Writes fail across endpoints with DB/connectivity errors | DB connection env incorrect (`DATABASE_URL`, host, creds, SSL mode, network policy) | Verify effective DB env in running process and test direct DB reachability from API runtime |
+| Writes appear successful, but data missing after API restart | Legacy/local-only script or non-DB path still in use for mutations | Confirm endpoints invoke DB-backed repositories/services, not legacy scripts or local state fallbacks |
+| Some entities persist, others do not | Partial migration path (mixed handlers), stale feature flag routing | Validate per-endpoint code path and feature-flag branch selection |
+| SQL results empty for expected data | Wrong `tenant_id` used in verification or tenant propagation bug | Cross-check tenant in auth context, API payloads, and DB query filter |
+
+### Triage escalation notes
+- Always capture: health payload, failing request IDs, tenant_id, and API logs around restart window.
+- If issue is stage/env related, fix env + redeploy before re-running sample writes.
+- If issue is legacy-script usage, disable old path and re-run full post-deploy checklist.
