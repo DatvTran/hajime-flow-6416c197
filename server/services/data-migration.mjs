@@ -8,14 +8,10 @@ import { readAppState, readAppStateMeta, writeAppState } from '../app-store.mjs'
 export class DataMigrationService {
   constructor() {
     this.stage = Number(process.env.FEATURE_FLAG_DB_MIGRATION_STAGE) || 0;
-    this.isProduction = process.env.NODE_ENV === 'production';
-
-    if (this.isProduction && this.stage < 3) {
-      console.warn(
-        `[DataMigration] FEATURE_FLAG_DB_MIGRATION_STAGE=${this.stage} is unsupported in production; forcing stage 3 (DB primary).`
-      );
-      this.stage = 3;
-    }
+    this.isDeployedEnvironment = process.env.NODE_ENV === 'production'
+      || Boolean(process.env.FLY_APP_NAME)
+      || Boolean(process.env.RENDER)
+      || Boolean(process.env.RAILWAY_ENVIRONMENT);
   }
 
   isDbPrimaryEnabled() {
@@ -260,10 +256,9 @@ export class DataMigrationService {
    * Returns ETag + canonical JSON bytes for JSON-backed stages so
    * API handlers can perform conditional GET.
    */
-  getDataMetaIfJSON(tenantId) {
-    if (this.stage <= 2) {
-      const tenantFileKey = this.assertTenantScopedJSON(tenantId);
-      return readAppStateMeta(tenantFileKey);
+  getDataMetaIfJSON() {
+    if (this.stage <= 2 && !this.isDeployedEnvironment) {
+      return readAppStateMeta();
     }
     return null;
   }
@@ -272,19 +267,24 @@ export class DataMigrationService {
    * Save data based on current migration stage
    */
   async saveData(data, tenantId) {
-    if (this.stage >= 3) {
-      throw new Error('Legacy /api/app write path is disabled when DB-primary migration is enabled. Use /api/v1/* mutations.');
+    // Stage 0-2 keep JSON as the source of truth.
+    if (this.stage <= 2) {
+      const { writeAppState } = await import('../app-store.mjs');
+      writeAppState(data);
     }
 
-    writeAppState(data);
-
-    // Shadow write to PostgreSQL (Stage 1-2)
+    // Stage 1-2 shadow write to PostgreSQL.
     if (this.stage >= 1 && this.stage <= 2) {
       try {
         await this.syncToPostgreSQL(data, tenantId);
       } catch (err) {
         console.error('[DataMigration] Shadow write failed:', err);
       }
+    }
+
+    // Stage 3+ writes must stay tenant-scoped in PostgreSQL only.
+    if (this.stage >= 3) {
+      await this.syncToPostgreSQL(data, tenantId);
     }
   }
 }
