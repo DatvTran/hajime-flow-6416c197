@@ -2,8 +2,7 @@
  * Hajime API — Stripe + persisted app data (inventory, orders, catalog, etc.).
  * - STRIPE_SECRET_KEY in server/.env (never in Vite).
  * - App state: GET/PUT /api/app → server/data/app-state.json (seeded from src/data/seed-app.json).
- * Legacy runtime (JSON persistence path).
- * Refuses startup by default; for local debugging only set ALLOW_LEGACY_JSON_RUNTIME=true.
+ * Legacy entrypoint (deprecated): startup is blocked unless ALLOW_STRIPE_SERVER_LEGACY_LOCAL_DEV=true.
  */
 import express from "express";
 import cors from "cors";
@@ -26,12 +25,13 @@ if (!legacyStartupAllowed) {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, ".env") });
 
-const isNodeDev = (process.env.NODE_ENV ?? "development") !== "production";
-const legacyStripeOverride = process.env.LEGACY_STRIPE_SERVER_DEV_OVERRIDE === "true";
-if (!isNodeDev || !legacyStripeOverride) {
-  throw new Error(
-    "[stripe-server] Deprecated legacy server is blocked. It can run only in non-production with LEGACY_STRIPE_SERVER_DEV_OVERRIDE=true.",
+const legacyLocalDevOverride = process.env.ALLOW_STRIPE_SERVER_LEGACY_LOCAL_DEV === "true";
+if (!legacyLocalDevOverride) {
+  console.error(
+    "[stripe-server] Refusing startup: stripe-server.mjs is legacy. Use `node index.mjs` / `npm start` instead. " +
+    "To run this file for local debugging only, set ALLOW_STRIPE_SERVER_LEGACY_LOCAL_DEV=true.",
   );
+  process.exit(1);
 }
 
 const PORT = Number(process.env.PORT) || 4242;

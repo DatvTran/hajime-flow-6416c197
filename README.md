@@ -11,7 +11,7 @@ The live app persists state via `GET/PUT /api/app` (with optional `operationalSe
 ## Scripts
 
 - `npm run dev` — Vite dev server (port 8080)
-- `npm run dev:api` — backend API on port **4242** (same as `dev:stripe`): persists app data + optional Stripe
+- `npm run dev:api` — backend API on port **4242**: persists app data + optional Stripe
 - `npm run dev:full` — API + Vite together (`concurrently`)
 - `npm run build` — production build
 - `npm run test` — Vitest

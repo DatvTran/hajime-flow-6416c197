@@ -16,7 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "check:no-legacy-start": "node scripts/check-no-legacy-start.mjs"
+    "check:legacy-startup": "node scripts/validate-legacy-startup.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
