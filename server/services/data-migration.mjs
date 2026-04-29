@@ -1,5 +1,5 @@
 import { db } from '../config/database.mjs';
-import { readAppState, readAppStateMeta } from '../app-store.mjs';
+import { readAppState, readAppStateMeta, writeAppState } from '../app-store.mjs';
 
 /**
  * Data Migration Service
@@ -14,11 +14,31 @@ export class DataMigrationService {
       || Boolean(process.env.RAILWAY_ENVIRONMENT);
   }
 
+  isDbPrimaryEnabled() {
+    return this.stage >= 3;
+  }
+
+  resolveTenantJSONFileKey(tenantId) {
+    if (!tenantId || typeof tenantId !== 'string') return null;
+    return `app-state.${tenantId}`;
+  }
+
+  assertTenantScopedJSON(tenantId) {
+    const tenantFileKey = this.resolveTenantJSONFileKey(tenantId);
+    if (!tenantFileKey) {
+      throw new Error('Tenant-scoped JSON is required but tenantId is missing');
+    }
+    return tenantFileKey;
+  }
   /**
    * Stage 0: JSON only (baseline)
    */
   async getDataJSON(tenantId) {
-    return readAppState();
+    if (this.stage > 2) {
+      throw new Error(`JSON reads unavailable at migration stage ${this.stage}`);
+    }
+    const tenantFileKey = this.assertTenantScopedJSON(tenantId);
+    return readAppState(tenantFileKey);
   }
 
   /**
@@ -150,7 +170,8 @@ export class DataMigrationService {
    * Stage 2: Compare JSON and PostgreSQL data
    */
   async compareData(tenantId) {
-    const jsonData = readAppState();
+    const tenantFileKey = this.assertTenantScopedJSON(tenantId);
+    const jsonData = readAppState(tenantFileKey);
     // This would compare and log discrepancies
     console.log('[DataMigration] Data comparison logged');
     return { discrepancies: [] };
@@ -218,19 +239,14 @@ export class DataMigrationService {
    * Get data based on current migration stage
    */
   async getData(tenantId) {
+    if (this.stage >= 3) {
+      return this.getDataPostgreSQL(tenantId);
+    }
+
     switch (this.stage) {
       case 0:
-        return this.getDataJSON(tenantId);
       case 1:
       case 2:
-        // Return JSON but sync to PostgreSQL
-        return this.getDataJSON(tenantId);
-      case 3:
-      case 4:
-      case 5:
-      case 6:
-        // Return PostgreSQL data
-        return this.getDataPostgreSQL(tenantId);
       default:
         return this.getDataJSON(tenantId);
     }

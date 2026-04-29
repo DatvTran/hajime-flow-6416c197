@@ -11,7 +11,6 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 // Services
-import { readAppState, writeAppState } from './app-store.mjs';
 import { db } from './config/database.mjs';
 import { dataMigrationService } from './services/data-migration.mjs';
 
@@ -31,6 +30,8 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 // Fail fast: crash at boot rather than silently allowing unsigned JWTs
 const REQUIRED_ENV = ['ACCESS_TOKEN_SECRET'];
 const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
+const nodeEnv = String(process.env.NODE_ENV ?? 'development').toLowerCase();
+const migrationStage = Number(process.env.FEATURE_FLAG_DB_MIGRATION_STAGE ?? 0);
 if (missingEnv.length > 0) {
   console.error(
     `FATAL: Missing required environment variables: ${missingEnv.join(', ')}\n` +
@@ -42,6 +43,14 @@ if (missingEnv.length > 0) {
 // Warn if the secret is too short (minimum 32 chars recommended)
 if ((process.env.ACCESS_TOKEN_SECRET ?? '').length < 32) {
   console.warn('WARNING: ACCESS_TOKEN_SECRET is shorter than 32 characters — use a longer secret in production');
+}
+
+if ((nodeEnv === 'production' || nodeEnv === 'staging') && migrationStage <= 2) {
+  console.error(
+    `FATAL: FEATURE_FLAG_DB_MIGRATION_STAGE=${migrationStage} is not allowed in ${nodeEnv}. ` +
+    'Shared environments must run migration stage 3 or higher.'
+  );
+  process.exit(1);
 }
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -189,11 +198,11 @@ app.get('/api/app', authenticateToken, async (req, res) => {
         return res.status(409).json({ error: '/api/app JSON snapshot is disabled in deployed environments' });
       }
       const ifNoneMatch = req.headers['if-none-match'];
-      res.set('ETag', meta.etag);
-      if (ifNoneMatch && ifNoneMatch === meta.etag) {
+      res.set('ETag', tenantScopedMeta.etag);
+      if (ifNoneMatch && ifNoneMatch === tenantScopedMeta.etag) {
         return res.status(304).end();
       }
-      res.type('application/json').send(meta.jsonString);
+      res.type('application/json').send(tenantScopedMeta.jsonString);
       return;
     }
 
@@ -249,6 +258,10 @@ app.get('/api/health', async (_req, res) => {
     features: {
       auth: FEATURE_FLAG_AUTH_ENABLED,
       csv: FEATURE_FLAG_CSV_ENABLED,
+    },
+    migration: {
+      activeStage: dataMigrationService.stage,
+      dbPrimaryModeEnabled: dataMigrationService.stage >= 3,
     },
     migrationStage: dataMigrationService.stage,
   });
