@@ -20,6 +20,8 @@ import {
   Truck,
 } from "lucide-react";
 import { useState } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function userInitials(displayName: string): string {
   const parts = displayName.trim().split(/\s+/).filter(Boolean);
@@ -108,6 +110,7 @@ function RetailSidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 
 export function RetailLayout() {
   const { signOut, user } = useAuth();
+  const { language, setLanguage, options, t } = useLanguage();
   const storeName = useRetailAccountTradingName();
   const { totalCases } = useRetailCart();
   const location = useLocation();
@@ -137,11 +140,25 @@ export function RetailLayout() {
         <div className="truncate">{user?.displayName ?? "Guest"}</div>
         <div className="truncate text-[10px] text-[hsl(35_12%_50%)]">Retail account</div>
       </div>
+      <div className="w-[130px]">
+        <Select value={language} onValueChange={(v) => setLanguage(v as typeof language)}>
+          <SelectTrigger className="h-8 border-sidebar-border bg-sidebar text-xs">
+            <SelectValue placeholder={t("Choose language")} />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <button
         type="button"
         className="shrink-0 rounded-md p-1.5 text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
         onClick={() => signOut()}
-        aria-label="Sign out"
+        aria-label={t("Sign out")}
       >
         <LogOut className="h-4 w-4" />
       </button>

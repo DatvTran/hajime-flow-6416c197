@@ -16,6 +16,12 @@ import {
 import type { AppData } from "@/types/app-data";
 import type { NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
 
+// Feature flag to control granular API usage - Stage 3: Always use granular
+const USE_GRANULAR_API = true;
+
+// Dev mode flag for logging (kept for error logging)
+const isDev = process.env.NODE_ENV === 'development' || import.meta.env?.DEV;
+
 function sliceIsoDate(v: unknown): string {
   if (v == null || v === "") return new Date().toISOString().slice(0, 10);
   const s = String(v);

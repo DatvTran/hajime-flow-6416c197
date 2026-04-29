@@ -42,6 +42,7 @@ export function assertLegacyAppApiEnabled(): void {
 export async function fetchAppData(): Promise<AppData> {
   assertLegacyAppApiEnabled();
   const headers = getAuthHeaders();
+
   const res = await fetch(apiUrl("/api/app"), { headers });
 
   if (!res.ok) {

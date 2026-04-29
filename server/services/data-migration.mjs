@@ -1,5 +1,5 @@
 import { db } from '../config/database.mjs';
-import { readAppState, readAppStateMeta, writeAppState } from '../app-store.mjs';
+import { readAppState, readAppStateMeta } from '../app-store.mjs';
 
 /**
  * Data Migration Service
@@ -257,7 +257,7 @@ export class DataMigrationService {
    * API handlers can perform conditional GET.
    */
   getDataMetaIfJSON() {
-    if (this.stage <= 2 && !this.isDeployedEnvironment) {
+    if (this.stage <= 2) {
       return readAppStateMeta();
     }
     return null;

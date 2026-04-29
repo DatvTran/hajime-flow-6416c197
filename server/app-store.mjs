@@ -9,11 +9,12 @@ const DEFAULT_FILE_KEY = "app-state";
 const SEED_FILE = path.join(__dirname, "..", "src", "data", "seed-app.json");
 
 // ── In-memory cache for JSON app-state ──────────────────────────────────────
-const cacheByFileKey = new Map();
-
-function stateFileFor(fileKey = DEFAULT_FILE_KEY) {
-  return path.join(DATA_DIR, `${fileKey}.json`);
-}
+let cache = {
+  mtimeMs: 0,
+  data: null,
+  jsonString: null,
+  etag: null,
+};
 
 function computeEtag(jsonString) {
   return `"${crypto.createHash("sha1").update(jsonString).digest("hex")}"`;
@@ -26,34 +27,30 @@ function atomicWrite(file, jsonString) {
   fs.renameSync(tmp, file);
 }
 
-function loadFromDisk(fileKey = DEFAULT_FILE_KEY) {
-  const stateFile = stateFileFor(fileKey);
-  if (!fs.existsSync(stateFile)) {
+function loadFromDisk() {
+  if (!fs.existsSync(STATE_FILE)) {
     if (!fs.existsSync(SEED_FILE)) {
       throw new Error(`Missing seed file: ${SEED_FILE}`);
     }
     const seed = fs.readFileSync(SEED_FILE, "utf8");
-    atomicWrite(stateFile, seed);
+    atomicWrite(STATE_FILE, seed);
   }
-  const stat = fs.statSync(stateFile);
-  const raw = fs.readFileSync(stateFile, "utf8");
+  const stat = fs.statSync(STATE_FILE);
+  const raw = fs.readFileSync(STATE_FILE, "utf8");
   const parsed = JSON.parse(raw);
-  const cache = {
+  cache = {
     mtimeMs: stat.mtimeMs,
     data: parsed,
     jsonString: raw,
     etag: computeEtag(raw),
   };
-  cacheByFileKey.set(fileKey, cache);
   return cache;
 }
 
-export function readAppState(fileKey = DEFAULT_FILE_KEY) {
-  const stateFile = stateFileFor(fileKey);
-  const cache = cacheByFileKey.get(fileKey);
-  if (cache?.data) {
+export function readAppState() {
+  if (cache.data) {
     try {
-      const stat = fs.statSync(stateFile);
+      const stat = fs.statSync(STATE_FILE);
       if (stat.mtimeMs === cache.mtimeMs) {
         return structuredClone(cache.data);
       }
@@ -62,36 +59,32 @@ export function readAppState(fileKey = DEFAULT_FILE_KEY) {
     }
   }
 
-  const fresh = loadFromDisk(fileKey);
-  return structuredClone(fresh.data);
+  loadFromDisk();
+  return structuredClone(cache.data);
 }
 
-export function readAppStateMeta(fileKey = DEFAULT_FILE_KEY) {
-  const stateFile = stateFileFor(fileKey);
-  const cache = cacheByFileKey.get(fileKey);
-  if (!cache?.data) {
-    loadFromDisk(fileKey);
+export function readAppStateMeta() {
+  if (!cache.data) {
+    loadFromDisk();
   } else {
     try {
-      const stat = fs.statSync(stateFile);
-      if (stat.mtimeMs !== cache.mtimeMs) loadFromDisk(fileKey);
+      const stat = fs.statSync(STATE_FILE);
+      if (stat.mtimeMs !== cache.mtimeMs) loadFromDisk();
     } catch {
-      loadFromDisk(fileKey);
+      loadFromDisk();
     }
   }
-  const fresh = cacheByFileKey.get(fileKey);
-  return { etag: fresh.etag, jsonString: fresh.jsonString };
+  return { etag: cache.etag, jsonString: cache.jsonString };
 }
 
-export function writeAppState(state, fileKey = DEFAULT_FILE_KEY) {
-  const stateFile = stateFileFor(fileKey);
+export function writeAppState(state) {
   const jsonString = JSON.stringify(state, null, 2);
-  atomicWrite(stateFile, jsonString);
-  const stat = fs.statSync(stateFile);
-  cacheByFileKey.set(fileKey, {
+  atomicWrite(STATE_FILE, jsonString);
+  const stat = fs.statSync(STATE_FILE);
+  cache = {
     mtimeMs: stat.mtimeMs,
     data: state,
     jsonString,
     etag: computeEtag(jsonString),
-  });
+  };
 }
