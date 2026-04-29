@@ -10,11 +10,13 @@
     "dev:full": "concurrently -k \"npm run dev:stripe\" \"npm run dev\"",
     "build": "vite build",
     "build:dev": "vite build --mode development",
-    "lint": "eslint .",
+    "lint": "eslint . && npm run check:no-legacy-start",
+    "check:no-legacy-start": "node scripts/check-no-legacy-start.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "check:legacy-startup": "node scripts/validate-legacy-startup.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

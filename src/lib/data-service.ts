@@ -13,15 +13,11 @@ import {
   getShipments,
   getNewProductRequests,
 } from "./api-v1";
-import { fetchAppData as fetchLegacyAppData } from "./api-app";
 import type { AppData } from "@/types/app-data";
 import type { NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
 
 // Feature flag to control granular API usage - Stage 3: Always use granular
 const USE_GRANULAR_API = true;
-
-// Dev mode flag for logging (kept for error logging)
-const isDev = process.env.NODE_ENV === 'development' || import.meta.env?.DEV;
 
 function sliceIsoDate(v: unknown): string {
   if (v == null || v === "") return new Date().toISOString().slice(0, 10);
@@ -416,19 +412,10 @@ export async function fetchAppDataGranular(): Promise<AppData> {
 }
 
 /**
- * Fetch data - Stage 4: Use granular APIs with fallback to legacy
+ * Fetch data - Stage 4+: Use granular APIs only.
  */
 export async function fetchAppData(): Promise<AppData> {
-  try {
-    // Stage 4: Try granular APIs first
-    return await fetchAppDataGranular();
-  } catch (err) {
-    if (isDev) {
-      console.warn("[DataService] Granular APIs failed, falling back to legacy:", err);
-    }
-    // Fallback to legacy API
-    return fetchLegacyAppData();
-  }
+  return fetchAppDataGranular();
 }
 
 // Stage 4: putAppData removed — use api-v1-mutations for all writes
