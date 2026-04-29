@@ -266,6 +266,8 @@ export const salesOrders: SalesOrder[] = [
 
 export type Account = {
   id: string;
+  /** External / CRM account code when present (synced from API as account_number). */
+  accountNumber?: string;
   legalName: string;
   tradingName: string;
   country: string;
