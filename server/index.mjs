@@ -42,6 +42,26 @@ if (missingEnv.length > 0) {
 if ((process.env.ACCESS_TOKEN_SECRET ?? '').length < 32) {
   console.warn('WARNING: ACCESS_TOKEN_SECRET is shorter than 32 characters — use a longer secret in production');
 }
+
+const migrationStage = dataMigrationService.stage;
+const isJsonBackedStage = migrationStage <= 2;
+const requireDbPrimaryInProduction = process.env.REQUIRE_DB_PRIMARY_IN_PRODUCTION === 'true';
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isJsonBackedStage) {
+  console.warn(
+    `[hajime-api] WARNING: FEATURE_FLAG_DB_MIGRATION_STAGE=${migrationStage} is JSON-backed (legacy mode). ` +
+    'This environment is not running DB-primary reads/writes. Use stage 3+ for deployed environments.'
+  );
+}
+
+if (requireDbPrimaryInProduction && isProduction && isJsonBackedStage) {
+  console.error(
+    `[hajime-api] FATAL: REQUIRE_DB_PRIMARY_IN_PRODUCTION=true but FEATURE_FLAG_DB_MIGRATION_STAGE=${migrationStage}. ` +
+    'Production requires DB-primary mode (stage 3+). Refusing to start.'
+  );
+  process.exit(1);
+}
 // ───────────────────────────────────────────────────────────────────────────
 
 const PORT = Number(process.env.PORT) || 4242;
