@@ -1,0 +1,17 @@
+name: Prevent legacy runtime
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  no-legacy-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if start:legacy script reappears
+        run: |
+          if grep -nE '^\s*"start:legacy"\s*:' server/package.json; then
+            echo "Legacy runtime entrypoint is forbidden. Use npm start / node index.mjs."
+            exit 1
+          fi

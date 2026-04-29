@@ -176,6 +176,9 @@ Set `FEATURE_FLAG_DB_MIGRATION_STAGE` in `.env`:
 
 # Stage 3+: PostgreSQL as primary (required for staging/production)
 FEATURE_FLAG_DB_MIGRATION_STAGE=3
+
+# Optional production startup guard (hard-fail if stage <=2 in production)
+REQUIRE_DB_PRIMARY_IN_PRODUCTION=true
 ```
 
 ## 📊 Priority Area 3: CSV Import/Export
@@ -261,7 +264,8 @@ SESSION_SECRET=...
 # Feature Flags
 FEATURE_FLAG_AUTH_ENABLED=true
 FEATURE_FLAG_CSV_ENABLED=true
-FEATURE_FLAG_DB_MIGRATION_STAGE=1
+FEATURE_FLAG_DB_MIGRATION_STAGE=3
+REQUIRE_DB_PRIMARY_IN_PRODUCTION=true
 
 # Rate Limiting (optional)
 RATE_LIMIT_WINDOW_MS=900000
@@ -318,7 +322,7 @@ Response:
     "auth": true,
     "csv": true
   },
-  "migrationStage": 1
+  "migrationStage": 3
 }
 ```
 
@@ -360,7 +364,8 @@ Before enabling in production:
 - [ ] Rate limiting verified
 - [ ] Security headers confirmed
 - [ ] Health check endpoint responding
-- [ ] Feature flags configured for gradual rollout
+- [ ] Production uses FEATURE_FLAG_DB_MIGRATION_STAGE=3 (or higher)
+- [ ] Stage 0 is used only for local legacy troubleshooting
 
 ## 🆘 Rollback Procedures
 
@@ -372,10 +377,10 @@ fly secrets set FEATURE_FLAG_AUTH_ENABLED=false
 
 ### Revert Database Migration
 ```bash
-# Stage 3 → Stage 2 (revert reads to JSON)
+# Temporary downgrade (not recommended for production steady state)
 fly secrets set FEATURE_FLAG_DB_MIGRATION_STAGE=2
 
-# Emergency: Full rollback to JSON
+# Emergency local-legacy fallback only (JSON-backed)
 fly secrets set FEATURE_FLAG_DB_MIGRATION_STAGE=0
 ```
 
