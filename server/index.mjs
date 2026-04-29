@@ -53,6 +53,26 @@ const CUSTOMER_MAP_FILE = path.join(DATA_DIR, 'stripe-customers.json');
 const FEATURE_FLAG_AUTH_ENABLED = process.env.FEATURE_FLAG_AUTH_ENABLED === 'true';
 const FEATURE_FLAG_CSV_ENABLED = process.env.FEATURE_FLAG_CSV_ENABLED === 'true';
 
+
+const NODE_ENV = process.env.NODE_ENV ?? 'development';
+const FEATURE_FLAG_DB_MIGRATION_STAGE = Number(process.env.FEATURE_FLAG_DB_MIGRATION_STAGE ?? '0');
+
+if (!Number.isInteger(FEATURE_FLAG_DB_MIGRATION_STAGE) || FEATURE_FLAG_DB_MIGRATION_STAGE < 0) {
+  console.error(
+    'FATAL: FEATURE_FLAG_DB_MIGRATION_STAGE must be a non-negative integer (e.g., 0, 1, 2, 3).'
+  );
+  process.exit(1);
+}
+
+const requiresProductionMigrationStage = NODE_ENV === 'production' || NODE_ENV === 'staging';
+if (requiresProductionMigrationStage && FEATURE_FLAG_DB_MIGRATION_STAGE < 3) {
+  console.error(
+    `FATAL: FEATURE_FLAG_DB_MIGRATION_STAGE=${FEATURE_FLAG_DB_MIGRATION_STAGE} is not allowed when NODE_ENV=${NODE_ENV}. ` +
+    'Set FEATURE_FLAG_DB_MIGRATION_STAGE=3 or higher before starting the server.'
+  );
+  process.exit(1);
+}
+
 // Stripe setup
 const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
 const stripe = secretKey ? new Stripe(secretKey) : null;
@@ -223,6 +243,12 @@ app.get('/api/health', async (_req, res) => {
       csv: FEATURE_FLAG_CSV_ENABLED,
     },
     migrationStage: dataMigrationService.stage,
+    migration: {
+      stage: dataMigrationService.stage,
+      configuredStage: FEATURE_FLAG_DB_MIGRATION_STAGE,
+      environment: NODE_ENV,
+      productionCompatible: dataMigrationService.stage >= 3,
+    },
   });
 });
 
