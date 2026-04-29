@@ -35,6 +35,7 @@ import seedJson from "@/data/seed-app.json";
 import { toast } from "@/components/ui/sonner";
 import { normalizeAppData } from "@/lib/normalize-app-data";
 import { loadLocalAppData, saveLocalAppData } from "@/lib/local-app-data";
+import { resolveAccountForSalesOrder } from "@/lib/sales-order-utils";
 import { useAuth } from "./AuthContext";
 import {
   createProduct as apiCreateProduct,
@@ -105,28 +106,30 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
     ...local.retailerShelfStock,
   };
   
-  // For accounts: preserve onboardingPipeline status from local if server account doesn't have it
-  if (local.accounts?.length && server.accounts?.length) {
-    const localAccountsById = new Map(local.accounts.map(a => [a.id, a]));
-    merged.accounts = server.accounts.map(serverAccount => {
+  // For accounts: preserve onboardingPipeline status from local if server account doesn't have it.
+  // Important: do NOT require server.accounts.length > 0; otherwise an empty server response can wipe local-only data.
+  if (local.accounts?.length && Array.isArray(server.accounts)) {
+    const localAccountsById = new Map(local.accounts.map((a) => [a.id, a]));
+    merged.accounts = (server.accounts ?? []).map((serverAccount) => {
       const localAccount = localAccountsById.get(serverAccount.id);
-      if (localAccount && localAccount.onboardingPipeline && !serverAccount.onboardingPipeline) {
+      if (localAccount?.onboardingPipeline && !serverAccount.onboardingPipeline) {
         return { ...serverAccount, onboardingPipeline: localAccount.onboardingPipeline };
       }
       return serverAccount;
     });
-    
+
     // Add local-only accounts (new accounts created while offline)
-    const serverIds = new Set(server.accounts.map(a => a.id));
-    const localOnlyAccounts = local.accounts.filter(a => !serverIds.has(a.id));
+    const serverIds = new Set((server.accounts ?? []).map((a) => a.id));
+    const localOnlyAccounts = local.accounts.filter((a) => !serverIds.has(a.id));
     merged.accounts = [...merged.accounts, ...localOnlyAccounts];
   }
   
-  // For orders: preserve local-only orders (created while offline)
-  if (local.salesOrders?.length && server.salesOrders?.length) {
-    const serverIds = new Set(server.salesOrders.map(o => o.id));
-    const localOnlyOrders = local.salesOrders.filter(o => !serverIds.has(o.id));
-    merged.salesOrders = [...server.salesOrders, ...localOnlyOrders];
+  // For orders: preserve local-only orders (created while offline).
+  // Same rule: don't require server array length, just require the array to exist.
+  if (local.salesOrders?.length && Array.isArray(server.salesOrders)) {
+    const serverIds = new Set((server.salesOrders ?? []).map((o) => o.id));
+    const localOnlyOrders = local.salesOrders.filter((o) => !serverIds.has(o.id));
+    merged.salesOrders = [...(server.salesOrders ?? []), ...localOnlyOrders];
   }
   
   return merged;
@@ -255,6 +258,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
               description: "Your changes are saved in this browser. Connect to server to sync.",
             });
           }
+        }
+      } finally {
+        // Without this, first-time visitors (no localStorage) never leave loading: true after a successful fetch.
+        if (!cancelled) {
+          setLoading(false);
         }
       }
     })();
@@ -1065,26 +1073,57 @@ export function useSalesOrders() {
   
   const addSalesOrder = useCallback(async (o: SalesOrder) => {
     try {
-      // Find account ID from account number
-      const account = data.accounts.find((a) => a.accountNumber === o.account);
-      
+      const account = resolveAccountForSalesOrder(o, data.accounts);
+      const accountId = account?.id ?? o.accountId ?? "";
+      if (!accountId) {
+        toast.error("Failed to create order", {
+          description:
+            "Could not resolve this customer to an account id. The order form stores the account name — refresh accounts or pick the customer again.",
+        });
+        return { success: false, error: "Missing account id" };
+      }
+
+      const productIdForSku = (sku: string): string | undefined => {
+        const p = data.products.find((x) => x.sku === sku) as { id?: string } | undefined;
+        return p?.id;
+      };
+
+      const itemsPayload =
+        o.lines?.map((l) => {
+          const product_id = productIdForSku(l.sku);
+          return {
+            sku: l.sku,
+            name: l.sku,
+            quantity: l.quantityBottles,
+            price: l.lineTotal,
+            ...(product_id ? { product_id } : {}),
+          };
+        }) ??
+        (o.sku
+          ? (() => {
+              const product_id = productIdForSku(o.sku);
+              return [
+                {
+                  sku: o.sku,
+                  name: o.sku,
+                  quantity: o.quantity,
+                  price: o.price,
+                  ...(product_id ? { product_id } : {}),
+                },
+              ];
+            })()
+          : []);
+
       // Call granular API
       const orderNumber =
         o.orderNumber ?? `SO-${Date.now().toString(36).toUpperCase()}`;
       const result = await apiCreateOrder({
         order_number: orderNumber,
-        account_id: account?.id ?? o.accountId ?? "",
+        account_id: accountId,
         status: o.status,
         order_date: o.orderDate || new Date().toISOString(),
         sales_rep: o.salesRep,
-        items:
-          o.lines?.map((l) => ({
-            sku: l.sku,
-            name: l.sku,
-            quantity: l.quantityBottles,
-            price: l.lineTotal,
-          })) ||
-          (o.sku ? [{ sku: o.sku, name: o.sku, quantity: o.quantity, price: o.price }] : []),
+        items: itemsPayload,
         subtotal: o.subtotal || o.price * (o.quantity || 1),
         taxAmount: o.taxAmount || 0,
         shippingCost: o.shippingCost || 0,
@@ -1113,7 +1152,7 @@ export function useSalesOrders() {
       toast.error("Failed to create order", { description: message });
       return { success: false, error: message };
     }
-  }, [data.accounts, updateData]);
+  }, [data.accounts, data.products, updateData]);
   
   const patchSalesOrder = useCallback(async (id: string, patch: Partial<SalesOrder>) => {
     // If only status is being updated, use the status endpoint

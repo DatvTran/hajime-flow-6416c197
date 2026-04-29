@@ -23,4 +23,31 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  {
+    files: ["src/pages/**/*.{ts,tsx}", "src/contexts/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@/lib/api-app",
+              message:
+                "Legacy app API is internal-only. Use '@/lib/api-v1' (reads) and '@/lib/api-v1-mutations' (writes).",
+            },
+            {
+              name: "../lib/api-app",
+              message:
+                "Legacy app API is internal-only. Use '@/lib/api-v1' (reads) and '@/lib/api-v1-mutations' (writes).",
+            },
+            {
+              name: "../../lib/api-app",
+              message:
+                "Legacy app API is internal-only. Use '@/lib/api-v1' (reads) and '@/lib/api-v1-mutations' (writes).",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

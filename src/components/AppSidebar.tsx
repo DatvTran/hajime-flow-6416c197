@@ -77,7 +77,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
         {
           label: "Operations",
           items: [
-            { title: "Command center", url: "/", icon: LayoutDashboard },
+            { title: "Today · command center", url: "/", icon: LayoutDashboard },
             { title: "New wholesale order", url: "/orders/new-wholesale", icon: Store },
             { title: "Inventory", url: "/inventory", icon: Package },
             { title: "Orders", url: "/orders", icon: ShoppingCart },
@@ -99,7 +99,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           label: "Insights",
           items: [
             { title: "Analytics", url: "/reports", icon: BarChart3 },
-            { title: "Alerts", url: "/alerts", icon: AlertTriangle },
+            { title: "Alerts hub", url: "/alerts", icon: AlertTriangle },
             { title: "Payments & AR/AP", url: "/finance", icon: Receipt },
             { title: "Incentive Manager", url: "/incentives", icon: Gift },
           ],
@@ -134,7 +134,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
         {
           label: "Operations",
           items: [
-            { title: "Overview", url: "/distributor", icon: LayoutDashboard },
+            { title: "Floor · today", url: "/distributor", icon: LayoutDashboard },
             { title: "Warehouse inventory", url: "/distributor/inventory", icon: Warehouse },
             { title: "Orders to fulfill", url: "/distributor/orders?tab=approved", icon: ShoppingCart },
             { title: "Report depletions", url: "/distributor/depletions", icon: TrendingDown },
@@ -150,7 +150,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
         {
           label: "Service",
           items: [
-            { title: "Alerts", url: "/distributor/alerts", icon: AlertTriangle },
+            { title: "Alerts hub", url: "/distributor/alerts", icon: AlertTriangle },
             { title: "Analytics", url: "/distributor/reports", icon: LineChart },
           ],
         },
@@ -187,7 +187,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
         {
           label: "Field",
           items: [
-            { title: "Overview", url: "/sales", icon: LayoutDashboard },
+            { title: "Field · today", url: "/sales", icon: LayoutDashboard },
             { title: "My accounts", url: "/sales/accounts", icon: Users },
             { title: "Opportunities", url: "/sales/opportunities", icon: TrendingUp },
             { title: "Visit notes", url: "/sales/visits", icon: ClipboardList },
@@ -209,7 +209,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
         {
           label: "Sales",
           items: [
-            { title: "Overview", url: "/sales", icon: LayoutDashboard },
+            { title: "Field · today", url: "/sales", icon: LayoutDashboard },
             { title: "Accounts", url: "/sales/accounts", icon: Users },
             { title: "Orders", url: "/sales/orders", icon: ShoppingCart },
             { title: "Targets", url: "/sales/targets", icon: Target },
@@ -278,7 +278,6 @@ function NavSection({
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
-  const navigate = useNavigate();
   const location = useLocation();
   const { t } = useLanguage();
   if (items.length === 0) return null;
@@ -290,21 +289,14 @@ function NavSection({
       <SidebarGroupContent>
         <SidebarMenu className={cn(collapsed && "items-center")}>
           {items.map((item) => {
-            const isActive =
-              item.url === "/"
-                ? location.pathname === "/"
-                : location.pathname === item.url || location.pathname.startsWith(item.url + "/");
+            const end = navPathEndFlag(item.url, allUrls);
+            const isActive = isSidebarNavItemActive(item.url, location.pathname, location.search, end);
             return (
               <SidebarMenuItem key={item.title + item.url} className={cn(collapsed && "flex w-full justify-center")}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isActive}
-                >
-                  <button
-                    onClick={() => {
-                      navigate(item.url);
-                      onNavigate?.();
-                    }}
+                <SidebarMenuButton asChild isActive={isActive}>
+                  <Link
+                    to={item.url}
+                    onClick={() => onNavigate?.()}
                     className={cn(
                       "flex items-center rounded-md text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground w-full text-left",
                       collapsed ? "size-8 shrink-0 justify-center gap-0 p-0" : "min-h-10 gap-3 px-3 py-2",

@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "data");
-const STATE_FILE = path.join(DATA_DIR, "app-state.json");
+const DEFAULT_FILE_KEY = "app-state";
 const SEED_FILE = path.join(__dirname, "..", "src", "data", "seed-app.json");
 
 // ── In-memory cache for JSON app-state ──────────────────────────────────────
