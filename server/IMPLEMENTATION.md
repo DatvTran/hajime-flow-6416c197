@@ -376,12 +376,20 @@ fly secrets set FEATURE_FLAG_AUTH_ENABLED=false
 
 ### Revert Database Migration
 ```bash
-# Stage 3 → Stage 2 (revert reads to JSON)
+# Stage 3+ → Stage 2 (re-enable JSON reads/writes)
 fly secrets set FEATURE_FLAG_DB_MIGRATION_STAGE=2
 
 # Emergency: Full rollback to JSON
 fly secrets set FEATURE_FLAG_DB_MIGRATION_STAGE=0
 ```
+
+#### Stage downgrade expectations (data integrity)
+
+- **Stage 3+ behavior**: `/api/app` reads and writes are PostgreSQL-only. JSON app-state is intentionally not updated in these stages.
+- **Downgrade risk (3+ → 2/1/0)**: JSON can be stale relative to PostgreSQL. Before lowering the stage, export current tenant data from PostgreSQL and reseed/refresh `server/data/app-state.json` from that export.
+- **Tenant safety**: never copy one tenant's export into another tenant's seed payload. Validate tenant IDs during any backfill before re-enabling JSON-backed stages.
+- **Rollback target recommendation**: prefer **3 → 2** only as a short-lived mitigation. Return to stage 3+ after data reconciliation.
+- **Verification after downgrade**: run a tenant-by-tenant sanity check (record counts + spot checks for inventory, orders, and accounts) and confirm `/api/app` responses match expected tenant data.
 
 ### Database Rollback
 ```bash

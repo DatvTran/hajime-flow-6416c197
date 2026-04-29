@@ -150,16 +150,44 @@ if (FEATURE_FLAG_CSV_ENABLED) {
 app.use('/api/v1', apiV1Routes);
 console.log('[hajime-api] Granular API v1 enabled');
 
+function assertTenantContext(req, res) {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId || typeof tenantId !== 'string') {
+    res.status(403).json({ error: 'Tenant identity missing from token' });
+    return null;
+  }
+  return tenantId;
+}
+
+function assertNoCrossTenantPayload(payload, tenantId, res) {
+  const stack = [payload];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || typeof current !== 'object') continue;
+    const objectTenantId = current.tenantId ?? current.tenant_id;
+    if (objectTenantId && objectTenantId !== tenantId) {
+      res.status(403).json({ error: 'Cross-tenant payload rejected for /api/app' });
+      return false;
+    }
+    for (const value of Object.values(current)) {
+      if (value && typeof value === 'object') {
+        stack.push(value);
+      }
+    }
+  }
+  return true;
+}
+
 // ===== APP DATA API (with migration stages) =====
 app.get('/api/app', authenticateToken, async (req, res) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) {
-      // Never fall back to a hardcoded UUID — reject to prevent cross-tenant data leakage
-      return res.status(403).json({ error: 'Tenant identity missing from token' });
-    }
+    const tenantId = assertTenantContext(req, res);
+    if (!tenantId) return;
     const meta = dataMigrationService.getDataMetaIfJSON();
     if (meta) {
+      if (dataMigrationService.isDeployedEnvironment) {
+        return res.status(409).json({ error: '/api/app JSON snapshot is disabled in deployed environments' });
+      }
       const ifNoneMatch = req.headers['if-none-match'];
       res.set('ETag', meta.etag);
       if (ifNoneMatch && ifNoneMatch === meta.etag) {
@@ -179,6 +207,9 @@ app.get('/api/app', authenticateToken, async (req, res) => {
 
 app.put('/api/app', authenticateToken, async (req, res) => {
   try {
+    const tenantId = assertTenantContext(req, res);
+    if (!tenantId) return;
+
     const body = req.body;
     if (!body || typeof body !== 'object') {
       return res.status(400).json({ error: 'Expected JSON object' });
@@ -191,10 +222,7 @@ app.put('/api/app', authenticateToken, async (req, res) => {
       }
     }
 
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) {
-      return res.status(403).json({ error: 'Tenant identity missing from token' });
-    }
+    if (!assertNoCrossTenantPayload(body, tenantId, res)) return;
     await dataMigrationService.saveData(body, tenantId);
 
     res.json({ ok: true });

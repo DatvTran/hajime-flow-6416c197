@@ -8,6 +8,10 @@ import { readAppState, readAppStateMeta } from '../app-store.mjs';
 export class DataMigrationService {
   constructor() {
     this.stage = Number(process.env.FEATURE_FLAG_DB_MIGRATION_STAGE) || 0;
+    this.isDeployedEnvironment = process.env.NODE_ENV === 'production'
+      || Boolean(process.env.FLY_APP_NAME)
+      || Boolean(process.env.RENDER)
+      || Boolean(process.env.RAILWAY_ENVIRONMENT);
   }
 
   /**
@@ -237,7 +241,7 @@ export class DataMigrationService {
    * API handlers can perform conditional GET.
    */
   getDataMetaIfJSON() {
-    if (this.stage <= 2) {
+    if (this.stage <= 2 && !this.isDeployedEnvironment) {
       return readAppStateMeta();
     }
     return null;
@@ -247,12 +251,14 @@ export class DataMigrationService {
    * Save data based on current migration stage
    */
   async saveData(data, tenantId) {
-    // Always write to JSON (Stage 0-4)
-    const { writeAppState } = await import('../app-store.mjs');
-    writeAppState(data);
+    // Stage 0-2 keep JSON as the source of truth.
+    if (this.stage <= 2) {
+      const { writeAppState } = await import('../app-store.mjs');
+      writeAppState(data);
+    }
 
-    // Shadow write to PostgreSQL (Stage 1-4)
-    if (this.stage >= 1 && this.stage <= 4) {
+    // Stage 1-2 shadow write to PostgreSQL.
+    if (this.stage >= 1 && this.stage <= 2) {
       try {
         await this.syncToPostgreSQL(data, tenantId);
       } catch (err) {
@@ -260,10 +266,9 @@ export class DataMigrationService {
       }
     }
 
-    // Stage 5+: Write only to PostgreSQL
-    if (this.stage >= 5) {
-      // In Stage 5+, we would only write to PostgreSQL
-      // This is handled by granular APIs
+    // Stage 3+ writes must stay tenant-scoped in PostgreSQL only.
+    if (this.stage >= 3) {
+      await this.syncToPostgreSQL(data, tenantId);
     }
   }
 }
