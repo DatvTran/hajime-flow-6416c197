@@ -9,6 +9,7 @@ import { RetailLayout } from "@/components/RetailLayout";
 import { AppDataProvider } from "@/contexts/AppDataContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { RetailCartProvider } from "@/contexts/RetailCartContext";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 import { RequireAuth } from "@/components/RequireAuth";
 import { InactivityWarningDialog } from "@/components/InactivityWarningDialog";
 import { useInactivityTimer } from "@/hooks/useInactivityTimer";
@@ -111,6 +112,7 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <LanguageProvider>
         <TooltipProvider>
           <Toaster />
           <Sonner />
@@ -184,6 +186,7 @@ const App = () => {
           </Suspense>
         </BrowserRouter>
       </TooltipProvider>
+        </LanguageProvider>
     </AuthProvider>
   </QueryClientProvider>
   );

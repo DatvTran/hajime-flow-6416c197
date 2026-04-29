@@ -62,10 +62,6 @@ function primaryLineSummary(o: SalesOrder): string {
 export default function RetailHomePage() {
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <RetailSkeleton />;
-  }
-
   const { accounts } = useAccounts();
   const cart = useRetailCart();
   const { user } = useAuth();
@@ -374,6 +370,10 @@ function OrderRowPill({ status }: { status: string }) {
       : bucket === "in_transit"
         ? "bg-sky-500"
         : "bg-amber-500";
+  if (loading) {
+    return <RetailSkeleton />;
+  }
+
   return (
     <span
       className={cn(

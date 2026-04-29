@@ -22,10 +22,6 @@ export default function RetailOrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <RetailSkeleton />;
-  }
-
   const accountName = useRetailAccountTradingName();
 
   const order = useMemo(() => {
@@ -52,6 +48,10 @@ export default function RetailOrderDetailPage() {
 
   const idx = stepIndex(order.status);
   const lines = orderLineEntries(order);
+
+  if (loading) {
+    return <RetailSkeleton />;
+  }
 
   return (
     <div>

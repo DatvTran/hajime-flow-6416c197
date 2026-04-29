@@ -48,6 +48,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { HajimeLogo } from "@/components/HajimeLogo";
 import { useAuth, type HajimeRole } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useNavigate, useLocation } from "react-router-dom";
 
 export type NavItem = { title: string; url: string; icon: LucideIcon };
@@ -278,11 +280,12 @@ function NavSection({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useLanguage();
   if (items.length === 0) return null;
   return (
     <SidebarGroup className={cn(collapsed && "px-0")}>
       {!collapsed && (
-        <p className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-sidebar-foreground/40">{label}</p>
+        <p className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-sidebar-foreground/40">{t(label)}</p>
       )}
       <SidebarGroupContent>
         <SidebarMenu className={cn(collapsed && "items-center")}>
@@ -309,7 +312,7 @@ function NavSection({
                     )}
                   >
                     <item.icon className="h-4 w-4 shrink-0" />
-                    {!collapsed && <span className="leading-snug">{item.title}</span>}
+                    {!collapsed && <span className="leading-snug">{t(item.title)}</span>}
                   </button>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -324,6 +327,7 @@ function NavSection({
 export function AppSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
   const { user, signOut } = useAuth();
+  const { language, setLanguage, options, t } = useLanguage();
   const collapsed = state === "collapsed";
   const closeMobileNav = () => {
     if (isMobile) setOpenMobile(false);
@@ -362,15 +366,32 @@ export function AppSidebar() {
 
       <SidebarFooter className={cn("gap-2 p-4", collapsed && "items-center gap-0 px-0 py-2")}>
         {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-medium text-sidebar-accent-foreground">
-              {initials}
+          <>
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-medium text-sidebar-accent-foreground">
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1 text-xs">
+                <p className="truncate font-medium text-sidebar-foreground">{user.displayName}</p>
+                <p className="truncate text-sidebar-foreground/40">{ROLE_BADGE[user.role]}</p>
+              </div>
             </div>
-            <div className="min-w-0 flex-1 text-xs">
-              <p className="truncate font-medium text-sidebar-foreground">{user.displayName}</p>
-              <p className="truncate text-sidebar-foreground/40">{ROLE_BADGE[user.role]}</p>
+            <div className="space-y-1">
+              <p className="text-[10px] uppercase tracking-widest text-sidebar-foreground/40">{t("Language")}</p>
+              <Select value={language} onValueChange={(v) => setLanguage(v as typeof language)}>
+                <SelectTrigger className="h-8 bg-sidebar text-xs">
+                  <SelectValue placeholder={t("Choose language")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {options.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </div>
+          </>
         )}
         <Button
           type="button"
@@ -383,7 +404,7 @@ export function AppSidebar() {
           onClick={() => signOut()}
         >
           <LogOut className={cn("h-4 w-4", !collapsed && "mr-2")} />
-          {!collapsed && "Sign out"}
+          {!collapsed && t("Sign out")}
         </Button>
       </SidebarFooter>
     </Sidebar>
