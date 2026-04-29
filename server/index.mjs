@@ -11,7 +11,6 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 // Services
-import { readAppState, writeAppState } from './app-store.mjs';
 import { db } from './config/database.mjs';
 import { dataMigrationService } from './services/data-migration.mjs';
 
@@ -153,6 +152,18 @@ console.log('[hajime-api] Granular API v1 enabled');
 // ===== APP DATA API (with migration stages) =====
 app.get('/api/app', authenticateToken, async (req, res) => {
   try {
+    if (dataMigrationService.isDbPrimaryEnabled()) {
+      return res.status(410).json({
+        error: '/api/app is deprecated once DB-primary migration is enabled.',
+        migration: {
+          stage: dataMigrationService.stage,
+          dbPrimary: true,
+          readPath: '/api/v1/*',
+          writePath: '/api/v1/*',
+        },
+      });
+    }
+
     const tenantId = req.user?.tenantId;
     if (!tenantId) {
       // Never fall back to a hardcoded UUID — reject to prevent cross-tenant data leakage
@@ -179,6 +190,17 @@ app.get('/api/app', authenticateToken, async (req, res) => {
 
 app.put('/api/app', authenticateToken, async (req, res) => {
   try {
+    if (dataMigrationService.isDbPrimaryEnabled()) {
+      return res.status(410).json({
+        error: '/api/app is deprecated once DB-primary migration is enabled.',
+        migration: {
+          stage: dataMigrationService.stage,
+          dbPrimary: true,
+          writePath: '/api/v1/*',
+        },
+      });
+    }
+
     const body = req.body;
     if (!body || typeof body !== 'object') {
       return res.status(400).json({ error: 'Expected JSON object' });

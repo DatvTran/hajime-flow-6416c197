@@ -13,7 +13,6 @@ import {
   getShipments,
   getNewProductRequests,
 } from "./api-v1";
-import { fetchAppData as fetchLegacyAppData } from "./api-app";
 import type { AppData } from "@/types/app-data";
 import type { NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
 
@@ -416,18 +415,16 @@ export async function fetchAppDataGranular(): Promise<AppData> {
 }
 
 /**
- * Fetch data - Stage 4: Use granular APIs with fallback to legacy
+ * Fetch data from granular v1 APIs only (DB-primary runtime).
  */
 export async function fetchAppData(): Promise<AppData> {
   try {
-    // Stage 4: Try granular APIs first
     return await fetchAppDataGranular();
   } catch (err) {
     if (isDev) {
-      console.warn("[DataService] Granular APIs failed, falling back to legacy:", err);
+      console.error("[DataService] Granular API fetch failed (no /api/app fallback in DB-primary mode):", err);
     }
-    // Fallback to legacy API
-    return fetchLegacyAppData();
+    throw err;
   }
 }
 
