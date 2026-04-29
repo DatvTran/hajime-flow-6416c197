@@ -11,7 +11,6 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 // Services
-import { readAppState, writeAppState } from './app-store.mjs';
 import { db } from './config/database.mjs';
 import { dataMigrationService } from './services/data-migration.mjs';
 
@@ -158,14 +157,18 @@ app.get('/api/app', authenticateToken, async (req, res) => {
       // Never fall back to a hardcoded UUID — reject to prevent cross-tenant data leakage
       return res.status(403).json({ error: 'Tenant identity missing from token' });
     }
-    const meta = dataMigrationService.getDataMetaIfJSON();
-    if (meta) {
+    const tenantScopedMeta = dataMigrationService.getDataMetaIfJSON(tenantId);
+    if (dataMigrationService.stage <= 2 && !tenantScopedMeta) {
+      return res.status(503).json({ error: 'Tenant-scoped JSON unavailable for active migration stage' });
+    }
+
+    if (tenantScopedMeta) {
       const ifNoneMatch = req.headers['if-none-match'];
-      res.set('ETag', meta.etag);
-      if (ifNoneMatch && ifNoneMatch === meta.etag) {
+      res.set('ETag', tenantScopedMeta.etag);
+      if (ifNoneMatch && ifNoneMatch === tenantScopedMeta.etag) {
         return res.status(304).end();
       }
-      res.type('application/json').send(meta.jsonString);
+      res.type('application/json').send(tenantScopedMeta.jsonString);
       return;
     }
 
@@ -195,6 +198,11 @@ app.put('/api/app', authenticateToken, async (req, res) => {
     if (!tenantId) {
       return res.status(403).json({ error: 'Tenant identity missing from token' });
     }
+
+    if (dataMigrationService.stage <= 4 && !dataMigrationService.resolveTenantJSONFileKey(tenantId)) {
+      return res.status(503).json({ error: 'Tenant-scoped JSON unavailable for active migration stage' });
+    }
+
     await dataMigrationService.saveData(body, tenantId);
 
     res.json({ ok: true });

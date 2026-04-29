@@ -1,5 +1,5 @@
 import { db } from '../config/database.mjs';
-import { readAppState, readAppStateMeta } from '../app-store.mjs';
+import { readAppState, readAppStateMeta, writeAppState } from '../app-store.mjs';
 
 /**
  * Data Migration Service
@@ -10,11 +10,27 @@ export class DataMigrationService {
     this.stage = Number(process.env.FEATURE_FLAG_DB_MIGRATION_STAGE) || 0;
   }
 
+  resolveTenantJSONFileKey(tenantId) {
+    if (!tenantId || typeof tenantId !== 'string') return null;
+    return `app-state.${tenantId}`;
+  }
+
+  assertTenantScopedJSON(tenantId) {
+    const tenantFileKey = this.resolveTenantJSONFileKey(tenantId);
+    if (!tenantFileKey) {
+      throw new Error('Tenant-scoped JSON is required but tenantId is missing');
+    }
+    return tenantFileKey;
+  }
   /**
    * Stage 0: JSON only (baseline)
    */
   async getDataJSON(tenantId) {
-    return readAppState();
+    if (this.stage > 2) {
+      throw new Error(`JSON reads unavailable at migration stage ${this.stage}`);
+    }
+    const tenantFileKey = this.assertTenantScopedJSON(tenantId);
+    return readAppState(tenantFileKey);
   }
 
   /**
@@ -146,7 +162,8 @@ export class DataMigrationService {
    * Stage 2: Compare JSON and PostgreSQL data
    */
   async compareData(tenantId) {
-    const jsonData = readAppState();
+    const tenantFileKey = this.assertTenantScopedJSON(tenantId);
+    const jsonData = readAppState(tenantFileKey);
     // This would compare and log discrepancies
     console.log('[DataMigration] Data comparison logged');
     return { discrepancies: [] };
@@ -236,9 +253,10 @@ export class DataMigrationService {
    * Returns ETag + canonical JSON bytes for JSON-backed stages so
    * API handlers can perform conditional GET.
    */
-  getDataMetaIfJSON() {
+  getDataMetaIfJSON(tenantId) {
     if (this.stage <= 2) {
-      return readAppStateMeta();
+      const tenantFileKey = this.assertTenantScopedJSON(tenantId);
+      return readAppStateMeta(tenantFileKey);
     }
     return null;
   }
@@ -247,9 +265,11 @@ export class DataMigrationService {
    * Save data based on current migration stage
    */
   async saveData(data, tenantId) {
-    // Always write to JSON (Stage 0-4)
-    const { writeAppState } = await import('../app-store.mjs');
-    writeAppState(data);
+    // Always write to JSON (Stage 0-4), but never shared across tenants
+    if (this.stage <= 4) {
+      const tenantFileKey = this.assertTenantScopedJSON(tenantId);
+      writeAppState(data, tenantFileKey);
+    }
 
     // Shadow write to PostgreSQL (Stage 1-4)
     if (this.stage >= 1 && this.stage <= 4) {
