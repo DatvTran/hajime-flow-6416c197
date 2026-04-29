@@ -1,4 +1,5 @@
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
+import { isSidebarNavItemActive, navPathEndFlag } from "@/lib/sidebar-nav-active";
 import { useAuth, useRetailAccountTradingName } from "@/contexts/AuthContext";
 import { useRetailCart } from "@/contexts/RetailCartContext";
 import { Button } from "@/components/ui/button";
@@ -46,10 +47,10 @@ const navBtn =
 const navActive =
   "bg-sidebar-accent font-medium text-sidebar-primary text-sidebar-accent-foreground";
 
-type NavItem = { to: string; label: string; icon: typeof Home; end?: boolean };
+type NavItem = { to: string; label: string; icon: typeof Home };
 
 const storeItems: NavItem[] = [
-  { to: "/", label: "Home", icon: Home, end: true },
+  { to: "/", label: "Home", icon: Home },
   { to: "/retail/new-order", label: "New order", icon: PlusCircle },
   { to: "/retail/orders", label: "My orders", icon: ShoppingCart },
   { to: "/retail/reorder", label: "Reorder", icon: RotateCcw },
@@ -61,58 +62,45 @@ const trackingItems: NavItem[] = [
 ];
 
 const youItems: NavItem[] = [
-  { to: "/retail/account", label: "Account", icon: CircleUser, end: true },
-  { to: "/retail/support", label: "Support", icon: HeadphonesIcon, end: true },
+  { to: "/retail/account", label: "Account", icon: CircleUser },
+  { to: "/retail/support", label: "Support", icon: HeadphonesIcon },
 ];
 
+const ALL_RETAIL_NAV_URLS = [...storeItems, ...trackingItems, ...youItems].map((i) => i.to);
+
 function RetailSidebarNav({ onNavigate }: { onNavigate?: () => void }) {
-  const linkClass = (isActive: boolean) => cn(navBtn, "touch-manipulation", isActive && navActive);
+  const location = useLocation();
+  const linkClass = (active: boolean) => cn(navBtn, "touch-manipulation", active && navActive);
+
+  const renderLink = (item: NavItem) => {
+    const end = navPathEndFlag(item.to, ALL_RETAIL_NAV_URLS);
+    const active = isSidebarNavItemActive(item.to, location.pathname, location.search, end);
+    return (
+      <Link
+        key={item.label + item.to}
+        to={item.to}
+        onClick={onNavigate}
+        className={linkClass(active)}
+      >
+        <item.icon className="h-[15px] w-[15px] shrink-0 opacity-90" strokeWidth={1.75} />
+        {item.label}
+      </Link>
+    );
+  };
 
   return (
     <>
       <div className="space-y-0.5">
         <p className="px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-sidebar-foreground/40">Store</p>
-        {storeItems.map((item) => (
-          <NavLink
-            key={item.label + item.to}
-            to={item.to}
-            end={item.end}
-            onClick={onNavigate}
-            className={({ isActive }) => linkClass(!!isActive)}
-          >
-            <item.icon className="h-[15px] w-[15px] shrink-0 opacity-90" strokeWidth={1.75} />
-            {item.label}
-          </NavLink>
-        ))}
+        {storeItems.map((item) => renderLink(item))}
       </div>
       <div className="mt-5 space-y-0.5">
         <p className="px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-sidebar-foreground/40">Tracking</p>
-        {trackingItems.map((item) => (
-          <NavLink
-            key={item.label}
-            to={item.to}
-            onClick={onNavigate}
-            className={({ isActive }) => linkClass(!!isActive)}
-          >
-            <item.icon className="h-[15px] w-[15px] shrink-0 opacity-90" strokeWidth={1.75} />
-            {item.label}
-          </NavLink>
-        ))}
+        {trackingItems.map((item) => renderLink(item))}
       </div>
       <div className="mt-5 space-y-0.5">
         <p className="px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-sidebar-foreground/40">You</p>
-        {youItems.map((item) => (
-          <NavLink
-            key={item.label}
-            to={item.to}
-            end={item.end}
-            onClick={onNavigate}
-            className={({ isActive }) => linkClass(!!isActive)}
-          >
-            <item.icon className="h-[15px] w-[15px] shrink-0 opacity-90" strokeWidth={1.75} />
-            {item.label}
-          </NavLink>
-        ))}
+        {youItems.map((item) => renderLink(item))}
       </div>
     </>
   );

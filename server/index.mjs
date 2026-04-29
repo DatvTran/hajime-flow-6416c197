@@ -461,6 +461,7 @@ app.get('/api/stripe/payment-methods/:customerId', requireStripe, async (req, re
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 const ONE_YEAR = '365d';
 if (fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
+  // Hashed bundles under /assets — safe to cache aggressively (immutable filenames).
   app.use(
     '/assets',
     express.static(path.join(DIST_DIR, 'assets'), {
@@ -468,23 +469,30 @@ if (fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
       maxAge: ONE_YEAR,
       etag: false,
       lastModified: false,
-    })
+    }),
   );
+  // Never cache HTML shells: stale index points at removed chunks after deploy.
   app.use(
     express.static(DIST_DIR, {
+      index: false,
       etag: true,
       lastModified: true,
       setHeaders(res, filePath) {
-        if (filePath.endsWith('.html')) {
-          res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+        const normalized = filePath.replace(/\\/g, '/');
+        if (normalized.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
         }
       },
-    })
+    }),
   );
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     if (req.path.startsWith('/api')) return next();
-    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(DIST_DIR, 'index.html'));
   });
 }
