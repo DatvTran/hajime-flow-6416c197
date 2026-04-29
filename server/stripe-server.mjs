@@ -2,7 +2,7 @@
  * Hajime API — Stripe + persisted app data (inventory, orders, catalog, etc.).
  * - STRIPE_SECRET_KEY in server/.env (never in Vite).
  * - App state: GET/PUT /api/app → server/data/app-state.json (seeded from src/data/seed-app.json).
- * Run: cd server && npm install && npm start   (or from repo root: npm run dev:api)
+ * Legacy runtime only. Preferred runtime is: node index.mjs.
  */
 import express from "express";
 import cors from "cors";
@@ -12,6 +12,15 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { readAppState, writeAppState } from "./app-store.mjs";
+
+const legacyStartupAllowed = process.env.HAJIME_ALLOW_UNSAFE_LEGACY_SERVER === "true";
+if (!legacyStartupAllowed) {
+  console.error(
+    "[DEPRECATED] stripe-server.mjs startup refused. This legacy entrypoint is dev-only and unsafe. Use `node index.mjs` instead. " +
+      "If you explicitly need legacy debugging, set HAJIME_ALLOW_UNSAFE_LEGACY_SERVER=true and rerun.",
+  );
+  process.exit(1);
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, ".env") });
