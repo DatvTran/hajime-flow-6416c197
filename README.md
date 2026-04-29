@@ -39,4 +39,4 @@ If you use Bun, run `bun install` to generate a fresh `bun.lock` from the public
    `fly deploy --build-arg VITE_STRIPE_PUBLISHABLE_KEY=pk_live_...`
 5. **Persistent disk** (so `server/data` survives restarts): create a [volume](https://fly.io/docs/reference/configuration/#the-mounts-section) in the same region as the app, then add a `[mounts]` block in `fly.toml` with `destination = "/app/server/data"` (see comments in `fly.toml`).
 
-Production serves the Vite `dist/` folder from the same Express process as `/api` when `dist/index.html` exists (see `server/stripe-server.mjs`). The container listens on `PORT` (8080 in `Dockerfile` / Fly `internal_port`).
+Production serves the Vite `dist/` folder from the same Express process as `/api` when `dist/index.html` exists (see `server/index.mjs`). The container listens on `PORT` (8080 in `Dockerfile` / Fly `internal_port`).
