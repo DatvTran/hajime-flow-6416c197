@@ -211,8 +211,24 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const hasAttemptedFetch = useRef(false);
 
   useEffect(() => {
+    const withTimeout = async <T,>(p: Promise<T>, ms: number): Promise<T> => {
+      let t: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        t = setTimeout(() => reject(new Error(`App data fetch timed out after ${ms}ms`)), ms);
+      });
+      try {
+        return await Promise.race([p, timeout]);
+      } finally {
+        if (t) clearTimeout(t);
+      }
+    };
+
     // Only fetch when user is authenticated
     if (!user) {
+      // Allow a fresh fetch when a user logs in again.
+      hasAttemptedFetch.current = false;
+      setData(null);
+      setError(null);
       setLoading(false);
       return;
     }
@@ -233,7 +249,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     // STEP 2: Try to fetch from API in background
     (async () => {
       try {
-        const serverData = await fetchAppData();
+        // Protect against hanging network requests (keeps users from being stuck on "Loading…").
+        const serverData = await withTimeout(fetchAppData(), 15_000);
         if (!cancelled) {
           // Merge server data with local data - local changes take precedence
           const merged = mergeServerWithLocal(serverData as AppData, loadLocalAppData());

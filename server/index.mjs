@@ -140,6 +140,27 @@ setupSecurityMiddleware(app);
 // Body parsing
 app.use(express.json({ limit: '2mb' }));
 
+// Public readiness: verifies Postgres is reachable (real query, not static JSON).
+app.get('/api/health', async (_req, res) => {
+  try {
+    const r = await db.raw('select now() as now');
+    const row = r?.rows?.[0] ?? r?.[0];
+    const dbNow = row?.now != null ? String(row.now) : undefined;
+    res.json({
+      ok: true,
+      database: 'up',
+      dbNow,
+    });
+  } catch (e) {
+    console.error('[hajime-api] /api/health DB check failed:', e);
+    res.status(503).json({
+      ok: false,
+      database: 'down',
+      error: e instanceof Error ? e.message : 'Database unavailable',
+    });
+  }
+});
+
 // Allow conditional revalidation while avoiding stale cache.
 app.use('/api', (_req, res, next) => {
   res.set('Cache-Control', 'private, no-cache, must-revalidate');
@@ -205,16 +226,6 @@ app.get('/api/app', authenticateToken, async (req, res) => {
       if (dataMigrationService.isDeployedEnvironment) {
         return res.status(409).json({ error: '/api/app JSON snapshot is disabled in deployed environments' });
       }
-      const ifNoneMatch = req.headers['if-none-match'];
-      res.set('ETag', tenantScopedMeta.etag);
-      if (ifNoneMatch && ifNoneMatch === tenantScopedMeta.etag) {
-        return res.status(304).end();
-      }
-      res.type('application/json').send(tenantScopedMeta.jsonString);
-      return;
-    }
-    const meta = dataMigrationService.getDataMetaIfJSON();
-    if (meta) {
       const ifNoneMatch = req.headers['if-none-match'];
       res.set('ETag', meta.etag);
       if (ifNoneMatch && ifNoneMatch === meta.etag) {

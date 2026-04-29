@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { LucideIcon } from "lucide-react";
 // v2.1 - Added Inventory section to Retail sidebar with depletion reporting
 // Build: 2026-04-15-001
@@ -50,7 +51,8 @@ import { HajimeLogo } from "@/components/HajimeLogo";
 import { useAuth, type HajimeRole } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useNavigate, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { isSidebarNavItemActive, navPathEndFlag } from "@/lib/sidebar-nav-active";
 
 export type NavItem = { title: string; url: string; icon: LucideIcon };
 
@@ -270,11 +272,13 @@ function NavSection({
   items,
   label,
   collapsed,
+  allUrls,
   onNavigate,
 }: {
   items: NavItem[];
   label: string;
   collapsed: boolean;
+  allUrls: readonly string[];
   onNavigate?: () => void;
 }) {
   const location = useLocation();
@@ -325,6 +329,7 @@ export function AppSidebar() {
   };
 
   const groups = navGroupsForRole(user.role);
+  const allUrls = useMemo(() => groups.flatMap((g) => g.items.map((i) => i.url)), [groups]);
   const initials =
     user.displayName
       .split(/\s+/)
@@ -351,39 +356,54 @@ export function AppSidebar() {
 
       <SidebarContent className={cn("px-2", collapsed && "px-0")}>
         {groups.map((g) => (
-          <NavSection key={g.label} label={g.label} items={g.items} collapsed={collapsed} onNavigate={closeMobileNav} />
+          <NavSection
+            key={g.label}
+            label={g.label}
+            items={g.items}
+            collapsed={collapsed}
+            allUrls={allUrls}
+            onNavigate={closeMobileNav}
+          />
         ))}
       </SidebarContent>
 
       <SidebarFooter className={cn("gap-2 p-4", collapsed && "items-center gap-0 px-0 py-2")}>
-        {!collapsed && (
-          <>
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-medium text-sidebar-accent-foreground">
-                {initials}
-              </div>
-              <div className="min-w-0 flex-1 text-xs">
-                <p className="truncate font-medium text-sidebar-foreground">{user.displayName}</p>
-                <p className="truncate text-sidebar-foreground/40">{ROLE_BADGE[user.role]}</p>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-widest text-sidebar-foreground/40">{t("Language")}</p>
-              <Select value={language} onValueChange={(v) => setLanguage(v as typeof language)}>
-                <SelectTrigger className="h-8 bg-sidebar text-xs">
-                  <SelectValue placeholder={t("Choose language")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {options.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </>
-        )}
+        <div className={cn("flex items-center gap-2", collapsed && "hidden")}>
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-medium text-sidebar-accent-foreground">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1 text-xs">
+            <p className="truncate font-medium text-sidebar-foreground">{user.displayName}</p>
+            <p className="truncate text-sidebar-foreground/40">{ROLE_BADGE[user.role]}</p>
+          </div>
+        </div>
+
+        {/* Language picker: full when expanded, icon trigger when collapsed */}
+        <div className={cn("space-y-1", collapsed && "px-0")}>
+          {!collapsed && (
+            <p className="text-[10px] uppercase tracking-widest text-sidebar-foreground/40">{t("Language")}</p>
+          )}
+          <Select value={language} onValueChange={(v) => setLanguage(v as typeof language)}>
+            <SelectTrigger
+              className={cn(
+                "bg-sidebar text-xs",
+                collapsed ? "mx-auto size-8 shrink-0 justify-center p-0" : "h-8",
+              )}
+              aria-label={t("Choose language")}
+              title={t("Choose language")}
+            >
+              {collapsed ? <Globe className="h-4 w-4" /> : <SelectValue placeholder={t("Choose language")} />}
+            </SelectTrigger>
+            <SelectContent>
+              {options.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <Button
           type="button"
           variant="outline"
