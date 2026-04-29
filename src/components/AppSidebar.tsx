@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { LucideIcon } from "lucide-react";
 // v2.1 - Added Inventory section to Retail sidebar with depletion reporting
 // Build: 2026-04-15-001
