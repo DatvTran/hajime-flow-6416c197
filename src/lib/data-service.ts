@@ -13,8 +13,8 @@ import {
   getShipments,
   getNewProductRequests,
 } from "./api-v1";
-import { getTeamMembers, getWarehouses } from "@/lib/api-v1-mutations";
-import type { AppData, TeamMember, TeamMemberPortalRole, Warehouse } from "@/types/app-data";
+import { getOperationalSettings, getTeamMembers, getWarehouses } from "@/lib/api-v1-mutations";
+import type { AppData, OperationalSettings, TeamMember, TeamMemberPortalRole, Warehouse } from "@/types/app-data";
 import type { NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
 
 // Feature flag to control granular API usage - Stage 3: Always use granular
@@ -247,6 +247,28 @@ function mapRowToNewProductRequest(row: Record<string, unknown>): NewProductRequ
 /**
  * Transform API v1 data to AppData format
  */
+/** Map DB operational_settings row → client OperationalSettings (safety stock uses one reorder level for all SKUs). */
+function mapOperationalSettingsFromApi(
+  row: Record<string, unknown> | null | undefined,
+  products: { sku: string }[],
+): OperationalSettings | undefined {
+  if (!row) return undefined;
+  const reorder = Number(row.reorder_point_bottles);
+  const reorderSafe = Number.isFinite(reorder) ? reorder : 500;
+  const safetyStockBySku: Record<string, number> = {};
+  for (const p of products) {
+    safetyStockBySku[p.sku] = reorderSafe;
+  }
+  return {
+    manufacturerLeadTimeDays: Math.max(1, Number(row.lead_time_days) || 45),
+    safetyStockBySku,
+    retailerStockThresholdBottles: Math.max(0, Number(row.shelf_threshold) || 48),
+    companyName: typeof row.company_name === "string" ? row.company_name : undefined,
+    primaryMarkets: typeof row.primary_markets === "string" ? row.primary_markets : undefined,
+    manufacturerName: typeof row.manufacturer_name === "string" ? row.manufacturer_name : undefined,
+  };
+}
+
 function transformToAppData(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   products: any[],
@@ -434,6 +456,7 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     getNewProductRequests({ limit: 100 }),
     getTeamMembers({ includeInactive: true }),
     getWarehouses({ includeInactive: true }),
+    getOperationalSettings(),
   ]);
   
   const productsRes = results[0].status === 'fulfilled' ? results[0].value : { data: [] };
@@ -446,6 +469,7 @@ export async function fetchAppDataGranular(): Promise<AppData> {
   const newProductRequestsRes = results[7].status === 'fulfilled' ? results[7].value : { data: [] };
   const teamMembersRes = results[8].status === 'fulfilled' ? results[8].value : { data: [] };
   const warehousesRes = results[9].status === 'fulfilled' ? results[9].value : { data: [] };
+  const operationalRes = results[10].status === 'fulfilled' ? results[10].value : null;
   
   // Log any failures
   results.forEach((result, index) => {
@@ -465,9 +489,15 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     newProductRequestsRes.data || [],
     teamMembersRes.data || [],
     warehousesRes.data || [],
-  );
-  
-  return data as AppData;
+  ) as AppData;
+
+  const opRow =
+    operationalRes && typeof operationalRes === "object" && "data" in operationalRes
+      ? (operationalRes as { data: Record<string, unknown> }).data
+      : null;
+  const operationalSettings = mapOperationalSettingsFromApi(opRow, data.products || []);
+
+  return operationalSettings ? { ...data, operationalSettings } : data;
 }
 
 /**

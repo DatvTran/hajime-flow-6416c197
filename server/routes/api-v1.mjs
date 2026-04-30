@@ -51,12 +51,13 @@ async function buildCrmContactInvitePayload(req, tenantId, member, { email, name
       tenantName: tenantRow?.name,
     });
 
+    const exposeInviteUrl = isDev || !sendResult.sent;
     return {
       data: member,
       invite: {
         status: 'sent',
         emailDispatched: sendResult.sent,
-        ...(isDev && { inviteUrl: inviteResult.inviteUrl }),
+        ...(exposeInviteUrl && { inviteUrl: inviteResult.inviteUrl }),
       },
     };
   } catch (emailErr) {
@@ -65,7 +66,7 @@ async function buildCrmContactInvitePayload(req, tenantId, member, { email, name
       data: member,
       invite: {
         status: 'delivery_failed',
-        ...(isDev && { inviteUrl: inviteResult.inviteUrl }),
+        inviteUrl: inviteResult.inviteUrl,
       },
     };
   }
@@ -196,6 +197,33 @@ router.post('/products', requirePermission(Permission.INVENTORY_WRITE), async (r
   } catch (err) {
     console.error('[API v1] Error creating product:', err);
     res.status(500).json({ error: 'Failed to create product' });
+  }
+});
+
+// DELETE /api/v1/products/by-sku/:sku — Soft delete by SKU (must be registered before /products/:id)
+router.delete('/products/by-sku/:sku', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const sku = decodeURIComponent(String(req.params.sku ?? '').trim());
+    if (!sku) {
+      return res.status(400).json({ error: 'SKU is required' });
+    }
+
+    const [product] = await db('products')
+      .where({ tenant_id: tenantId, sku })
+      .whereNull('deleted_at')
+      .update({ deleted_at: new Date(), updated_at: new Date() })
+      .returning('*');
+
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    res.json({ data: product, message: 'Product deleted' });
+  } catch (err) {
+    console.error('[API v1] Error deleting product by SKU:', err);
+    res.status(500).json({ error: 'Failed to delete product' });
   }
 });
 
@@ -2807,6 +2835,180 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
   }
 });
 
+// POST /api/v1/team-members/:id/resend-invite
+router.post('/team-members/:id/resend-invite', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+
+    const member = await db('team_members')
+      .where({ id, tenant_id: tenantId })
+      .first();
+
+    if (!member) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+    if (member.is_active === false) {
+      return res.status(400).json({ error: 'Cannot resend invite for an inactive CRM contact' });
+    }
+
+    const payload = await buildCrmContactInvitePayload(req, tenantId, member, {
+      email: member.email,
+      name: member.name,
+      role: member.role,
+    });
+
+    res.status(200).json(payload);
+  } catch (err) {
+    console.error('[API v1] Error resending CRM invite:', err);
+    res.status(500).json({ error: 'Failed to resend invite' });
+  }
+});
+
+// PATCH /api/v1/team-members/:id
+router.patch('/team-members/:id', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+
+    const { name, email, role, phone, department, is_active } = req.body || {};
+
+    const current = await db('team_members')
+      .where({ id, tenant_id: tenantId })
+      .first();
+    if (!current) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+
+    const updates = {};
+    if (name != null) updates.name = String(name).trim();
+    if (role != null) updates.role = String(role).trim();
+    if (phone != null) updates.phone = phone;
+    if (department != null) updates.department = department;
+    if (is_active != null) updates.is_active = Boolean(is_active);
+
+    if (email != null) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      if (!normalizedEmail) {
+        return res.status(400).json({ error: 'email must be non-empty' });
+      }
+      // Ensure uniqueness within tenant (excluding current record).
+      const conflict = await db('team_members')
+        .where({ tenant_id: tenantId, email: normalizedEmail })
+        .whereNot({ id })
+        .first();
+      if (conflict) {
+        return res.status(409).json({ error: 'A CRM contact with this email already exists.' });
+      }
+      updates.email = normalizedEmail;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No fields provided to update' });
+    }
+
+    updates.updated_at = new Date();
+
+    const [member] = await db('team_members')
+      .where({ id, tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+
+    res.json({ data: member });
+  } catch (err) {
+    console.error('[API v1] Error updating team member:', err);
+    res.status(500).json({ error: 'Failed to update team member' });
+  }
+});
+
+// PATCH /api/v1/team-members/by-email/:email
+router.patch('/team-members/by-email/:email', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const emailParam = String(req.params.email || '').trim().toLowerCase();
+    if (!emailParam) return res.status(400).json({ error: 'email is required' });
+
+    const current = await db('team_members')
+      .where({ tenant_id: tenantId, email: emailParam })
+      .first();
+    if (!current) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+
+    const { name, email, role, phone, department, is_active } = req.body || {};
+    const updates = {};
+    if (name != null) updates.name = String(name).trim();
+    if (role != null) updates.role = String(role).trim();
+    if (phone != null) updates.phone = phone;
+    if (department != null) updates.department = department;
+    if (is_active != null) updates.is_active = Boolean(is_active);
+
+    if (email != null) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      if (!normalizedEmail) {
+        return res.status(400).json({ error: 'email must be non-empty' });
+      }
+      const conflict = await db('team_members')
+        .where({ tenant_id: tenantId, email: normalizedEmail })
+        .whereNot({ id: current.id })
+        .first();
+      if (conflict) {
+        return res.status(409).json({ error: 'A CRM contact with this email already exists.' });
+      }
+      updates.email = normalizedEmail;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No fields provided to update' });
+    }
+
+    updates.updated_at = new Date();
+
+    const [member] = await db('team_members')
+      .where({ id: current.id, tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+
+    res.json({ data: member });
+  } catch (err) {
+    console.error('[API v1] Error updating team member by email:', err);
+    res.status(500).json({ error: 'Failed to update team member' });
+  }
+});
+
+// POST /api/v1/team-members/by-email/:email/resend-invite
+router.post('/team-members/by-email/:email/resend-invite', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const emailParam = String(req.params.email || '').trim().toLowerCase();
+    if (!emailParam) return res.status(400).json({ error: 'email is required' });
+
+    const member = await db('team_members')
+      .where({ tenant_id: tenantId, email: emailParam })
+      .first();
+    if (!member) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+    if (member.is_active === false) {
+      return res.status(400).json({ error: 'Cannot resend invite for an inactive CRM contact' });
+    }
+
+    const payload = await buildCrmContactInvitePayload(req, tenantId, member, {
+      email: member.email,
+      name: member.name,
+      role: member.role,
+    });
+    res.status(200).json(payload);
+  } catch (err) {
+    console.error('[API v1] Error resending CRM invite by email:', err);
+    res.status(500).json({ error: 'Failed to resend invite' });
+  }
+});
+
 // DELETE /api/v1/team-members/:id
 router.delete('/team-members/:id', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
   try {
@@ -2826,6 +3028,30 @@ router.delete('/team-members/:id', requirePermission(Permission.SETTINGS_WRITE),
     res.json({ data: member, message: 'Team member deactivated' });
   } catch (err) {
     console.error('[API v1] Error deleting team member:', err);
+    res.status(500).json({ error: 'Failed to delete team member' });
+  }
+});
+
+// DELETE /api/v1/team-members/by-email/:email
+router.delete('/team-members/by-email/:email', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const emailParam = String(req.params.email || '').trim().toLowerCase();
+    if (!emailParam) return res.status(400).json({ error: 'email is required' });
+
+    const [member] = await db('team_members')
+      .where({ tenant_id: tenantId, email: emailParam })
+      .update({ is_active: false, updated_at: new Date() })
+      .returning('*');
+
+    if (!member) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+
+    res.json({ data: member, message: 'Team member deactivated' });
+  } catch (err) {
+    console.error('[API v1] Error deleting team member by email:', err);
     res.status(500).json({ error: 'Failed to delete team member' });
   }
 });

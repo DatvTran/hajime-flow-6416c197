@@ -12,7 +12,7 @@ import { EditProductDialog } from "@/components/EditProductDialog";
 import { useProducts, useAppData } from "@/contexts/AppDataContext";
 import { SettingsSkeleton } from "@/components/skeletons";
 import type { Product } from "@/data/mockData";
-import { Trash2, UserPlus, Users, Warehouse as WarehouseIcon } from "lucide-react";
+import { Mail, Pencil, Trash2, UserPlus, Users, Warehouse as WarehouseIcon } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import {
   Dialog,
@@ -30,12 +30,18 @@ import {
   createTeamMember,
   createWarehouse,
   deleteTeamMember,
+  deleteTeamMemberByEmail,
   getOperationalSettings,
+  resendTeamMemberInvite,
+  resendTeamMemberInviteByEmail,
+  updateTeamMember,
+  updateTeamMemberByEmail,
   updateOperationalSettings,
   updateWarehouse,
 } from "@/lib/api-v1-mutations";
 import { fetchApiHealth } from "@/lib/api-health";
 import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 function warehouseFromApi(row: {
   id: string;
@@ -62,7 +68,7 @@ const TEAM_ROLE_ORDER: TeamMemberPortalRole[] = ["sales_rep", "retail", "distrib
 
 export default function SettingsPage() {
   const { products, addProduct, removeProduct, patchProduct } = useProducts();
-  const { data, updateData, loading } = useAppData();
+  const { data, updateData, loading, refreshTeamMembers } = useAppData();
 
   const [newProductOpen, setNewProductOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
@@ -70,17 +76,40 @@ export default function SettingsPage() {
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [newMemberRole, setNewMemberRole] = useState<TeamMemberPortalRole>("sales_rep");
+  const [editTeamOpen, setEditTeamOpen] = useState(false);
+  const [editTeamMember, setEditTeamMember] = useState<TeamMember | null>(null);
+  const [editMemberName, setEditMemberName] = useState("");
+  const [editMemberEmail, setEditMemberEmail] = useState("");
+  const [editMemberRole, setEditMemberRole] = useState<TeamMemberPortalRole>("sales_rep");
+  const [showInactiveCrm, setShowInactiveCrm] = useState(false);
 
   const teamMembers = data.teamMembers ?? [];
+  const teamMembersVisible = useMemo(() => {
+    const list = [...teamMembers];
+    list.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    return showInactiveCrm ? list : list.filter((m) => m.isActive !== false);
+  }, [teamMembers, showInactiveCrm]);
 
   const os = data.operationalSettings!;
   const [leadDays, setLeadDays] = useState(String(os.manufacturerLeadTimeDays));
-  const [safetyDefault, setSafetyDefault] = useState("500");
+  const defaultSafety =
+    data.products.length > 0
+      ? String(os.safetyStockBySku[data.products[0].sku] ?? 500)
+      : "500";
+  const [safetyDefault, setSafetyDefault] = useState(defaultSafety);
   const [retailShelfThreshold, setRetailShelfThreshold] = useState(String(os.retailerStockThresholdBottles ?? 48));
+  const [companyName, setCompanyName] = useState(os.companyName ?? "");
+  const [primaryMarkets, setPrimaryMarkets] = useState(os.primaryMarkets ?? "");
+  const [manufacturerName, setManufacturerName] = useState(os.manufacturerName ?? "");
   const [dbHealth, setDbHealth] = useState<"checking" | "ok" | "error">("checking");
   const [dbHealthDetail, setDbHealthDetail] = useState<string | null>(null);
   const [warehouseDialogOpen, setWarehouseDialogOpen] = useState(false);
   const [newWarehouseName, setNewWarehouseName] = useState("");
+  const [editWarehouseOpen, setEditWarehouseOpen] = useState(false);
+  const [editWarehouse, setEditWarehouse] = useState<Warehouse | null>(null);
+  const [editWarehouseName, setEditWarehouseName] = useState("");
+  const [editWarehouseSortOrder, setEditWarehouseSortOrder] = useState("0");
+  const [editWarehouseActive, setEditWarehouseActive] = useState(true);
 
   const warehousesSorted = useMemo(() => {
     const list = [...(data.warehouses ?? [])];
@@ -114,6 +143,24 @@ export default function SettingsPage() {
     setRetailShelfThreshold(String(data.operationalSettings?.retailerStockThresholdBottles ?? 48));
   }, [data.operationalSettings?.retailerStockThresholdBottles]);
 
+  useEffect(() => {
+    const o = data.operationalSettings;
+    if (!o) return;
+    setCompanyName(o.companyName ?? "");
+    setPrimaryMarkets(o.primaryMarkets ?? "");
+    setManufacturerName(o.manufacturerName ?? "");
+    if (data.products.length > 0) {
+      const v = o.safetyStockBySku[data.products[0].sku];
+      if (v != null) setSafetyDefault(String(v));
+    }
+  }, [
+    data.operationalSettings?.companyName,
+    data.operationalSettings?.primaryMarkets,
+    data.operationalSettings?.manufacturerName,
+    data.operationalSettings?.safetyStockBySku,
+    data.products,
+  ]);
+
   const saveReplenishment = async () => {
     const lead = Math.max(7, Number(leadDays) || 45);
     const safety = Math.max(0, Number(safetyDefault) || 200);
@@ -128,6 +175,9 @@ export default function SettingsPage() {
         lead_time_days: lead,
         reorder_point_bottles: safety,
         shelf_threshold: shelfTh,
+        company_name: companyName.trim(),
+        primary_markets: primaryMarkets.trim(),
+        manufacturer_name: manufacturerName.trim(),
       });
 
       updateData((d) => ({
@@ -137,6 +187,9 @@ export default function SettingsPage() {
           manufacturerLeadTimeDays: lead,
           safetyStockBySku,
           retailerStockThresholdBottles: shelfTh,
+          companyName: companyName.trim() || undefined,
+          primaryMarkets: primaryMarkets.trim() || undefined,
+          manufacturerName: manufacturerName.trim() || undefined,
         },
       }));
       toast.success("Replenishment settings saved", {
@@ -211,7 +264,30 @@ export default function SettingsPage() {
         detail =
           "Contact saved, but the invitation email failed. Check server logs or RESEND configuration.";
       }
-      toast.success("CRM contact added", { description: `${label} — ${detail}` });
+      const inviteUrl = inv?.inviteUrl;
+      if (inviteUrl) {
+        console.info("[Hajime CRM invite URL]", inviteUrl);
+      }
+      toast.success("CRM contact added", {
+        description: `${label} — ${detail}${inviteUrl ? " Use Copy invite link if no email arrived." : ""}`,
+        ...(inviteUrl
+          ? {
+              action: {
+                label: "Copy invite link",
+                onClick: () => {
+                  void navigator.clipboard.writeText(inviteUrl).then(() => {
+                    toast.success("Invite link copied");
+                  });
+                },
+              },
+            }
+          : {}),
+      });
+      try {
+        await refreshTeamMembers();
+      } catch (e) {
+        console.warn("[Settings] refreshTeamMembers failed after add:", e);
+      }
     } catch (err) {
       console.error("[Settings] Failed to add CRM contact:", err);
       toast.error("Failed to save to server", {
@@ -223,18 +299,253 @@ export default function SettingsPage() {
     }
   };
 
-  const removeTeamMember = async (id: string) => {
+  const removeTeamMember = async (m: TeamMember) => {
+    let didDelete = false;
     try {
-      await deleteTeamMember(id);
+      await deleteTeamMember(m.id);
       updateData((d) => ({
         ...d,
-        teamMembers: (d.teamMembers ?? []).filter((m) => m.id !== id),
+        teamMembers: (d.teamMembers ?? []).filter((x) => x.id !== m.id),
       }));
       toast.success("Removed from CRM contacts", { description: "Deleted from server." });
+      didDelete = true;
     } catch (err) {
       console.error("[Settings] Failed to remove CRM contact:", err);
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("Team member not found") && m.email) {
+        try {
+          await deleteTeamMemberByEmail(m.email);
+          updateData((d) => ({
+            ...d,
+            teamMembers: (d.teamMembers ?? []).filter((x) => x.id !== m.id && (x.email || "").toLowerCase() !== m.email.toLowerCase()),
+          }));
+          toast.success("Removed from CRM contacts", { description: "Deleted from server (email match)." });
+          didDelete = true;
+        } catch (fallbackErr) {
+          console.error("[Settings] Delete fallback by email failed:", fallbackErr);
+        }
+      }
       toast.error("Failed to delete from server", {
-        description: "Contact was not removed — try again.",
+        description:
+          err instanceof Error
+            ? err.message
+            : "Contact was not removed — try again.",
+      });
+    }
+    if (didDelete) {
+      try {
+        await refreshTeamMembers();
+      } catch (e) {
+        console.warn("[Settings] refreshTeamMembers failed after delete:", e);
+      }
+    }
+  };
+
+  const openEditTeamMember = (m: TeamMember) => {
+    setEditTeamMember(m);
+    setEditMemberName(m.displayName ?? "");
+    setEditMemberEmail(m.email ?? "");
+    setEditMemberRole(m.role);
+    setEditTeamOpen(true);
+  };
+
+  const saveTeamMemberEdit = async () => {
+    if (!editTeamMember) return;
+    const name = editMemberName.trim();
+    const email = editMemberEmail.trim().toLowerCase();
+    if (!name || !email) {
+      toast.error("Name and email are required");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Enter a valid email address");
+      return;
+    }
+    if (teamMembers.some((m) => m.id !== editTeamMember.id && (m.email?.toLowerCase() || "") === email)) {
+      toast.error("This email is already in CRM contacts");
+      return;
+    }
+
+    try {
+      const updateById = async () =>
+        (await updateTeamMember(editTeamMember.id, {
+          name,
+          email,
+          role: editMemberRole,
+        })) as {
+          data: {
+            id: string;
+            name: string;
+            email: string;
+            role: TeamMemberPortalRole;
+            is_active?: boolean;
+            created_at?: string;
+          };
+        };
+
+      const updateByEmail = async () =>
+        (await updateTeamMemberByEmail(editTeamMember.email, {
+          name,
+          email,
+          role: editMemberRole,
+        })) as {
+          data: {
+            id: string;
+            name: string;
+            email: string;
+            role: TeamMemberPortalRole;
+            is_active?: boolean;
+            created_at?: string;
+          };
+        };
+
+      let res:
+        | {
+        data: {
+          id: string;
+          name: string;
+          email: string;
+          role: TeamMemberPortalRole;
+          is_active?: boolean;
+          created_at?: string;
+        };
+      }
+        | undefined;
+
+      try {
+        res = await updateById();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "";
+        if (msg.includes("Team member not found") && editTeamMember.email) {
+          try {
+            res = await updateByEmail();
+          } catch (e2) {
+            const msg2 = e2 instanceof Error ? e2.message : "";
+            if (msg2.includes("Team member not found")) {
+              // This row likely exists only locally (seed/legacy). Create a new CRM contact instead.
+              const created = (await createTeamMember({
+                name,
+                email,
+                role: editMemberRole,
+              })) as {
+                data: { id: string };
+              };
+              res = {
+                data: {
+                  id: created.data.id,
+                  name,
+                  email,
+                  role: editMemberRole,
+                  is_active: true,
+                },
+              };
+            } else {
+              throw e2;
+            }
+          }
+        } else {
+          throw e;
+        }
+      }
+
+      const updated: TeamMember = {
+        id: res.data.id,
+        displayName: res.data.name,
+        email: res.data.email,
+        role: res.data.role,
+        isActive: res.data.is_active !== false,
+        createdAt: editTeamMember.createdAt,
+      };
+
+      updateData((d) => ({
+        ...d,
+        teamMembers: [
+          // remove the legacy/local row if we created a new DB row for it
+          ...(d.teamMembers ?? []).filter((m) => m.id !== editTeamMember.id),
+        ].map((m) => (m.id === updated.id ? { ...m, ...updated } : m)),
+      }));
+
+      setEditTeamOpen(false);
+      setEditTeamMember(null);
+      toast.success("CRM contact updated", { description: `${updated.displayName} · ${TEAM_ROLE_LABELS[updated.role]} — saved` });
+      try {
+        await refreshTeamMembers();
+      } catch (e) {
+        console.warn("[Settings] refreshTeamMembers failed after update:", e);
+      }
+    } catch (err) {
+      console.error("[Settings] Failed to update CRM contact:", err);
+      toast.error("Failed to save to server", {
+        description: err instanceof Error ? err.message : "Try again.",
+      });
+    }
+  };
+
+  const resendInvite = async (m: TeamMember) => {
+    if (!m.id) return;
+    const label = `${m.displayName} · ${TEAM_ROLE_LABELS[m.role]}`;
+    try {
+      let result: {
+        invite?: {
+          status: string;
+          reason?: string;
+          emailDispatched?: boolean;
+          inviteUrl?: string;
+        };
+      };
+
+      try {
+        result = (await resendTeamMemberInvite(m.id)) as typeof result;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "";
+        if (msg.includes("Team member not found") && m.email) {
+          result = (await resendTeamMemberInviteByEmail(m.email)) as typeof result;
+        } else {
+          throw e;
+        }
+      }
+
+      const inv = result.invite;
+      let detail = "Invite processed.";
+      if (inv?.status === "sent") {
+        detail = inv.emailDispatched
+          ? "Invitation email sent — they can open the link to confirm and create a password."
+          : "Invite link logged on the server (set RESEND_API_KEY to send email).";
+      } else if (inv?.status === "skipped" && inv.reason === "email_already_registered") {
+        detail = "No invite sent — that email already has a login.";
+      } else if (inv?.status === "delivery_failed") {
+        detail = "Invitation email failed. Check server logs or RESEND configuration.";
+      }
+
+      const inviteUrl = inv?.inviteUrl;
+      if (inviteUrl) {
+        console.info("[Hajime CRM invite URL]", inviteUrl);
+      }
+
+      toast.success("Invite resent", {
+        description: `${label} — ${detail}${inviteUrl ? " Use Copy invite link if no email arrived." : ""}`,
+        ...(inviteUrl
+          ? {
+              action: {
+                label: "Copy invite link",
+                onClick: () => {
+                  void navigator.clipboard.writeText(inviteUrl).then(() => {
+                    toast.success("Invite link copied");
+                  });
+                },
+              },
+            }
+          : {}),
+      });
+      try {
+        await refreshTeamMembers();
+      } catch (e) {
+        console.warn("[Settings] refreshTeamMembers failed after invite resend:", e);
+      }
+    } catch (err) {
+      console.error("[Settings] Failed to resend invite:", err);
+      toast.error("Failed to resend invite", {
+        description: err instanceof Error ? err.message : "Try again.",
       });
     }
   };
@@ -279,6 +590,55 @@ export default function SettingsPage() {
         warehouses: (d.warehouses ?? []).map((w) => (w.id === id ? { ...w, isActive } : w)),
       }));
       toast.success(isActive ? "Warehouse activated" : "Warehouse deactivated");
+    } catch (err) {
+      console.error("[Settings] Failed to update warehouse:", err);
+      toast.error("Failed to update warehouse", {
+        description: err instanceof Error ? err.message : "Try again.",
+      });
+    }
+  };
+
+  const openEditWarehouse = (w: Warehouse) => {
+    setEditWarehouse(w);
+    setEditWarehouseName(w.name);
+    setEditWarehouseSortOrder(String(w.sortOrder ?? 0));
+    setEditWarehouseActive(w.isActive !== false);
+    setEditWarehouseOpen(true);
+  };
+
+  const saveWarehouseEdit = async () => {
+    if (!editWarehouse) return;
+    const name = editWarehouseName.trim();
+    if (!name) {
+      toast.error("Warehouse name is required");
+      return;
+    }
+    const sort = Math.max(0, Math.floor(Number(editWarehouseSortOrder) || 0));
+
+    try {
+      const res = await updateWarehouse(editWarehouse.id, {
+        name,
+        is_active: editWarehouseActive,
+        sort_order: sort,
+      });
+
+      const row = res.data as {
+        id: string;
+        name: string;
+        is_active?: boolean;
+        sort_order?: number;
+      };
+      const updated = warehouseFromApi(row);
+      updateData((d) => ({
+        ...d,
+        warehouses: [...(d.warehouses ?? []).filter((x) => x.id !== updated.id), updated].sort(
+          (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+        ),
+      }));
+
+      setEditWarehouseOpen(false);
+      setEditWarehouse(null);
+      toast.success("Warehouse updated", { description: `${updated.name} — saved to server` });
     } catch (err) {
       console.error("[Settings] Failed to update warehouse:", err);
       toast.error("Failed to update warehouse", {
@@ -397,6 +757,67 @@ export default function SettingsPage() {
             </DialogContent>
           </Dialog>
 
+          <Dialog
+            open={editWarehouseOpen}
+            onOpenChange={(open) => {
+              setEditWarehouseOpen(open);
+              if (!open) setEditWarehouse(null);
+            }}
+          >
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="font-display">Edit warehouse</DialogTitle>
+                <DialogDescription>
+                  Update the display name, active status, and sort order used in warehouse pickers.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label htmlFor="wh-edit-name">Warehouse name</Label>
+                  <Input
+                    id="wh-edit-name"
+                    value={editWarehouseName}
+                    onChange={(e) => setEditWarehouseName(e.target.value)}
+                    placeholder="e.g. Toronto Main Warehouse"
+                    className="touch-manipulation"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="wh-edit-sort">Sort order</Label>
+                  <Input
+                    id="wh-edit-sort"
+                    type="number"
+                    min={0}
+                    value={editWarehouseSortOrder}
+                    onChange={(e) => setEditWarehouseSortOrder(e.target.value)}
+                    className="touch-manipulation"
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-border/80 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">Active</p>
+                    <p className="text-xs text-muted-foreground">
+                      Inactive warehouses won&apos;t appear in default warehouse lists.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={editWarehouseActive}
+                    onCheckedChange={(checked) => setEditWarehouseActive(checked === true)}
+                    className="touch-manipulation"
+                  />
+                </div>
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button type="button" variant="outline" className="touch-manipulation" onClick={() => setEditWarehouseOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" className="touch-manipulation" onClick={saveWarehouseEdit}>
+                  Save changes
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           {warehousesSorted.length === 0 ? (
             <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
               No warehouses yet. Defaults are created on first load (Toronto Main Warehouse, Milan Depot) once the server migration has run.
@@ -415,6 +836,16 @@ export default function SettingsPage() {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="touch-manipulation"
+                      onClick={() => openEditWarehouse(w)}
+                    >
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Edit
+                    </Button>
                     <Label htmlFor={`wh-active-${w.id}`} className="text-xs text-muted-foreground">
                       Active
                     </Label>
@@ -453,6 +884,21 @@ export default function SettingsPage() {
             </Button>
           </CardHeader>
           <CardContent>
+            <Alert className="mb-4 border-border/80 bg-muted/25">
+              <AlertDescription className="space-y-2 text-sm text-foreground/90">
+                <p>
+                  <span className="font-medium">Portal invite quick test:</span> This screen is for HQ (
+                  Brand Operator / Founder Admin). Add a contact with a real email — the API sends an invite
+                  when <code className="rounded bg-muted px-1 py-0.5 text-xs">RESEND_API_KEY</code> is set; otherwise
+                  the server logs <code className="rounded bg-muted px-1 py-0.5 text-xs">[CRM Invite]</code> with the
+                  URL. Set <code className="rounded bg-muted px-1 py-0.5 text-xs">CLIENT_URL</code> on the API to
+                  match this app&apos;s origin. After adding, use <strong className="font-medium">Copy invite link</strong>{" "}
+                  in the toast (when email wasn&apos;t sent) or open the link from your inbox, then set password — you
+                  should land signed in. Registration requires auth routes enabled on the server (
+                  <code className="rounded bg-muted px-1 py-0.5 text-xs">FEATURE_FLAG_AUTH_ENABLED=true</code>).
+                </p>
+              </AlertDescription>
+            </Alert>
             <Dialog open={teamDialogOpen} onOpenChange={setTeamDialogOpen}>
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
@@ -511,12 +957,87 @@ export default function SettingsPage() {
               </DialogContent>
             </Dialog>
 
+            <Dialog
+              open={editTeamOpen}
+              onOpenChange={(open) => {
+                setEditTeamOpen(open);
+                if (!open) setEditTeamMember(null);
+              }}
+            >
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="font-display">Edit CRM contact</DialogTitle>
+                  <DialogDescription>
+                    Update their email and role. If they need a fresh link after changes, use Resend invite.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="tm-edit-name">Display name</Label>
+                    <Input
+                      id="tm-edit-name"
+                      value={editMemberName}
+                      onChange={(e) => setEditMemberName(e.target.value)}
+                      placeholder="e.g. Alex Rivera"
+                      className="touch-manipulation"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="tm-edit-email">Email</Label>
+                    <Input
+                      id="tm-edit-email"
+                      type="email"
+                      value={editMemberEmail}
+                      onChange={(e) => setEditMemberEmail(e.target.value)}
+                      placeholder="name@company.com"
+                      autoComplete="email"
+                      className="touch-manipulation"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Role</Label>
+                    <Select value={editMemberRole} onValueChange={(v) => setEditMemberRole(v as TeamMemberPortalRole)}>
+                      <SelectTrigger className="touch-manipulation">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TEAM_ROLE_ORDER.map((r) => (
+                          <SelectItem key={r} value={r}>
+                            {TEAM_ROLE_LABELS[r]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter className="gap-2 sm:gap-0">
+                  <Button type="button" variant="outline" className="touch-manipulation" onClick={() => setEditTeamOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="button" className="touch-manipulation" onClick={saveTeamMemberEdit}>
+                    Save changes
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
             {teamMembers.length === 0 ? (
               <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
                 No CRM contacts yet. Add sales reps, retail accounts, distributors, or manufacturer contacts.
               </p>
             ) : (
               <div className="-mx-4 overflow-x-auto touch-pan-x px-4 sm:mx-0 sm:px-0">
+                <div className="mb-3 flex items-center justify-end gap-2">
+                  <Label htmlFor="crm-show-inactive" className="text-xs text-muted-foreground">
+                    Show inactive
+                  </Label>
+                  <Switch
+                    id="crm-show-inactive"
+                    checked={showInactiveCrm}
+                    onCheckedChange={(checked) => setShowInactiveCrm(checked === true)}
+                    className="touch-manipulation"
+                  />
+                </div>
                 <table className="w-full min-w-[720px] text-sm">
                   <thead>
                     <tr className="border-b text-left">
@@ -529,7 +1050,7 @@ export default function SettingsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {teamMembers.map((m) => (
+                    {teamMembersVisible.map((m) => (
                       <tr
                         key={m.id}
                         className={`border-b border-border/50 last:border-0 ${m.isActive === false ? "opacity-70" : ""}`}
@@ -555,9 +1076,29 @@ export default function SettingsPage() {
                             type="button"
                             variant="ghost"
                             size="icon"
+                            className="mr-1 h-8 w-8 touch-manipulation text-muted-foreground hover:text-foreground"
+                            aria-label={`Edit ${m.displayName}`}
+                            onClick={() => openEditTeamMember(m)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="mr-1 h-8 w-8 touch-manipulation text-muted-foreground hover:text-foreground"
+                            aria-label={`Resend invite for ${m.displayName}`}
+                            onClick={() => resendInvite(m)}
+                          >
+                            <Mail className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
                             className="h-8 w-8 touch-manipulation text-muted-foreground hover:text-destructive"
                             aria-label={`Remove ${m.displayName}`}
-                            onClick={() => removeTeamMember(m.id)}
+                            onClick={() => removeTeamMember(m)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -577,16 +1118,35 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Company name</Label>
-              <Input defaultValue="Hajime Inc." readOnly className="bg-muted/50" />
+              <Label htmlFor="hq-company-name">Company name</Label>
+              <Input
+                id="hq-company-name"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="Hajime Inc."
+                className="touch-manipulation"
+                autoComplete="organization"
+              />
             </div>
             <div className="space-y-2">
-              <Label>Primary markets</Label>
-              <Input defaultValue="Ontario, Toronto, Milan" readOnly className="bg-muted/50" />
+              <Label htmlFor="hq-markets">Primary markets</Label>
+              <Input
+                id="hq-markets"
+                value={primaryMarkets}
+                onChange={(e) => setPrimaryMarkets(e.target.value)}
+                placeholder="Ontario, Toronto, Milan"
+                className="touch-manipulation"
+              />
             </div>
             <div className="space-y-2">
-              <Label>Manufacturer</Label>
-              <Input defaultValue="Kirin Brewery Co." readOnly className="bg-muted/50" />
+              <Label htmlFor="hq-manufacturer">Manufacturer</Label>
+              <Input
+                id="hq-manufacturer"
+                value={manufacturerName}
+                onChange={(e) => setManufacturerName(e.target.value)}
+                placeholder="Kirin Brewery Co."
+                className="touch-manipulation"
+              />
             </div>
             <Separator />
             <div className="space-y-2">
@@ -698,8 +1258,7 @@ export default function SettingsPage() {
                       className="h-8 w-8 touch-manipulation text-muted-foreground hover:text-destructive"
                       aria-label={`Remove ${p.sku}`}
                       onClick={() => {
-                        removeProduct(p.sku);
-                        toast.success("Product removed", { description: p.sku });
+                        void removeProduct(p.sku);
                       }}
                     >
                       <Trash2 className="h-4 w-4" />

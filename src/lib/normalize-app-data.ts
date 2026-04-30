@@ -97,6 +97,9 @@ export function normalizeAppData(raw: AppData): AppData {
     manufacturerLeadTimeDays: op?.manufacturerLeadTimeDays ?? 45,
     safetyStockBySku: { ...DEFAULT_SAFETY_STOCK, ...op?.safetyStockBySku },
     retailerStockThresholdBottles: op?.retailerStockThresholdBottles ?? 48,
+    companyName: op?.companyName,
+    primaryMarkets: op?.primaryMarkets,
+    manufacturerName: op?.manufacturerName,
   };
 
   const retailerShelfStock: NonNullable<AppData["retailerShelfStock"]> = {
