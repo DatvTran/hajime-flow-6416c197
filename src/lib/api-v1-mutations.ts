@@ -81,6 +81,14 @@ export async function deleteProduct(id: string) {
   });
 }
 
+/** Soft-delete by tenant + SKU (avoids client needing a numeric DB id). */
+export async function deleteProductBySku(sku: string) {
+  const enc = encodeURIComponent(sku);
+  return apiFetch(`/api/v1/products/by-sku/${enc}`, {
+    method: "DELETE",
+  });
+}
+
 // ===== ACCOUNTS =====
 
 export async function createAccount(accountData: {
@@ -655,6 +663,61 @@ export async function deleteTeamMember(id: string) {
   });
 }
 
+export async function deleteTeamMemberByEmail(email: string) {
+  const normalized = String(email).trim().toLowerCase();
+  return apiFetch(`/api/v1/team-members/by-email/${encodeURIComponent(normalized)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function resendTeamMemberInvite(id: string) {
+  return apiFetch(`/api/v1/team-members/${id}/resend-invite`, {
+    method: "POST",
+  });
+}
+
+export async function resendTeamMemberInviteByEmail(email: string) {
+  const normalized = String(email).trim().toLowerCase();
+  return apiFetch(`/api/v1/team-members/by-email/${encodeURIComponent(normalized)}/resend-invite`, {
+    method: "POST",
+  });
+}
+
+export async function updateTeamMember(
+  id: string,
+  body: {
+    name?: string;
+    email?: string;
+    role?: string;
+    phone?: string;
+    department?: string;
+    is_active?: boolean;
+  },
+) {
+  return apiFetch(`/api/v1/team-members/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateTeamMemberByEmail(
+  email: string,
+  body: {
+    name?: string;
+    email?: string;
+    role?: string;
+    phone?: string;
+    department?: string;
+    is_active?: boolean;
+  },
+) {
+  const normalized = String(email).trim().toLowerCase();
+  return apiFetch(`/api/v1/team-members/by-email/${encodeURIComponent(normalized)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
 // ===== WAREHOUSES =====
 
 export async function getWarehouses(opts?: { includeInactive?: boolean }) {
@@ -692,6 +755,9 @@ export async function updateOperationalSettings(settings: {
   shelf_threshold?: number;
   auto_ship?: boolean;
   auto_alert?: boolean;
+  company_name?: string;
+  primary_markets?: string;
+  manufacturer_name?: string;
 }) {
   return apiFetch("/api/v1/operational-settings", {
     method: "PUT",

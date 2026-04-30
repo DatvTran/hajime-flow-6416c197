@@ -29,7 +29,7 @@ import {
   type InTransitDetails,
 } from "@/lib/inventory-movement";
 import { fetchAppData } from "@/lib/data-service";
-import type { AppData, FinancingLedgerEntry } from "@/types/app-data";
+import type { AppData, FinancingLedgerEntry, TeamMember, TeamMemberPortalRole } from "@/types/app-data";
 import type { ProductionStatus } from "@/data/mockData";
 import seedJson from "@/data/seed-app.json";
 import { toast } from "@/components/ui/sonner";
@@ -40,7 +40,7 @@ import { useAuth } from "./AuthContext";
 import {
   createProduct as apiCreateProduct,
   updateProduct as apiUpdateProduct,
-  deleteProduct as apiDeleteProduct,
+  deleteProductBySku as apiDeleteProductBySku,
   createAccount as apiCreateAccount,
   updateAccount as apiUpdateAccount,
   createOrder as apiCreateOrder,
@@ -67,6 +67,7 @@ import {
   updateIncentive as apiUpdateIncentive,
   updateIncentiveStatus as apiUpdateIncentiveStatus,
   deleteIncentive as apiDeleteIncentive,
+  getTeamMembers as apiGetTeamMembers,
   getIncentives as apiGetIncentives,
   createProductionStatus as apiCreateProductionStatus,
   updateProductionStatus as apiUpdateProductionStatus,
@@ -105,6 +106,15 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
     ...server.retailerShelfStock,
     ...local.retailerShelfStock,
   };
+
+  // Operational settings: server GET includes replenishment + HQ labels when DB is migrated
+  if (!server.operationalSettings && local.operationalSettings) {
+    merged.operationalSettings = local.operationalSettings;
+  } else if (server.operationalSettings && local.operationalSettings) {
+    merged.operationalSettings = { ...local.operationalSettings, ...server.operationalSettings };
+  } else if (server.operationalSettings) {
+    merged.operationalSettings = server.operationalSettings;
+  }
   
   // For accounts: preserve onboardingPipeline status from local if server account doesn't have it.
   // Important: do NOT require server.accounts.length > 0; otherwise an empty server response can wipe local-only data.
@@ -131,8 +141,46 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
     const localOnlyOrders = local.salesOrders.filter((o) => !serverIds.has(o.id));
     merged.salesOrders = [...(server.salesOrders ?? []), ...localOnlyOrders];
   }
-  
+
+  // CRM contacts: always prefer the server's list when it has data so Settings → team members
+  // updates (from another session or after API mutations) are not stuck behind an old
+  // localStorage copy. If the API returns empty, keep local roster (offline / not migrated).
+  if (Array.isArray(server.teamMembers) && server.teamMembers.length > 0) {
+    merged.teamMembers = server.teamMembers;
+  }
+
   return merged;
+}
+
+const CRM_PORTAL_ROLES = new Set<TeamMemberPortalRole>([
+  "sales_rep",
+  "retail",
+  "distributor",
+  "manufacturer",
+]);
+
+function sliceIsoDate(v: unknown): string {
+  if (v == null || v === "") return new Date().toISOString().slice(0, 10);
+  const s = String(v);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+/** Map `/api/v1/team-members` row → client `TeamMember` (aligned with data-service). */
+function mapApiRowToTeamMember(row: Record<string, unknown>): TeamMember {
+  const roleRaw = String(row.role ?? "sales_rep");
+  const role = (
+    CRM_PORTAL_ROLES.has(roleRaw as TeamMemberPortalRole) ? roleRaw : "sales_rep"
+  ) as TeamMemberPortalRole;
+  const isActive =
+    row.is_active === undefined || row.is_active === null ? true : Boolean(row.is_active);
+  return {
+    id: String(row.id ?? ""),
+    displayName: String(row.name ?? row.display_name ?? ""),
+    email: String(row.email ?? "").trim().toLowerCase(),
+    role,
+    createdAt: sliceIsoDate(row.created_at ?? row.createdAt),
+    isActive,
+  };
 }
 
 function sumAvailableForSku(items: InventoryItem[], sku: string): number {
@@ -198,6 +246,8 @@ type AppDataContextValue = {
   loading: boolean;
   error: string | null;
   updateData: (fn: (prev: AppData) => AppData) => void;
+  /** Re-fetch CRM contacts from the API and merge into local app state + localStorage. */
+  refreshTeamMembers: () => Promise<void>;
 };
 
 const AppDataStateContext = createContext<AppDataContextValue | null>(null);
@@ -296,6 +346,16 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const refreshTeamMembers = useCallback(async () => {
+    const res = (await apiGetTeamMembers({ includeInactive: true })) as { data?: unknown[] };
+    const rows = Array.isArray(res.data) ? res.data : [];
+    const teamMembers = rows.map((r) => mapApiRowToTeamMember(r as Record<string, unknown>));
+    setData((prev) => {
+      if (!prev) return prev;
+      return normalizeAppData({ ...prev, teamMembers });
+    });
+  }, []);
+
   // Stage 4: Removed auto-save useEffect — writes now use granular API mutations
   // Local changes are persisted via saveLocalAppData only
   useEffect(() => {
@@ -305,8 +365,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo((): AppDataContextValue | null => {
     if (!data) return null;
-    return { data, loading, error, updateData };
-  }, [data, loading, error, updateData]);
+    return { data, loading, error, updateData, refreshTeamMembers };
+  }, [data, loading, error, updateData, refreshTeamMembers]);
 
   if (!data || !value) {
     return (
@@ -448,21 +508,34 @@ export function useProducts() {
     if (!product) {
       return { success: false, error: "Product not found" };
     }
-    
-    try {
-      // Call granular API
-      await apiDeleteProduct(product.id);
-      
-      // Update local state
+
+    const dropLocal = () => {
       updateData((d) => ({
         ...d,
         products: d.products.filter((x) => x.sku !== sku),
       }));
-      
+    };
+
+    try {
+      await apiDeleteProductBySku(sku);
+      dropLocal();
       toast.success("Product deleted");
       return { success: true };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to delete product";
+      const isNotInDb =
+        /product not found/i.test(message) ||
+        /\b404\b/i.test(message) ||
+        message.includes("HTTP 404");
+
+      if (isNotInDb) {
+        dropLocal();
+        toast.success("Product removed", {
+          description: "This SKU was not in the database — removed from your catalog only.",
+        });
+        return { success: true };
+      }
+
       toast.error("Failed to delete product", { description: message });
       return { success: false, error: message };
     }

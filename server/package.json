@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev:full": "npm run dev:full --prefix ..",
+    "fly:deploy": "bash ../scripts/fly-deploy.sh",
     "start": "node index.mjs",
     "migrate": "knex migrate:latest --knexfile knexfile.mjs",
     "migrate:rollback": "knex migrate:rollback --knexfile knexfile.mjs",

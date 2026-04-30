@@ -462,6 +462,41 @@ export default function IncentiveManagerPage() {
     });
   }, []);
 
+  const marginBreakdown = useMemo(() => {
+    const gross = Math.max(0, dashboardMetrics.totalGrossMargin);
+    const safePct = (v: number) => (gross > 0 ? (Math.max(0, v) / gross) * 100 : 0);
+    const retainedPct = safePct(dashboardMetrics.netMargin);
+    const spifPct = safePct(dashboardMetrics.totalSPIFs);
+    const volumePct = safePct(dashboardMetrics.volumeBonuses);
+    const adfPct = safePct(dashboardMetrics.totalADFSpend);
+
+    // Ensure tiny segments are still visible; keep total close to 100.
+    const clampVisible = (p: number) => (p > 0 && p < 0.8 ? 0.8 : p);
+    const visible = {
+      retained: clampVisible(retainedPct),
+      spifs: clampVisible(spifPct),
+      volume: clampVisible(volumePct),
+      adf: clampVisible(adfPct),
+    };
+    const visibleSum = visible.retained + visible.spifs + visible.volume + visible.adf;
+    const scale = visibleSum > 0 ? 100 / visibleSum : 1;
+    const widths = {
+      retained: visible.retained * scale,
+      spifs: visible.spifs * scale,
+      volume: visible.volume * scale,
+      adf: visible.adf * scale,
+    };
+
+    const rounded = {
+      retained: Math.round(retainedPct),
+      spifs: Math.round(spifPct),
+      volume: Math.round(volumePct),
+      adf: Math.round(adfPct),
+    };
+
+    return { widths, rounded };
+  }, [dashboardMetrics]);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -492,58 +527,60 @@ export default function IncentiveManagerPage() {
         {/* ===== DASHBOARD TAB ===== */}
         <TabsContent value="dashboard" className="space-y-6">
           {/* KPI Cards */}
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Cases</p>
-                    <p className="text-2xl font-bold">{dashboardMetrics.totalCases.toLocaleString()}</p>
-                  </div>
-                  <Package className="h-8 w-8 text-blue-500" />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="card-interactive border border-border/70 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Total Cases</p>
+                  <p className="font-display text-2xl font-semibold tabular-nums">
+                    {dashboardMetrics.totalCases.toLocaleString()}
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Accounts Opened</p>
-                    <p className="text-2xl font-bold">{dashboardMetrics.totalAccounts}</p>
-                  </div>
-                  <Store className="h-8 w-8 text-green-500" />
+                <div className="rounded-lg border border-border/60 bg-muted/40 p-2 text-muted-foreground">
+                  <Package className="h-4 w-4" />
                 </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Reorders</p>
-                    <p className="text-2xl font-bold">{dashboardMetrics.totalReorders}</p>
-                  </div>
-                  <RefreshCw className="h-8 w-8 text-amber-500" />
+              </div>
+            </div>
+
+            <div className="card-interactive border border-border/70 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Accounts Opened</p>
+                  <p className="font-display text-2xl font-semibold tabular-nums">{dashboardMetrics.totalAccounts}</p>
                 </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Tastings</p>
-                    <p className="text-2xl font-bold">{dashboardMetrics.totalTastings}</p>
-                  </div>
-                  <Wine className="h-8 w-8 text-purple-500" />
+                <div className="rounded-lg border border-border/60 bg-muted/40 p-2 text-muted-foreground">
+                  <Store className="h-4 w-4" />
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
+
+            <div className="card-interactive border border-border/70 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Reorders</p>
+                  <p className="font-display text-2xl font-semibold tabular-nums">{dashboardMetrics.totalReorders}</p>
+                </div>
+                <div className="rounded-lg border border-border/60 bg-muted/40 p-2 text-muted-foreground">
+                  <RefreshCw className="h-4 w-4" />
+                </div>
+              </div>
+            </div>
+
+            <div className="card-interactive border border-border/70 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Tastings</p>
+                  <p className="font-display text-2xl font-semibold tabular-nums">{dashboardMetrics.totalTastings}</p>
+                </div>
+                <div className="rounded-lg border border-border/60 bg-muted/40 p-2 text-muted-foreground">
+                  <Wine className="h-4 w-4" />
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Margin Breakdown */}
-          <Card>
+          <Card className="border-border/80">
             <CardHeader>
               <CardTitle className="font-display flex items-center gap-2">
                 <TrendingUp className="h-5 w-5" />
@@ -551,57 +588,68 @@ export default function IncentiveManagerPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Stacked Bar Visualization */}
-              <div className="space-y-2">
-                <div className="flex h-8 rounded-lg overflow-hidden">
-                  <div 
-                    className="bg-blue-500 flex items-center justify-center text-xs text-white font-medium"
-                    style={{ width: `${(dashboardMetrics.netMargin / dashboardMetrics.totalGrossMargin) * 100}%` }}
-                  >
-                    {Math.round((dashboardMetrics.netMargin / dashboardMetrics.totalGrossMargin) * 100)}%
-                  </div>
-                  <div 
-                    className="bg-red-400 flex items-center justify-center text-xs text-white font-medium"
-                    style={{ width: `${(dashboardMetrics.totalSPIFs / dashboardMetrics.totalGrossMargin) * 100}%` }}
-                  >
-                    {Math.round((dashboardMetrics.totalSPIFs / dashboardMetrics.totalGrossMargin) * 100)}%
-                  </div>
-                  <div 
-                    className="bg-amber-400 flex items-center justify-center text-xs text-white font-medium"
-                    style={{ width: `${(dashboardMetrics.volumeBonuses / dashboardMetrics.totalGrossMargin) * 100}%` }}
-                  >
-                    {Math.round((dashboardMetrics.volumeBonuses / dashboardMetrics.totalGrossMargin) * 100)}%
-                  </div>
-                  <div 
-                    className="bg-purple-400 flex items-center justify-center text-xs text-white font-medium"
-                    style={{ width: `${(dashboardMetrics.totalADFSpend / dashboardMetrics.totalGrossMargin) * 100}%` }}
-                  >
-                    {Math.round((dashboardMetrics.totalADFSpend / dashboardMetrics.totalGrossMargin) * 100)}%
+              {/* Stacked bar */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">Cost composition (as % of gross margin)</div>
+                  <div className="text-xs text-muted-foreground">
+                    {marginBreakdown.rounded.retained}% / {marginBreakdown.rounded.spifs}% / {marginBreakdown.rounded.volume}% / {marginBreakdown.rounded.adf}%
                   </div>
                 </div>
-                
-                <div className="flex flex-wrap gap-4 text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded bg-blue-500" />
-                    <span>Retained Margin: ${dashboardMetrics.netMargin.toLocaleString()}</span>
+
+                <div className="relative h-9 overflow-hidden rounded-lg border border-border/70 bg-muted/30">
+                  <div className="flex h-full w-full">
+                    <div
+                      className="h-full bg-foreground/10"
+                      style={{ width: `${marginBreakdown.widths.retained}%` }}
+                      aria-label={`Retained margin ${marginBreakdown.rounded.retained}%`}
+                    />
+                    <div
+                      className="h-full bg-destructive/25"
+                      style={{ width: `${marginBreakdown.widths.spifs}%` }}
+                      aria-label={`SPIFs ${marginBreakdown.rounded.spifs}%`}
+                    />
+                    <div
+                      className="h-full bg-amber-500/25"
+                      style={{ width: `${marginBreakdown.widths.volume}%` }}
+                      aria-label={`Volume bonuses ${marginBreakdown.rounded.volume}%`}
+                    />
+                    <div
+                      className="h-full bg-violet-500/20"
+                      style={{ width: `${marginBreakdown.widths.adf}%` }}
+                      aria-label={`ADF spend ${marginBreakdown.rounded.adf}%`}
+                    />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded bg-red-400" />
-                    <span>SPIFs: ${dashboardMetrics.totalSPIFs.toLocaleString()}</span>
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-3 text-xs font-medium text-muted-foreground">
+                    <span className="tabular-nums">{marginBreakdown.rounded.retained}%</span>
+                    <span className="tabular-nums">{marginBreakdown.rounded.spifs}%</span>
+                    <span className="tabular-nums">{marginBreakdown.rounded.volume}%</span>
+                    <span className="tabular-nums">{marginBreakdown.rounded.adf}%</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded bg-amber-400" />
-                    <span>Volume Bonuses: ${dashboardMetrics.volumeBonuses.toLocaleString()}</span>
+                </div>
+
+                <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="flex items-center justify-between rounded-md border border-border/70 bg-card/60 px-3 py-2">
+                    <span className="text-muted-foreground">Retained Margin</span>
+                    <span className="tabular-nums">${dashboardMetrics.netMargin.toLocaleString()}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded bg-purple-400" />
-                    <span>ADF Spend: ${dashboardMetrics.totalADFSpend.toLocaleString()}</span>
+                  <div className="flex items-center justify-between rounded-md border border-border/70 bg-card/60 px-3 py-2">
+                    <span className="text-muted-foreground">SPIFs</span>
+                    <span className="tabular-nums">${dashboardMetrics.totalSPIFs.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border border-border/70 bg-card/60 px-3 py-2">
+                    <span className="text-muted-foreground">Volume Bonuses</span>
+                    <span className="tabular-nums">${dashboardMetrics.volumeBonuses.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border border-border/70 bg-card/60 px-3 py-2">
+                    <span className="text-muted-foreground">ADF Spend</span>
+                    <span className="tabular-nums">${dashboardMetrics.totalADFSpend.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
 
               {/* Summary Stats */}
-              <div className="grid gap-3 sm:grid-cols-3 pt-4 border-t">
+              <div className="grid gap-3 border-t pt-4 sm:grid-cols-3">
                 <div className="card-interactive p-4 space-y-1">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Total Gross Margin</p>
                   <p className="font-display text-2xl font-semibold tabular-nums">${dashboardMetrics.totalGrossMargin.toLocaleString()}</p>
@@ -621,7 +669,7 @@ export default function IncentiveManagerPage() {
           </Card>
 
           {/* Partner Health Scores */}
-          <Card>
+          <Card className="border-border/80">
             <CardHeader>
               <CardTitle className="font-display">Partner Health Scores</CardTitle>
               <p className="text-sm text-muted-foreground">
@@ -629,32 +677,54 @@ export default function IncentiveManagerPage() {
               </p>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {partners.map(partner => {
-                  const partnerSPIFs = spifsByPartner[partner.id]?.reduce((sum, s) => sum + s.payout, 0) || 0;
-                  const partnerVolumeBonus = partner.quarterlyPerformanceTier === "Gold" ? 2500 : 
-                    partner.quarterlyPerformanceTier === "Silver" ? 1200 : 0;
-                  const partnerTotalCost = partnerSPIFs + partnerVolumeBonus + partner.adfSpend;
-                  const partnerGrossMargin = partner.quarterlyCasesSold * GROSS_MARGIN_PER_CASE;
-                  const healthPercentage = partnerGrossMargin > 0 ? (partnerTotalCost / partnerGrossMargin) * 100 : 0;
+              <div className="overflow-hidden rounded-lg border border-border/80">
+                <div className="grid grid-cols-12 gap-3 border-b bg-muted/30 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <div className="col-span-6">Partner</div>
+                  <div className="col-span-2 text-right">Cost %</div>
+                  <div className="col-span-4 text-right">Cost / Gross</div>
+                </div>
+                <div className="divide-y">
+                  {partners.map((partner) => {
+                    const partnerSPIFs = spifsByPartner[partner.id]?.reduce((sum, s) => sum + s.payout, 0) || 0;
+                    const partnerVolumeBonus =
+                      partner.quarterlyPerformanceTier === "Gold"
+                        ? 2500
+                        : partner.quarterlyPerformanceTier === "Silver"
+                          ? 1200
+                          : 0;
+                    const partnerTotalCost = partnerSPIFs + partnerVolumeBonus + partner.adfSpend;
+                    const partnerGrossMargin = partner.quarterlyCasesSold * GROSS_MARGIN_PER_CASE;
+                    const healthPercentage = partnerGrossMargin > 0 ? (partnerTotalCost / partnerGrossMargin) * 100 : 0;
 
-                  return (
-                    <div key={partner.id} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{partner.name}</span>
-                          <Badge variant={getHealthBadgeVariant(healthPercentage)}>
+                    return (
+                      <div key={partner.id} className="grid grid-cols-12 items-center gap-3 px-4 py-3">
+                        <div className="col-span-6 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate font-medium">{partner.name}</span>
+                            <Badge variant="outline" className="font-normal">
+                              {partner.market}
+                            </Badge>
+                          </div>
+                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-foreground/25"
+                              style={{ width: `${Math.min(100, Math.max(0, (healthPercentage / 15) * 100))}%` }}
+                              aria-label={`Health ${healthPercentage.toFixed(1)}%`}
+                            />
+                          </div>
+                        </div>
+                        <div className="col-span-2 text-right">
+                          <Badge variant={getHealthBadgeVariant(healthPercentage)} className="tabular-nums">
                             {healthPercentage.toFixed(1)}%
                           </Badge>
                         </div>
-                        <span className="text-sm text-muted-foreground">
+                        <div className="col-span-4 text-right text-sm text-muted-foreground tabular-nums">
                           ${partnerTotalCost.toLocaleString()} / ${partnerGrossMargin.toLocaleString()}
-                        </span>
+                        </div>
                       </div>
-                      <Progress value={Math.min(healthPercentage, 100)} className="h-2" />
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -26,6 +26,10 @@ export type OperationalSettings = {
   safetyStockBySku: Record<string, number>;
   /** Retail shelf — alert when on-premise bottles fall below this (per SKU line). */
   retailerStockThresholdBottles?: number;
+  /** HQ labels — persisted in operational_settings (Settings → Company & replenishment). */
+  companyName?: string;
+  primaryMarkets?: string;
+  manufacturerName?: string;
 };
 
 /** Multi-node cash visibility: retailer → wholesaler → manufacturer (demo ledger). */
