@@ -272,7 +272,16 @@ export type Account = {
   tradingName: string;
   country: string;
   city: string;
-  type: "retail" | "bar" | "restaurant" | "hotel" | "distributor" | "lifestyle";
+  type:
+    | "retail"
+    | "bar"
+    | "restaurant"
+    | "hotel"
+    | "distributor"
+    | "wholesaler"
+    | "lifestyle"
+    | "manufacturer"
+    | "producer";
   contactName: string;
   contactRole: string;
   phone: string;

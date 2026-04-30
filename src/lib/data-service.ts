@@ -13,7 +13,8 @@ import {
   getShipments,
   getNewProductRequests,
 } from "./api-v1";
-import type { AppData } from "@/types/app-data";
+import { getTeamMembers, getWarehouses } from "@/lib/api-v1-mutations";
+import type { AppData, TeamMember, TeamMemberPortalRole, Warehouse } from "@/types/app-data";
 import type { NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
 
 // Feature flag to control granular API usage - Stage 3: Always use granular
@@ -26,6 +27,45 @@ function sliceIsoDate(v: unknown): string {
   if (v == null || v === "") return new Date().toISOString().slice(0, 10);
   const s = String(v);
   return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+const PORTAL_ROLES = new Set<TeamMemberPortalRole>([
+  "sales_rep",
+  "retail",
+  "distributor",
+  "manufacturer",
+]);
+
+function mapRowToWarehouse(row: Record<string, unknown>): Warehouse {
+  const isActive =
+    row.is_active === undefined || row.is_active === null
+      ? true
+      : Boolean(row.is_active);
+  return {
+    id: String(row.id ?? ""),
+    name: String(row.name ?? "").trim(),
+    isActive,
+    sortOrder: Number(row.sort_order ?? 0),
+  };
+}
+
+function mapRowToTeamMember(row: Record<string, unknown>): TeamMember {
+  const roleRaw = String(row.role ?? "sales_rep");
+  const role = (
+    PORTAL_ROLES.has(roleRaw as TeamMemberPortalRole) ? roleRaw : "sales_rep"
+  ) as TeamMemberPortalRole;
+  const isActive =
+    row.is_active === undefined || row.is_active === null
+      ? true
+      : Boolean(row.is_active);
+  return {
+    id: String(row.id ?? ""),
+    displayName: String(row.name ?? row.display_name ?? ""),
+    email: String(row.email ?? "").trim().toLowerCase(),
+    role,
+    createdAt: sliceIsoDate(row.created_at ?? row.createdAt),
+    isActive,
+  };
 }
 
 function mapRowToPurchaseOrder(po: Record<string, unknown>): PurchaseOrder {
@@ -224,6 +264,10 @@ function transformToAppData(
   shipmentsRaw?: any[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   newProductRequestsRaw?: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  teamMembersRaw?: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  warehousesRaw?: any[],
 ): Partial<AppData> {
   try {
     const accountById = new Map((accounts || []).map((a) => [String(a.id), a]));
@@ -357,6 +401,12 @@ function transformToAppData(
       newProductRequests: (newProductRequestsRaw || []).map((npr) =>
         mapRowToNewProductRequest(npr as Record<string, unknown>),
       ),
+      teamMembers: (teamMembersRaw || []).map((r) =>
+        mapRowToTeamMember(r as Record<string, unknown>),
+      ),
+      warehouses: (warehousesRaw || []).map((r) =>
+        mapRowToWarehouse(r as Record<string, unknown>),
+      ),
       retailerShelfStock: {},
       financingLedger: [],
     };
@@ -382,6 +432,8 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     getPurchaseOrders({ limit: 100 }),
     getShipments({ limit: 100 }),
     getNewProductRequests({ limit: 100 }),
+    getTeamMembers({ includeInactive: true }),
+    getWarehouses({ includeInactive: true }),
   ]);
   
   const productsRes = results[0].status === 'fulfilled' ? results[0].value : { data: [] };
@@ -392,6 +444,8 @@ export async function fetchAppDataGranular(): Promise<AppData> {
   const purchaseOrdersRes = results[5].status === 'fulfilled' ? results[5].value : { data: [] };
   const shipmentsRes = results[6].status === 'fulfilled' ? results[6].value : { data: [] };
   const newProductRequestsRes = results[7].status === 'fulfilled' ? results[7].value : { data: [] };
+  const teamMembersRes = results[8].status === 'fulfilled' ? results[8].value : { data: [] };
+  const warehousesRes = results[9].status === 'fulfilled' ? results[9].value : { data: [] };
   
   // Log any failures
   results.forEach((result, index) => {
@@ -409,6 +463,8 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     purchaseOrdersRes.data || [],
     shipmentsRes.data || [],
     newProductRequestsRes.data || [],
+    teamMembersRes.data || [],
+    warehousesRes.data || [],
   );
   
   return data as AppData;

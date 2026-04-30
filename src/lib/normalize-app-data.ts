@@ -1,4 +1,4 @@
-import type { AppData, TeamMember } from "@/types/app-data";
+import type { AppData, TeamMember, Warehouse } from "@/types/app-data";
 import { TEAM_ROSTER } from "@/data/team-roster";
 import seedJson from "@/data/seed-app.json";
 import type { Account, Product } from "@/data/mockData";
@@ -22,6 +22,11 @@ const DEFAULT_RETAILER_SHELF: NonNullable<AppData["retailerShelfStock"]> = {
   "ACC-005": { "HJM-OG-750": 36, "HJM-YZ-750": 24 },
 };
 
+const DEFAULT_WAREHOUSES: Warehouse[] = [
+  { id: "seed-wh-toronto", name: "Toronto Main Warehouse", isActive: true, sortOrder: 0 },
+  { id: "seed-wh-milan", name: "Milan Depot", isActive: true, sortOrder: 1 },
+];
+
 function mergeProducts(fromPayload: Product[] | undefined, seed: Product[]): Product[] {
   const base = pickOrSeed(fromPayload, seed);
   const defaultsBySku = Object.fromEntries(PRODUCT_DEFAULTS.map((p) => [p.sku, p]));
@@ -38,16 +43,32 @@ function pickOrSeed<T>(fromPayload: T[] | undefined, seed: T[]): T[] {
 }
 
 /**
- * Canonical roster rows always win for those emails, then any HQ-added members
- * (emails not on the seed roster). Prevents partial persisted data from hiding
- * sales reps / retail / etc. that match login personas and mock orders.
+ * Seed roster guarantees demo logins always appear. For any email that exists in both
+ * the seed roster and the API payload, prefer the DB-backed row so HQ edits / CRM
+ * duplicates are visible instead of being silently replaced by seed-only rows.
  */
 function mergeTeamMembersWithRoster(fromPayload: TeamMember[]): TeamMember[] {
-  const extras = fromPayload.filter((m) => {
-    if (!m.email) return true; // Keep members without email (they're not in roster)
-    return !ROSTER_EMAILS.has(m.email?.toLowerCase() || "");
+  const byEmail = new Map(
+    fromPayload.map((m) => [m.email?.toLowerCase().trim() || "", m] as const),
+  );
+  const rosterEmails = new Set(
+    TEAM_ROSTER.map((m) => m.email?.toLowerCase()).filter(Boolean) as string[],
+  );
+
+  const mergedRoster = TEAM_ROSTER.map((seed) => {
+    const key = seed.email?.toLowerCase().trim() || "";
+    const fromDb = key ? byEmail.get(key) : undefined;
+    if (fromDb) return fromDb;
+    return seed;
   });
-  return [...TEAM_ROSTER, ...extras];
+
+  const extras = fromPayload.filter((m) => {
+    const e = m.email?.toLowerCase().trim() || "";
+    if (!e) return true;
+    return !rosterEmails.has(e);
+  });
+
+  return [...mergedRoster, ...extras];
 }
 
 /**
@@ -106,5 +127,6 @@ export function normalizeAppData(raw: AppData): AppData {
     purchaseOrders: pickOrSeed(raw.purchaseOrders, SEED.purchaseOrders),
     shipments: pickOrSeed(raw.shipments, SEED.shipments),
     productionStatuses: pickOrSeed(raw.productionStatuses, SEED.productionStatuses),
+    warehouses: pickOrSeed(raw.warehouses, DEFAULT_WAREHOUSES),
   };
 }

@@ -52,6 +52,16 @@ export type TeamMember = {
   role: TeamMemberPortalRole;
   /** ISO date */
   createdAt: string;
+  /** When false, row exists in DB but was soft-deleted from CRM (not returned by default API). */
+  isActive?: boolean;
+};
+
+/** Brand HQ warehouse / depot locations for inventory and transfers. */
+export type Warehouse = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
 };
 
 export type AppData = {
@@ -80,6 +90,8 @@ export type AppData = {
   depletionReports?: import("@/data/mockData").DepletionReport[];
   /** Distributor inventory adjustment requests — reconcile physical counts. */
   inventoryAdjustmentRequests?: import("@/data/mockData").InventoryAdjustmentRequest[];
+  /** Warehouse / depot directory (Settings-managed). */
+  warehouses?: Warehouse[];
 };
 
 export type VisitNoteEntry = {

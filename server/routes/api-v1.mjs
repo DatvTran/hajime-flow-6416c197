@@ -7,9 +7,69 @@ import { Router } from 'express';
 import { db } from '../config/database.mjs';
 import { authenticateToken, requirePermission, requireTenantAccess } from '../middleware/auth.mjs';
 import { Permission } from '../rbac/permissions.mjs';
+import {
+  createCrmUserInvite,
+  sendCrmInviteEmail,
+  CRM_TEAM_ROLE_LABELS,
+} from '../services/crm-invite.mjs';
 
 const router = Router();
 const isDev = process.env.NODE_ENV === 'development';
+
+/** After creating/reactivating a CRM contact, optionally send portal invite email. */
+async function buildCrmContactInvitePayload(req, tenantId, member, { email, name, role }) {
+  const invitedByUserId = req.user?.userId;
+  if (!invitedByUserId) {
+    return {
+      data: member,
+      invite: { status: 'skipped', reason: 'missing_inviter' },
+    };
+  }
+
+  const inviteResult = await createCrmUserInvite({
+    tenantId,
+    email,
+    teamMemberRole: role,
+    invitedByUserId,
+  });
+
+  if (!inviteResult.ok) {
+    return {
+      data: member,
+      invite: { status: 'skipped', reason: inviteResult.reason },
+    };
+  }
+
+  try {
+    const tenantRow = await db('tenants').where({ id: tenantId }).first();
+    const sendResult = await sendCrmInviteEmail({
+      to: email,
+      inviteUrl: inviteResult.inviteUrl,
+      recipientName: name,
+      roleLabel: CRM_TEAM_ROLE_LABELS[role] || role,
+      inviterDisplayName: req.user?.displayName,
+      tenantName: tenantRow?.name,
+    });
+
+    return {
+      data: member,
+      invite: {
+        status: 'sent',
+        emailDispatched: sendResult.sent,
+        ...(isDev && { inviteUrl: inviteResult.inviteUrl }),
+      },
+    };
+  } catch (emailErr) {
+    console.error('[API v1] CRM invite email failed:', emailErr);
+    return {
+      data: member,
+      invite: {
+        status: 'delivery_failed',
+        ...(isDev && { inviteUrl: inviteResult.inviteUrl }),
+      },
+    };
+  }
+}
 
 // Apply auth to all routes
 router.use(authenticateToken);
@@ -1502,7 +1562,8 @@ router.get('/new-product-requests', requirePermission(Permission.PRODUCTION_READ
       query = query.where('assigned_manufacturer', assigned_manufacturer);
     }
     
-    const countQuery = query.clone().count('id as count').first();
+    // Postgres does not allow ORDER BY in COUNT queries unless grouped; clear ordering for count.
+    const countQuery = query.clone().clearOrder().count('id as count').first();
     
     const dataQuery = query
       .limit(parseInt(limit))
@@ -2658,12 +2719,18 @@ router.get('/team-members', requirePermission(Permission.SETTINGS_READ), async (
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
-    
-    const members = await db('team_members')
-      .where({ tenant_id: tenantId })
-      .where('is_active', true)
-      .orderBy('created_at', 'desc');
-    
+
+    const includeInactive =
+      req.query.include_inactive === 'true' ||
+      req.query.include_inactive === '1';
+
+    let query = db('team_members').where({ tenant_id: tenantId });
+    if (!includeInactive) {
+      query = query.where('is_active', true);
+    }
+
+    const members = await query.orderBy('created_at', 'desc');
+
     res.json({ data: members });
   } catch (err) {
     console.error('[API v1] Error fetching team members:', err);
@@ -2681,6 +2748,35 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
     if (!name || !email || !role) {
       return res.status(400).json({ error: 'name, email, and role are required' });
     }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // If this email already exists for the tenant, return a clear 409 (or reactivate).
+    const existing = await db('team_members')
+      .where({ tenant_id: tenantId, email: normalizedEmail })
+      .first();
+    if (existing) {
+      if (existing.is_active === false) {
+        const [reactivated] = await db('team_members')
+          .where({ tenant_id: tenantId, email: normalizedEmail })
+          .update({
+            name,
+            role,
+            phone,
+            department,
+            is_active: true,
+            updated_at: new Date(),
+          })
+          .returning('*');
+        const payload = await buildCrmContactInvitePayload(req, tenantId, reactivated, {
+          email: normalizedEmail,
+          name,
+          role,
+        });
+        return res.status(200).json({ ...payload, message: 'Team member reactivated' });
+      }
+      return res.status(409).json({ error: 'A CRM contact with this email already exists.' });
+    }
     
     const id = `tm-${Date.now()}`;
     const [member] = await db('team_members')
@@ -2688,7 +2784,7 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
         id,
         tenant_id: tenantId,
         name,
-        email,
+        email: normalizedEmail,
         role,
         phone,
         department,
@@ -2698,8 +2794,13 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
         updated_at: new Date()
       })
       .returning('*');
-    
-    res.status(201).json({ data: member });
+
+    const payload = await buildCrmContactInvitePayload(req, tenantId, member, {
+      email: normalizedEmail,
+      name,
+      role,
+    });
+    res.status(201).json(payload);
   } catch (err) {
     console.error('[API v1] Error creating team member:', err);
     res.status(500).json({ error: 'Failed to create team member' });
@@ -3297,6 +3398,153 @@ router.patch('/opportunities/:id/status', requirePermission(Permission.ACCOUNTS_
   } catch (err) {
     console.error('[API v1] Error updating opportunity status:', err);
     res.status(500).json({ error: 'Failed to update opportunity status' });
+  }
+});
+
+// ===== WAREHOUSES (Settings — inventory locations) =====
+
+async function ensureDefaultWarehouses(tenantId) {
+  const row = await db('warehouses').where({ tenant_id: tenantId }).count('* as c').first();
+  const n = Number(row?.c ?? 0);
+  if (n > 0) return;
+  const now = new Date();
+  const ts = Date.now();
+  await db('warehouses').insert([
+    {
+      id: `wh-${ts}-toronto`,
+      tenant_id: tenantId,
+      name: 'Toronto Main Warehouse',
+      is_active: true,
+      sort_order: 0,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: `wh-${ts}-milan`,
+      tenant_id: tenantId,
+      name: 'Milan Depot',
+      is_active: true,
+      sort_order: 1,
+      created_at: now,
+      updated_at: now,
+    },
+  ]);
+}
+
+// GET /api/v1/warehouses
+router.get('/warehouses', requirePermission(Permission.SETTINGS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+
+    await ensureDefaultWarehouses(tenantId);
+
+    const includeInactive =
+      req.query.include_inactive === 'true' || req.query.include_inactive === '1';
+
+    let q = db('warehouses').where({ tenant_id: tenantId });
+    if (!includeInactive) {
+      q = q.where('is_active', true);
+    }
+
+    const rows = await q.orderBy('sort_order', 'asc').orderBy('name', 'asc');
+    res.json({ data: rows });
+  } catch (err) {
+    console.error('[API v1] Error fetching warehouses:', err);
+    res.status(500).json({ error: 'Failed to fetch warehouses' });
+  }
+});
+
+// POST /api/v1/warehouses
+router.post('/warehouses', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+
+    await ensureDefaultWarehouses(tenantId);
+
+    const name = String(req.body?.name ?? '').trim();
+    if (!name) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+
+    const existing = await db('warehouses')
+      .where({ tenant_id: tenantId })
+      .whereRaw('lower(trim(name)) = ?', [name.toLowerCase()])
+      .first();
+    if (existing) {
+      return res.status(409).json({ error: 'A warehouse with this name already exists.' });
+    }
+
+    const maxSort = await db('warehouses').where({ tenant_id: tenantId }).max('sort_order as m').first();
+    const sortOrder = Number(maxSort?.m ?? -1) + 1;
+
+    const id = `wh-${Date.now()}`;
+    const now = new Date();
+    const [created] = await db('warehouses')
+      .insert({
+        id,
+        tenant_id: tenantId,
+        name,
+        is_active: true,
+        sort_order: sortOrder,
+        created_at: now,
+        updated_at: now,
+      })
+      .returning('*');
+
+    res.status(201).json({ data: created });
+  } catch (err) {
+    console.error('[API v1] Error creating warehouse:', err);
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A warehouse with this name already exists.' });
+    }
+    res.status(500).json({ error: 'Failed to create warehouse' });
+  }
+});
+
+// PATCH /api/v1/warehouses/:id
+router.patch('/warehouses/:id', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    const updates = { ...req.body };
+
+    delete updates.id;
+    delete updates.tenant_id;
+    delete updates.created_at;
+
+    if (updates.name !== undefined) {
+      updates.name = String(updates.name).trim();
+      if (!updates.name) {
+        return res.status(400).json({ error: 'name cannot be empty' });
+      }
+    }
+
+    const snake = {};
+    if (updates.name !== undefined) snake.name = updates.name;
+    if (updates.is_active !== undefined) snake.is_active = Boolean(updates.is_active);
+    if (updates.sort_order !== undefined) snake.sort_order = Number(updates.sort_order);
+
+    snake.updated_at = new Date();
+
+    const [row] = await db('warehouses')
+      .where({ id, tenant_id: tenantId })
+      .update(snake)
+      .returning('*');
+
+    if (!row) {
+      return res.status(404).json({ error: 'Warehouse not found' });
+    }
+
+    res.json({ data: row });
+  } catch (err) {
+    console.error('[API v1] Error updating warehouse:', err);
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A warehouse with this name already exists.' });
+    }
+    res.status(500).json({ error: 'Failed to update warehouse' });
   }
 });
 

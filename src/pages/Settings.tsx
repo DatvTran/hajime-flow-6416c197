@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { EditProductDialog } from "@/components/EditProductDialog";
 import { useProducts, useAppData } from "@/contexts/AppDataContext";
 import { SettingsSkeleton } from "@/components/skeletons";
 import type { Product } from "@/data/mockData";
-import { Trash2, UserPlus, Users } from "lucide-react";
+import { Trash2, UserPlus, Users, Warehouse as WarehouseIcon } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import {
   Dialog,
@@ -24,15 +24,32 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL } from "@/data/team-roster";
-import type { TeamMember, TeamMemberPortalRole } from "@/types/app-data";
+import type { TeamMember, TeamMemberPortalRole, Warehouse } from "@/types/app-data";
 import { CSVImportButton } from "@/components/CSVImportButton";
 import {
   createTeamMember,
+  createWarehouse,
   deleteTeamMember,
   getOperationalSettings,
   updateOperationalSettings,
+  updateWarehouse,
 } from "@/lib/api-v1-mutations";
 import { fetchApiHealth } from "@/lib/api-health";
+import { Switch } from "@/components/ui/switch";
+
+function warehouseFromApi(row: {
+  id: string;
+  name: string;
+  is_active?: boolean;
+  sort_order?: number;
+}): Warehouse {
+  return {
+    id: row.id,
+    name: row.name,
+    isActive: row.is_active !== false,
+    sortOrder: Number(row.sort_order ?? 0),
+  };
+}
 
 const TEAM_ROLE_LABELS: Record<TeamMemberPortalRole, string> = {
   sales_rep: "Sales rep",
@@ -62,6 +79,14 @@ export default function SettingsPage() {
   const [retailShelfThreshold, setRetailShelfThreshold] = useState(String(os.retailerStockThresholdBottles ?? 48));
   const [dbHealth, setDbHealth] = useState<"checking" | "ok" | "error">("checking");
   const [dbHealthDetail, setDbHealthDetail] = useState<string | null>(null);
+  const [warehouseDialogOpen, setWarehouseDialogOpen] = useState(false);
+  const [newWarehouseName, setNewWarehouseName] = useState("");
+
+  const warehousesSorted = useMemo(() => {
+    const list = [...(data.warehouses ?? [])];
+    list.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+    return list;
+  }, [data.warehouses]);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,12 +167,20 @@ export default function SettingsPage() {
     }
 
     try {
-      // Save to backend API
-      const result = await createTeamMember({
+      // Save to backend API (may send portal invite email with confirmation link)
+      const result = (await createTeamMember({
         name: displayName,
         email,
         role: newMemberRole,
-      });
+      })) as {
+        data: { id: string };
+        invite?: {
+          status: string;
+          reason?: string;
+          emailDispatched?: boolean;
+          inviteUrl?: string;
+        };
+      };
 
       const row: TeamMember = {
         id: result.data.id,
@@ -164,11 +197,28 @@ export default function SettingsPage() {
       setNewMemberEmail("");
       setNewMemberRole("sales_rep");
       setTeamDialogOpen(false);
-      toast.success("CRM contact added", { description: `${displayName} · ${TEAM_ROLE_LABELS[newMemberRole]} — saved to server` });
+
+      const label = `${displayName} · ${TEAM_ROLE_LABELS[newMemberRole]}`;
+      const inv = result.invite;
+      let detail = "Saved to server.";
+      if (inv?.status === "sent") {
+        detail = inv.emailDispatched
+          ? "Invitation email sent — they can open the link to confirm and create a password."
+          : "Invite link logged on the server (set RESEND_API_KEY to send email).";
+      } else if (inv?.status === "skipped" && inv.reason === "email_already_registered") {
+        detail = "Contact saved. No invite sent — that email already has a login.";
+      } else if (inv?.status === "delivery_failed") {
+        detail =
+          "Contact saved, but the invitation email failed. Check server logs or RESEND configuration.";
+      }
+      toast.success("CRM contact added", { description: `${label} — ${detail}` });
     } catch (err) {
       console.error("[Settings] Failed to add CRM contact:", err);
       toast.error("Failed to save to server", {
-        description: "Contact was not added — check connection and try again.",
+        description:
+          err instanceof Error
+            ? err.message
+            : "Contact was not added — check connection and try again.",
       });
     }
   };
@@ -185,6 +235,54 @@ export default function SettingsPage() {
       console.error("[Settings] Failed to remove CRM contact:", err);
       toast.error("Failed to delete from server", {
         description: "Contact was not removed — try again.",
+      });
+    }
+  };
+
+  const addWarehouse = async () => {
+    const name = newWarehouseName.trim();
+    if (!name) {
+      toast.error("Warehouse name is required");
+      return;
+    }
+    try {
+      const res = await createWarehouse({ name });
+      const row = res.data as {
+        id: string;
+        name: string;
+        is_active?: boolean;
+        sort_order?: number;
+      };
+      const w = warehouseFromApi(row);
+      updateData((d) => ({
+        ...d,
+        warehouses: [...(d.warehouses ?? []).filter((x) => x.id !== w.id), w].sort(
+          (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+        ),
+      }));
+      setNewWarehouseName("");
+      setWarehouseDialogOpen(false);
+      toast.success("Warehouse saved", { description: `${w.name} — saved to server` });
+    } catch (err) {
+      console.error("[Settings] Failed to save warehouse:", err);
+      toast.error("Failed to save warehouse", {
+        description: err instanceof Error ? err.message : "Try again.",
+      });
+    }
+  };
+
+  const setWarehouseActive = async (id: string, isActive: boolean) => {
+    try {
+      await updateWarehouse(id, { is_active: isActive });
+      updateData((d) => ({
+        ...d,
+        warehouses: (d.warehouses ?? []).map((w) => (w.id === id ? { ...w, isActive } : w)),
+      }));
+      toast.success(isActive ? "Warehouse activated" : "Warehouse deactivated");
+    } catch (err) {
+      console.error("[Settings] Failed to update warehouse:", err);
+      toast.error("Failed to update warehouse", {
+        description: err instanceof Error ? err.message : "Try again.",
       });
     }
   };
@@ -245,6 +343,95 @@ export default function SettingsPage() {
           >
             Re-check
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
+          <div>
+            <CardTitle className="font-display flex items-center gap-2 text-lg">
+              <WarehouseIcon className="h-5 w-5" />
+              Warehouses
+            </CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Inventory and transfer locations. Stored in Postgres — used for stock routing and fulfillment.
+            </p>
+          </div>
+          <Button
+            type="button"
+            className="w-full shrink-0 touch-manipulation sm:w-auto"
+            onClick={() => setWarehouseDialogOpen(true)}
+          >
+            Add Warehouse
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <Dialog open={warehouseDialogOpen} onOpenChange={setWarehouseDialogOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="font-display">Add warehouse</DialogTitle>
+                <DialogDescription>
+                  Name appears on inventory, transfers, and shipment routing.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label htmlFor="wh-name">Warehouse name</Label>
+                  <Input
+                    id="wh-name"
+                    value={newWarehouseName}
+                    onChange={(e) => setNewWarehouseName(e.target.value)}
+                    placeholder="e.g. Toronto Main Warehouse"
+                    className="touch-manipulation"
+                  />
+                </div>
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button type="button" variant="outline" className="touch-manipulation" onClick={() => setWarehouseDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" className="touch-manipulation" onClick={addWarehouse}>
+                  Save warehouse
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {warehousesSorted.length === 0 ? (
+            <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
+              No warehouses yet. Defaults are created on first load (Toronto Main Warehouse, Milan Depot) once the server migration has run.
+            </p>
+          ) : (
+            <ul className="divide-y rounded-lg border border-border/80">
+              {warehousesSorted.map((w) => (
+                <li
+                  key={w.id}
+                  className={`flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${w.isActive === false ? "bg-muted/30 opacity-80" : ""}`}
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium">{w.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {w.isActive === false ? "Inactive — excluded from default warehouse lists" : "Active"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+                    <Label htmlFor={`wh-active-${w.id}`} className="text-xs text-muted-foreground">
+                      Active
+                    </Label>
+                    <Switch
+                      id={`wh-active-${w.id}`}
+                      checked={w.isActive !== false}
+                      onCheckedChange={(checked) => setWarehouseActive(w.id, checked === true)}
+                      className="touch-manipulation"
+                    />
+                    <Badge variant={w.isActive === false ? "secondary" : "default"} className="font-normal capitalize">
+                      {w.isActive === false ? "inactive" : "active"}
+                    </Badge>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 
@@ -343,8 +530,18 @@ export default function SettingsPage() {
                   </thead>
                   <tbody>
                     {teamMembers.map((m) => (
-                      <tr key={m.id} className="border-b border-border/50 last:border-0">
-                        <td className="py-3 font-medium">{m.displayName}</td>
+                      <tr
+                        key={m.id}
+                        className={`border-b border-border/50 last:border-0 ${m.isActive === false ? "opacity-70" : ""}`}
+                      >
+                        <td className="py-3 font-medium">
+                          <span>{m.displayName}</span>
+                          {m.isActive === false ? (
+                            <Badge variant="secondary" className="ml-2 align-middle font-normal">
+                              Inactive
+                            </Badge>
+                          ) : null}
+                        </td>
                         <td className="py-3 text-muted-foreground">{m.email}</td>
                         <td className="py-3">{TEAM_ROLE_LABELS[m.role]}</td>
                         <td className="py-3 text-muted-foreground">
