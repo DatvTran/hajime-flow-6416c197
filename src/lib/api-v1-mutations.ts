@@ -628,8 +628,12 @@ export async function approveInventoryAdjustmentRequest(
 
 // ===== TEAM MEMBERS (Phase 2) =====
 
-export async function getTeamMembers() {
-  return apiFetch("/api/v1/team-members");
+export async function getTeamMembers(opts?: { includeInactive?: boolean }) {
+  const q =
+    opts?.includeInactive === true
+      ? "?include_inactive=1"
+      : "";
+  return apiFetch(`/api/v1/team-members${q}`);
 }
 
 export async function createTeamMember(memberData: {
@@ -648,6 +652,31 @@ export async function createTeamMember(memberData: {
 export async function deleteTeamMember(id: string) {
   return apiFetch(`/api/v1/team-members/${id}`, {
     method: "DELETE",
+  });
+}
+
+// ===== WAREHOUSES =====
+
+export async function getWarehouses(opts?: { includeInactive?: boolean }) {
+  const q =
+    opts?.includeInactive === true ? "?include_inactive=1" : "";
+  return apiFetch(`/api/v1/warehouses${q}`);
+}
+
+export async function createWarehouse(body: { name: string }) {
+  return apiFetch("/api/v1/warehouses", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateWarehouse(
+  id: string,
+  body: Partial<{ name: string; is_active: boolean; sort_order: number }>,
+) {
+  return apiFetch(`/api/v1/warehouses/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
   });
 }
 

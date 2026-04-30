@@ -26,6 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/sonner";
 import { Link } from "react-router-dom";
 import { isDistributorAccountType } from "@/lib/distributor-accounts";
+import { isManufacturerAccountType, looksLikeManufacturerAccount } from "@/lib/manufacturer-accounts";
 
 const SALES_REPS = ["Marcus Chen", "Sarah Kim", "Luca Moretti", "Jordan Lee"] as const;
 
@@ -115,7 +116,10 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   const { availableBottlesForSku } = useInventory();
 
   const cfg = getSalesOrderFormVariantConfig(variant);
-  const accounts = useMemo(() => accountsForSalesOrderVariant(allAccounts, variant), [allAccounts, variant]);
+  const baseAccountsForVariant = useMemo(
+    () => accountsForSalesOrderVariant(allAccounts, variant),
+    [allAccounts, variant],
+  );
 
   const [account, setAccount] = useState("");
   const [market, setMarket] = useState("");
@@ -177,11 +181,32 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     return "retail";
   }, [brandPath, variant, wholesalerPath]);
 
+  // Brand HQ: make Account list match the selected pathway target.
+  const accounts = useMemo(() => {
+    if (variant !== "brand") return baseAccountsForVariant;
+    const base = (allAccounts || []).filter((a) => a.status !== "inactive");
+
+    if (pathwayTarget === "wholesaler") {
+      const dc = base.filter((a) => isDistributorAccountType(a.type));
+      return dc.length > 0 ? dc : base;
+    }
+    if (pathwayTarget === "manufacturer") {
+      const mf = base.filter((a) => isManufacturerAccountType(a.type) || looksLikeManufacturerAccount(a));
+      return mf.length > 0 ? mf : base;
+    }
+    // sales_rep + retail target: retail-like accounts (everything except wholesaler/distributor)
+    const retailLike = base.filter((a) => !isDistributorAccountType(a.type));
+    return retailLike.length > 0 ? retailLike : base;
+  }, [allAccounts, baseAccountsForVariant, pathwayTarget, variant]);
+
   const marketOptionsForPathway = useMemo(() => {
     const base = (allAccounts || []).filter((a) => a.status !== "inactive");
     const filtered = (() => {
       if (pathwayTarget === "wholesaler") return base.filter((a) => isDistributorAccountType(a.type));
-      if (pathwayTarget === "manufacturer") return base;
+      if (pathwayTarget === "manufacturer") {
+        const mf = base.filter((a) => isManufacturerAccountType(a.type) || looksLikeManufacturerAccount(a));
+        return mf.length > 0 ? mf : base;
+      }
       // sales_rep + retail target: retail-like accounts (everything except wholesaler/distributor)
       return base.filter((a) => !isDistributorAccountType(a.type));
     })();

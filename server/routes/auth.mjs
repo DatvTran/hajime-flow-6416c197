@@ -15,6 +15,45 @@ import {
 const router = express.Router();
 
 /**
+ * GET /api/auth/invite-preview
+ * Public: validate invite token and return safe fields for the accept-invite UI.
+ */
+router.get('/invite-preview', async (req, res) => {
+  try {
+    const token = req.query.token;
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'token is required' });
+    }
+
+    const invite = await db('user_invites')
+      .where({ token, used: false })
+      .whereRaw('expires_at > NOW()')
+      .first();
+
+    if (!invite) {
+      return res.status(404).json({ error: 'Invalid or expired invite' });
+    }
+
+    const tenant = await db('tenants').where({ id: invite.tenant_id }).first();
+    const member = await db('team_members')
+      .where({ tenant_id: invite.tenant_id, email: invite.email })
+      .where('is_active', true)
+      .first();
+
+    res.json({
+      email: invite.email,
+      displayName: member?.name || invite.email.split('@')[0],
+      role: invite.intended_role,
+      tenantName: tenant?.name ?? 'Your organization',
+      expiresAt: invite.expires_at,
+    });
+  } catch (err) {
+    console.error('invite-preview error:', err);
+    res.status(500).json({ error: 'Failed to load invitation' });
+  }
+});
+
+/**
  * POST /api/auth/register
  * Open self-registration — limited to partner roles only.
  * Brand Operator and Founder Admin can only be created via admin-create-user.
@@ -31,69 +70,99 @@ router.post('/register', async (req, res) => {
     }
 
     const { email, password, displayName, role, inviteToken } = result.data;
+    const normalizedEmail = email.toLowerCase().trim();
 
-    // Validate invite token if provided (joining an existing tenant)
-    let userTenantId = null;
-    if (inviteToken) {
-      const invite = await db('user_invites')
-        .where({ token: inviteToken, used: false })
-        .whereRaw('expires_at > NOW()')
-        .first();
+    let user;
 
-      if (!invite) {
+    try {
+      await db.transaction(async (trx) => {
+        let userTenantId = null;
+
+        if (inviteToken) {
+          const invite = await trx('user_invites')
+            .where({ token: inviteToken, used: false })
+            .whereRaw('expires_at > NOW()')
+            .forUpdate()
+            .first();
+
+          if (!invite) {
+            const err = new Error('INVITE_INVALID');
+            err.code = 'INVITE_INVALID';
+            throw err;
+          }
+
+          if (invite.email.toLowerCase() !== normalizedEmail) {
+            const err = new Error('INVITE_EMAIL_MISMATCH');
+            err.code = 'INVITE_EMAIL_MISMATCH';
+            throw err;
+          }
+
+          if (invite.intended_role && invite.intended_role !== normalizeRole(role)) {
+            const err = new Error('INVITE_ROLE_MISMATCH');
+            err.code = 'INVITE_ROLE_MISMATCH';
+            throw err;
+          }
+
+          userTenantId = invite.tenant_id;
+        } else {
+          const [tenant] = await trx('tenants')
+            .insert({ name: `${displayName}'s Organization` })
+            .returning('id');
+          userTenantId = tenant.id;
+        }
+
+        const existingUser = await trx('users')
+          .where({ email: normalizedEmail })
+          .whereNull('deleted_at')
+          .first();
+
+        if (existingUser) {
+          const err = new Error('EMAIL_EXISTS');
+          err.code = 'EMAIL_EXISTS';
+          throw err;
+        }
+
+        const passwordHash = await authService.hashPassword(password);
+
+        const [created] = await trx('users')
+          .insert({
+            tenant_id: userTenantId,
+            email: normalizedEmail,
+            password_hash: passwordHash,
+            role: normalizeRole(role),
+            display_name: displayName,
+            email_verified: Boolean(inviteToken),
+          })
+          .returning(['id', 'email', 'role', 'tenant_id', 'display_name']);
+
+        user = created;
+
+        if (inviteToken) {
+          await trx('user_invites').where({ token: inviteToken }).update({ used: true });
+        }
+      });
+    } catch (err) {
+      if (err.code === 'INVITE_INVALID') {
         return res.status(400).json({ error: 'Invalid or expired invite token' });
       }
-
-      // Invite must allow this role
-      if (invite.intended_role && invite.intended_role !== normalizeRole(role)) {
+      if (err.code === 'INVITE_EMAIL_MISMATCH') {
+        return res.status(403).json({ error: 'Email does not match invitation' });
+      }
+      if (err.code === 'INVITE_ROLE_MISMATCH') {
         return res.status(403).json({ error: 'Invite is for a different role' });
       }
-
-      userTenantId = invite.tenant_id;
-
-      // Mark invite used
-      await db('user_invites').where({ token: inviteToken }).update({ used: true });
-    } else {
-      // No invite → create a fresh tenant for this user
-      const [tenant] = await db('tenants')
-        .insert({ name: `${displayName}'s Organization` })
-        .returning('id');
-      userTenantId = tenant.id;
+      if (err.code === 'EMAIL_EXISTS') {
+        return res.status(409).json({ error: 'Email already registered' });
+      }
+      throw err;
     }
 
-    // Check if user already exists
-    const existingUser = await db('users')
-      .where({ email: email.toLowerCase() })
-      .whereNull('deleted_at')
-      .first();
-
-    if (existingUser) {
-      return res.status(409).json({ error: 'Email already registered' });
-    }
-
-    // Hash password
-    const passwordHash = await authService.hashPassword(password);
-
-    // Create user
-    const [user] = await db('users')
-      .insert({
-        tenant_id: userTenantId,
-        email: email.toLowerCase(),
-        password_hash: passwordHash,
-        role: normalizeRole(role),
-        display_name: displayName,
-        email_verified: false,
-      })
-      .returning(['id', 'email', 'role', 'tenant_id', 'display_name']);
-
-    // Generate tokens
     const accessToken = authService.generateAccessToken(user);
     const refreshToken = await authService.generateRefreshToken(user.id, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
     });
 
-    // Log event
     await authService.logAuthEvent({
       userId: user.id,
       eventType: 'registration',

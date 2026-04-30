@@ -19,6 +19,7 @@ import { lazyWithChunkReload } from "@/lib/lazy-with-chunk-reload";
 
 // Eagerly loaded (critical path)
 import Login from "./pages/Login";
+import AcceptInvite from "./pages/AcceptInvite";
 import NotFound from "./pages/NotFound";
 
 // Lazy-loaded by route group for better chunking
@@ -120,6 +121,7 @@ const App = () => {
             <Suspense fallback={<PageLoader />}>
               <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/accept-invite" element={<AcceptInvite />} />
               <Route element={<RequireAuth />}>
                 <Route element={<RouteErrorOutlet />}>
                   <Route element={<AppDataShell />}>
