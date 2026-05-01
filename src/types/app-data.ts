@@ -68,6 +68,59 @@ export type Warehouse = {
   sortOrder: number;
 };
 
+export type ManufacturerProfileCertification = {
+  id: string;
+  name: string;
+  issuer: string;
+  issuedAt: string;
+  expiresAt: string;
+  status: "active" | "expired" | "pending";
+};
+
+export type ManufacturerProfileEquipment = {
+  id: string;
+  name: string;
+  capacity: string;
+  status: "operational" | "maintenance" | "offline";
+};
+
+/** Manufacturer portal profile (UI state; persisted via `/api/v1/manufacturer-profiles`). */
+export type ManufacturerProfile = {
+  id?: string;
+  manufacturerId?: string;
+  companyName: string;
+  legalName: string;
+  address: {
+    street: string;
+    city: string;
+    region: string;
+    country: string;
+    postalCode: string;
+  };
+  primaryContact: {
+    name: string;
+    role: string;
+    email: string;
+    phone: string;
+  };
+  backupContact: {
+    name: string;
+    role: string;
+    email: string;
+    phone: string;
+  };
+  productionCapacity: {
+    monthlyCases: number;
+    peakCapacity: number;
+    currentUtilization: number;
+  };
+  certifications: ManufacturerProfileCertification[];
+  equipment: ManufacturerProfileEquipment[];
+  taxId: string;
+  website: string;
+  description: string;
+};
+
 export type AppData = {
   version: 1;
   products: Product[];
@@ -96,6 +149,8 @@ export type AppData = {
   inventoryAdjustmentRequests?: import("@/data/mockData").InventoryAdjustmentRequest[];
   /** Warehouse / depot directory (Settings-managed). */
   warehouses?: Warehouse[];
+  /** Manufacturer portal company profile (Manufacturer Profile page). */
+  manufacturerProfile?: ManufacturerProfile;
 };
 
 export type VisitNoteEntry = {
