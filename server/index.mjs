@@ -525,4 +525,8 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`[hajime-api] Stripe: ${stripe ? 'ready' : 'disabled'}`);
   console.log(`[hajime-api] Features: Auth=${FEATURE_FLAG_AUTH_ENABLED}, CSV=${FEATURE_FLAG_CSV_ENABLED}`);
   console.log(`[hajime-api] Migration Stage: ${dataMigrationService.stage}`);
+  const resendKey = (process.env.RESEND_API_KEY || '').trim();
+  console.log(
+    `[hajime-api] Resend: ${resendKey ? 'configured' : 'missing RESEND_API_KEY — invites/password-reset URLs log only'}`
+  );
 });

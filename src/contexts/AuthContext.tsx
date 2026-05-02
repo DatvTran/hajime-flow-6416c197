@@ -64,7 +64,7 @@ type AuthContextValue = {
   user: HajimeUser | null;
   isLoading: boolean;
   error: string | null;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<HajimeUser>;
   signOut: () => void;
   clearError: () => void;
 };
@@ -196,13 +196,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!validatedRole) {
         console.error(`[Auth] Invalid role from server: ${data.user.role}, defaulting to brand_operator`);
       }
-      setUser({
+      const nextUser: HajimeUser = {
         id: data.user.id,
         email: data.user.email,
         displayName: data.user.displayName,
         role: validatedRole || "brand_operator",
         tenantId: data.user.tenantId,
-      });
+      };
+      setUser(nextUser);
+      return nextUser;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
       throw err;

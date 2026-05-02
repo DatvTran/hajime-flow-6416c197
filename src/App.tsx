@@ -19,6 +19,8 @@ import { lazyWithChunkReload } from "@/lib/lazy-with-chunk-reload";
 
 // Eagerly loaded (critical path)
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import AcceptInvite from "./pages/AcceptInvite";
 import NotFound from "./pages/NotFound";
 
@@ -121,6 +123,8 @@ const App = () => {
             <Suspense fallback={<PageLoader />}>
               <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/accept-invite" element={<AcceptInvite />} />
               <Route element={<RequireAuth />}>
                 <Route element={<RouteErrorOutlet />}>
