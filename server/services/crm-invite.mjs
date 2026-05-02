@@ -91,8 +91,8 @@ export async function sendCrmInviteEmail({
   inviterDisplayName,
   tenantName,
 }) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+  const apiKey = (process.env.RESEND_API_KEY || '').trim();
+  const from = (process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev').trim();
 
   const org = tenantName || 'your organization';
   const subject = `${inviterDisplayName || 'Your team'} invited you to Hajime (${org})`;

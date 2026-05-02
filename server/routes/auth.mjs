@@ -454,16 +454,90 @@ router.post('/password-reset-request', async (req, res) => {
     const { email } = result.data;
 
     // Always return success to prevent email enumeration
-    await authService.initiatePasswordReset(email);
+    let resetToken;
+    try {
+      resetToken = await authService.initiatePasswordReset(email);
+    } catch (e) {
+      resetToken = null;
+    }
+
+    const baseUrlRaw = process.env.CLIENT_URL || 'http://localhost:8080';
+    const baseUrl = baseUrlRaw.replace(/\/$/, '');
+    const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+    const resendFrom = (process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev').trim();
+    /** @type {'none'|'email'|'logged'} */
+    let delivery = 'none';
+    /** @type {'no_api_key'|'invalid_resend_key'|'resend_error'|'resend_network'|undefined} */
+    let mailIssue;
+    if (resetToken) {
+      const resetUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+      if (resendApiKey) {
+        try {
+          const sendRes = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${resendApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              from: resendFrom,
+              to: [email.toLowerCase().trim()],
+              subject: 'Reset your Hajime password',
+              text: [
+                'You requested a password reset.',
+                '',
+                `Open this link to choose a new password:\n${resetUrl}`,
+                '',
+                'If you did not request this, you can ignore this email.',
+              ].join('\n'),
+            }),
+          });
+          if (sendRes.ok) {
+            delivery = 'email';
+          } else {
+            const errText = await sendRes.text();
+            let errDetail = errText;
+            try {
+              const j = JSON.parse(errText);
+              if (j?.message) errDetail = `${j.message} (${sendRes.status})`;
+            } catch {
+              /* keep raw body */
+            }
+            console.error('[auth] Resend password-reset failed:', sendRes.status, errDetail);
+            console.log('[Password reset] Email not accepted by provider — logging reset URL instead');
+            console.log(`  To: ${email}`);
+            console.log(`  ${resetUrl}`);
+            delivery = 'logged';
+            mailIssue = sendRes.status === 401 ? 'invalid_resend_key' : 'resend_error';
+          }
+        } catch (emailErr) {
+          console.error('[auth] Password reset email send failed:', emailErr);
+          console.log('[Password reset] Could not send email — logging reset URL instead');
+          console.log(`  To: ${email}`);
+          console.log(`  ${resetUrl}`);
+          delivery = 'logged';
+          mailIssue = 'resend_network';
+        }
+      } else {
+        console.log('[Password reset] RESEND_API_KEY not set — logging reset URL instead');
+        console.log(`  To: ${email}`);
+        console.log(`  ${resetUrl}`);
+        delivery = 'logged';
+        mailIssue = 'no_api_key';
+      }
+    }
 
     res.json({
       message: 'If an account exists with this email, a password reset link has been sent',
+      delivery,
+      ...(mailIssue ? { mailIssue } : {}),
     });
   } catch (err) {
     console.error('Password reset request error:', err);
     // Still return success to prevent enumeration
     res.json({
       message: 'If an account exists with this email, a password reset link has been sent',
+      delivery: 'none',
     });
   }
 });
