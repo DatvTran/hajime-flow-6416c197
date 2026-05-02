@@ -31,6 +31,25 @@ export function marketForRetailAccount(tradingName: string, accountList: Account
   return acc.city;
 }
 
+/** Match API / UI: `SalesOrder.account` is usually trading name, not account_number. */
+export function resolveAccountForSalesOrder(o: SalesOrder, accounts: Account[]): Account | undefined {
+  if (o.accountId) {
+    const byId = accounts.find((a) => a.id === o.accountId);
+    if (byId) return byId;
+  }
+  const raw = (o.account || "").trim();
+  if (!raw) return undefined;
+  const lower = raw.toLowerCase();
+  return (
+    accounts.find((a) => a.accountNumber === raw) ||
+    accounts.find((a) => a.tradingName === raw) ||
+    accounts.find((a) => a.legalName === raw) ||
+    accounts.find((a) => (a.tradingName || "").toLowerCase() === lower) ||
+    accounts.find((a) => (a.accountNumber || "").toLowerCase() === lower) ||
+    accounts.find((a) => (a.legalName || "").toLowerCase() === lower)
+  );
+}
+
 export function buildRetailCheckoutOrder(params: {
   existingOrders: SalesOrder[];
   accountTradingName: string;

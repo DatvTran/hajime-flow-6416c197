@@ -25,6 +25,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/sonner";
 import { Link } from "react-router-dom";
+import { isDistributorAccountType } from "@/lib/distributor-accounts";
+import { isManufacturerAccountType, looksLikeManufacturerAccount } from "@/lib/manufacturer-accounts";
 
 const SALES_REPS = ["Marcus Chen", "Sarah Kim", "Luca Moretti", "Jordan Lee"] as const;
 
@@ -70,6 +72,11 @@ function defaultMarketForAccount(tradingName: string, accountList: Account[]): s
   return acc.city;
 }
 
+function marketLabelForAccount(a: Account): string {
+  if (a.tradingName === "LCBO Ontario" || (a.legalName?.toLowerCase() || "").includes("liquor control")) return "Ontario";
+  return a.city || "";
+}
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -109,10 +116,14 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   const { availableBottlesForSku } = useInventory();
 
   const cfg = getSalesOrderFormVariantConfig(variant);
-  const accounts = useMemo(() => accountsForSalesOrderVariant(allAccounts, variant), [allAccounts, variant]);
+  const baseAccountsForVariant = useMemo(
+    () => accountsForSalesOrderVariant(allAccounts, variant),
+    [allAccounts, variant],
+  );
 
   const [account, setAccount] = useState("");
   const [market, setMarket] = useState("");
+  const [marketIsCustom, setMarketIsCustom] = useState(false);
   const [orderDate, setOrderDate] = useState(todayISO());
   const [requestedDelivery, setRequestedDelivery] = useState(addDaysISO(14));
   const [sku, setSku] = useState("");
@@ -136,6 +147,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     if (!open) return;
     setAccount("");
     setMarket("");
+    setMarketIsCustom(false);
     setOrderDate(todayISO());
     setRequestedDelivery(addDaysISO(14));
     setSku("");
@@ -155,8 +167,57 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   }, [open, variant]);
 
   useEffect(() => {
-    if (account) setMarket(defaultMarketForAccount(account, allAccounts));
+    if (account) {
+      setMarket(defaultMarketForAccount(account, allAccounts));
+      setMarketIsCustom(false);
+    }
   }, [account, allAccounts]);
+
+  const pathwayTarget: OrderRoutingTarget = useMemo(() => {
+    if (variant === "brand") return brandPath;
+    if (variant === "distributor") return wholesalerPath === "rep" ? "sales_rep" : "retail";
+    if (variant === "sales_rep") return "retail";
+    if (variant === "manufacturer") return "manufacturer";
+    return "retail";
+  }, [brandPath, variant, wholesalerPath]);
+
+  // Brand HQ: make Account list match the selected pathway target.
+  const accounts = useMemo(() => {
+    if (variant !== "brand") return baseAccountsForVariant;
+    const base = (allAccounts || []).filter((a) => a.status !== "inactive");
+
+    if (pathwayTarget === "wholesaler") {
+      const dc = base.filter((a) => isDistributorAccountType(a.type));
+      return dc.length > 0 ? dc : base;
+    }
+    if (pathwayTarget === "manufacturer") {
+      const mf = base.filter((a) => isManufacturerAccountType(a.type) || looksLikeManufacturerAccount(a));
+      return mf.length > 0 ? mf : base;
+    }
+    // sales_rep + retail target: retail-like accounts (everything except wholesaler/distributor)
+    const retailLike = base.filter((a) => !isDistributorAccountType(a.type));
+    return retailLike.length > 0 ? retailLike : base;
+  }, [allAccounts, baseAccountsForVariant, pathwayTarget, variant]);
+
+  const marketOptionsForPathway = useMemo(() => {
+    const base = (allAccounts || []).filter((a) => a.status !== "inactive");
+    const filtered = (() => {
+      if (pathwayTarget === "wholesaler") return base.filter((a) => isDistributorAccountType(a.type));
+      if (pathwayTarget === "manufacturer") {
+        const mf = base.filter((a) => isManufacturerAccountType(a.type) || looksLikeManufacturerAccount(a));
+        return mf.length > 0 ? mf : base;
+      }
+      // sales_rep + retail target: retail-like accounts (everything except wholesaler/distributor)
+      return base.filter((a) => !isDistributorAccountType(a.type));
+    })();
+
+    const set = new Set<string>();
+    for (const a of filtered) {
+      const label = marketLabelForAccount(a).trim();
+      if (label) set.add(label);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allAccounts, pathwayTarget]);
 
   useEffect(() => {
     if (!open || variant !== "sales_rep") return;
@@ -424,13 +485,44 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="so-market">Market / region *</Label>
-                <Input
-                  id="so-market"
-                  value={market}
-                  onChange={(e) => setMarket(e.target.value)}
-                  placeholder="e.g. Ontario, Toronto, Milan"
-                  required
-                />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Select
+                    value={marketIsCustom ? "__custom__" : market}
+                    onValueChange={(v) => {
+                      if (v === "__custom__") {
+                        setMarketIsCustom(true);
+                        setMarket("");
+                        return;
+                      }
+                      setMarketIsCustom(false);
+                      setMarket(v);
+                    }}
+                  >
+                    <SelectTrigger id="so-market" className="touch-manipulation sm:col-span-1">
+                      <SelectValue placeholder="Select market / region" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {marketOptionsForPathway.map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {m}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="__custom__">Other…</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={market}
+                    onChange={(e) => {
+                      setMarketIsCustom(true);
+                      setMarket(e.target.value);
+                    }}
+                    placeholder="e.g. Ontario, Toronto, Milan"
+                    className={!marketIsCustom ? "hidden sm:block" : ""}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Options update based on order pathway: {pathwayTarget.replace(/_/g, " ")}.
+                </p>
               </div>
             </div>
           </div>

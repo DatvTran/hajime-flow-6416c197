@@ -3,6 +3,7 @@
  * Features: Auth/RBAC, PostgreSQL, CSV Import/Export, Stripe
  */
 import express from 'express';
+import compression from 'compression';
 import Stripe from 'stripe';
 import fs from 'fs';
 import path from 'path';
@@ -10,7 +11,6 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 // Services
-import { readAppState, writeAppState } from './app-store.mjs';
 import { db } from './config/database.mjs';
 import { dataMigrationService } from './services/data-migration.mjs';
 
@@ -30,6 +30,9 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 // Fail fast: crash at boot rather than silently allowing unsigned JWTs
 const REQUIRED_ENV = ['ACCESS_TOKEN_SECRET'];
 const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
+const nodeEnv = String(process.env.NODE_ENV ?? 'development').toLowerCase();
+const migrationStageRaw = process.env.FEATURE_FLAG_DB_MIGRATION_STAGE ?? '0';
+const migrationStage = Number.parseInt(migrationStageRaw, 10);
 if (missingEnv.length > 0) {
   console.error(
     `FATAL: Missing required environment variables: ${missingEnv.join(', ')}\n` +
@@ -41,6 +44,21 @@ if (missingEnv.length > 0) {
 // Warn if the secret is too short (minimum 32 chars recommended)
 if ((process.env.ACCESS_TOKEN_SECRET ?? '').length < 32) {
   console.warn('WARNING: ACCESS_TOKEN_SECRET is shorter than 32 characters — use a longer secret in production');
+}
+
+
+if (!Number.isInteger(migrationStage)) {
+  console.error(
+    `FATAL: FEATURE_FLAG_DB_MIGRATION_STAGE must be an integer. Received: ${migrationStageRaw}`
+  );
+  process.exit(1);
+}
+if ((nodeEnv === 'production' || nodeEnv === 'staging') && migrationStage <= 2) {
+  console.error(
+    `FATAL: FEATURE_FLAG_DB_MIGRATION_STAGE=${migrationStage} is not allowed in ${nodeEnv}. ` +
+    'Shared environments must run migration stage 3 or higher.'
+  );
+  process.exit(1);
 }
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -104,6 +122,17 @@ function requireStripe(_req, res, next) {
 // Initialize Express
 const app = express();
 app.set('trust proxy', 1);
+app.set('etag', 'strong');
+
+app.use(
+  compression({
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.headers['x-no-compression']) return false;
+      return compression.filter(req, res);
+    },
+  })
+);
 
 // Security middleware
 setupSecurityMiddleware(app);
@@ -111,11 +140,30 @@ setupSecurityMiddleware(app);
 // Body parsing
 app.use(express.json({ limit: '2mb' }));
 
-// Disable caching for API routes
+// Public readiness: verifies Postgres is reachable (real query, not static JSON).
+app.get('/api/health', async (_req, res) => {
+  try {
+    const r = await db.raw('select now() as now');
+    const row = r?.rows?.[0] ?? r?.[0];
+    const dbNow = row?.now != null ? String(row.now) : undefined;
+    res.json({
+      ok: true,
+      database: 'up',
+      dbNow,
+    });
+  } catch (e) {
+    console.error('[hajime-api] /api/health DB check failed:', e);
+    res.status(503).json({
+      ok: false,
+      database: 'down',
+      error: e instanceof Error ? e.message : 'Database unavailable',
+    });
+  }
+});
+
+// Allow conditional revalidation while avoiding stale cache.
 app.use('/api', (_req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
+  res.set('Cache-Control', 'private, no-cache, must-revalidate');
   next();
 });
 
@@ -140,14 +188,53 @@ if (FEATURE_FLAG_CSV_ENABLED) {
 app.use('/api/v1', apiV1Routes);
 console.log('[hajime-api] Granular API v1 enabled');
 
+function assertTenantContext(req, res) {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId || typeof tenantId !== 'string') {
+    res.status(403).json({ error: 'Tenant identity missing from token' });
+    return null;
+  }
+  return tenantId;
+}
+
+function assertNoCrossTenantPayload(payload, tenantId, res) {
+  const stack = [payload];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || typeof current !== 'object') continue;
+    const objectTenantId = current.tenantId ?? current.tenant_id;
+    if (objectTenantId && objectTenantId !== tenantId) {
+      res.status(403).json({ error: 'Cross-tenant payload rejected for /api/app' });
+      return false;
+    }
+    for (const value of Object.values(current)) {
+      if (value && typeof value === 'object') {
+        stack.push(value);
+      }
+    }
+  }
+  return true;
+}
+
 // ===== APP DATA API (with migration stages) =====
 app.get('/api/app', authenticateToken, async (req, res) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) {
-      // Never fall back to a hardcoded UUID — reject to prevent cross-tenant data leakage
-      return res.status(403).json({ error: 'Tenant identity missing from token' });
+    const tenantId = assertTenantContext(req, res);
+    if (!tenantId) return;
+    const meta = dataMigrationService.getDataMetaIfJSON();
+    if (meta) {
+      if (dataMigrationService.isDeployedEnvironment) {
+        return res.status(409).json({ error: '/api/app JSON snapshot is disabled in deployed environments' });
+      }
+      const ifNoneMatch = req.headers['if-none-match'];
+      res.set('ETag', meta.etag);
+      if (ifNoneMatch && ifNoneMatch === meta.etag) {
+        return res.status(304).end();
+      }
+      res.type('application/json').send(meta.jsonString);
+      return;
     }
+
     const data = await dataMigrationService.getData(tenantId);
     res.json(data);
   } catch (e) {
@@ -158,6 +245,9 @@ app.get('/api/app', authenticateToken, async (req, res) => {
 
 app.put('/api/app', authenticateToken, async (req, res) => {
   try {
+    const tenantId = assertTenantContext(req, res);
+    if (!tenantId) return;
+
     const body = req.body;
     if (!body || typeof body !== 'object') {
       return res.status(400).json({ error: 'Expected JSON object' });
@@ -170,10 +260,7 @@ app.put('/api/app', authenticateToken, async (req, res) => {
       }
     }
 
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) {
-      return res.status(403).json({ error: 'Tenant identity missing from token' });
-    }
+    if (!assertNoCrossTenantPayload(body, tenantId, res)) return;
     await dataMigrationService.saveData(body, tenantId);
 
     res.json({ ok: true });
@@ -200,6 +287,10 @@ app.get('/api/health', async (_req, res) => {
     features: {
       auth: FEATURE_FLAG_AUTH_ENABLED,
       csv: FEATURE_FLAG_CSV_ENABLED,
+    },
+    migration: {
+      activeStage: dataMigrationService.stage,
+      dbPrimaryModeEnabled: dataMigrationService.stage >= 3,
     },
     migrationStage: dataMigrationService.stage,
   });
@@ -389,11 +480,38 @@ app.get('/api/stripe/payment-methods/:customerId', requireStripe, async (req, re
 
 // ===== PRODUCTION STATIC FILES =====
 const DIST_DIR = path.join(__dirname, '..', 'dist');
+const ONE_YEAR = '365d';
 if (fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
-  app.use(express.static(DIST_DIR));
+  app.use(
+    '/assets',
+    express.static(path.join(DIST_DIR, 'assets'), {
+      immutable: true,
+      maxAge: ONE_YEAR,
+      etag: false,
+      lastModified: false,
+    })
+  );
+  app.use(
+    express.static(DIST_DIR, {
+      etag: true,
+      lastModified: true,
+      setHeaders(res, filePath) {
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+        }
+      },
+    })
+  );
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     if (req.path.startsWith('/api')) return next();
+    // Never SPA-fallback missing hashed bundles — sending index.html for *.js causes:
+    // "'text/html' is not a valid JavaScript MIME type" after deploy when chunks rotate.
+    if (req.path.startsWith('/assets/')) {
+      res.status(404).type('text/plain').send('Not found');
+      return;
+    }
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     res.sendFile(path.join(DIST_DIR, 'index.html'));
   });
 }
@@ -413,4 +531,8 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`[hajime-api] Stripe: ${stripe ? 'ready' : 'disabled'}`);
   console.log(`[hajime-api] Features: Auth=${FEATURE_FLAG_AUTH_ENABLED}, CSV=${FEATURE_FLAG_CSV_ENABLED}`);
   console.log(`[hajime-api] Migration Stage: ${dataMigrationService.stage}`);
+  const resendKey = (process.env.RESEND_API_KEY || '').trim();
+  console.log(
+    `[hajime-api] Resend: ${resendKey ? 'configured' : 'missing RESEND_API_KEY — invites/password-reset URLs log only'}`
+  );
 });

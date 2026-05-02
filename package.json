@@ -8,13 +8,16 @@
     "dev:stripe": "npm run start --prefix server",
     "dev:api": "npm run start --prefix server",
     "dev:full": "concurrently -k \"npm run dev:stripe\" \"npm run dev\"",
+    "fly:deploy": "bash scripts/fly-deploy.sh",
     "build": "vite build",
     "build:dev": "vite build --mode development",
-    "lint": "eslint .",
+    "lint": "eslint . && npm run check:no-legacy-start",
+    "check:no-legacy-start": "node scripts/check-no-legacy-start.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "check:legacy-startup": "node scripts/validate-legacy-startup.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

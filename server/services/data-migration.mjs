@@ -1,5 +1,5 @@
 import { db } from '../config/database.mjs';
-import { readAppState } from '../app-store.mjs';
+import { readAppState, readAppStateMeta } from '../app-store.mjs';
 
 /**
  * Data Migration Service
@@ -8,13 +8,37 @@ import { readAppState } from '../app-store.mjs';
 export class DataMigrationService {
   constructor() {
     this.stage = Number(process.env.FEATURE_FLAG_DB_MIGRATION_STAGE) || 0;
+    this.isDeployedEnvironment = process.env.NODE_ENV === 'production'
+      || Boolean(process.env.FLY_APP_NAME)
+      || Boolean(process.env.RENDER)
+      || Boolean(process.env.RAILWAY_ENVIRONMENT);
   }
 
+  isDbPrimaryEnabled() {
+    return this.stage >= 3;
+  }
+
+  resolveTenantJSONFileKey(tenantId) {
+    if (!tenantId || typeof tenantId !== 'string') return null;
+    return `app-state.${tenantId}`;
+  }
+
+  assertTenantScopedJSON(tenantId) {
+    const tenantFileKey = this.resolveTenantJSONFileKey(tenantId);
+    if (!tenantFileKey) {
+      throw new Error('Tenant-scoped JSON is required but tenantId is missing');
+    }
+    return tenantFileKey;
+  }
   /**
    * Stage 0: JSON only (baseline)
    */
   async getDataJSON(tenantId) {
-    return readAppState();
+    if (this.stage > 2) {
+      throw new Error(`JSON reads unavailable at migration stage ${this.stage}`);
+    }
+    const tenantFileKey = this.assertTenantScopedJSON(tenantId);
+    return readAppState(tenantFileKey);
   }
 
   /**
@@ -146,7 +170,8 @@ export class DataMigrationService {
    * Stage 2: Compare JSON and PostgreSQL data
    */
   async compareData(tenantId) {
-    const jsonData = readAppState();
+    const tenantFileKey = this.assertTenantScopedJSON(tenantId);
+    const jsonData = readAppState(tenantFileKey);
     // This would compare and log discrepancies
     console.log('[DataMigration] Data comparison logged');
     return { discrepancies: [] };
@@ -214,34 +239,42 @@ export class DataMigrationService {
    * Get data based on current migration stage
    */
   async getData(tenantId) {
+    if (this.stage >= 3) {
+      return this.getDataPostgreSQL(tenantId);
+    }
+
     switch (this.stage) {
       case 0:
-        return this.getDataJSON(tenantId);
       case 1:
       case 2:
-        // Return JSON but sync to PostgreSQL
-        return this.getDataJSON(tenantId);
-      case 3:
-      case 4:
-      case 5:
-      case 6:
-        // Return PostgreSQL data
-        return this.getDataPostgreSQL(tenantId);
       default:
         return this.getDataJSON(tenantId);
     }
   }
 
   /**
+   * Returns ETag + canonical JSON bytes for JSON-backed stages so
+   * API handlers can perform conditional GET.
+   */
+  getDataMetaIfJSON() {
+    if (this.stage <= 2) {
+      return readAppStateMeta();
+    }
+    return null;
+  }
+
+  /**
    * Save data based on current migration stage
    */
   async saveData(data, tenantId) {
-    // Always write to JSON (Stage 0-4)
-    const { writeAppState } = await import('../app-store.mjs');
-    writeAppState(data);
+    // Stage 0-2 keep JSON as the source of truth.
+    if (this.stage <= 2) {
+      const { writeAppState } = await import('../app-store.mjs');
+      writeAppState(data);
+    }
 
-    // Shadow write to PostgreSQL (Stage 1-4)
-    if (this.stage >= 1 && this.stage <= 4) {
+    // Stage 1-2 shadow write to PostgreSQL.
+    if (this.stage >= 1 && this.stage <= 2) {
       try {
         await this.syncToPostgreSQL(data, tenantId);
       } catch (err) {
@@ -249,10 +282,9 @@ export class DataMigrationService {
       }
     }
 
-    // Stage 5+: Write only to PostgreSQL
-    if (this.stage >= 5) {
-      // In Stage 5+, we would only write to PostgreSQL
-      // This is handled by granular APIs
+    // Stage 3+ writes must stay tenant-scoped in PostgreSQL only.
+    if (this.stage >= 3) {
+      await this.syncToPostgreSQL(data, tenantId);
     }
   }
 }

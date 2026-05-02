@@ -21,10 +21,6 @@ export default function Manufacturer() {
   const { productionStatuses, addProductionStatus } = useProductionStatuses();
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <ManufacturerSkeleton />;
-  }
-
   const { user } = useAuth();
   const logAudit = useAuditLog();
 
@@ -87,11 +83,15 @@ export default function Manufacturer() {
     toast.success("Production status recorded");
   };
 
+  if (loading) {
+    return <ManufacturerSkeleton />;
+  }
+
   return (
     <div>
       <PageHeader
         title="Manufacturer"
-        description="Fulfillment view for open production requests raised by Hajime HQ — batch schedule, inbound shipment queue, demand by market, and alerts. Logistics can record carrier and ETA on Shipments."
+        description="Production-board view: what’s approved to run, what’s on the floor, and what ships this week — tied to HQ requests, inbound freight, and market demand. Logistics can record carrier and ETA on Shipments."
       />
 
       <div className="mb-6 grid gap-4 lg:grid-cols-5">

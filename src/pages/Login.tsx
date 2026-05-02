@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import {
   Crown,
   Factory,
@@ -78,8 +78,8 @@ export default function Login() {
     clearError();
     if (!email.trim() || !password.trim()) return;
     try {
-      await signIn(email.trim(), password.trim());
-      navigate(homePathForRole(role), { replace: true });
+      const signedIn = await signIn(email.trim(), password.trim());
+      navigate(homePathForRole(signedIn.role), { replace: true });
     } catch {
       // handled by AuthContext
     }
@@ -274,6 +274,14 @@ export default function Login() {
                   required
                   className="touch-manipulation"
                 />
+                <div className="flex justify-end">
+                  <Link
+                    to="/forgot-password"
+                    className="text-[11px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
               </div>
 
               <Button

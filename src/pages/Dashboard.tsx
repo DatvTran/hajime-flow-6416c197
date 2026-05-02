@@ -128,6 +128,18 @@ function severityDot(sev: string) {
   return "bg-muted-foreground";
 }
 
+function journeyFirstName(displayName: string | undefined): string {
+  const f = displayName?.trim().split(/\s+/)[0];
+  return f || "there";
+}
+
+function journeyTimeGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 /** Simple KPI card for the Global Markets section. */
 function KpiCard({
   label,
@@ -180,10 +192,6 @@ function KpiCard({
 export default function Dashboard() {
   const { data, loading } = useAppData();
   const { patchSalesOrder } = useSalesOrders();
-
-  if (loading) {
-    return <DashboardSkeleton />;
-  }
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const canApproveDraftQueue = user?.role === "brand_operator";
@@ -384,6 +392,10 @@ export default function Dashboard() {
     [hubAlerts, shipmentAlerts],
   );
 
+  if (loading) {
+    return <DashboardSkeleton />;
+  }
+
   return (
     <div className="min-w-0 space-y-6">
       {/* Command bar */}
@@ -510,13 +522,22 @@ export default function Dashboard() {
       </div>
 
       <div>
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+        <p className="text-sm text-muted-foreground">
+          {journeyTimeGreeting()}, {journeyFirstName(user?.displayName)} ·{" "}
+          <span className="font-medium text-foreground">{pendingFiltered.length}</span>{" "}
+          {pendingFiltered.length === 1 ? "item" : "items"} awaiting you
+          {pendingFiltered.length > 0 ? (
+            <span className="text-muted-foreground"> · sorted by who unblocks when you act</span>
+          ) : null}
+        </p>
+        <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
           Command center
         </h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          One calm view of sell-through, stock health, approvals, and shipments — filtered to{" "}
-          <span className="text-foreground/90">{MARKET_FILTERS.find((m) => m.id === marketFilter)?.label}</span>
-          , last {rangeDays} days.
+          <span className="font-medium text-foreground/95">Decisions, not dashboards.</span> One calm view of sell-through,
+          stock health, approvals, and shipments — filtered to{" "}
+          <span className="text-foreground/90">{MARKET_FILTERS.find((m) => m.id === marketFilter)?.label}</span>, last{" "}
+          {rangeDays} days. Every event you clear becomes the next role&apos;s queue — not a spreadsheet handoff.
         </p>
       </div>
 
@@ -599,9 +620,10 @@ export default function Dashboard() {
         <div className="space-y-6 xl:col-span-3">
           <Card className="card-elevated border-border/70 shadow-none">
             <CardHeader className="border-b border-border/50 p-5 pb-3">
-              <CardTitle className="font-display text-base">Order approval queue</CardTitle>
+              <CardTitle className="font-display text-base">Awaiting you</CardTitle>
               <p className="text-xs text-muted-foreground">
-                Same lifecycle as Orders — pending review through distributor processing. Drafts awaiting HQ allocation.
+                Approvals-first queue — drafts, holds, and restocks in one stream (same lifecycle as Orders). Each row is a
+                handoff someone downstream is waiting on.
               </p>
             </CardHeader>
             <CardContent className="pt-0">

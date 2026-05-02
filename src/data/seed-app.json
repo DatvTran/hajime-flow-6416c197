@@ -925,6 +925,9 @@
     }
   ],
   "operationalSettings": {
+    "companyName": "Hajime Inc.",
+    "primaryMarkets": "Ontario, Toronto, Milan",
+    "manufacturerName": "Kirin Brewery Co.",
     "manufacturerLeadTimeDays": 45,
     "safetyStockBySku": {
       "HJM-OG-750": 400,

@@ -1,3 +1,7 @@
+# Deploy from the repository root (the folder that contains this file and Dockerfile).
+# If you run `fly deploy` from the `server/` directory, Fly uses the wrong path and
+# looks for server/Dockerfile. Use:  fly deploy .   (from root)  |  fly deploy ..  (from server)
+# or:  npm run fly:deploy
 app = "hajime-app"
 primary_region = "nrt"
 

@@ -62,10 +62,6 @@ function primaryLineSummary(o: SalesOrder): string {
 export default function RetailHomePage() {
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <RetailSkeleton />;
-  }
-
   const { accounts } = useAccounts();
   const cart = useRetailCart();
   const { user } = useAuth();
@@ -152,82 +148,23 @@ export default function RetailHomePage() {
           {timeGreeting()}, {greetingName(user?.displayName ?? "there")}.
         </h1>
         <p className="mt-1.5 max-w-[56ch] text-sm leading-relaxed text-muted-foreground">{desc}</p>
+        <p className="mt-3 max-w-[62ch] text-sm leading-relaxed text-muted-foreground">
+          <span className="font-medium text-foreground">One surface · three beats</span> — track when an order is moving,
+          reorder from your last basket, browse curated SKUs when you&apos;re expanding the backbar.
+        </p>
+        {myOrders.length > 0 ? (
+          <div className="mt-3">
+            <Link
+              to="/retail/reorder"
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-foreground no-underline transition-colors hover:bg-muted/60"
+            >
+              Reorder last basket
+            </Link>
+          </div>
+        ) : null}
       </div>
 
-      {/* Catalog: order from product images (same cards as New order) — primary dashboard action */}
-      <section
-        id="retail-catalog"
-        className="rounded-2xl border border-border/60 bg-gradient-to-b from-muted/30 to-transparent p-4 sm:p-6"
-      >
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-foreground">Order from catalog</h2>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Add cases below — your cart syncs everywhere. When ready, use <strong>Review →</strong> in the header bar or{" "}
-              <Link to="/retail/new-order#retail-cart" className="font-medium text-accent underline-offset-4 hover:underline">
-                New order
-              </Link>{" "}
-              for delivery details and submit.
-            </p>
-          </div>
-          {cart.totalCases > 0 ? (
-            <Link
-              to="/retail/new-order#retail-cart"
-              className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground no-underline transition-colors hover:bg-[hsl(32_78%_48%)]"
-            >
-              Review cart ({cart.totalCases} case{cart.totalCases !== 1 ? "s" : ""})
-            </Link>
-          ) : null}
-        </div>
-        <div className="mt-6 grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-          {catalog.map((p) => (
-            <RetailProductCard
-              key={p.sku}
-              product={p}
-              inventory={data.inventory}
-              inCartCases={cart.casesBySku[p.sku] ?? 0}
-              shelfBottles={shelfForAccount?.[p.sku]}
-              shelfThresholdBottles={shelfThreshold}
-              onAddToCart={(cases) => {
-                const min = p.minOrderCases ?? 1;
-                cart.setCasesForSku(p.sku, cases, min);
-                toast.success("Added to cart", { description: `${p.name} · ${cases} case${cases !== 1 ? "s" : ""}` });
-              }}
-            />
-          ))}
-        </div>
-        {catalog.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">No active SKUs available — contact your rep.</p>
-        ) : null}
-      </section>
-
-      {/* KPI snapshot — kit: rkpis */}
-      <section className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
-        <div className="flex flex-col gap-1.5 rounded-[14px] border border-border/60 bg-card p-[18px] shadow-[0_1px_2px_hsl(24_10%_10%/0.04)]">
-          <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Open orders</span>
-          <span className="font-display text-2xl font-semibold tabular-nums tracking-[-0.02em] text-foreground">{pendingPipeline}</span>
-          <span className="text-xs text-muted-foreground">
-            {trackerOrder?.requestedDelivery ? `Next ETA ${trackerOrder.requestedDelivery}` : "No open pipeline"}
-          </span>
-        </div>
-        <div className="flex flex-col gap-1.5 rounded-[14px] border border-border/60 bg-card p-[18px] shadow-[0_1px_2px_hsl(24_10%_10%/0.04)]">
-          <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Last 30 days</span>
-          <span className="font-display text-2xl font-semibold tabular-nums tracking-[-0.02em] text-foreground">
-            ${formatMoney(spend30d.sum)}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {spend30d.casesApprox > 0 ? `${spend30d.casesApprox} cases · ` : ""}
-            {spend30d.skuCount} SKUs
-          </span>
-        </div>
-        <div className="flex flex-col gap-1.5 rounded-[14px] border border-border/60 bg-card p-[18px] shadow-[0_1px_2px_hsl(24_10%_10%/0.04)]">
-          <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">On backbar</span>
-          <span className="font-display text-2xl font-semibold tabular-nums tracking-[-0.02em] text-foreground">{activeSkuCount} SKUs</span>
-          <span className="text-xs text-muted-foreground">Depletion tracking on</span>
-        </div>
-      </section>
-
-      {/* Live order tracker */}
+      {/* Live order tracker — journey: “in motion” before browse */}
       {trackerOrder ? (
         <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-[0_1px_2px_hsl(24_10%_10%/0.04),0_4px_12px_hsl(24_10%_10%/0.03)] sm:p-6">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -299,9 +236,82 @@ export default function RetailHomePage() {
           <a href="#retail-catalog" className="font-medium text-accent underline-offset-4 hover:underline">
             browse the catalog
           </a>{" "}
-          above.
+          below.
         </div>
       )}
+
+      {/* KPI snapshot — kit: rkpis */}
+      <section className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+        <div className="flex flex-col gap-1.5 rounded-[14px] border border-border/60 bg-card p-[18px] shadow-[0_1px_2px_hsl(24_10%_10%/0.04)]">
+          <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Open orders</span>
+          <span className="font-display text-2xl font-semibold tabular-nums tracking-[-0.02em] text-foreground">{pendingPipeline}</span>
+          <span className="text-xs text-muted-foreground">
+            {trackerOrder?.requestedDelivery ? `Next ETA ${trackerOrder.requestedDelivery}` : "No open pipeline"}
+          </span>
+        </div>
+        <div className="flex flex-col gap-1.5 rounded-[14px] border border-border/60 bg-card p-[18px] shadow-[0_1px_2px_hsl(24_10%_10%/0.04)]">
+          <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Last 30 days</span>
+          <span className="font-display text-2xl font-semibold tabular-nums tracking-[-0.02em] text-foreground">
+            ${formatMoney(spend30d.sum)}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {spend30d.casesApprox > 0 ? `${spend30d.casesApprox} cases · ` : ""}
+            {spend30d.skuCount} SKUs
+          </span>
+        </div>
+        <div className="flex flex-col gap-1.5 rounded-[14px] border border-border/60 bg-card p-[18px] shadow-[0_1px_2px_hsl(24_10%_10%/0.04)]">
+          <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">On backbar</span>
+          <span className="font-display text-2xl font-semibold tabular-nums tracking-[-0.02em] text-foreground">{activeSkuCount} SKUs</span>
+          <span className="text-xs text-muted-foreground">Depletion tracking on</span>
+        </div>
+      </section>
+
+      {/* Catalog: order from product images (same cards as New order) — primary dashboard action */}
+      <section
+        id="retail-catalog"
+        className="rounded-2xl border border-border/60 bg-gradient-to-b from-muted/30 to-transparent p-4 sm:p-6"
+      >
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-foreground">Order from catalog</h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Add cases below — your cart syncs everywhere. When ready, use <strong>Review →</strong> in the header bar or{" "}
+              <Link to="/retail/new-order#retail-cart" className="font-medium text-accent underline-offset-4 hover:underline">
+                New order
+              </Link>{" "}
+              for delivery details and submit.
+            </p>
+          </div>
+          {cart.totalCases > 0 ? (
+            <Link
+              to="/retail/new-order#retail-cart"
+              className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground no-underline transition-colors hover:bg-[hsl(32_78%_48%)]"
+            >
+              Review cart ({cart.totalCases} case{cart.totalCases !== 1 ? "s" : ""})
+            </Link>
+          ) : null}
+        </div>
+        <div className="mt-6 grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+          {catalog.map((p) => (
+            <RetailProductCard
+              key={p.sku}
+              product={p}
+              inventory={data.inventory}
+              inCartCases={cart.casesBySku[p.sku] ?? 0}
+              shelfBottles={shelfForAccount?.[p.sku]}
+              shelfThresholdBottles={shelfThreshold}
+              onAddToCart={(cases) => {
+                const min = p.minOrderCases ?? 1;
+                cart.setCasesForSku(p.sku, cases, min);
+                toast.success("Added to cart", { description: `${p.name} · ${cases} case${cases !== 1 ? "s" : ""}` });
+              }}
+            />
+          ))}
+        </div>
+        {catalog.length === 0 ? (
+          <p className="mt-4 text-sm text-muted-foreground">No active SKUs available — contact your rep.</p>
+        ) : null}
+      </section>
 
       {/* Recent orders */}
       <section>
@@ -374,6 +384,10 @@ function OrderRowPill({ status }: { status: string }) {
       : bucket === "in_transit"
         ? "bg-sky-500"
         : "bg-amber-500";
+  if (loading) {
+    return <RetailSkeleton />;
+  }
+
   return (
     <span
       className={cn(

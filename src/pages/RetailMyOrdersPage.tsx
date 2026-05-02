@@ -34,10 +34,6 @@ function etaForOrder(o: SalesOrder, shipments: { linkedOrder: string; eta: strin
 export default function RetailMyOrdersPage() {
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <RetailSkeleton />;
-  }
-
   const accountName = useRetailAccountTradingName();
   const [searchParams, setSearchParams] = useSearchParams();
   const filter = filterKey(searchParams.get("filter"));
@@ -65,6 +61,10 @@ export default function RetailMyOrdersPage() {
     { id: "in_transit", label: "In transit" },
     { id: "delivered", label: "Delivered" },
   ];
+
+  if (loading) {
+    return <RetailSkeleton />;
+  }
 
   return (
     <div>

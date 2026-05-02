@@ -7,9 +7,70 @@ import { Router } from 'express';
 import { db } from '../config/database.mjs';
 import { authenticateToken, requirePermission, requireTenantAccess } from '../middleware/auth.mjs';
 import { Permission } from '../rbac/permissions.mjs';
+import {
+  createCrmUserInvite,
+  sendCrmInviteEmail,
+  CRM_TEAM_ROLE_LABELS,
+} from '../services/crm-invite.mjs';
 
 const router = Router();
 const isDev = process.env.NODE_ENV === 'development';
+
+/** After creating/reactivating a CRM contact, optionally send portal invite email. */
+async function buildCrmContactInvitePayload(req, tenantId, member, { email, name, role }) {
+  const invitedByUserId = req.user?.userId;
+  if (!invitedByUserId) {
+    return {
+      data: member,
+      invite: { status: 'skipped', reason: 'missing_inviter' },
+    };
+  }
+
+  const inviteResult = await createCrmUserInvite({
+    tenantId,
+    email,
+    teamMemberRole: role,
+    invitedByUserId,
+  });
+
+  if (!inviteResult.ok) {
+    return {
+      data: member,
+      invite: { status: 'skipped', reason: inviteResult.reason },
+    };
+  }
+
+  try {
+    const tenantRow = await db('tenants').where({ id: tenantId }).first();
+    const sendResult = await sendCrmInviteEmail({
+      to: email,
+      inviteUrl: inviteResult.inviteUrl,
+      recipientName: name,
+      roleLabel: CRM_TEAM_ROLE_LABELS[role] || role,
+      inviterDisplayName: req.user?.displayName,
+      tenantName: tenantRow?.name,
+    });
+
+    const exposeInviteUrl = isDev || !sendResult.sent;
+    return {
+      data: member,
+      invite: {
+        status: 'sent',
+        emailDispatched: sendResult.sent,
+        ...(exposeInviteUrl && { inviteUrl: inviteResult.inviteUrl }),
+      },
+    };
+  } catch (emailErr) {
+    console.error('[API v1] CRM invite email failed:', emailErr);
+    return {
+      data: member,
+      invite: {
+        status: 'delivery_failed',
+        inviteUrl: inviteResult.inviteUrl,
+      },
+    };
+  }
+}
 
 // Apply auth to all routes
 router.use(authenticateToken);
@@ -136,6 +197,33 @@ router.post('/products', requirePermission(Permission.INVENTORY_WRITE), async (r
   } catch (err) {
     console.error('[API v1] Error creating product:', err);
     res.status(500).json({ error: 'Failed to create product' });
+  }
+});
+
+// DELETE /api/v1/products/by-sku/:sku — Soft delete by SKU (must be registered before /products/:id)
+router.delete('/products/by-sku/:sku', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const sku = decodeURIComponent(String(req.params.sku ?? '').trim());
+    if (!sku) {
+      return res.status(400).json({ error: 'SKU is required' });
+    }
+
+    const [product] = await db('products')
+      .where({ tenant_id: tenantId, sku })
+      .whereNull('deleted_at')
+      .update({ deleted_at: new Date(), updated_at: new Date() })
+      .returning('*');
+
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    res.json({ data: product, message: 'Product deleted' });
+  } catch (err) {
+    console.error('[API v1] Error deleting product by SKU:', err);
+    res.status(500).json({ error: 'Failed to delete product' });
   }
 });
 
@@ -1502,7 +1590,8 @@ router.get('/new-product-requests', requirePermission(Permission.PRODUCTION_READ
       query = query.where('assigned_manufacturer', assigned_manufacturer);
     }
     
-    const countQuery = query.clone().count('id as count').first();
+    // Postgres does not allow ORDER BY in COUNT queries unless grouped; clear ordering for count.
+    const countQuery = query.clone().clearOrder().count('id as count').first();
     
     const dataQuery = query
       .limit(parseInt(limit))
@@ -2658,12 +2747,18 @@ router.get('/team-members', requirePermission(Permission.SETTINGS_READ), async (
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
-    
-    const members = await db('team_members')
-      .where({ tenant_id: tenantId })
-      .where('is_active', true)
-      .orderBy('created_at', 'desc');
-    
+
+    const includeInactive =
+      req.query.include_inactive === 'true' ||
+      req.query.include_inactive === '1';
+
+    let query = db('team_members').where({ tenant_id: tenantId });
+    if (!includeInactive) {
+      query = query.where('is_active', true);
+    }
+
+    const members = await query.orderBy('created_at', 'desc');
+
     res.json({ data: members });
   } catch (err) {
     console.error('[API v1] Error fetching team members:', err);
@@ -2681,6 +2776,35 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
     if (!name || !email || !role) {
       return res.status(400).json({ error: 'name, email, and role are required' });
     }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // If this email already exists for the tenant, return a clear 409 (or reactivate).
+    const existing = await db('team_members')
+      .where({ tenant_id: tenantId, email: normalizedEmail })
+      .first();
+    if (existing) {
+      if (existing.is_active === false) {
+        const [reactivated] = await db('team_members')
+          .where({ tenant_id: tenantId, email: normalizedEmail })
+          .update({
+            name,
+            role,
+            phone,
+            department,
+            is_active: true,
+            updated_at: new Date(),
+          })
+          .returning('*');
+        const payload = await buildCrmContactInvitePayload(req, tenantId, reactivated, {
+          email: normalizedEmail,
+          name,
+          role,
+        });
+        return res.status(200).json({ ...payload, message: 'Team member reactivated' });
+      }
+      return res.status(409).json({ error: 'A CRM contact with this email already exists.' });
+    }
     
     const id = `tm-${Date.now()}`;
     const [member] = await db('team_members')
@@ -2688,7 +2812,7 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
         id,
         tenant_id: tenantId,
         name,
-        email,
+        email: normalizedEmail,
         role,
         phone,
         department,
@@ -2698,11 +2822,190 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
         updated_at: new Date()
       })
       .returning('*');
-    
-    res.status(201).json({ data: member });
+
+    const payload = await buildCrmContactInvitePayload(req, tenantId, member, {
+      email: normalizedEmail,
+      name,
+      role,
+    });
+    res.status(201).json(payload);
   } catch (err) {
     console.error('[API v1] Error creating team member:', err);
     res.status(500).json({ error: 'Failed to create team member' });
+  }
+});
+
+// POST /api/v1/team-members/:id/resend-invite
+router.post('/team-members/:id/resend-invite', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+
+    const member = await db('team_members')
+      .where({ id, tenant_id: tenantId })
+      .first();
+
+    if (!member) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+    if (member.is_active === false) {
+      return res.status(400).json({ error: 'Cannot resend invite for an inactive CRM contact' });
+    }
+
+    const payload = await buildCrmContactInvitePayload(req, tenantId, member, {
+      email: member.email,
+      name: member.name,
+      role: member.role,
+    });
+
+    res.status(200).json(payload);
+  } catch (err) {
+    console.error('[API v1] Error resending CRM invite:', err);
+    res.status(500).json({ error: 'Failed to resend invite' });
+  }
+});
+
+// PATCH /api/v1/team-members/:id
+router.patch('/team-members/:id', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+
+    const { name, email, role, phone, department, is_active } = req.body || {};
+
+    const current = await db('team_members')
+      .where({ id, tenant_id: tenantId })
+      .first();
+    if (!current) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+
+    const updates = {};
+    if (name != null) updates.name = String(name).trim();
+    if (role != null) updates.role = String(role).trim();
+    if (phone != null) updates.phone = phone;
+    if (department != null) updates.department = department;
+    if (is_active != null) updates.is_active = Boolean(is_active);
+
+    if (email != null) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      if (!normalizedEmail) {
+        return res.status(400).json({ error: 'email must be non-empty' });
+      }
+      // Ensure uniqueness within tenant (excluding current record).
+      const conflict = await db('team_members')
+        .where({ tenant_id: tenantId, email: normalizedEmail })
+        .whereNot({ id })
+        .first();
+      if (conflict) {
+        return res.status(409).json({ error: 'A CRM contact with this email already exists.' });
+      }
+      updates.email = normalizedEmail;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No fields provided to update' });
+    }
+
+    updates.updated_at = new Date();
+
+    const [member] = await db('team_members')
+      .where({ id, tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+
+    res.json({ data: member });
+  } catch (err) {
+    console.error('[API v1] Error updating team member:', err);
+    res.status(500).json({ error: 'Failed to update team member' });
+  }
+});
+
+// PATCH /api/v1/team-members/by-email/:email
+router.patch('/team-members/by-email/:email', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const emailParam = String(req.params.email || '').trim().toLowerCase();
+    if (!emailParam) return res.status(400).json({ error: 'email is required' });
+
+    const current = await db('team_members')
+      .where({ tenant_id: tenantId, email: emailParam })
+      .first();
+    if (!current) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+
+    const { name, email, role, phone, department, is_active } = req.body || {};
+    const updates = {};
+    if (name != null) updates.name = String(name).trim();
+    if (role != null) updates.role = String(role).trim();
+    if (phone != null) updates.phone = phone;
+    if (department != null) updates.department = department;
+    if (is_active != null) updates.is_active = Boolean(is_active);
+
+    if (email != null) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      if (!normalizedEmail) {
+        return res.status(400).json({ error: 'email must be non-empty' });
+      }
+      const conflict = await db('team_members')
+        .where({ tenant_id: tenantId, email: normalizedEmail })
+        .whereNot({ id: current.id })
+        .first();
+      if (conflict) {
+        return res.status(409).json({ error: 'A CRM contact with this email already exists.' });
+      }
+      updates.email = normalizedEmail;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No fields provided to update' });
+    }
+
+    updates.updated_at = new Date();
+
+    const [member] = await db('team_members')
+      .where({ id: current.id, tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+
+    res.json({ data: member });
+  } catch (err) {
+    console.error('[API v1] Error updating team member by email:', err);
+    res.status(500).json({ error: 'Failed to update team member' });
+  }
+});
+
+// POST /api/v1/team-members/by-email/:email/resend-invite
+router.post('/team-members/by-email/:email/resend-invite', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const emailParam = String(req.params.email || '').trim().toLowerCase();
+    if (!emailParam) return res.status(400).json({ error: 'email is required' });
+
+    const member = await db('team_members')
+      .where({ tenant_id: tenantId, email: emailParam })
+      .first();
+    if (!member) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+    if (member.is_active === false) {
+      return res.status(400).json({ error: 'Cannot resend invite for an inactive CRM contact' });
+    }
+
+    const payload = await buildCrmContactInvitePayload(req, tenantId, member, {
+      email: member.email,
+      name: member.name,
+      role: member.role,
+    });
+    res.status(200).json(payload);
+  } catch (err) {
+    console.error('[API v1] Error resending CRM invite by email:', err);
+    res.status(500).json({ error: 'Failed to resend invite' });
   }
 });
 
@@ -2725,6 +3028,30 @@ router.delete('/team-members/:id', requirePermission(Permission.SETTINGS_WRITE),
     res.json({ data: member, message: 'Team member deactivated' });
   } catch (err) {
     console.error('[API v1] Error deleting team member:', err);
+    res.status(500).json({ error: 'Failed to delete team member' });
+  }
+});
+
+// DELETE /api/v1/team-members/by-email/:email
+router.delete('/team-members/by-email/:email', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const emailParam = String(req.params.email || '').trim().toLowerCase();
+    if (!emailParam) return res.status(400).json({ error: 'email is required' });
+
+    const [member] = await db('team_members')
+      .where({ tenant_id: tenantId, email: emailParam })
+      .update({ is_active: false, updated_at: new Date() })
+      .returning('*');
+
+    if (!member) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+
+    res.json({ data: member, message: 'Team member deactivated' });
+  } catch (err) {
+    console.error('[API v1] Error deleting team member by email:', err);
     res.status(500).json({ error: 'Failed to delete team member' });
   }
 });
@@ -2790,7 +3117,7 @@ router.put('/operational-settings', requirePermission(Permission.SETTINGS_WRITE)
 // ===== SUPPORT TICKETS =====
 
 // GET /api/v1/support-tickets
-router.get('/support-tickets', requirePermission(Permission.SETTINGS_READ), async (req, res) => {
+router.get('/support-tickets', requirePermission(Permission.ORDERS_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -2813,7 +3140,7 @@ router.get('/support-tickets', requirePermission(Permission.SETTINGS_READ), asyn
 });
 
 // GET /api/v1/support-tickets/:id
-router.get('/support-tickets/:id', requirePermission(Permission.SETTINGS_READ), async (req, res) => {
+router.get('/support-tickets/:id', requirePermission(Permission.ORDERS_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -2839,7 +3166,7 @@ router.get('/support-tickets/:id', requirePermission(Permission.SETTINGS_READ), 
 });
 
 // POST /api/v1/support-tickets
-router.post('/support-tickets', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+router.post('/support-tickets', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -2874,7 +3201,7 @@ router.post('/support-tickets', requirePermission(Permission.SETTINGS_WRITE), as
 });
 
 // POST /api/v1/support-tickets/:id/replies
-router.post('/support-tickets/:id/replies', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+router.post('/support-tickets/:id/replies', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -2908,7 +3235,7 @@ router.post('/support-tickets/:id/replies', requirePermission(Permission.SETTING
 });
 
 // PATCH /api/v1/support-tickets/:id/status
-router.patch('/support-tickets/:id/status', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+router.patch('/support-tickets/:id/status', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -3297,6 +3624,153 @@ router.patch('/opportunities/:id/status', requirePermission(Permission.ACCOUNTS_
   } catch (err) {
     console.error('[API v1] Error updating opportunity status:', err);
     res.status(500).json({ error: 'Failed to update opportunity status' });
+  }
+});
+
+// ===== WAREHOUSES (Settings — inventory locations) =====
+
+async function ensureDefaultWarehouses(tenantId) {
+  const row = await db('warehouses').where({ tenant_id: tenantId }).count('* as c').first();
+  const n = Number(row?.c ?? 0);
+  if (n > 0) return;
+  const now = new Date();
+  const ts = Date.now();
+  await db('warehouses').insert([
+    {
+      id: `wh-${ts}-toronto`,
+      tenant_id: tenantId,
+      name: 'Toronto Main Warehouse',
+      is_active: true,
+      sort_order: 0,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: `wh-${ts}-milan`,
+      tenant_id: tenantId,
+      name: 'Milan Depot',
+      is_active: true,
+      sort_order: 1,
+      created_at: now,
+      updated_at: now,
+    },
+  ]);
+}
+
+// GET /api/v1/warehouses
+router.get('/warehouses', requirePermission(Permission.SETTINGS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+
+    await ensureDefaultWarehouses(tenantId);
+
+    const includeInactive =
+      req.query.include_inactive === 'true' || req.query.include_inactive === '1';
+
+    let q = db('warehouses').where({ tenant_id: tenantId });
+    if (!includeInactive) {
+      q = q.where('is_active', true);
+    }
+
+    const rows = await q.orderBy('sort_order', 'asc').orderBy('name', 'asc');
+    res.json({ data: rows });
+  } catch (err) {
+    console.error('[API v1] Error fetching warehouses:', err);
+    res.status(500).json({ error: 'Failed to fetch warehouses' });
+  }
+});
+
+// POST /api/v1/warehouses
+router.post('/warehouses', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+
+    await ensureDefaultWarehouses(tenantId);
+
+    const name = String(req.body?.name ?? '').trim();
+    if (!name) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+
+    const existing = await db('warehouses')
+      .where({ tenant_id: tenantId })
+      .whereRaw('lower(trim(name)) = ?', [name.toLowerCase()])
+      .first();
+    if (existing) {
+      return res.status(409).json({ error: 'A warehouse with this name already exists.' });
+    }
+
+    const maxSort = await db('warehouses').where({ tenant_id: tenantId }).max('sort_order as m').first();
+    const sortOrder = Number(maxSort?.m ?? -1) + 1;
+
+    const id = `wh-${Date.now()}`;
+    const now = new Date();
+    const [created] = await db('warehouses')
+      .insert({
+        id,
+        tenant_id: tenantId,
+        name,
+        is_active: true,
+        sort_order: sortOrder,
+        created_at: now,
+        updated_at: now,
+      })
+      .returning('*');
+
+    res.status(201).json({ data: created });
+  } catch (err) {
+    console.error('[API v1] Error creating warehouse:', err);
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A warehouse with this name already exists.' });
+    }
+    res.status(500).json({ error: 'Failed to create warehouse' });
+  }
+});
+
+// PATCH /api/v1/warehouses/:id
+router.patch('/warehouses/:id', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    const updates = { ...req.body };
+
+    delete updates.id;
+    delete updates.tenant_id;
+    delete updates.created_at;
+
+    if (updates.name !== undefined) {
+      updates.name = String(updates.name).trim();
+      if (!updates.name) {
+        return res.status(400).json({ error: 'name cannot be empty' });
+      }
+    }
+
+    const snake = {};
+    if (updates.name !== undefined) snake.name = updates.name;
+    if (updates.is_active !== undefined) snake.is_active = Boolean(updates.is_active);
+    if (updates.sort_order !== undefined) snake.sort_order = Number(updates.sort_order);
+
+    snake.updated_at = new Date();
+
+    const [row] = await db('warehouses')
+      .where({ id, tenant_id: tenantId })
+      .update(snake)
+      .returning('*');
+
+    if (!row) {
+      return res.status(404).json({ error: 'Warehouse not found' });
+    }
+
+    res.json({ data: row });
+  } catch (err) {
+    console.error('[API v1] Error updating warehouse:', err);
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A warehouse with this name already exists.' });
+    }
+    res.status(500).json({ error: 'Failed to update warehouse' });
   }
 });
 

@@ -3,17 +3,20 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev:full": "npm run dev:full --prefix ..",
+    "fly:deploy": "bash ../scripts/fly-deploy.sh",
     "start": "node index.mjs",
-    "start:legacy": "node stripe-server.mjs",
     "migrate": "knex migrate:latest --knexfile knexfile.mjs",
     "migrate:rollback": "knex migrate:rollback --knexfile knexfile.mjs",
     "migrate:make": "knex migrate:make --knexfile knexfile.mjs",
     "seed": "knex seed:run --knexfile knexfile.mjs",
-    "db:reset": "npm run migrate:rollback && npm run migrate && npm run seed"
+    "db:reset": "npm run migrate:rollback && npm run migrate && npm run seed",
+    "test:integration": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "argon2": "^0.44.0",
     "bullmq": "^5.73.0",
+    "compression": "^1.7.5",
     "connect-redis": "^9.0.0",
     "cors": "^2.8.5",
     "csv-parse": "^6.2.1",

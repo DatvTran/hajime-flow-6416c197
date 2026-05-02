@@ -1,5 +1,19 @@
-import { useState } from "react";
-import { Building2, Award, Factory, Users, FileText, MapPin, Phone, Mail, Save, Edit3, Upload, CheckCircle2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
+import {
+  Building2,
+  Award,
+  Factory,
+  Users,
+  FileText,
+  MapPin,
+  Phone,
+  Mail,
+  Save,
+  Edit3,
+  Upload,
+  CheckCircle2,
+} from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,119 +27,153 @@ import { ManufacturerSkeleton } from "@/components/skeletons";
 import { toast } from "@/components/ui/sonner";
 import {
   createManufacturerProfile,
+  getManufacturerProfiles,
   updateManufacturerProfile,
 } from "@/lib/api-v1-mutations";
+import type {
+  ManufacturerProfile,
+  ManufacturerProfileCertification,
+  ManufacturerProfileEquipment,
+} from "@/types/app-data";
+import { emptyProfile, formatAddressLine, mapApiRowToProfile } from "@/lib/manufacturer-profile-map";
 
-interface Certification {
-  id: string;
-  name: string;
-  issuer: string;
-  issuedAt: string;
-  expiresAt: string;
-  status: "active" | "expired" | "pending";
-}
+const DEFAULT_BOTTLES_PER_CASE = 12;
 
-interface Equipment {
-  id: string;
-  name: string;
-  capacity: string;
-  status: "operational" | "maintenance" | "offline";
+function buildApiPayload(form: ManufacturerProfile, manufacturerId: string) {
+  const addrLine = formatAddressLine(
+    form.address.street,
+    form.address.region,
+    form.address.postalCode,
+  );
+  const notesParts = [
+    form.legalName ? `Legal name: ${form.legalName}` : "",
+    form.description ? `Description: ${form.description}` : "",
+    form.backupContact.name ? `Backup contact: ${form.backupContact.name} (${form.backupContact.role})` : "",
+    form.backupContact.email ? `Backup email: ${form.backupContact.email}` : "",
+    form.backupContact.phone ? `Backup phone: ${form.backupContact.phone}` : "",
+    form.primaryContact.role ? `Primary role: ${form.primaryContact.role}` : "",
+    form.productionCapacity.peakCapacity
+      ? `Peak capacity (cases): ${form.productionCapacity.peakCapacity}`
+      : "",
+    form.productionCapacity.currentUtilization
+      ? `Current utilization (%): ${form.productionCapacity.currentUtilization}`
+      : "",
+  ]
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  return {
+    manufacturer_id: manufacturerId,
+    company_name: form.companyName,
+    contact_name: form.primaryContact.name,
+    email: form.primaryContact.email,
+    phone: form.primaryContact.phone,
+    address: addrLine || form.address.street,
+    city: form.address.city,
+    country: form.address.country,
+    website: form.website,
+    tax_id: form.taxId,
+    capacity_bottles_per_month: Math.max(
+      0,
+      Math.floor((Number(form.productionCapacity.monthlyCases) || 0) * DEFAULT_BOTTLES_PER_CASE),
+    ),
+    min_order_bottles: 0,
+    lead_time_days: 30,
+    payment_terms: "Net 30",
+    certifications: form.certifications.map((c) => c.name.trim()).filter(Boolean).join(", "),
+    notes: notesParts.join("\n"),
+  };
 }
 
 export default function ManufacturerProfilePage() {
   const { user } = useAuth();
   const { data, updateData, loading } = useAppData();
 
-  if (loading) {
-    return <ManufacturerSkeleton />;
-  }
-
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isHydrating, setIsHydrating] = useState(true);
 
-  // Get manufacturer profile from AppData or use defaults
-  const profile = data.manufacturerProfile || {
-    companyName: "",
-    legalName: "",
-    address: {
-      street: "",
-      city: "",
-      region: "",
-      country: "",
-      postalCode: "",
-    },
-    primaryContact: {
-      name: "",
-      role: "",
-      email: "",
-      phone: "",
-    },
-    backupContact: {
-      name: "",
-      role: "",
-      email: "",
-      phone: "",
-    },
-    productionCapacity: {
-      monthlyCases: 0,
-      peakCapacity: 0,
-      currentUtilization: 0,
-    },
-    certifications: [] as Certification[],
-    equipment: [] as Equipment[],
-    taxId: "",
-    website: "",
-    description: "",
-  };
+  const baseProfile = useMemo<ManufacturerProfile>(() => {
+    return data.manufacturerProfile ? { ...emptyProfile(), ...data.manufacturerProfile } : emptyProfile();
+  }, [data.manufacturerProfile]);
 
-  const [formData, setFormData] = useState(profile);
+  const [formData, setFormData] = useState<ManufacturerProfile>(baseProfile);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setFormData(baseProfile);
+    }
+  }, [baseProfile, isEditing]);
+
+  const hydrateFromServer = useCallback(async () => {
+    if (!user?.id) {
+      setIsHydrating(false);
+      return;
+    }
+    setIsHydrating(true);
+    try {
+      const res = (await getManufacturerProfiles()) as { data?: Record<string, unknown>[] };
+      const rows = Array.isArray(res.data) ? res.data : [];
+      const email = user.email?.toLowerCase().trim() || "";
+      const mine =
+        rows.find((r) => String(r.manufacturer_id ?? "") === user.id) ??
+        (email ? rows.find((r) => String(r.email ?? "").toLowerCase() === email) : undefined) ??
+        rows[0];
+
+      if (mine) {
+        const mapped = mapApiRowToProfile(mine);
+        updateData((d) => ({ ...d, manufacturerProfile: mapped }));
+      }
+    } catch (e) {
+      console.warn("[ManufacturerProfile] Failed to hydrate profile from API:", e);
+    } finally {
+      setIsHydrating(false);
+    }
+  }, [updateData, user?.email, user?.id]);
+
+  useEffect(() => {
+    void hydrateFromServer();
+  }, [hydrateFromServer]);
 
   const handleSave = async () => {
+    if (!user?.id) {
+      toast.error("Not signed in", { description: "Sign in again, then retry saving your profile." });
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const profilePayload = {
-        manufacturer_id: user?.id || "default",
-        company_name: formData.companyName,
-        contact_name: formData.contactPerson,
-        email: formData.email,
-        phone: formData.phone,
-        address: formData.address,
-        city: formData.city,
-        country: formData.country,
-        website: formData.website,
-        tax_id: formData.taxId,
-        bank_name: formData.bankName,
-        bank_account: formData.bankAccount,
-        iban: formData.iban,
-        swift: formData.swiftCode,
-        currency: formData.currency,
-        capacity_bottles_per_month: Number(formData.capacity) || 0,
-        min_order_bottles: Number(formData.minOrder) || 0,
-        lead_time_days: Number(formData.leadTime) || 30,
-        payment_terms: formData.paymentTerms,
-        certifications: formData.certifications.map(c => c.name).join(", "),
-        notes: formData.notes,
-      };
+      const profilePayload = buildApiPayload(formData, user.id);
 
+      let savedRow: Record<string, unknown>;
       if (data.manufacturerProfile?.id) {
-        await updateManufacturerProfile(data.manufacturerProfile.id, profilePayload);
+        const res = (await updateManufacturerProfile(data.manufacturerProfile.id, profilePayload)) as {
+          data: Record<string, unknown>;
+        };
+        savedRow = res.data;
       } else {
-        await createManufacturerProfile(profilePayload);
+        const res = (await createManufacturerProfile(profilePayload)) as { data: Record<string, unknown> };
+        savedRow = res.data;
       }
 
+      const merged = mapApiRowToProfile(savedRow);
       updateData((d) => ({
         ...d,
-        manufacturerProfile: formData,
+        manufacturerProfile: merged,
       }));
+      setFormData(merged);
+
       toast.success("Profile saved", { description: "Manufacturer profile saved to server." });
       setIsEditing(false);
     } catch (err) {
       console.error("[ManufacturerProfile] Failed to save:", err);
-      toast.error("Failed to save to server", { description: "Saved locally — will sync when online." });
+      toast.error("Failed to save to server", {
+        description: err instanceof Error ? err.message : "Saved locally — will sync when online.",
+      });
 
       updateData((d) => ({
         ...d,
-        manufacturerProfile: formData,
+        manufacturerProfile: { ...formData, manufacturerId: user.id },
       }));
       setIsEditing(false);
     } finally {
@@ -134,7 +182,7 @@ export default function ManufacturerProfilePage() {
   };
 
   const addCertification = () => {
-    const newCert: Certification = {
+    const newCert: ManufacturerProfileCertification = {
       id: `cert-${Date.now()}`,
       name: "",
       issuer: "",
@@ -148,12 +196,10 @@ export default function ManufacturerProfilePage() {
     }));
   };
 
-  const updateCertification = (id: string, field: keyof Certification, value: string) => {
+  const updateCertification = (id: string, field: keyof ManufacturerProfileCertification, value: string) => {
     setFormData((prev) => ({
       ...prev,
-      certifications: prev.certifications.map((c) =>
-        c.id === id ? { ...c, [field]: value } : c
-      ),
+      certifications: prev.certifications.map((c) => (c.id === id ? { ...c, [field]: value } : c)),
     }));
   };
 
@@ -165,7 +211,7 @@ export default function ManufacturerProfilePage() {
   };
 
   const addEquipment = () => {
-    const newEquip: Equipment = {
+    const newEquip: ManufacturerProfileEquipment = {
       id: `equip-${Date.now()}`,
       name: "",
       capacity: "",
@@ -177,12 +223,10 @@ export default function ManufacturerProfilePage() {
     }));
   };
 
-  const updateEquipment = (id: string, field: keyof Equipment, value: string) => {
+  const updateEquipment = (id: string, field: keyof ManufacturerProfileEquipment, value: string) => {
     setFormData((prev) => ({
       ...prev,
-      equipment: prev.equipment.map((e) =>
-        e.id === id ? { ...e, [field]: value } : e
-      ),
+      equipment: prev.equipment.map((e) => (e.id === id ? { ...e, [field]: value } : e)),
     }));
   };
 
@@ -192,6 +236,14 @@ export default function ManufacturerProfilePage() {
       equipment: prev.equipment.filter((e) => e.id !== id),
     }));
   };
+
+  if (user?.role === "brand_operator" || user?.role === "founder_admin") {
+    return <Navigate to="/manufacturer/profiles" replace />;
+  }
+
+  if (loading || isHydrating) {
+    return <ManufacturerSkeleton />;
+  }
 
   return (
     <div className="space-y-6">
@@ -209,12 +261,12 @@ export default function ManufacturerProfilePage() {
             <h2 className="font-display text-lg font-semibold">
               {formData.companyName || "Your Distillery"}
             </h2>
-            <p className="text-sm text-muted-foreground">{user.email}</p>
+            <p className="text-sm text-muted-foreground">{user?.email ?? "—"}</p>
           </div>
         </div>
         <Button
           variant={isEditing ? "default" : "outline"}
-          onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+          onClick={() => (isEditing ? void handleSave() : setIsEditing(true))}
           disabled={isSaving}
         >
           {isEditing ? (
@@ -379,7 +431,7 @@ export default function ManufacturerProfilePage() {
                     ...prev,
                     productionCapacity: {
                       ...prev.productionCapacity,
-                      monthlyCases: parseInt(e.target.value) || 0,
+                      monthlyCases: parseInt(e.target.value, 10) || 0,
                     },
                   }))
                 }
@@ -396,7 +448,7 @@ export default function ManufacturerProfilePage() {
                     ...prev,
                     productionCapacity: {
                       ...prev.productionCapacity,
-                      peakCapacity: parseInt(e.target.value) || 0,
+                      peakCapacity: parseInt(e.target.value, 10) || 0,
                     },
                   }))
                 }
@@ -415,7 +467,7 @@ export default function ManufacturerProfilePage() {
                     ...prev,
                     productionCapacity: {
                       ...prev.productionCapacity,
-                      currentUtilization: parseInt(e.target.value) || 0,
+                      currentUtilization: parseInt(e.target.value, 10) || 0,
                     },
                   }))
                 }
@@ -424,7 +476,8 @@ export default function ManufacturerProfilePage() {
             </div>
             <div className="rounded-lg bg-muted p-3">
               <p className="text-xs text-muted-foreground">
-                Utilization affects Hajime's production request planning. Update monthly or when capacity changes.
+                Monthly cases are converted to bottles/month for planning using {DEFAULT_BOTTLES_PER_CASE} bottles per
+                case.
               </p>
             </div>
           </CardContent>
@@ -718,7 +771,9 @@ export default function ManufacturerProfilePage() {
                         </div>
                         <select
                           value={cert.status}
-                          onChange={(e) => updateCertification(cert.id, "status", e.target.value as "active" | "pending" | "expired")}
+                          onChange={(e) =>
+                            updateCertification(cert.id, "status", e.target.value as "active" | "pending" | "expired")
+                          }
                           className="w-full rounded-md border px-3 py-2 text-sm"
                         >
                           <option value="active">Active</option>

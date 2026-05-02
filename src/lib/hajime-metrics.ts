@@ -92,7 +92,16 @@ export function computeSalesSummary(orders: SalesOrder[], now = new Date()) {
 
 export type DerivedAlert = {
   id: string;
-  type: "low-stock" | "delay" | "reorder" | "shipment" | "payment" | "account" | "demand-spike" | "onboarding";
+  type:
+    | "low-stock"
+    | "delay"
+    | "reorder"
+    | "shipment"
+    | "payment"
+    | "account"
+    | "demand-spike"
+    | "onboarding"
+    | "manufacturer-update";
   message: string;
   time: string;
   severity: "high" | "medium" | "low";
@@ -289,6 +298,36 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
       message: `${acc?.tradingName || r.accountId} flagged ${r.sku} for replenishment — ${r.bottlesSold.toLocaleString()} sold, ${r.bottlesOnHandAtEnd.toLocaleString()} on-hand`,
       time: r.reportedAt.slice(0, 10),
       severity: r.bottlesOnHandAtEnd < 30 ? "high" : "medium",
+    });
+  }
+
+  // Manufacturer feedback loop alerts for Brand Operator command center.
+  const recentStatusRows = [...(data.productionStatuses ?? [])]
+    .filter((row) => !!row.poId && !!row.updatedAt)
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+    .slice(0, 8);
+  for (const row of recentStatusRows) {
+    alerts.push({
+      id: `mfg-status-${row.poId}-${row.updatedAt}-${row.stage}`,
+      type: "manufacturer-update",
+      message: `Manufacturer update for ${row.poId}: ${row.stage}${row.notes ? ` — ${row.notes}` : ""}`,
+      time: row.updatedAt.slice(0, 10),
+      severity: /delayed|issue|blocked|hold/i.test(row.stage) ? "high" : "medium",
+    });
+  }
+
+  const recentProposals = [...(data.newProductRequests ?? [])]
+    .filter((req) => req.status === "proposed" || !!req.manufacturerProposal)
+    .sort((a, b) => String(b.proposalReceivedAt ?? b.requestedAt).localeCompare(String(a.proposalReceivedAt ?? a.requestedAt)))
+    .slice(0, 6);
+  for (const req of recentProposals) {
+    const at = (req.proposalReceivedAt ?? req.requestedAt).slice(0, 10);
+    alerts.push({
+      id: `mfg-proposal-${req.id}-${at}`,
+      type: "manufacturer-update",
+      message: `Manufacturer feedback received for ${req.title} (${req.id})`,
+      time: at,
+      severity: "medium",
     });
   }
 

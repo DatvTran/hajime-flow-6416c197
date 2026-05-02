@@ -37,10 +37,6 @@ function aggregateByMarket(orders: SalesOrder[], days: number, now = new Date())
 export default function ManufacturerMarketDemandPage() {
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <ManufacturerSkeleton />;
-  }
-
   const demand = useMemo(() => {
     const mode = resolveMarketsHqMode(data.salesOrders);
     const asOf = marketsAsOfDate(mode);
@@ -52,6 +48,10 @@ export default function ManufacturerMarketDemandPage() {
     }
     return { mode, rows30, rows90 };
   }, [data.salesOrders]);
+
+  if (loading) {
+    return <ManufacturerSkeleton />;
+  }
 
   return (
     <div>

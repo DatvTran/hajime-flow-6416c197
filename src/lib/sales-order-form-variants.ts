@@ -18,9 +18,9 @@ export type SalesOrderFormVariantConfig = {
 
 const VARIANT_CONFIG: Record<NewSalesOrderFormVariant, SalesOrderFormVariantConfig> = {
   brand: {
-    title: "New wholesale order",
+    title: "New CRM order (HQ)",
     description:
-      "Create a sell-in on behalf of Hajime HQ — full CRM, allocation, and lifecycle. Same record feeds Command center and Analytics.",
+      "Create a sell-in on behalf of Hajime HQ — CRM account routing, allocation, and lifecycle. The same record feeds Command center and Analytics.",
     badge: "Brand HQ",
     accent: "border-t-4 border-t-primary bg-gradient-to-b from-primary/5 to-transparent",
     contextNote: "Orders start as draft unless you set otherwise; retail-originated requests land in Pending review.",

@@ -266,11 +266,22 @@ export const salesOrders: SalesOrder[] = [
 
 export type Account = {
   id: string;
+  /** External / CRM account code when present (synced from API as account_number). */
+  accountNumber?: string;
   legalName: string;
   tradingName: string;
   country: string;
   city: string;
-  type: "retail" | "bar" | "restaurant" | "hotel" | "distributor" | "lifestyle";
+  type:
+    | "retail"
+    | "bar"
+    | "restaurant"
+    | "hotel"
+    | "distributor"
+    | "wholesaler"
+    | "lifestyle"
+    | "manufacturer"
+    | "producer";
   contactName: string;
   contactRole: string;
   phone: string;

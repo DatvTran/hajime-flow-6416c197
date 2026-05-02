@@ -1,17 +1,26 @@
-import { toast } from "@/components/ui/sonner";
+const API_URL = import.meta.env.VITE_API_URL || "";
+
+function getAuthToken(): string | null {
+  try {
+    // Keep backward compatibility with legacy token key used in older dev builds
+    return localStorage.getItem("hajime_access_token") || localStorage.getItem("token");
+  } catch {
+    return null;
+  }
+}
 
 /**
  * apiFetch wraps fetch with auth headers and error handling
  */
 export async function apiFetch(url: string, options: RequestInit = {}) {
-  const token = localStorage.getItem("token");
+  const token = getAuthToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...((options.headers as Record<string, string>) || {}),
   };
 
-  const response = await fetch(url, {
+  const response = await fetch(`${API_URL}${url}`, {
     ...options,
     headers,
   });
@@ -68,6 +77,14 @@ export async function updateProduct(id: string, productData: Partial<{
 
 export async function deleteProduct(id: string) {
   return apiFetch(`/api/v1/products/${id}`, {
+    method: "DELETE",
+  });
+}
+
+/** Soft-delete by tenant + SKU (avoids client needing a numeric DB id). */
+export async function deleteProductBySku(sku: string) {
+  const enc = encodeURIComponent(sku);
+  return apiFetch(`/api/v1/products/by-sku/${enc}`, {
     method: "DELETE",
   });
 }
@@ -619,8 +636,12 @@ export async function approveInventoryAdjustmentRequest(
 
 // ===== TEAM MEMBERS (Phase 2) =====
 
-export async function getTeamMembers() {
-  return apiFetch("/api/v1/team-members");
+export async function getTeamMembers(opts?: { includeInactive?: boolean }) {
+  const q =
+    opts?.includeInactive === true
+      ? "?include_inactive=1"
+      : "";
+  return apiFetch(`/api/v1/team-members${q}`);
 }
 
 export async function createTeamMember(memberData: {
@@ -642,6 +663,86 @@ export async function deleteTeamMember(id: string) {
   });
 }
 
+export async function deleteTeamMemberByEmail(email: string) {
+  const normalized = String(email).trim().toLowerCase();
+  return apiFetch(`/api/v1/team-members/by-email/${encodeURIComponent(normalized)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function resendTeamMemberInvite(id: string) {
+  return apiFetch(`/api/v1/team-members/${id}/resend-invite`, {
+    method: "POST",
+  });
+}
+
+export async function resendTeamMemberInviteByEmail(email: string) {
+  const normalized = String(email).trim().toLowerCase();
+  return apiFetch(`/api/v1/team-members/by-email/${encodeURIComponent(normalized)}/resend-invite`, {
+    method: "POST",
+  });
+}
+
+export async function updateTeamMember(
+  id: string,
+  body: {
+    name?: string;
+    email?: string;
+    role?: string;
+    phone?: string;
+    department?: string;
+    is_active?: boolean;
+  },
+) {
+  return apiFetch(`/api/v1/team-members/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateTeamMemberByEmail(
+  email: string,
+  body: {
+    name?: string;
+    email?: string;
+    role?: string;
+    phone?: string;
+    department?: string;
+    is_active?: boolean;
+  },
+) {
+  const normalized = String(email).trim().toLowerCase();
+  return apiFetch(`/api/v1/team-members/by-email/${encodeURIComponent(normalized)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+// ===== WAREHOUSES =====
+
+export async function getWarehouses(opts?: { includeInactive?: boolean }) {
+  const q =
+    opts?.includeInactive === true ? "?include_inactive=1" : "";
+  return apiFetch(`/api/v1/warehouses${q}`);
+}
+
+export async function createWarehouse(body: { name: string }) {
+  return apiFetch("/api/v1/warehouses", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateWarehouse(
+  id: string,
+  body: Partial<{ name: string; is_active: boolean; sort_order: number }>,
+) {
+  return apiFetch(`/api/v1/warehouses/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
 // ===== OPERATIONAL SETTINGS (Phase 2) =====
 
 export async function getOperationalSettings() {
@@ -654,6 +755,9 @@ export async function updateOperationalSettings(settings: {
   shelf_threshold?: number;
   auto_ship?: boolean;
   auto_alert?: boolean;
+  company_name?: string;
+  primary_markets?: string;
+  manufacturer_name?: string;
 }) {
   return apiFetch("/api/v1/operational-settings", {
     method: "PUT",

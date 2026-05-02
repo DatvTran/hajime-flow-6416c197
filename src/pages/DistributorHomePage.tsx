@@ -11,10 +11,6 @@ import { useMemo } from "react";
 export default function DistributorHomePage() {
   const { data, loading } = useAppData();
 
-  if (loading) {
-    return <DistributorSkeleton />;
-  }
-
   const { salesOrders } = useSalesOrders();
   const { depletionReports } = useDepletionReports();
   const inv = useMemo(() => computeInventorySummary(data.inventory, data.purchaseOrders), [data.inventory, data.purchaseOrders]);
@@ -45,11 +41,15 @@ export default function DistributorHomePage() {
     [depletionReports],
   );
 
+  if (loading) {
+    return <DistributorSkeleton />;
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Distributor operations"
-        description="Execution-first: pick, pack, ship, and clear backorders — same inventory and orders as HQ."
+        title="Distributor · floor & depletion"
+        description="Floor-first view: what needs picking today, what’s in motion, and where retail depletion flags replenishment — every side-effect is inventory truth, not a separate spreadsheet."
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

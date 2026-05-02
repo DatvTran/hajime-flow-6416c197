@@ -26,6 +26,10 @@ export type OperationalSettings = {
   safetyStockBySku: Record<string, number>;
   /** Retail shelf — alert when on-premise bottles fall below this (per SKU line). */
   retailerStockThresholdBottles?: number;
+  /** HQ labels — persisted in operational_settings (Settings → Company & replenishment). */
+  companyName?: string;
+  primaryMarkets?: string;
+  manufacturerName?: string;
 };
 
 /** Multi-node cash visibility: retailer → wholesaler → manufacturer (demo ledger). */
@@ -52,6 +56,69 @@ export type TeamMember = {
   role: TeamMemberPortalRole;
   /** ISO date */
   createdAt: string;
+  /** When false, row exists in DB but was soft-deleted from CRM (not returned by default API). */
+  isActive?: boolean;
+};
+
+/** Brand HQ warehouse / depot locations for inventory and transfers. */
+export type Warehouse = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+export type ManufacturerProfileCertification = {
+  id: string;
+  name: string;
+  issuer: string;
+  issuedAt: string;
+  expiresAt: string;
+  status: "active" | "expired" | "pending";
+};
+
+export type ManufacturerProfileEquipment = {
+  id: string;
+  name: string;
+  capacity: string;
+  status: "operational" | "maintenance" | "offline";
+};
+
+/** Manufacturer portal profile (UI state; persisted via `/api/v1/manufacturer-profiles`). */
+export type ManufacturerProfile = {
+  id?: string;
+  manufacturerId?: string;
+  companyName: string;
+  legalName: string;
+  address: {
+    street: string;
+    city: string;
+    region: string;
+    country: string;
+    postalCode: string;
+  };
+  primaryContact: {
+    name: string;
+    role: string;
+    email: string;
+    phone: string;
+  };
+  backupContact: {
+    name: string;
+    role: string;
+    email: string;
+    phone: string;
+  };
+  productionCapacity: {
+    monthlyCases: number;
+    peakCapacity: number;
+    currentUtilization: number;
+  };
+  certifications: ManufacturerProfileCertification[];
+  equipment: ManufacturerProfileEquipment[];
+  taxId: string;
+  website: string;
+  description: string;
 };
 
 export type AppData = {
@@ -80,6 +147,10 @@ export type AppData = {
   depletionReports?: import("@/data/mockData").DepletionReport[];
   /** Distributor inventory adjustment requests — reconcile physical counts. */
   inventoryAdjustmentRequests?: import("@/data/mockData").InventoryAdjustmentRequest[];
+  /** Warehouse / depot directory (Settings-managed). */
+  warehouses?: Warehouse[];
+  /** Manufacturer portal company profile (Manufacturer Profile page). */
+  manufacturerProfile?: ManufacturerProfile;
 };
 
 export type VisitNoteEntry = {

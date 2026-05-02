@@ -11,10 +11,11 @@ import {
   getDepletionReports,
   getPurchaseOrders,
   getShipments,
+  getNewProductRequests,
 } from "./api-v1";
-import { fetchAppData as fetchLegacyAppData } from "./api-app";
-import type { AppData } from "@/types/app-data";
-import type { PurchaseOrder, Shipment } from "@/data/mockData";
+import { getOperationalSettings, getTeamMembers, getWarehouses } from "@/lib/api-v1-mutations";
+import type { AppData, OperationalSettings, TeamMember, TeamMemberPortalRole, Warehouse } from "@/types/app-data";
+import type { NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
 
 // Feature flag to control granular API usage - Stage 3: Always use granular
 const USE_GRANULAR_API = true;
@@ -26,6 +27,45 @@ function sliceIsoDate(v: unknown): string {
   if (v == null || v === "") return new Date().toISOString().slice(0, 10);
   const s = String(v);
   return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+const PORTAL_ROLES = new Set<TeamMemberPortalRole>([
+  "sales_rep",
+  "retail",
+  "distributor",
+  "manufacturer",
+]);
+
+function mapRowToWarehouse(row: Record<string, unknown>): Warehouse {
+  const isActive =
+    row.is_active === undefined || row.is_active === null
+      ? true
+      : Boolean(row.is_active);
+  return {
+    id: String(row.id ?? ""),
+    name: String(row.name ?? "").trim(),
+    isActive,
+    sortOrder: Number(row.sort_order ?? 0),
+  };
+}
+
+function mapRowToTeamMember(row: Record<string, unknown>): TeamMember {
+  const roleRaw = String(row.role ?? "sales_rep");
+  const role = (
+    PORTAL_ROLES.has(roleRaw as TeamMemberPortalRole) ? roleRaw : "sales_rep"
+  ) as TeamMemberPortalRole;
+  const isActive =
+    row.is_active === undefined || row.is_active === null
+      ? true
+      : Boolean(row.is_active);
+  return {
+    id: String(row.id ?? ""),
+    displayName: String(row.name ?? row.display_name ?? ""),
+    email: String(row.email ?? "").trim().toLowerCase(),
+    role,
+    createdAt: sliceIsoDate(row.created_at ?? row.createdAt),
+    isActive,
+  };
 }
 
 function mapRowToPurchaseOrder(po: Record<string, unknown>): PurchaseOrder {
@@ -141,9 +181,94 @@ function mapRowToShipment(s: Record<string, unknown>): Shipment {
   };
 }
 
+function parseMaybeJson<T>(value: unknown, fallback: T): T {
+  if (value == null) return fallback;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return fallback;
+    }
+  }
+  if (typeof value === "object") return value as T;
+  return fallback;
+}
+
+function mapRowToNewProductRequest(row: Record<string, unknown>): NewProductRequest {
+  const specs = parseMaybeJson<NewProductRequest["specs"]>(row.specs, {
+    baseSpirit: "coffee_rhum",
+    targetAbv: 25,
+    flavorProfile: [],
+    targetPricePoint: "premium",
+    packaging: {
+      bottleSize: "750ml",
+      labelStyle: "",
+      caseConfiguration: 12,
+    },
+    minimumOrderQuantity: 1200,
+    targetLaunchDate: new Date().toISOString().slice(0, 10),
+    regulatoryMarkets: [],
+  });
+
+  const manufacturerProposal = parseMaybeJson<NewProductRequest["manufacturerProposal"]>(
+    row.manufacturer_proposal,
+    undefined,
+  );
+  const brandDecision = parseMaybeJson<NewProductRequest["brandDecision"]>(
+    row.brand_decision,
+    undefined,
+  );
+  const attachments = parseMaybeJson<NewProductRequest["attachments"]>(row.attachments, []);
+
+  return {
+    id: String(row.request_id ?? row.id ?? ""),
+    title: String(row.title ?? "Untitled request"),
+    requestedBy: String(row.requested_by ?? "brand_operator"),
+    requestedAt: String(row.requested_at ?? row.created_at ?? new Date().toISOString()),
+    specs,
+    attachments,
+    notes: String(row.notes ?? ""),
+    status: (String(row.status ?? "draft") as NewProductRequest["status"]),
+    assignedManufacturer:
+      row.assigned_manufacturer != null ? String(row.assigned_manufacturer) : undefined,
+    submittedAt: row.submitted_at != null ? String(row.submitted_at) : undefined,
+    reviewStartedAt: row.review_started_at != null ? String(row.review_started_at) : undefined,
+    proposalReceivedAt:
+      row.proposal_received_at != null ? String(row.proposal_received_at) : undefined,
+    decidedAt: row.decided_at != null ? String(row.decided_at) : undefined,
+    manufacturerProposal,
+    brandDecision,
+    sampleShipmentId: row.sample_shipment_id != null ? String(row.sample_shipment_id) : undefined,
+    productionPoId: row.production_po_id != null ? String(row.production_po_id) : undefined,
+    resultingSku: row.resulting_sku != null ? String(row.resulting_sku) : undefined,
+  };
+}
+
 /**
  * Transform API v1 data to AppData format
  */
+/** Map DB operational_settings row → client OperationalSettings (safety stock uses one reorder level for all SKUs). */
+function mapOperationalSettingsFromApi(
+  row: Record<string, unknown> | null | undefined,
+  products: { sku: string }[],
+): OperationalSettings | undefined {
+  if (!row) return undefined;
+  const reorder = Number(row.reorder_point_bottles);
+  const reorderSafe = Number.isFinite(reorder) ? reorder : 500;
+  const safetyStockBySku: Record<string, number> = {};
+  for (const p of products) {
+    safetyStockBySku[p.sku] = reorderSafe;
+  }
+  return {
+    manufacturerLeadTimeDays: Math.max(1, Number(row.lead_time_days) || 45),
+    safetyStockBySku,
+    retailerStockThresholdBottles: Math.max(0, Number(row.shelf_threshold) || 48),
+    companyName: typeof row.company_name === "string" ? row.company_name : undefined,
+    primaryMarkets: typeof row.primary_markets === "string" ? row.primary_markets : undefined,
+    manufacturerName: typeof row.manufacturer_name === "string" ? row.manufacturer_name : undefined,
+  };
+}
+
 function transformToAppData(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   products: any[],
@@ -159,6 +284,12 @@ function transformToAppData(
   purchaseOrdersRaw?: any[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   shipmentsRaw?: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  newProductRequestsRaw?: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  teamMembersRaw?: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  warehousesRaw?: any[],
 ): Partial<AppData> {
   try {
     const accountById = new Map((accounts || []).map((a) => [String(a.id), a]));
@@ -173,17 +304,20 @@ function transformToAppData(
         id: p.id,
         sku: p.sku,
         name: p.name,
-        description: p.description,
+        shortDescription: p.description,
         category: p.category,
-        unitSize: p.unit_size,
+        size: p.unit_size || p.metadata?.size || "750ml",
         caseSize: p.metadata?.caseSize || 12,
         bottleSizeMl: p.metadata?.bottleSizeMl || 750,
         abv: p.metadata?.abv || 25,
-        wholesalePriceCase: p.metadata?.wholesalePriceCase || 0,
+        wholesaleCasePrice: Number(
+          p.metadata?.wholesaleCasePrice ?? p.metadata?.wholesalePriceCase ?? 0,
+        ),
         retailPriceCase: p.metadata?.retailPriceCase || 0,
         launchDate: p.metadata?.launchDate,
         status: p.metadata?.status || "active",
-        image: p.metadata?.image,
+        imageUrl: p.metadata?.imageUrl || p.metadata?.image,
+        minOrderCases: Number(p.metadata?.minOrderCases ?? 1),
       })),
       accounts: (accounts || []).map(a => {
         // Convert address objects to strings if needed
@@ -286,6 +420,15 @@ function transformToAppData(
         updatedAt: p.issueDate,
         notes: p.notes,
       })),
+      newProductRequests: (newProductRequestsRaw || []).map((npr) =>
+        mapRowToNewProductRequest(npr as Record<string, unknown>),
+      ),
+      teamMembers: (teamMembersRaw || []).map((r) =>
+        mapRowToTeamMember(r as Record<string, unknown>),
+      ),
+      warehouses: (warehousesRaw || []).map((r) =>
+        mapRowToWarehouse(r as Record<string, unknown>),
+      ),
       retailerShelfStock: {},
       financingLedger: [],
     };
@@ -310,6 +453,10 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     getDepletionReports({ limit: 200 }),
     getPurchaseOrders({ limit: 100 }),
     getShipments({ limit: 100 }),
+    getNewProductRequests({ limit: 100 }),
+    getTeamMembers({ includeInactive: true }),
+    getWarehouses({ includeInactive: true }),
+    getOperationalSettings(),
   ]);
   
   const productsRes = results[0].status === 'fulfilled' ? results[0].value : { data: [] };
@@ -319,6 +466,10 @@ export async function fetchAppDataGranular(): Promise<AppData> {
   const depletionReportsRes = results[4].status === 'fulfilled' ? results[4].value : { data: [] };
   const purchaseOrdersRes = results[5].status === 'fulfilled' ? results[5].value : { data: [] };
   const shipmentsRes = results[6].status === 'fulfilled' ? results[6].value : { data: [] };
+  const newProductRequestsRes = results[7].status === 'fulfilled' ? results[7].value : { data: [] };
+  const teamMembersRes = results[8].status === 'fulfilled' ? results[8].value : { data: [] };
+  const warehousesRes = results[9].status === 'fulfilled' ? results[9].value : { data: [] };
+  const operationalRes = results[10].status === 'fulfilled' ? results[10].value : null;
   
   // Log any failures
   results.forEach((result, index) => {
@@ -335,25 +486,25 @@ export async function fetchAppDataGranular(): Promise<AppData> {
     depletionReportsRes.data || [],
     purchaseOrdersRes.data || [],
     shipmentsRes.data || [],
-  );
-  
-  return data as AppData;
+    newProductRequestsRes.data || [],
+    teamMembersRes.data || [],
+    warehousesRes.data || [],
+  ) as AppData;
+
+  const opRow =
+    operationalRes && typeof operationalRes === "object" && "data" in operationalRes
+      ? (operationalRes as { data: Record<string, unknown> }).data
+      : null;
+  const operationalSettings = mapOperationalSettingsFromApi(opRow, data.products || []);
+
+  return operationalSettings ? { ...data, operationalSettings } : data;
 }
 
 /**
- * Fetch data - Stage 4: Use granular APIs with fallback to legacy
+ * Fetch data - Stage 4+: Use granular APIs only.
  */
 export async function fetchAppData(): Promise<AppData> {
-  try {
-    // Stage 4: Try granular APIs first
-    return await fetchAppDataGranular();
-  } catch (err) {
-    if (isDev) {
-      console.warn("[DataService] Granular APIs failed, falling back to legacy:", err);
-    }
-    // Fallback to legacy API
-    return fetchLegacyAppData();
-  }
+  return fetchAppDataGranular();
 }
 
 // Stage 4: putAppData removed — use api-v1-mutations for all writes
