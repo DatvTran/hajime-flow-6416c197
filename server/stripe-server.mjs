@@ -345,6 +345,10 @@ if (fs.existsSync(path.join(DIST_DIR, "index.html"))) {
   app.use((req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
     if (req.path.startsWith("/api")) return next();
+    if (req.path.startsWith("/assets/")) {
+      res.status(404).type("text/plain").send("Not found");
+      return;
+    }
     res.sendFile(path.join(DIST_DIR, "index.html"));
   });
 }
