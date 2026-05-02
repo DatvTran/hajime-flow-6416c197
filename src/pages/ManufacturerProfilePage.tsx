@@ -35,16 +35,17 @@ import type {
   ManufacturerProfileCertification,
   ManufacturerProfileEquipment,
 } from "@/types/app-data";
-import { emptyProfile, formatAddressLine, mapApiRowToProfile } from "@/lib/manufacturer-profile-map";
+import { emptyProfile, mapApiRowToProfile } from "@/lib/manufacturer-profile-map";
+import {
+  MAX_POSTAL_CODE_LENGTH,
+  validateManufacturerAddress,
+  type AddressFields,
+} from "@/lib/address-validation";
+import { cn } from "@/lib/utils";
 
 const DEFAULT_BOTTLES_PER_CASE = 12;
 
 function buildApiPayload(form: ManufacturerProfile, manufacturerId: string) {
-  const addrLine = formatAddressLine(
-    form.address.street,
-    form.address.region,
-    form.address.postalCode,
-  );
   const notesParts = [
     form.legalName ? `Legal name: ${form.legalName}` : "",
     form.description ? `Description: ${form.description}` : "",
@@ -68,8 +69,10 @@ function buildApiPayload(form: ManufacturerProfile, manufacturerId: string) {
     contact_name: form.primaryContact.name,
     email: form.primaryContact.email,
     phone: form.primaryContact.phone,
-    address: addrLine || form.address.street,
+    address: form.address.street.trim(),
     city: form.address.city,
+    region: form.address.region,
+    postal_code: form.address.postalCode,
     country: form.address.country,
     website: form.website,
     tax_id: form.taxId,
@@ -92,6 +95,7 @@ export default function ManufacturerProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isHydrating, setIsHydrating] = useState(true);
+  const [addressErrors, setAddressErrors] = useState<Partial<Record<keyof AddressFields, string>>>({});
 
   const baseProfile = useMemo<ManufacturerProfile>(() => {
     return data.manufacturerProfile ? { ...emptyProfile(), ...data.manufacturerProfile } : emptyProfile();
@@ -142,6 +146,16 @@ export default function ManufacturerProfilePage() {
     }
 
     const uid = String(user.id);
+
+    const addrCheck = validateManufacturerAddress(formData.address);
+    if (!addrCheck.ok) {
+      setAddressErrors(addrCheck.errors);
+      const first = Object.values(addrCheck.errors)[0];
+      toast.error("Fix address fields", { description: first ?? "Check the highlighted fields." });
+      return;
+    }
+    setAddressErrors({});
+
     setIsSaving(true);
     try {
       const profilePayload = buildApiPayload(formData, uid);
@@ -350,62 +364,145 @@ export default function ManufacturerProfilePage() {
                 <MapPin className="h-4 w-4" />
                 Address
               </Label>
+              <p className="text-xs text-muted-foreground">
+                Required: street, city, country. Postal or ZIP is optional; any international format is accepted here.
+                For verified addresses (carrier-standard), plug in an address API later.
+              </p>
+              <datalist id="mfg-address-countries">
+                <option value="Japan" />
+                <option value="United States" />
+                <option value="United Kingdom" />
+                <option value="Canada" />
+                <option value="Australia" />
+                <option value="New Zealand" />
+                <option value="Brazil" />
+                <option value="India" />
+                <option value="Singapore" />
+                <option value="Germany" />
+                <option value="France" />
+                <option value="Italy" />
+                <option value="Spain" />
+                <option value="Netherlands" />
+                <option value="South Korea" />
+                <option value="China" />
+                <option value="Mexico" />
+                <option value="United Arab Emirates" />
+              </datalist>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  value={formData.address.street}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      address: { ...prev.address, street: e.target.value },
-                    }))
-                  }
-                  disabled={!isEditing}
-                  placeholder="Street address"
-                />
-                <Input
-                  value={formData.address.city}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      address: { ...prev.address, city: e.target.value },
-                    }))
-                  }
-                  disabled={!isEditing}
-                  placeholder="City"
-                />
-                <Input
-                  value={formData.address.region}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      address: { ...prev.address, region: e.target.value },
-                    }))
-                  }
-                  disabled={!isEditing}
-                  placeholder="State/Region"
-                />
-                <Input
-                  value={formData.address.postalCode}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      address: { ...prev.address, postalCode: e.target.value },
-                    }))
-                  }
-                  disabled={!isEditing}
-                  placeholder="Postal Code"
-                />
-                <Input
-                  value={formData.address.country}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      address: { ...prev.address, country: e.target.value },
-                    }))
-                  }
-                  disabled={!isEditing}
-                  placeholder="Country"
-                />
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="mfg-addr-street" className="text-xs text-muted-foreground">
+                    Street
+                  </Label>
+                  <Input
+                    id="mfg-addr-street"
+                    autoComplete="street-address"
+                    value={formData.address.street}
+                    onChange={(e) => {
+                      setAddressErrors((prev) => ({ ...prev, street: undefined }));
+                      setFormData((prev) => ({
+                        ...prev,
+                        address: { ...prev.address, street: e.target.value },
+                      }));
+                    }}
+                    disabled={!isEditing}
+                    placeholder="Street address, building, ward"
+                    className={cn(addressErrors.street && "border-destructive")}
+                  />
+                  {addressErrors.street ? (
+                    <p className="text-xs text-destructive">{addressErrors.street}</p>
+                  ) : null}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="mfg-addr-city" className="text-xs text-muted-foreground">
+                    City
+                  </Label>
+                  <Input
+                    id="mfg-addr-city"
+                    autoComplete="address-level2"
+                    value={formData.address.city}
+                    onChange={(e) => {
+                      setAddressErrors((prev) => ({ ...prev, city: undefined }));
+                      setFormData((prev) => ({
+                        ...prev,
+                        address: { ...prev.address, city: e.target.value },
+                      }));
+                    }}
+                    disabled={!isEditing}
+                    placeholder="City"
+                    className={cn(addressErrors.city && "border-destructive")}
+                  />
+                  {addressErrors.city ? <p className="text-xs text-destructive">{addressErrors.city}</p> : null}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="mfg-addr-region" className="text-xs text-muted-foreground">
+                    State / prefecture / region
+                  </Label>
+                  <Input
+                    id="mfg-addr-region"
+                    autoComplete="address-level1"
+                    value={formData.address.region}
+                    onChange={(e) => {
+                      setAddressErrors((prev) => ({ ...prev, region: undefined }));
+                      setFormData((prev) => ({
+                        ...prev,
+                        address: { ...prev.address, region: e.target.value },
+                      }));
+                    }}
+                    disabled={!isEditing}
+                    placeholder="Prefecture, state, county…"
+                    className={cn(addressErrors.region && "border-destructive")}
+                  />
+                  {addressErrors.region ? <p className="text-xs text-destructive">{addressErrors.region}</p> : null}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="mfg-addr-postal" className="text-xs text-muted-foreground">
+                    Postal / ZIP code
+                  </Label>
+                  <Input
+                    id="mfg-addr-postal"
+                    autoComplete="postal-code"
+                    inputMode="text"
+                    maxLength={MAX_POSTAL_CODE_LENGTH}
+                    value={formData.address.postalCode}
+                    onChange={(e) => {
+                      setAddressErrors((prev) => ({ ...prev, postalCode: undefined }));
+                      setFormData((prev) => ({
+                        ...prev,
+                        address: { ...prev.address, postalCode: e.target.value },
+                      }));
+                    }}
+                    disabled={!isEditing}
+                    placeholder="e.g. 100-0001 · 94102 · SW1A 1AA"
+                    className={cn(addressErrors.postalCode && "border-destructive")}
+                  />
+                  {addressErrors.postalCode ? (
+                    <p className="text-xs text-destructive">{addressErrors.postalCode}</p>
+                  ) : null}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="mfg-addr-country" className="text-xs text-muted-foreground">
+                    Country
+                  </Label>
+                  <Input
+                    id="mfg-addr-country"
+                    autoComplete="country-name"
+                    list="mfg-address-countries"
+                    value={formData.address.country}
+                    onChange={(e) => {
+                      setAddressErrors((prev) => ({ ...prev, country: undefined, postalCode: undefined }));
+                      setFormData((prev) => ({
+                        ...prev,
+                        address: { ...prev.address, country: e.target.value },
+                      }));
+                    }}
+                    disabled={!isEditing}
+                    placeholder="Start typing — suggestions appear"
+                    className={cn(addressErrors.country && "border-destructive")}
+                  />
+                  {addressErrors.country ? (
+                    <p className="text-xs text-destructive">{addressErrors.country}</p>
+                  ) : null}
+                </div>
               </div>
             </div>
           </CardContent>

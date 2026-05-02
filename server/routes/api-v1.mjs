@@ -3346,6 +3346,8 @@ router.post('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_WR
         phone: data.phone,
         address: data.address,
         city: data.city,
+        region: data.region,
+        postal_code: data.postal_code,
         country: data.country,
         website: data.website,
         tax_id: data.tax_id,

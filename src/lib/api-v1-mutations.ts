@@ -838,6 +838,8 @@ export async function createManufacturerProfile(profileData: {
   phone?: string;
   address?: string;
   city?: string;
+  region?: string;
+  postal_code?: string;
   country?: string;
   website?: string;
   tax_id?: string;
@@ -868,6 +870,8 @@ export async function updateManufacturerProfile(
     phone: string;
     address: string;
     city: string;
+    region: string;
+    postal_code: string;
     country: string;
     website: string;
     tax_id: string;
