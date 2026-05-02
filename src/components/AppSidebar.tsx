@@ -32,6 +32,7 @@ import {
   Gift,
   Scale,
   Store,
+  Building2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -94,6 +95,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
             { title: "Production requests", url: "/purchase-orders", icon: FileText },
             { title: "Product development", url: "/product-development", icon: Factory },
             { title: "Manufacturer portal", url: "/manufacturer", icon: Factory },
+            { title: "Manufacturer profiles", url: "/manufacturer/profiles", icon: Building2 },
           ],
         },
         {

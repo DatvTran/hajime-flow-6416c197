@@ -180,6 +180,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ email, password }),
       });
 
+      const ct = response.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) {
+        throw new Error(
+          "Login API returned a non-JSON response (often HTML). Use the same origin as the app or set VITE_API_URL to your API base URL when building.",
+        );
+      }
+
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: "Login failed" }));
         throw new Error(error.error || "Invalid email or password");

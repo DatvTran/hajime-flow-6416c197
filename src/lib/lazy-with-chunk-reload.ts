@@ -10,6 +10,8 @@ function isStaleChunkError(err: unknown): boolean {
     msg.includes("Failed to fetch dynamically imported module") ||
     msg.includes("Importing a module script failed") ||
     msg.includes("error loading dynamically imported module") ||
+    msg.includes("not a valid JavaScript MIME type") ||
+    (msg.includes("text/html") && msg.includes("MIME type")) ||
     /Loading chunk \d+ failed/i.test(msg)
   );
 }

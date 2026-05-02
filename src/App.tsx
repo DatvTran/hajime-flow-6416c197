@@ -41,6 +41,7 @@ const GlobalMarketsPage = lazyWithChunkReload(() => import("./pages/GlobalMarket
 // Manufacturer routes
 const ManufacturerMarketDemandPage = lazyWithChunkReload(() => import("./pages/ManufacturerMarketDemandPage"));
 const ManufacturerProfilePage = lazyWithChunkReload(() => import("./pages/ManufacturerProfilePage"));
+const ManufacturerProfilesListPage = lazyWithChunkReload(() => import("./pages/ManufacturerProfilesListPage"));
 const ManufacturerProductRequestsPage = lazyWithChunkReload(() => import("./pages/ManufacturerProductRequestsPage"));
 const FinancePaymentsPage = lazyWithChunkReload(() => import("./pages/FinancePaymentsPage"));
 const IncentiveManagerPage = lazyWithChunkReload(() => import("./pages/IncentiveManagerPage"));
@@ -141,6 +142,7 @@ const App = () => {
                   <Route path="/manufacturer" element={<Manufacturer />} />
                   <Route path="/manufacturer/market-demand" element={<ManufacturerMarketDemandPage />} />
                   <Route path="/manufacturer/profile" element={<ManufacturerProfilePage />} />
+                  <Route path="/manufacturer/profiles" element={<ManufacturerProfilesListPage />} />
                   <Route path="/manufacturer/purchase-orders" element={<PurchaseOrders />} />
                   <Route path="/manufacturer/product-requests" element={<ManufacturerProductRequestsPage />} />
                   <Route path="/manufacturer/shipments" element={<Shipments />} />

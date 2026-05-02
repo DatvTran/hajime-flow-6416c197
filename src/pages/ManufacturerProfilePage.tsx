@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
 import {
   Building2,
   Award,
@@ -34,102 +35,9 @@ import type {
   ManufacturerProfileCertification,
   ManufacturerProfileEquipment,
 } from "@/types/app-data";
+import { emptyProfile, formatAddressLine, mapApiRowToProfile } from "@/lib/manufacturer-profile-map";
 
 const DEFAULT_BOTTLES_PER_CASE = 12;
-
-function emptyProfile(): ManufacturerProfile {
-  return {
-    companyName: "",
-    legalName: "",
-    address: {
-      street: "",
-      city: "",
-      region: "",
-      country: "",
-      postalCode: "",
-    },
-    primaryContact: {
-      name: "",
-      role: "",
-      email: "",
-      phone: "",
-    },
-    backupContact: {
-      name: "",
-      role: "",
-      email: "",
-      phone: "",
-    },
-    productionCapacity: {
-      monthlyCases: 0,
-      peakCapacity: 0,
-      currentUtilization: 0,
-    },
-    certifications: [],
-    equipment: [],
-    taxId: "",
-    website: "",
-    description: "",
-  };
-}
-
-function formatAddressLine(street: string, region: string, postal: string): string {
-  const parts = [street, region, postal].map((s) => String(s || "").trim()).filter(Boolean);
-  return parts.join(", ");
-}
-
-function mapApiRowToProfile(row: Record<string, unknown>): ManufacturerProfile {
-  const certificationsRaw = String(row.certifications ?? "").trim();
-  const certifications: ManufacturerProfileCertification[] = certificationsRaw
-    ? certificationsRaw.split(",").map((name, i) => ({
-        id: `cert-import-${i}`,
-        name: name.trim(),
-        issuer: "",
-        issuedAt: "",
-        expiresAt: "",
-        status: "active" as const,
-      }))
-    : [];
-
-  return {
-    id: String(row.id ?? ""),
-    manufacturerId: String(row.manufacturer_id ?? ""),
-    companyName: String(row.company_name ?? ""),
-    legalName: "",
-    address: {
-      street: String(row.address ?? ""),
-      city: String(row.city ?? ""),
-      region: "",
-      country: String(row.country ?? ""),
-      postalCode: "",
-    },
-    primaryContact: {
-      name: String(row.contact_name ?? ""),
-      role: "",
-      email: String(row.email ?? ""),
-      phone: String(row.phone ?? ""),
-    },
-    backupContact: {
-      name: "",
-      role: "",
-      email: "",
-      phone: "",
-    },
-    productionCapacity: {
-      monthlyCases: Math.max(
-        0,
-        Math.round(Number(row.capacity_bottles_per_month ?? 0) / DEFAULT_BOTTLES_PER_CASE),
-      ),
-      peakCapacity: 0,
-      currentUtilization: 0,
-    },
-    certifications,
-    equipment: [],
-    taxId: String(row.tax_id ?? ""),
-    website: String(row.website ?? ""),
-    description: String(row.notes ?? ""),
-  };
-}
 
 function buildApiPayload(form: ManufacturerProfile, manufacturerId: string) {
   const addrLine = formatAddressLine(
@@ -328,6 +236,10 @@ export default function ManufacturerProfilePage() {
       equipment: prev.equipment.filter((e) => e.id !== id),
     }));
   };
+
+  if (user?.role === "brand_operator" || user?.role === "founder_admin") {
+    return <Navigate to="/manufacturer/profiles" replace />;
+  }
 
   if (loading || isHydrating) {
     return <ManufacturerSkeleton />;

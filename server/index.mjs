@@ -505,6 +505,12 @@ if (fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     if (req.path.startsWith('/api')) return next();
+    // Never SPA-fallback missing hashed bundles — sending index.html for *.js causes:
+    // "'text/html' is not a valid JavaScript MIME type" after deploy when chunks rotate.
+    if (req.path.startsWith('/assets/')) {
+      res.status(404).type('text/plain').send('Not found');
+      return;
+    }
     res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     res.sendFile(path.join(DIST_DIR, 'index.html'));
   });
