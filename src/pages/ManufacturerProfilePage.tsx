@@ -115,10 +115,10 @@ export default function ManufacturerProfilePage() {
       const res = (await getManufacturerProfiles()) as { data?: Record<string, unknown>[] };
       const rows = Array.isArray(res.data) ? res.data : [];
       const email = user.email?.toLowerCase().trim() || "";
+      const uid = String(user.id);
       const mine =
-        rows.find((r) => String(r.manufacturer_id ?? "") === user.id) ??
-        (email ? rows.find((r) => String(r.email ?? "").toLowerCase() === email) : undefined) ??
-        rows[0];
+        rows.find((r) => String(r.manufacturer_id ?? "") === uid) ??
+        (email ? rows.find((r) => String(r.email ?? "").toLowerCase() === email) : undefined);
 
       if (mine) {
         const mapped = mapApiRowToProfile(mine);
@@ -141,13 +141,18 @@ export default function ManufacturerProfilePage() {
       return;
     }
 
+    const uid = String(user.id);
     setIsSaving(true);
     try {
-      const profilePayload = buildApiPayload(formData, user.id);
+      const profilePayload = buildApiPayload(formData, uid);
+
+      const listRes = (await getManufacturerProfiles()) as { data?: Record<string, unknown>[] };
+      const rows = Array.isArray(listRes.data) ? listRes.data : [];
+      const existing = rows.find((r) => String(r.manufacturer_id ?? "") === uid);
 
       let savedRow: Record<string, unknown>;
-      if (data.manufacturerProfile?.id) {
-        const res = (await updateManufacturerProfile(data.manufacturerProfile.id, profilePayload)) as {
+      if (existing?.id) {
+        const res = (await updateManufacturerProfile(String(existing.id), profilePayload)) as {
           data: Record<string, unknown>;
         };
         savedRow = res.data;
@@ -168,14 +173,8 @@ export default function ManufacturerProfilePage() {
     } catch (err) {
       console.error("[ManufacturerProfile] Failed to save:", err);
       toast.error("Failed to save to server", {
-        description: err instanceof Error ? err.message : "Saved locally — will sync when online.",
+        description: err instanceof Error ? err.message : "Check your connection and try again.",
       });
-
-      updateData((d) => ({
-        ...d,
-        manufacturerProfile: { ...formData, manufacturerId: user.id },
-      }));
-      setIsEditing(false);
     } finally {
       setIsSaving(false);
     }

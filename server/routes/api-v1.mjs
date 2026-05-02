@@ -3317,6 +3317,22 @@ router.post('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_WR
     if (!data.manufacturer_id) {
       return res.status(400).json({ error: 'manufacturer_id is required' });
     }
+
+    const existing = await db('manufacturer_profiles')
+      .where({ tenant_id: tenantId, manufacturer_id: String(data.manufacturer_id) })
+      .first();
+    if (existing) {
+      const updates = { ...data };
+      delete updates.id;
+      delete updates.tenant_id;
+      delete updates.created_at;
+      updates.updated_at = new Date();
+      const [profile] = await db('manufacturer_profiles')
+        .where({ id: existing.id, tenant_id: tenantId })
+        .update(updates)
+        .returning('*');
+      return res.status(200).json({ data: profile });
+    }
     
     const id = `mp-${Date.now()}`;
     const [profile] = await db('manufacturer_profiles')
