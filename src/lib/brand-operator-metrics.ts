@@ -72,6 +72,8 @@ function derivedAlertTitle(a: DerivedAlert): string {
       return "Reorder signal";
     case "demand-spike":
       return "Demand spike";
+    case "manufacturer-update":
+      return "Manufacturer feedback";
     default:
       return "Operations";
   }
@@ -91,6 +93,8 @@ function derivedAlertAction(type: DerivedAlert["type"]): string {
       return "Confirm PO coverage against lead time and safety stock.";
     case "demand-spike":
       return "Stage inventory or expedite inbound to protect fill rate.";
+    case "manufacturer-update":
+      return "Review feedback and align next action in Command Center.";
     default:
       return "Review in Orders or Inventory.";
   }
@@ -110,6 +114,8 @@ function derivedAlertSource(type: DerivedAlert["type"]): string {
       return "Planning";
     case "demand-spike":
       return "Demand";
+    case "manufacturer-update":
+      return "Manufacturer";
     default:
       return "HQ";
   }
