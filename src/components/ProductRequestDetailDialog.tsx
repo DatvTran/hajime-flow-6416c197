@@ -1,4 +1,5 @@
 import type { NewProductRequest } from "@/data/mockData";
+import { formatBaseSpiritLabel } from "@/lib/base-spirit-options";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,7 @@ import { Package, DollarSign, Calendar, Factory, CheckCircle, XCircle, FilePlus 
 import { usePurchaseOrders } from "@/contexts/AppDataContext";
 import { NewPurchaseOrderDialog } from "./NewPurchaseOrderDialog";
 import { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { nextPoId } from "@/lib/po-ids";
 import type { PurchaseOrder } from "@/data/mockData";
 
@@ -48,6 +50,7 @@ type Props = {
 export function ProductRequestDetailDialog({ open, onOpenChange, request, onPatch }: Props) {
   // Hooks must come before any early return (rules of hooks)
   const { addPurchaseOrder, purchaseOrders } = usePurchaseOrders();
+  const { user } = useAuth();
   const [poDialogOpen, setPoDialogOpen] = useState(false);
 
   if (!request) return null;
@@ -127,7 +130,7 @@ export function ProductRequestDetailDialog({ open, onOpenChange, request, onPatc
             <div className="grid gap-3 rounded-lg border p-3 text-sm sm:grid-cols-2">
               <div>
                 <span className="text-muted-foreground">Base Spirit</span>
-                <p className="font-medium capitalize">{request.specs.baseSpirit.replace(/_/g, " ")}</p>
+                <p className="font-medium">{formatBaseSpiritLabel(request.specs.baseSpirit)}</p>
               </div>
               <div>
                 <span className="text-muted-foreground">Target ABV</span>
@@ -333,6 +336,7 @@ export function ProductRequestDetailDialog({ open, onOpenChange, request, onPatc
         onCreate={handleCreatePo}
         prefill={{ sku: undefined, quantity: String(proposalQty) }}
         variant="production"
+        userRole={user?.role ?? "brand_operator"}
       />
     </Dialog>
   );

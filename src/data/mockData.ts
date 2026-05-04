@@ -676,7 +676,7 @@ export const newProductRequests: NewProductRequest[] = [
     requestedBy: "brand_operator",
     requestedAt: "2025-04-01T10:00:00Z",
     specs: {
-      baseSpirit: "coffee_rhum",
+      baseSpirit: "rhum",
       targetAbv: 30,
       flavorProfile: ["hazelnut", "vanilla", "caramel"],
       sweetener: "cane_sugar",
@@ -699,7 +699,7 @@ export const newProductRequests: NewProductRequest[] = [
     requestedBy: "brand_operator",
     requestedAt: "2025-03-15T10:00:00Z",
     specs: {
-      baseSpirit: "coffee_rhum",
+      baseSpirit: "rhum",
       targetAbv: 25,
       flavorProfile: ["vanilla", "cold_brew"],
       sweetener: "cane_sugar",

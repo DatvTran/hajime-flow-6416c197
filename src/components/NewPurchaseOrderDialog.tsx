@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Account, PurchaseOrder } from "@/data/mockData";
-import { useAccounts, useProducts, useAuth } from "@/contexts/AppDataContext";
+import { useAccounts, useProducts, useAppData } from "@/contexts/AppDataContext";
+import { activeDestinationWarehouses } from "@/lib/po-destination-warehouse";
+import { findAccountForManufacturerPick } from "@/lib/manufacturer-account-nav";
+import { getPurchaseOrderManufacturerOptions } from "@/lib/api-v1-mutations";
 import { simulateLedgerCommit } from "@/lib/ledger";
 import {
   Dialog,
@@ -17,9 +20,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { nextPoId } from "@/lib/po-ids";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
-const MANUFACTURERS = ["Kirin Brewery Co."] as const;
+/** Demo fallback only when CRM + profiles are empty */
+const FALLBACK_MANUFACTURER_NAMES = ["Kirin Brewery Co."];
+
+type PoManufacturerOption = {
+  key: string;
+  label: string;
+  email?: string;
+  crmMemberId?: string | null;
+  hasProfile?: boolean;
+};
 const PO_STATUSES: PurchaseOrder["status"][] = [
   "draft",
   "approved",
@@ -81,6 +93,8 @@ export function NewPurchaseOrderDialog({
   userRole = "brand_operator",
   distributorAccountId,
 }: Props) {
+  const navigate = useNavigate();
+  const { data } = useAppData();
   const { products } = useProducts();
   const { accounts } = useAccounts();
   const [submitting, setSubmitting] = useState(false);
@@ -88,8 +102,18 @@ export function NewPurchaseOrderDialog({
   // NEW: PO Type selection
   const defaultPoType: PurchaseOrder["poType"] = userRole === "distributor" ? "sales" : "production";
   const [poType, setPoType] = useState<NonNullable<PurchaseOrder["poType"]>>(defaultPoType);
-  
-  const [manufacturer, setManufacturer] = useState<(typeof MANUFACTURERS)[number]>(MANUFACTURERS[0]);
+
+  const [manufacturerChoices, setManufacturerChoices] = useState<PoManufacturerOption[]>(() =>
+    FALLBACK_MANUFACTURER_NAMES.map((label, i) => ({
+      key: `fallback:${i}`,
+      label,
+      crmMemberId: null,
+      hasProfile: false,
+    })),
+  );
+  const [manufacturerKey, setManufacturerKey] = useState<string>("fallback:0");
+  /** CRM rows present — aligns PO list with Settings contacts */
+  const [manufacturerPickerHasCrm, setManufacturerPickerHasCrm] = useState(false);
   const [issueDate, setIssueDate] = useState(todayISO());
   const [requiredDate, setRequiredDate] = useState(addDaysISO(30));
   const [requestedShipDate, setRequestedShipDate] = useState(addDaysISO(35));
@@ -97,7 +121,11 @@ export function NewPurchaseOrderDialog({
   const [quantity, setQuantity] = useState("1200");
   const [packagingInstructions, setPackagingInstructions] = useState("Standard 12-bottle case");
   const [labelVersion, setLabelVersion] = useState("v3.1");
-  const [marketDestination, setMarketDestination] = useState("Ontario");
+  const destinationWarehouses = useMemo(
+    () => activeDestinationWarehouses(data.warehouses),
+    [data.warehouses],
+  );
+  const [marketDestination, setMarketDestination] = useState("Toronto Main Warehouse");
   const [status, setStatus] = useState<PurchaseOrder["status"]>("draft");
   const [notes, setNotes] = useState("");
   
@@ -120,10 +148,9 @@ export function NewPurchaseOrderDialog({
 
   useEffect(() => {
     if (!open) return;
-    
+
     // Reset to defaults when opening
     setPoType(defaultPoType);
-    setManufacturer(MANUFACTURERS[0]);
     setIssueDate(todayISO());
     setRequiredDate(addDaysISO(30));
     setRequestedShipDate(addDaysISO(35));
@@ -136,7 +163,66 @@ export function NewPurchaseOrderDialog({
     setStatus("draft");
     setNotes(prefill?.sku ? `Replenishment suggestion for ${prefill.sku}` : "");
     setSelectedDistributorId(distributorAccountId || "");
-  }, [open, products, prefill, defaultPoType, distributorAccountId]);
+  }, [open, products, prefill, defaultPoType, distributorAccountId, destinationWarehouses]);
+
+  useEffect(() => {
+    if (destinationWarehouses.length === 0) return;
+    if (!destinationWarehouses.some((w) => w.name === marketDestination)) {
+      setMarketDestination(destinationWarehouses[0].name);
+    }
+  }, [destinationWarehouses, marketDestination]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = (await getPurchaseOrderManufacturerOptions()) as { data?: PoManufacturerOption[] };
+        const rows = Array.isArray(res.data) ? res.data : [];
+        if (cancelled) return;
+        if (rows.length > 0) {
+          setManufacturerChoices(rows);
+          setManufacturerKey(rows[0].key);
+          setManufacturerPickerHasCrm(rows.some((r) => Boolean(r.crmMemberId)));
+        } else {
+          const fb = FALLBACK_MANUFACTURER_NAMES.map((label, i) => ({
+            key: `fallback:${i}`,
+            label,
+            crmMemberId: null as string | null,
+            hasProfile: false,
+          }));
+          setManufacturerChoices(fb);
+          setManufacturerKey(fb[0].key);
+          setManufacturerPickerHasCrm(false);
+        }
+      } catch {
+        if (!cancelled) {
+          const fb = FALLBACK_MANUFACTURER_NAMES.map((label, i) => ({
+            key: `fallback:${i}`,
+            label,
+            crmMemberId: null as string | null,
+            hasProfile: false,
+          }));
+          setManufacturerChoices(fb);
+          setManufacturerKey(fb[0].key);
+          setManufacturerPickerHasCrm(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (manufacturerChoices.length === 0) return;
+    if (!manufacturerChoices.some((c) => c.key === manufacturerKey)) {
+      setManufacturerKey(manufacturerChoices[0].key);
+    }
+  }, [manufacturerChoices, manufacturerKey]);
+
+  const manufacturerDisplayLabel =
+    manufacturerChoices.find((c) => c.key === manufacturerKey)?.label ?? FALLBACK_MANUFACTURER_NAMES[0];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,7 +241,7 @@ export function NewPurchaseOrderDialog({
     
     const po: PurchaseOrder = {
       id: nextPoId(existing),
-      manufacturer,
+      manufacturer: manufacturerDisplayLabel,
       issueDate,
       requiredDate,
       requestedShipDate,
@@ -179,6 +265,17 @@ export function NewPurchaseOrderDialog({
         description: `${po.id} · ${poType === "sales" ? "Sales PO" : "Production PO"} · Network commit ${txHash.slice(0, 10)}…`,
       });
       onOpenChange(false);
+
+      const hqProductionNavRoles = ["brand_operator", "founder_admin", "operations"];
+      if (poType === "production" && hqProductionNavRoles.includes(userRole)) {
+        const selected = manufacturerChoices.find((c) => c.key === manufacturerKey);
+        const linked = findAccountForManufacturerPick(accounts, selected ? { label: selected.label, email: selected.email } : undefined);
+        if (linked) {
+          navigate(`/accounts?account=${encodeURIComponent(linked.id)}`);
+        } else {
+          navigate(`/manufacturer/purchase-orders?po=${encodeURIComponent(po.id)}`);
+        }
+      }
     } finally {
       setSubmitting(false);
     }
@@ -261,18 +358,40 @@ export function NewPurchaseOrderDialog({
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
               <Label>Manufacturer</Label>
-              <Select value={manufacturer} onValueChange={(v) => setManufacturer(v as (typeof MANUFACTURERS)[number])}>
+              <Select value={manufacturerKey} onValueChange={setManufacturerKey}>
                 <SelectTrigger className="touch-manipulation">
-                  <SelectValue />
+                  <SelectValue placeholder="Select manufacturer" />
                 </SelectTrigger>
                 <SelectContent>
-                  {MANUFACTURERS.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
+                  {manufacturerChoices.map((row) => (
+                    <SelectItem key={row.key} value={row.key}>
+                      <span className="flex flex-col gap-0.5 text-left">
+                        <span>{row.label}</span>
+                        {row.email ? (
+                          <span className="text-[11px] font-normal text-muted-foreground">{row.email}</span>
+                        ) : null}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {manufacturerPickerHasCrm ? (
+                <p className="text-xs text-muted-foreground">
+                  Same contacts as <span className="font-medium text-foreground">Settings → CRM</span> (Manufacturer
+                  role). The label prefers <span className="font-medium">Company name</span> from Manufacturer → Profile
+                  when the email matches.
+                </p>
+              ) : manufacturerChoices.some((c) => c.key.startsWith("fallback:")) ? (
+                <p className="text-xs text-amber-700 dark:text-amber-500">
+                  No manufacturer contacts or profiles yet — demo name only. Add manufacturer users in CRM and have them
+                  save company details under Manufacturer → Profile.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Profile-only entries (not yet in CRM) still appear here; add them under Settings → CRM for a single
+                  source of truth.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="po-issue">Issue date</Label>
@@ -358,8 +477,22 @@ export function NewPurchaseOrderDialog({
               <Input id="po-label" value={labelVersion} onChange={(e) => setLabelVersion(e.target.value)} className="touch-manipulation" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="po-market">Market destination</Label>
-              <Input id="po-market" value={marketDestination} onChange={(e) => setMarketDestination(e.target.value)} className="touch-manipulation" />
+              <Label>Destination warehouse</Label>
+              <Select value={marketDestination} onValueChange={setMarketDestination}>
+                <SelectTrigger className="touch-manipulation">
+                  <SelectValue placeholder="Select warehouse" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(destinationWarehouses.length > 0 ? destinationWarehouses : [{ id: "fallback", name: "Toronto Main Warehouse", isActive: true, sortOrder: 0 }]).map((w) => (
+                    <SelectItem key={w.id} value={w.name}>
+                      {w.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Same locations as <span className="font-medium text-foreground">Settings → Warehouses</span>. Inventory receipts map here when the PO is marked delivered.
+              </p>
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="po-notes">Notes</Label>

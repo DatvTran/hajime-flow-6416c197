@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import type { NewProductRequest } from "@/data/mockData";
+import { BASE_SPIRIT_OPTIONS } from "@/lib/base-spirit-options";
+import { getPurchaseOrderManufacturerOptions } from "@/lib/api-v1-mutations";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +17,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 
-const MANUFACTURERS = ["Kirin Brewery Co."] as const;
+/** Demo fallback when CRM + profiles are empty */
+const FALLBACK_MANUFACTURER_NAMES = ["Kirin Brewery Co."];
+
+type CrmManufacturerOption = {
+  key: string;
+  label: string;
+  email?: string;
+  crmMemberId?: string | null;
+  hasProfile?: boolean;
+};
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -36,7 +47,7 @@ type Props = {
 export function NewProductRequestDialog({ open, onOpenChange, onCreate }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [title, setTitle] = useState("");
-  const [baseSpirit, setBaseSpirit] = useState("coffee_rhum");
+  const [baseSpirit, setBaseSpirit] = useState("rhum");
   const [targetAbv, setTargetAbv] = useState("25");
   const [flavorProfile, setFlavorProfile] = useState("");
   const [sweetener, setSweetener] = useState("cane_sugar");
@@ -48,12 +59,21 @@ export function NewProductRequestDialog({ open, onOpenChange, onCreate }: Props)
   const [targetLaunchDate, setTargetLaunchDate] = useState(addMonthsISO(3));
   const [regulatoryMarkets, setRegulatoryMarkets] = useState("Ontario, US");
   const [notes, setNotes] = useState("");
-  const [manufacturer, setManufacturer] = useState<(typeof MANUFACTURERS)[number]>(MANUFACTURERS[0]);
+  const [manufacturerChoices, setManufacturerChoices] = useState<CrmManufacturerOption[]>(() =>
+    FALLBACK_MANUFACTURER_NAMES.map((label, i) => ({
+      key: `fallback:${i}`,
+      label,
+      crmMemberId: null,
+      hasProfile: false,
+    })),
+  );
+  const [manufacturerKey, setManufacturerKey] = useState("fallback:0");
+  const [manufacturerPickerHasCrm, setManufacturerPickerHasCrm] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setTitle("");
-    setBaseSpirit("coffee_rhum");
+    setBaseSpirit("rhum");
     setTargetAbv("25");
     setFlavorProfile("");
     setSweetener("cane_sugar");
@@ -65,8 +85,60 @@ export function NewProductRequestDialog({ open, onOpenChange, onCreate }: Props)
     setTargetLaunchDate(addMonthsISO(3));
     setRegulatoryMarkets("Ontario, US");
     setNotes("");
-    setManufacturer(MANUFACTURERS[0]);
+    setManufacturerKey("fallback:0");
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = (await getPurchaseOrderManufacturerOptions()) as { data?: CrmManufacturerOption[] };
+        const rows = Array.isArray(res.data) ? res.data : [];
+        if (cancelled) return;
+        if (rows.length > 0) {
+          setManufacturerChoices(rows);
+          setManufacturerKey(rows[0].key);
+          setManufacturerPickerHasCrm(rows.some((r) => Boolean(r.crmMemberId)));
+        } else {
+          const fb = FALLBACK_MANUFACTURER_NAMES.map((label, i) => ({
+            key: `fallback:${i}`,
+            label,
+            crmMemberId: null as string | null,
+            hasProfile: false,
+          }));
+          setManufacturerChoices(fb);
+          setManufacturerKey(fb[0].key);
+          setManufacturerPickerHasCrm(false);
+        }
+      } catch {
+        if (!cancelled) {
+          const fb = FALLBACK_MANUFACTURER_NAMES.map((label, i) => ({
+            key: `fallback:${i}`,
+            label,
+            crmMemberId: null as string | null,
+            hasProfile: false,
+          }));
+          setManufacturerChoices(fb);
+          setManufacturerKey(fb[0].key);
+          setManufacturerPickerHasCrm(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (manufacturerChoices.length === 0) return;
+    if (!manufacturerChoices.some((c) => c.key === manufacturerKey)) {
+      setManufacturerKey(manufacturerChoices[0].key);
+    }
+  }, [manufacturerChoices, manufacturerKey]);
+
+  const manufacturerDisplayLabel =
+    manufacturerChoices.find((c) => c.key === manufacturerKey)?.label ?? FALLBACK_MANUFACTURER_NAMES[0];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,7 +180,7 @@ export function NewProductRequestDialog({ open, onOpenChange, onCreate }: Props)
       attachments: [],
       notes: notes.trim(),
       status: "draft",
-      assignedManufacturer: manufacturer,
+      assignedManufacturer: manufacturerDisplayLabel,
     };
 
     setSubmitting(true);
@@ -150,11 +222,11 @@ export function NewProductRequestDialog({ open, onOpenChange, onCreate }: Props)
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="coffee_rhum">Coffee Rhum</SelectItem>
-                  <SelectItem value="coffee_vodka">Coffee Vodka</SelectItem>
-                  <SelectItem value="coffee_whiskey">Coffee Whiskey</SelectItem>
-                  <SelectItem value="coffee_liqueur">Coffee Liqueur</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
+                  {BASE_SPIRIT_OPTIONS.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -296,18 +368,38 @@ export function NewProductRequestDialog({ open, onOpenChange, onCreate }: Props)
 
           <div className="space-y-2">
             <Label>Manufacturer</Label>
-            <Select value={manufacturer} onValueChange={(v) => setManufacturer(v as typeof MANUFACTURERS[number])}>
+            <Select value={manufacturerKey} onValueChange={setManufacturerKey}>
               <SelectTrigger className="touch-manipulation">
-                <SelectValue />
+                <SelectValue placeholder="Select manufacturer" />
               </SelectTrigger>
               <SelectContent>
-                {MANUFACTURERS.map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {m}
+                {manufacturerChoices.map((row) => (
+                  <SelectItem key={row.key} value={row.key}>
+                    <span className="flex flex-col gap-0.5 text-left">
+                      <span>{row.label}</span>
+                      {row.email ? (
+                        <span className="text-[11px] font-normal text-muted-foreground">{row.email}</span>
+                      ) : null}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {manufacturerPickerHasCrm ? (
+              <p className="text-xs text-muted-foreground">
+                Same contacts as <span className="font-medium text-foreground">Settings → CRM</span> (Manufacturer role).
+                Labels prefer saved <span className="font-medium">Company name</span> from Manufacturer → Profile when the
+                email matches.
+              </p>
+            ) : manufacturerChoices.some((c) => c.key.startsWith("fallback:")) ? (
+              <p className="text-xs text-amber-700 dark:text-amber-500">
+                No manufacturer CRM contacts loaded — demo name only. Add manufacturers under Settings → CRM.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Profile-only rows may appear here until those contacts are added under CRM.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

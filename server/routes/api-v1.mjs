@@ -2766,6 +2766,75 @@ router.get('/team-members', requirePermission(Permission.SETTINGS_READ), async (
   }
 });
 
+/**
+ * GET /api/v1/purchase-order-manufacturer-options
+ * CRM manufacturer contacts (team_members) merged with manufacturer_profiles by email.
+ * Uses PO_READ so Operations can create POs without SETTINGS_READ (team-members list is HQ-only).
+ */
+router.get('/purchase-order-manufacturer-options', requirePermission(Permission.PO_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+
+    const members = await db('team_members')
+      .where({ tenant_id: tenantId, role: 'manufacturer' })
+      .where('is_active', true)
+      .orderBy('name', 'asc');
+
+    const profiles = await db('manufacturer_profiles').where({ tenant_id: tenantId });
+
+    const profileByEmail = new Map();
+    for (const p of profiles) {
+      const em = String(p.email ?? '').trim().toLowerCase();
+      if (em) profileByEmail.set(em, p);
+    }
+
+    const options = [];
+
+    for (const m of members) {
+      const email = String(m.email ?? '').trim().toLowerCase();
+      const prof = profileByEmail.get(email);
+      let label = prof?.company_name ? String(prof.company_name).trim() : '';
+      if (!label && prof?.contact_name) label = String(prof.contact_name).trim();
+      if (!label) label = String(m.name ?? '').trim();
+      if (!label) label = email;
+
+      options.push({
+        key: String(m.id),
+        label,
+        email,
+        crmMemberId: String(m.id),
+        hasProfile: Boolean(prof),
+      });
+    }
+
+    const crmEmails = new Set(members.map((x) => String(x.email ?? '').trim().toLowerCase()));
+
+    for (const p of profiles) {
+      const em = String(p.email ?? '').trim().toLowerCase();
+      if (!em || crmEmails.has(em)) continue;
+      const label =
+        String(p.company_name ?? '').trim() ||
+        String(p.contact_name ?? '').trim();
+      if (!label) continue;
+      options.push({
+        key: `prof:${em}`,
+        label,
+        email: em,
+        crmMemberId: null,
+        hasProfile: true,
+      });
+    }
+
+    options.sort((a, b) => a.label.localeCompare(b.label));
+
+    res.json({ data: options });
+  } catch (err) {
+    console.error('[API v1] Error listing purchase-order manufacturer options:', err);
+    res.status(500).json({ error: 'Failed to load manufacturer options' });
+  }
+});
+
 // POST /api/v1/team-members
 router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
   try {

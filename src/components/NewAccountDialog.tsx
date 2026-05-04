@@ -121,7 +121,11 @@ export function NewAccountDialog({ open, onOpenChange, accounts, onCreate }: Pro
           <>
             <DialogHeader>
               <DialogTitle>New account</DialogTitle>
-              <DialogDescription>Add a customer account. You can share a Stripe link and QR code on the next step.</DialogDescription>
+              <DialogDescription>
+                Add a customer or distributor account (Brand Operator). Complete profile and contact email here. For
+                distributors and warehouse partners, go to Settings → CRM afterward to send the portal invite so they can
+                set up login. You can share a Stripe link and QR code on the next step.
+              </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-3">
               <div className="grid gap-2 sm:grid-cols-2">

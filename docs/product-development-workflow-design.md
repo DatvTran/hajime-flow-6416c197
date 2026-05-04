@@ -68,7 +68,7 @@ interface NewProductRequest {
   
   // Product Specs (Brand fills)
   specs: {
-    baseSpirit: "coffee_rhum" | "coffee_vodka" | "coffee_whiskey" | string;
+    baseSpirit: "rhum" | "vodka" | "gin" | "tequila" | "whiskey" | string;
     targetAbv: number;           // 25-40%
     flavorProfile: string[];     // ["hazelnut", "vanilla"]
     sweetener?: string;          // "cane_sugar", "honey", "none"

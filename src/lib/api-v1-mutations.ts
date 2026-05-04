@@ -822,6 +822,11 @@ export async function updateTicketStatus(
 
 // ===== MANUFACTURER PROFILES (Phase 2) =====
 
+/** CRM manufacturers + profile labels for Production PO picker (PO_READ). */
+export async function getPurchaseOrderManufacturerOptions() {
+  return apiFetch("/api/v1/purchase-order-manufacturer-options");
+}
+
 export async function getManufacturerProfiles() {
   return apiFetch("/api/v1/manufacturer-profiles");
 }

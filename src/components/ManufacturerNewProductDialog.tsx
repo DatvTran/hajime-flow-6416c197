@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BASE_SPIRIT_OPTIONS } from "@/lib/base-spirit-options";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -47,17 +48,6 @@ type Props = {
   onCreate: (npr: Omit<NewProductRequest, "id">) => void;
 };
 
-const BASE_SPIRITS = [
-  { value: "coffee_rhum", label: "Coffee Rhum" },
-  { value: "whiskey", label: "Whiskey" },
-  { value: "vodka", label: "Vodka" },
-  { value: "gin", label: "Gin" },
-  { value: "rum", label: "Rum" },
-  { value: "tequila", label: "Tequila" },
-  { value: "liqueur", label: "Liqueur" },
-  { value: "other", label: "Other" },
-];
-
 const FLAVOR_PROFILES = [
   "coffee", "vanilla", "caramel", "hazelnut", "chocolate", "cinnamon",
   "citrus", "orange", "lemon", "lime", "yuzu", "ginger", "honey",
@@ -70,7 +60,7 @@ export function ManufacturerNewProductDialog({ open, onOpenChange, existingReque
   
   // Product specs
   const [title, setTitle] = useState("");
-  const [baseSpirit, setBaseSpirit] = useState("coffee_rhum");
+  const [baseSpirit, setBaseSpirit] = useState("rhum");
   const [targetAbv, setTargetAbv] = useState("25");
   const [selectedFlavors, setSelectedFlavors] = useState<string[]>(["coffee"]);
   const [sweetener, setSweetener] = useState("cane_sugar");
@@ -220,8 +210,10 @@ export function ManufacturerNewProductDialog({ open, onOpenChange, existingReque
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {BASE_SPIRITS.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                    {BASE_SPIRIT_OPTIONS.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
