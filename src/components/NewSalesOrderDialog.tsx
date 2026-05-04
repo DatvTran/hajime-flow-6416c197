@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Account, OrderRoutingTarget, SalesOrder } from "@/data/mockData";
 import { orderCreatedByFromRole, isProxyOrder, getProxyAuditInfo } from "@/lib/order-routing";
-import { useAccounts, useProducts, useInventory } from "@/contexts/AppDataContext";
+import { useAccounts, useAppData, useProducts, useInventory } from "@/contexts/AppDataContext";
+import type { TeamMember, TeamMemberPortalRole } from "@/types/app-data";
 import { useAuth } from "@/contexts/AuthContext";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
 import {
@@ -85,6 +86,38 @@ type Props = {
   variant: NewSalesOrderFormVariant;
 };
 
+type BrandCrmChoiceRow =
+  | { key: string; kind: "account"; account: Account; member?: TeamMember }
+  | { key: string; kind: "crm_only"; member: TeamMember };
+
+/** Merge Accounts with Settings CRM contacts by email; remainder are CRM-only rows. */
+function mergeCrmAccountChoices(
+  crmRole: TeamMemberPortalRole,
+  scopedAccounts: Account[],
+  teamMembers: TeamMember[],
+): BrandCrmChoiceRow[] {
+  const crm = teamMembers.filter((m) => m.role === crmRole && m.isActive !== false);
+  const byEmail = new Map(crm.map((m) => [m.email?.trim().toLowerCase() || "", m] as const));
+  const usedMemberIds = new Set<string>();
+  const rows: BrandCrmChoiceRow[] = [];
+  for (const a of scopedAccounts) {
+    const em = a.email?.trim().toLowerCase() || "";
+    const member = em ? byEmail.get(em) : undefined;
+    if (member) usedMemberIds.add(member.id);
+    rows.push({ key: `acc:${a.id}`, kind: "account", account: a, member });
+  }
+  for (const m of crm) {
+    if (usedMemberIds.has(m.id)) continue;
+    rows.push({ key: `tm:${m.id}`, kind: "crm_only", member: m });
+  }
+  rows.sort((x, y) => {
+    const sx = x.kind === "account" ? x.account.tradingName : x.member.displayName;
+    const sy = y.kind === "account" ? y.account.tradingName : y.member.displayName;
+    return sx.localeCompare(sy, undefined, { sensitivity: "base" });
+  });
+  return rows;
+}
+
 /** Stock availability indicator for sales rep order creation */
 function StockAvailability({ sku, available, requested }: { sku: string; available: number; requested: number }) {
   const shortfall = Math.max(0, requested - available);
@@ -110,6 +143,9 @@ function StockAvailability({ sku, available, requested }: { sku: string; availab
 
 export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCreate, variant }: Props) {
   const { accounts: allAccounts } = useAccounts();
+  const { data: appData } = useAppData();
+  const teamMembers = appData.teamMembers ?? [];
+  const warehouses = appData.warehouses ?? [];
   const { products } = useProducts();
   const { user } = useAuth();
   const sessionRep = resolveSalesRepLabelForSession(user?.email, user?.displayName ?? "");
@@ -167,11 +203,30 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   }, [open, variant]);
 
   useEffect(() => {
-    if (account) {
-      setMarket(defaultMarketForAccount(account, allAccounts));
-      setMarketIsCustom(false);
+    if (!account) return;
+    if (variant === "brand") {
+      if (account.startsWith("acc:")) {
+        const acc = allAccounts.find((a) => a.id === account.slice(4));
+        if (acc) {
+          setMarket(defaultMarketForAccount(acc.tradingName, allAccounts));
+          setMarketIsCustom(false);
+        }
+        return;
+      }
+      if (account.startsWith("tm:")) {
+        setMarket("");
+        setMarketIsCustom(true);
+        return;
+      }
     }
-  }, [account, allAccounts]);
+    setMarket(defaultMarketForAccount(account, allAccounts));
+    setMarketIsCustom(false);
+  }, [account, allAccounts, variant, brandPath]);
+
+  useEffect(() => {
+    if (!open || variant !== "brand") return;
+    setAccount("");
+  }, [brandPath, open, variant]);
 
   const pathwayTarget: OrderRoutingTarget = useMemo(() => {
     if (variant === "brand") return brandPath;
@@ -194,10 +249,97 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       const mf = base.filter((a) => isManufacturerAccountType(a.type) || looksLikeManufacturerAccount(a));
       return mf.length > 0 ? mf : base;
     }
-    // sales_rep + retail target: retail-like accounts (everything except wholesaler/distributor)
+    if (pathwayTarget === "sales_rep") {
+      const reps = teamMembers.filter((m) => m.role === "sales_rep" && m.isActive !== false);
+      const repEmails = new Set(reps.map((m) => m.email?.trim().toLowerCase()).filter(Boolean));
+      const linked = base.filter((a) => repEmails.has(a.email?.trim().toLowerCase() || ""));
+      return linked.length > 0 ? linked : base.filter((a) => !isDistributorAccountType(a.type));
+    }
+    // retail: retail-like accounts (everything except wholesaler/distributor)
     const retailLike = base.filter((a) => !isDistributorAccountType(a.type));
     return retailLike.length > 0 ? retailLike : base;
-  }, [allAccounts, baseAccountsForVariant, pathwayTarget, variant]);
+  }, [allAccounts, baseAccountsForVariant, pathwayTarget, variant, teamMembers]);
+
+  /** Brand HQ: CRM contacts aligned to pathway (same merge rules as Settings → CRM). */
+  const brandCrmAccountChoices = useMemo((): BrandCrmChoiceRow[] | null => {
+    if (variant !== "brand") return null;
+    const base = (allAccounts || []).filter((a) => a.status !== "inactive");
+
+    if (pathwayTarget === "wholesaler") {
+      const list = base.filter((a) => isDistributorAccountType(a.type));
+      return mergeCrmAccountChoices("distributor", list.length > 0 ? list : base, teamMembers);
+    }
+    if (pathwayTarget === "manufacturer") {
+      const mf = base.filter((a) => isManufacturerAccountType(a.type) || looksLikeManufacturerAccount(a));
+      const list = mf.length > 0 ? mf : base;
+      return mergeCrmAccountChoices("manufacturer", list, teamMembers);
+    }
+    if (pathwayTarget === "sales_rep") {
+      const reps = teamMembers.filter((m) => m.role === "sales_rep" && m.isActive !== false);
+      const repEmails = new Set(reps.map((m) => m.email?.trim().toLowerCase()).filter(Boolean));
+      const linked = base.filter((a) => repEmails.has(a.email?.trim().toLowerCase() || ""));
+      return mergeCrmAccountChoices("sales_rep", linked, teamMembers);
+    }
+    const retailLike = base.filter((a) => !isDistributorAccountType(a.type));
+    const list = retailLike.length > 0 ? retailLike : base;
+    return mergeCrmAccountChoices("retail", list, teamMembers);
+  }, [variant, pathwayTarget, allAccounts, teamMembers]);
+
+  const warehouseName = (id: string | undefined) =>
+    id ? warehouses.find((w) => w.id === id)?.name : undefined;
+
+  const brandAccountGuide = useMemo(() => {
+    if (variant !== "brand") return null;
+    const label =
+      brandPath === "wholesaler"
+        ? "Wholesaler / distributor *"
+        : brandPath === "manufacturer"
+          ? "Manufacturer / partner *"
+          : brandPath === "sales_rep"
+            ? "Field sales rep *"
+            : "Retail customer *";
+    const hint =
+      brandPath === "wholesaler"
+        ? "Distributor accounts merged with CRM by email; receiving depot mirrors CRM when set."
+        : brandPath === "manufacturer"
+          ? "Manufacturer / partner accounts merged with CRM manufacturer contacts by email."
+          : brandPath === "sales_rep"
+            ? "Sales rep contacts from CRM (Settings → CRM, role Sales rep). Accounts rows merge when email matches."
+            : "Retail accounts merged with CRM store contacts by email.";
+    const empty =
+      brandPath === "wholesaler"
+        ? "No distributor accounts or active distributor CRM contacts."
+        : brandPath === "manufacturer"
+          ? "No manufacturer accounts or manufacturer CRM contacts."
+          : brandPath === "sales_rep"
+            ? "No sales rep CRM contacts (or no Accounts rows sharing their email)."
+            : "No retail accounts or retail CRM contacts.";
+    const missingCrm =
+      brandPath === "wholesaler"
+        ? "No CRM contact with this email — add Distributor in Settings → CRM."
+        : brandPath === "manufacturer"
+          ? "No CRM contact with this email — add Manufacturer in Settings → CRM."
+          : brandPath === "sales_rep"
+            ? "No CRM contact with this email — add Sales rep in Settings → CRM."
+            : "No CRM contact with this email — add Retail store / account in Settings → CRM.";
+    const crmOnlyNote =
+      brandPath === "wholesaler"
+        ? "No Accounts row — create a distributor account with the same email for billing."
+        : brandPath === "manufacturer"
+          ? "No Accounts row — create a partner account with the same email."
+          : brandPath === "sales_rep"
+            ? "No Accounts row — add an account with the same email if you need billing / territory linkage."
+            : "No Accounts row — create a retail customer account with the same email.";
+    const placeholder =
+      brandPath === "wholesaler"
+        ? "Choose wholesaler / distributor"
+        : brandPath === "manufacturer"
+          ? "Choose manufacturer / partner"
+          : brandPath === "sales_rep"
+            ? "Choose sales rep"
+            : "Choose retail customer";
+    return { label, hint, empty, missingCrm, crmOnlyNote, placeholder };
+  }, [variant, brandPath]);
 
   const marketOptionsForPathway = useMemo(() => {
     const base = (allAccounts || []).filter((a) => a.status !== "inactive");
@@ -207,7 +349,13 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
         const mf = base.filter((a) => isManufacturerAccountType(a.type) || looksLikeManufacturerAccount(a));
         return mf.length > 0 ? mf : base;
       }
-      // sales_rep + retail target: retail-like accounts (everything except wholesaler/distributor)
+      if (pathwayTarget === "sales_rep") {
+        const reps = teamMembers.filter((m) => m.role === "sales_rep" && m.isActive !== false);
+        const repEmails = new Set(reps.map((m) => m.email?.trim().toLowerCase()).filter(Boolean));
+        const linked = base.filter((a) => repEmails.has(a.email?.trim().toLowerCase() || ""));
+        if (linked.length > 0) return linked;
+        return base.filter((a) => !isDistributorAccountType(a.type));
+      }
       return base.filter((a) => !isDistributorAccountType(a.type));
     })();
 
@@ -217,7 +365,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       if (label) set.add(label);
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [allAccounts, pathwayTarget]);
+  }, [allAccounts, pathwayTarget, teamMembers]);
 
   useEffect(() => {
     if (!open || variant !== "sales_rep") return;
@@ -230,10 +378,29 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     e.preventDefault();
     setError(null);
 
-    if (!account.trim()) {
+    const accountPick = account.trim();
+    if (!accountPick) {
       setError("Select a customer account.");
       return;
     }
+
+    const resolvedAccountForOrder = (() => {
+      if (variant !== "brand") return accountPick;
+      if (accountPick.startsWith("acc:")) {
+        const a = allAccounts.find((x) => x.id === accountPick.slice(4));
+        return a?.tradingName?.trim() || accountPick;
+      }
+      if (accountPick.startsWith("tm:")) {
+        const m = teamMembers.find((x) => x.id === accountPick.slice(3));
+        if (!m) return accountPick;
+        if (m.role === "distributor") {
+          const dep = warehouseName(m.primaryWarehouseId);
+          return [m.displayName, m.email, dep ? `Depot: ${dep}` : null].filter(Boolean).join(" · ");
+        }
+        return [m.displayName, m.email].filter(Boolean).join(" · ");
+      }
+      return accountPick;
+    })();
     if (!market.trim()) {
       setError("Market / region is required.");
       return;
@@ -291,7 +458,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
         repLine = wholesaleRep;
         assignedSalesRep = wholesaleRep;
       } else {
-        const acc = allAccounts.find((a) => a.tradingName === account);
+        const acc = allAccounts.find((a) => a.tradingName === accountPick);
         repLine = acc?.salesOwner ?? salesRep;
       }
     } else if (variant === "sales_rep") {
@@ -303,7 +470,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
 
     const order: SalesOrder = {
       id: nextOrderId(existingOrders),
-      account,
+      account: resolvedAccountForOrder,
       market: market.trim(),
       orderDate,
       requestedDelivery,
@@ -329,10 +496,10 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     if (isProxyMode && onBehalfOfAccountId) {
       const auditInfo = getProxyAuditInfo(order);
       toast.success(cfg.badge + " — Proxy order saved", { 
-        description: `${order.id} · ${order.account} · ${auditInfo.auditMessage}` 
+        description: `${order.id} · ${resolvedAccountForOrder} · ${auditInfo.auditMessage}` 
       });
     } else {
-      toast.success(cfg.badge + " — Order saved", { description: `${order.id} · ${order.account}` });
+      toast.success(cfg.badge + " — Order saved", { description: `${order.id} · ${resolvedAccountForOrder}` });
     }
     
     onOpenChange(false);
@@ -468,20 +635,98 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{cfg.customerSectionLabel}</p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="so-account">Account *</Label>
-                <Select value={account || undefined} onValueChange={setAccount}>
-                  <SelectTrigger id="so-account" className="touch-manipulation">
-                    <SelectValue placeholder="Choose customer account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((a) => (
-                      <SelectItem key={a.id} value={a.tradingName}>
-                        {a.tradingName}
-                        {a.status === "prospect" ? " (prospect)" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="so-account">
+                  {variant === "brand" && brandAccountGuide ? brandAccountGuide.label : "Account *"}
+                </Label>
+                {variant === "brand" && brandAccountGuide && brandCrmAccountChoices ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      {brandAccountGuide.hint} Edit roster in{" "}
+                      <Link to="/settings" className="font-medium text-primary underline-offset-2 hover:underline">
+                        Settings → CRM
+                      </Link>{" "}
+                      and{" "}
+                      <Link to="/accounts" className="font-medium text-primary underline-offset-2 hover:underline">
+                        Accounts
+                      </Link>
+                      .
+                    </p>
+                    {brandCrmAccountChoices.length === 0 ? (
+                      <p className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                        {brandAccountGuide.empty}
+                      </p>
+                    ) : (
+                      <Select value={account || undefined} onValueChange={setAccount}>
+                        <SelectTrigger id="so-account" className="touch-manipulation">
+                          <SelectValue placeholder={brandAccountGuide.placeholder} />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[min(60vh,320px)]">
+                          {brandCrmAccountChoices.map((row) => {
+                            if (row.kind === "account") {
+                              const a = row.account;
+                              const m = row.member;
+                              const wh =
+                                m?.role === "distributor" ? warehouseName(m.primaryWarehouseId) : undefined;
+                              return (
+                                <SelectItem key={row.key} value={row.key}>
+                                  <span className="flex flex-col gap-0.5 text-left">
+                                    <span className="font-medium leading-tight">{a.tradingName}</span>
+                                    {m ? (
+                                      <span className="text-[11px] font-normal text-muted-foreground">
+                                        CRM: {m.displayName} · {m.email}
+                                        {wh ? ` · Receiving: ${wh}` : ""}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] font-normal text-amber-800 dark:text-amber-500">
+                                        {brandAccountGuide.missingCrm}
+                                      </span>
+                                    )}
+                                  </span>
+                                </SelectItem>
+                              );
+                            }
+                            const m = row.member;
+                            const wh =
+                              m.role === "distributor" ? warehouseName(m.primaryWarehouseId) : undefined;
+                            return (
+                              <SelectItem key={row.key} value={row.key}>
+                                <span className="flex flex-col gap-0.5 text-left">
+                                  <span className="flex flex-wrap items-center gap-1.5 leading-tight">
+                                    <span className="font-medium">{m.displayName}</span>
+                                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-normal">
+                                      CRM only
+                                    </Badge>
+                                  </span>
+                                  <span className="text-[11px] font-normal text-muted-foreground">
+                                    {m.email}
+                                    {wh ? ` · Receiving: ${wh}` : ""}
+                                  </span>
+                                  <span className="text-[11px] font-normal text-amber-800 dark:text-amber-500">
+                                    {brandAccountGuide.crmOnlyNote}
+                                  </span>
+                                </span>
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </>
+                ) : (
+                  <Select value={account || undefined} onValueChange={setAccount}>
+                    <SelectTrigger id="so-account" className="touch-manipulation">
+                      <SelectValue placeholder="Choose customer account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((a) => (
+                        <SelectItem key={a.id} value={a.tradingName}>
+                          {a.tradingName}
+                          {a.status === "prospect" ? " (prospect)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="so-market">Market / region *</Label>

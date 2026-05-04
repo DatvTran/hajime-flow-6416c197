@@ -32,6 +32,7 @@ import {
   deleteTeamMember,
   deleteTeamMemberByEmail,
   getOperationalSettings,
+  getWarehouses,
   resendTeamMemberInvite,
   resendTeamMemberInviteByEmail,
   updateTeamMember,
@@ -48,12 +49,22 @@ function warehouseFromApi(row: {
   name: string;
   is_active?: boolean;
   sort_order?: number;
+  linked_account_id?: string | null;
+  linked_team_member_id?: string | null;
 }): Warehouse {
+  const linkedRaw = row.linked_account_id;
+  const linkedAccountId =
+    linkedRaw != null && String(linkedRaw).trim() !== "" ? String(linkedRaw).trim() : undefined;
+  const tmRaw = row.linked_team_member_id;
+  const linkedTeamMemberId =
+    tmRaw != null && String(tmRaw).trim() !== "" ? String(tmRaw).trim() : undefined;
   return {
     id: row.id,
     name: row.name,
     isActive: row.is_active !== false,
     sortOrder: Number(row.sort_order ?? 0),
+    ...(linkedAccountId ? { linkedAccountId } : {}),
+    ...(linkedTeamMemberId ? { linkedTeamMemberId } : {}),
   };
 }
 
@@ -66,6 +77,9 @@ const TEAM_ROLE_LABELS: Record<TeamMemberPortalRole, string> = {
 
 const TEAM_ROLE_ORDER: TeamMemberPortalRole[] = ["sales_rep", "retail", "distributor", "manufacturer"];
 
+/** CRM form: no receiving depot chosen yet (same pattern as optional selects elsewhere). */
+const CRM_NO_WAREHOUSE = "__none__";
+
 export default function SettingsPage() {
   const { products, addProduct, removeProduct, patchProduct } = useProducts();
   const { data, updateData, loading, refreshTeamMembers } = useAppData();
@@ -76,11 +90,13 @@ export default function SettingsPage() {
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [newMemberRole, setNewMemberRole] = useState<TeamMemberPortalRole>("sales_rep");
+  const [newMemberPrimaryWarehouseId, setNewMemberPrimaryWarehouseId] = useState(CRM_NO_WAREHOUSE);
   const [editTeamOpen, setEditTeamOpen] = useState(false);
   const [editTeamMember, setEditTeamMember] = useState<TeamMember | null>(null);
   const [editMemberName, setEditMemberName] = useState("");
   const [editMemberEmail, setEditMemberEmail] = useState("");
   const [editMemberRole, setEditMemberRole] = useState<TeamMemberPortalRole>("sales_rep");
+  const [editMemberPrimaryWarehouseId, setEditMemberPrimaryWarehouseId] = useState(CRM_NO_WAREHOUSE);
   const [showInactiveCrm, setShowInactiveCrm] = useState(false);
 
   const teamMembers = data.teamMembers ?? [];
@@ -116,6 +132,56 @@ export default function SettingsPage() {
     list.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
     return list;
   }, [data.warehouses]);
+
+  const warehouseOptionsForCrm = useMemo(() => {
+    const list = [...(data.warehouses ?? [])].filter((w) => w.isActive !== false);
+    list.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+    return list;
+  }, [data.warehouses]);
+
+  /** Include inactive depots so Edit CRM can display an existing assignment. */
+  const warehouseOptionsForCrmEdit = useMemo(() => {
+    const list = [...(data.warehouses ?? [])];
+    list.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+    return list;
+  }, [data.warehouses]);
+
+  const warehouseTableLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const w of data.warehouses ?? []) {
+      map.set(w.id, w.name + (w.isActive === false ? " (inactive)" : ""));
+    }
+    return map;
+  }, [data.warehouses]);
+
+  useEffect(() => {
+    if (newMemberRole !== "distributor") {
+      setNewMemberPrimaryWarehouseId(CRM_NO_WAREHOUSE);
+    }
+  }, [newMemberRole]);
+
+  const refreshWarehousesFromApi = async () => {
+    try {
+      const res = (await getWarehouses({ includeInactive: true })) as {
+        data?: {
+          id: string;
+          name: string;
+          is_active?: boolean;
+          sort_order?: number;
+          linked_account_id?: string | null;
+          linked_team_member_id?: string | null;
+        }[];
+      };
+      const rows = Array.isArray(res.data) ? res.data : [];
+      if (rows.length === 0) return;
+      updateData((d) => ({
+        ...d,
+        warehouses: rows.map((row) => warehouseFromApi(row)),
+      }));
+    } catch (e) {
+      console.warn("[Settings] refreshWarehousesFromApi:", e);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -219,12 +285,18 @@ export default function SettingsPage() {
       return;
     }
 
+    const pwOpt =
+      newMemberRole === "distributor" && newMemberPrimaryWarehouseId !== CRM_NO_WAREHOUSE
+        ? newMemberPrimaryWarehouseId
+        : undefined;
+
     try {
       // Save to backend API (may send portal invite email with confirmation link)
       const result = (await createTeamMember({
         name: displayName,
         email,
         role: newMemberRole,
+        ...(pwOpt ? { primary_warehouse_id: pwOpt } : {}),
       })) as {
         data: { id: string };
         invite?: {
@@ -249,6 +321,7 @@ export default function SettingsPage() {
       setNewMemberName("");
       setNewMemberEmail("");
       setNewMemberRole("sales_rep");
+      setNewMemberPrimaryWarehouseId(CRM_NO_WAREHOUSE);
       setTeamDialogOpen(false);
 
       const label = `${displayName} · ${TEAM_ROLE_LABELS[newMemberRole]}`;
@@ -285,6 +358,9 @@ export default function SettingsPage() {
       });
       try {
         await refreshTeamMembers();
+        if (newMemberRole === "distributor" && pwOpt) {
+          await refreshWarehousesFromApi();
+        }
       } catch (e) {
         console.warn("[Settings] refreshTeamMembers failed after add:", e);
       }
@@ -346,6 +422,7 @@ export default function SettingsPage() {
     setEditMemberName(m.displayName ?? "");
     setEditMemberEmail(m.email ?? "");
     setEditMemberRole(m.role);
+    setEditMemberPrimaryWarehouseId(m.primaryWarehouseId || CRM_NO_WAREHOUSE);
     setEditTeamOpen(true);
   };
 
@@ -366,12 +443,21 @@ export default function SettingsPage() {
       return;
     }
 
+    const distributorWarehousePatch =
+      editMemberRole === "distributor"
+        ? {
+            primary_warehouse_id:
+              editMemberPrimaryWarehouseId === CRM_NO_WAREHOUSE ? null : editMemberPrimaryWarehouseId,
+          }
+        : {};
+
     try {
       const updateById = async () =>
         (await updateTeamMember(editTeamMember.id, {
           name,
           email,
           role: editMemberRole,
+          ...distributorWarehousePatch,
         })) as {
           data: {
             id: string;
@@ -388,6 +474,7 @@ export default function SettingsPage() {
           name,
           email,
           role: editMemberRole,
+          ...distributorWarehousePatch,
         })) as {
           data: {
             id: string;
@@ -427,6 +514,7 @@ export default function SettingsPage() {
                 name,
                 email,
                 role: editMemberRole,
+                ...distributorWarehousePatch,
               })) as {
                 data: { id: string };
               };
@@ -470,6 +558,9 @@ export default function SettingsPage() {
       toast.success("CRM contact updated", { description: `${updated.displayName} · ${TEAM_ROLE_LABELS[updated.role]} — saved` });
       try {
         await refreshTeamMembers();
+        if (editMemberRole === "distributor") {
+          await refreshWarehousesFromApi();
+        }
       } catch (e) {
         console.warn("[Settings] refreshTeamMembers failed after update:", e);
       }
@@ -627,6 +718,8 @@ export default function SettingsPage() {
         name: string;
         is_active?: boolean;
         sort_order?: number;
+        linked_account_id?: string | null;
+        linked_team_member_id?: string | null;
       };
       const updated = warehouseFromApi(row);
       updateData((d) => ({
@@ -727,9 +820,10 @@ export default function SettingsPage() {
             </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
               Inventory and transfer locations you define as Brand Operator. Stored in Postgres — used for stock routing,
-              purchase-order destinations, and fulfillment. After saving a site here, invite the people who run that
-              location via <span className="font-medium text-foreground">CRM contacts</span> (matching role) so they
-              receive the email to set up portal login.
+              purchase-order destinations, and fulfillment.{" "}
+              <span className="font-medium text-foreground">Distributors</span> choose which depot they receive from on{" "}
+              <span className="font-medium text-foreground">Distributor home</span> after you invite them from{" "}
+              <span className="font-medium text-foreground">CRM contacts</span>.
             </p>
           </div>
           <Button
@@ -784,7 +878,8 @@ export default function SettingsPage() {
               <DialogHeader>
                 <DialogTitle className="font-display">Edit warehouse</DialogTitle>
                 <DialogDescription>
-                  Update the display name, active status, and sort order used in warehouse pickers.
+                  Update the display name, active status, and sort order. Distributor-to-depot assignment is managed by
+                  each distributor from their portal (Distributor home).
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
@@ -809,6 +904,13 @@ export default function SettingsPage() {
                     className="touch-manipulation"
                   />
                 </div>
+                <Alert className="border-border/80 bg-muted/20 py-2">
+                  <AlertDescription className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Distributor receiving site</span> is chosen by each
+                    distributor on <span className="font-medium text-foreground">Distributor home</span> (requires CRM
+                    email to match their login). HQ no longer assigns the depot link from this dialog.
+                  </AlertDescription>
+                </Alert>
                 <div className="flex items-center justify-between rounded-lg border border-border/80 px-3 py-2">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">Active</p>
@@ -840,13 +942,46 @@ export default function SettingsPage() {
             </p>
           ) : (
             <ul className="divide-y rounded-lg border border-border/80">
-              {warehousesSorted.map((w) => (
+              {warehousesSorted.map((w) => {
+                const receivingByPrimary = teamMembers.filter(
+                  (m) => m.role === "distributor" && m.primaryWarehouseId === w.id && m.isActive !== false,
+                );
+                const linkedTm =
+                  w.linkedTeamMemberId != null
+                    ? teamMembers.find((m) => m.id === w.linkedTeamMemberId)
+                    : undefined;
+                const linkedAcc =
+                  !linkedTm && w.linkedAccountId != null
+                    ? (data.accounts ?? []).find((a) => a.id === w.linkedAccountId)
+                    : undefined;
+                const showLegacyLinked =
+                  linkedTm != null && !receivingByPrimary.some((m) => m.id === linkedTm.id);
+                return (
                 <li
                   key={w.id}
                   className={`flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${w.isActive === false ? "bg-muted/30 opacity-80" : ""}`}
                 >
                   <div className="min-w-0">
                     <p className="font-medium">{w.name}</p>
+                    {receivingByPrimary.length > 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        Receiving distributors:{" "}
+                        {receivingByPrimary.map((m) => m.displayName).join(", ")}
+                      </p>
+                    ) : null}
+                    {showLegacyLinked ? (
+                      <p className="text-xs text-muted-foreground">
+                        Depot link: <span className="font-medium text-foreground">{linkedTm.displayName}</span> ·{" "}
+                        {linkedTm.email}{" "}
+                        <span className="text-muted-foreground">(synced from CRM / portal)</span>
+                      </p>
+                    ) : null}
+                    {!linkedTm && receivingByPrimary.length === 0 && linkedAcc ? (
+                      <p className="text-xs text-amber-800 dark:text-amber-500">
+                        Legacy account link: {linkedAcc.tradingName || linkedAcc.legalName} — invite the matching CRM
+                        distributor so they can choose this depot on Distributor home.
+                      </p>
+                    ) : null}
                     <p className="text-xs text-muted-foreground">
                       {w.isActive === false ? "Inactive — excluded from default warehouse lists" : "Active"}
                     </p>
@@ -876,7 +1011,8 @@ export default function SettingsPage() {
                     </Badge>
                   </div>
                 </li>
-              ))}
+              );
+              })}
             </ul>
           )}
         </CardContent>
@@ -918,7 +1054,13 @@ export default function SettingsPage() {
                 </p>
               </AlertDescription>
             </Alert>
-            <Dialog open={teamDialogOpen} onOpenChange={setTeamDialogOpen}>
+            <Dialog
+              open={teamDialogOpen}
+              onOpenChange={(open) => {
+                setTeamDialogOpen(open);
+                if (open) setNewMemberPrimaryWarehouseId(CRM_NO_WAREHOUSE);
+              }}
+            >
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle className="font-display">Add CRM contact</DialogTitle>
@@ -966,6 +1108,37 @@ export default function SettingsPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {newMemberRole === "distributor" ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="tm-add-primary-wh">Receiving warehouse</Label>
+                      <Select
+                        value={newMemberPrimaryWarehouseId}
+                        onValueChange={setNewMemberPrimaryWarehouseId}
+                      >
+                        <SelectTrigger id="tm-add-primary-wh" className="touch-manipulation">
+                          <SelectValue placeholder="Optional" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={CRM_NO_WAREHOUSE}>Choose later (distributor portal)</SelectItem>
+                          {warehouseOptionsForCrm.map((w) => (
+                            <SelectItem key={w.id} value={w.id}>
+                              {w.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Optional preset — matches{" "}
+                        <span className="font-medium text-foreground">Settings → Warehouses</span>. They can change this
+                        anytime from <span className="font-medium text-foreground">Distributor home</span>.
+                      </p>
+                      {warehouseOptionsForCrm.length === 0 ? (
+                        <p className="text-xs text-amber-700 dark:text-amber-500">
+                          Add at least one active warehouse before assigning a depot here.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <DialogFooter className="gap-2 sm:gap-0">
                   <Button type="button" variant="outline" className="touch-manipulation" onClick={() => setTeamDialogOpen(false)}>
@@ -989,7 +1162,8 @@ export default function SettingsPage() {
                 <DialogHeader>
                   <DialogTitle className="font-display">Edit CRM contact</DialogTitle>
                   <DialogDescription>
-                    Update their email and role. If they need a fresh link after changes, use Resend invite.
+                    Update their email, role, and — for distributors — receiving warehouse. Use Resend invite if they
+                    need a fresh link.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-2">
@@ -1030,6 +1204,37 @@ export default function SettingsPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {editMemberRole === "distributor" ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="tm-edit-primary-wh">Receiving warehouse</Label>
+                      <Select
+                        value={editMemberPrimaryWarehouseId}
+                        onValueChange={setEditMemberPrimaryWarehouseId}
+                      >
+                        <SelectTrigger id="tm-edit-primary-wh" className="touch-manipulation">
+                          <SelectValue placeholder="Optional" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={CRM_NO_WAREHOUSE}>None / choose later (portal)</SelectItem>
+                          {editMemberPrimaryWarehouseId !== CRM_NO_WAREHOUSE &&
+                          warehouseOptionsForCrmEdit.every((w) => w.id !== editMemberPrimaryWarehouseId) ? (
+                            <SelectItem value={editMemberPrimaryWarehouseId}>
+                              Unknown / removed warehouse
+                            </SelectItem>
+                          ) : null}
+                          {warehouseOptionsForCrmEdit.map((w) => (
+                            <SelectItem key={w.id} value={w.id}>
+                              {w.name}
+                              {w.isActive === false ? " (inactive)" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Clears the depot link when set to none; distributors can pick again from Distributor home.
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
                 <DialogFooter className="gap-2 sm:gap-0">
                   <Button type="button" variant="outline" className="touch-manipulation" onClick={() => setEditTeamOpen(false)}>
@@ -1065,7 +1270,7 @@ export default function SettingsPage() {
                       <th className="pb-3 font-medium text-muted-foreground">Name</th>
                       <th className="pb-3 font-medium text-muted-foreground">Email</th>
                       <th className="pb-3 font-medium text-muted-foreground">Role</th>
-                      <th className="pb-3 font-medium text-muted-foreground">Linked retail account</th>
+                      <th className="pb-3 font-medium text-muted-foreground">Linked account or depot</th>
                       <th className="pb-3 font-medium text-muted-foreground">Added</th>
                       <th className="pb-3 w-12" />
                     </tr>
@@ -1089,7 +1294,11 @@ export default function SettingsPage() {
                         <td className="py-3 text-muted-foreground">
                           {m.role === "retail"
                             ? RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL[m.email?.toLowerCase() || ""] ?? "—"
-                            : "—"}
+                            : m.role === "distributor"
+                              ? m.primaryWarehouseId
+                                ? warehouseTableLabelById.get(m.primaryWarehouseId) ?? "Unknown depot"
+                                : "—"
+                              : "—"}
                         </td>
                         <td className="py-3 tabular-nums text-muted-foreground">{m.createdAt}</td>
                         <td className="py-3 text-right">

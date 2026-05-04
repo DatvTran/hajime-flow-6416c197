@@ -41,11 +41,21 @@ function mapRowToWarehouse(row: Record<string, unknown>): Warehouse {
     row.is_active === undefined || row.is_active === null
       ? true
       : Boolean(row.is_active);
+  const linkedRaw = row.linked_account_id;
+  const linkedAccountId =
+    linkedRaw != null && String(linkedRaw).trim() !== ""
+      ? String(linkedRaw).trim()
+      : undefined;
+  const tmRaw = row.linked_team_member_id;
+  const linkedTeamMemberId =
+    tmRaw != null && String(tmRaw).trim() !== "" ? String(tmRaw).trim() : undefined;
   return {
     id: String(row.id ?? ""),
     name: String(row.name ?? "").trim(),
     isActive,
     sortOrder: Number(row.sort_order ?? 0),
+    ...(linkedAccountId ? { linkedAccountId } : {}),
+    ...(linkedTeamMemberId ? { linkedTeamMemberId } : {}),
   };
 }
 
@@ -58,6 +68,9 @@ function mapRowToTeamMember(row: Record<string, unknown>): TeamMember {
     row.is_active === undefined || row.is_active === null
       ? true
       : Boolean(row.is_active);
+  const pwRaw = row.primary_warehouse_id;
+  const primaryWarehouseId =
+    pwRaw != null && String(pwRaw).trim() !== "" ? String(pwRaw).trim() : undefined;
   return {
     id: String(row.id ?? ""),
     displayName: String(row.name ?? row.display_name ?? ""),
@@ -65,6 +78,7 @@ function mapRowToTeamMember(row: Record<string, unknown>): TeamMember {
     role,
     createdAt: sliceIsoDate(row.created_at ?? row.createdAt),
     isActive,
+    ...(primaryWarehouseId ? { primaryWarehouseId } : {}),
   };
 }
 
