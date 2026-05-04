@@ -173,6 +173,9 @@ function mapApiRowToTeamMember(row: Record<string, unknown>): TeamMember {
   ) as TeamMemberPortalRole;
   const isActive =
     row.is_active === undefined || row.is_active === null ? true : Boolean(row.is_active);
+  const pwRaw = row.primary_warehouse_id;
+  const primaryWarehouseId =
+    pwRaw != null && String(pwRaw).trim() !== "" ? String(pwRaw).trim() : undefined;
   return {
     id: String(row.id ?? ""),
     displayName: String(row.name ?? row.display_name ?? ""),
@@ -180,6 +183,7 @@ function mapApiRowToTeamMember(row: Record<string, unknown>): TeamMember {
     role,
     createdAt: sliceIsoDate(row.created_at ?? row.createdAt),
     isActive,
+    ...(primaryWarehouseId ? { primaryWarehouseId } : {}),
   };
 }
 

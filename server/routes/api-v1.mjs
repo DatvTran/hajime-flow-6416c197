@@ -72,6 +72,57 @@ async function buildCrmContactInvitePayload(req, tenantId, member, { email, name
   }
 }
 
+/**
+ * Set or clear a distributor's receiving warehouse: team_members.primary_warehouse_id
+ * and warehouses.linked_team_member_id (at most one depot per distributor).
+ * @param {import('knex').Knex.Transaction} trx
+ * @param {string|null} wid - non-empty warehouse id, or null to clear
+ */
+async function setDistributorReceivingWarehouse(trx, tenantId, memberId, wid) {
+  const id = wid && String(wid).trim() ? String(wid).trim() : null;
+  if (id) {
+    const wh = await trx('warehouses').where({ id, tenant_id: tenantId }).first();
+    if (!wh) {
+      const err = new Error('Warehouse not found');
+      err.status = 404;
+      throw err;
+    }
+    if (!wh.is_active) {
+      const err = new Error('That warehouse is inactive.');
+      err.status = 400;
+      throw err;
+    }
+  }
+
+  await trx('warehouses')
+    .where({ tenant_id: tenantId, linked_team_member_id: memberId })
+    .update({ linked_team_member_id: null, updated_at: new Date() });
+
+  if (id) {
+    await trx('warehouses')
+      .where({ id, tenant_id: tenantId })
+      .update({ linked_team_member_id: memberId, updated_at: new Date() });
+  }
+
+  await trx('team_members')
+    .where({ id: memberId, tenant_id: tenantId })
+    .update({
+      primary_warehouse_id: id,
+      updated_at: new Date(),
+    });
+}
+
+function parseOptionalPrimaryWarehouseId(body) {
+  if (!body) return undefined;
+  const has =
+    Object.prototype.hasOwnProperty.call(body, 'primary_warehouse_id') ||
+    Object.prototype.hasOwnProperty.call(body, 'primaryWarehouseId');
+  if (!has) return undefined;
+  const v = body.primary_warehouse_id ?? body.primaryWarehouseId;
+  if (v === null || v === '') return null;
+  return String(v).trim();
+}
+
 // Apply auth to all routes
 router.use(authenticateToken);
 router.use(requireTenantAccess);
@@ -2865,7 +2916,23 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
             updated_at: new Date(),
           })
           .returning('*');
-        const payload = await buildCrmContactInvitePayload(req, tenantId, reactivated, {
+        let member = reactivated;
+        const pwOpt = parseOptionalPrimaryWarehouseId(req.body);
+        if (role === 'distributor' && pwOpt != null && pwOpt !== '') {
+          try {
+            await db.transaction(async (trx) => {
+              await setDistributorReceivingWarehouse(trx, tenantId, member.id, pwOpt);
+            });
+            member = await db('team_members').where({ id: member.id, tenant_id: tenantId }).first();
+          } catch (e) {
+            const st = e.status || 500;
+            if (st === 404 || st === 400) {
+              return res.status(st).json({ error: e.message });
+            }
+            throw e;
+          }
+        }
+        const payload = await buildCrmContactInvitePayload(req, tenantId, member, {
           email: normalizedEmail,
           name,
           role,
@@ -2876,7 +2943,7 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
     }
     
     const id = `tm-${Date.now()}`;
-    const [member] = await db('team_members')
+    let [member] = await db('team_members')
       .insert({
         id,
         tenant_id: tenantId,
@@ -2891,6 +2958,22 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
         updated_at: new Date()
       })
       .returning('*');
+
+    const pwOpt = parseOptionalPrimaryWarehouseId(req.body);
+    if (role === 'distributor' && pwOpt != null && pwOpt !== '') {
+      try {
+        await db.transaction(async (trx) => {
+          await setDistributorReceivingWarehouse(trx, tenantId, member.id, pwOpt);
+        });
+        member = await db('team_members').where({ id: member.id, tenant_id: tenantId }).first();
+      } catch (e) {
+        const st = e.status || 500;
+        if (st === 404 || st === 400) {
+          return res.status(st).json({ error: e.message });
+        }
+        throw e;
+      }
+    }
 
     const payload = await buildCrmContactInvitePayload(req, tenantId, member, {
       email: normalizedEmail,
@@ -2943,6 +3026,7 @@ router.patch('/team-members/:id', requirePermission(Permission.SETTINGS_WRITE), 
     const { id } = req.params;
 
     const { name, email, role, phone, department, is_active } = req.body || {};
+    const pwOpt = parseOptionalPrimaryWarehouseId(req.body);
 
     const current = await db('team_members')
       .where({ id, tenant_id: tenantId })
@@ -2972,6 +3056,46 @@ router.patch('/team-members/:id', requirePermission(Permission.SETTINGS_WRITE), 
         return res.status(409).json({ error: 'A CRM contact with this email already exists.' });
       }
       updates.email = normalizedEmail;
+    }
+
+    const effectiveRole = updates.role !== undefined ? updates.role : current.role;
+    const clearingByRole =
+      updates.role != null && updates.role !== 'distributor' && current.role === 'distributor';
+
+    if (pwOpt !== undefined) {
+      if (effectiveRole !== 'distributor') {
+        return res.status(400).json({
+          error: 'primary_warehouse_id applies only to distributor contacts.',
+        });
+      }
+      const wid = pwOpt === null || pwOpt === '' ? null : String(pwOpt).trim();
+      try {
+        await db.transaction(async (trx) => {
+          if (Object.keys(updates).length > 0) {
+            updates.updated_at = new Date();
+            await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
+          }
+          await setDistributorReceivingWarehouse(trx, tenantId, id, wid);
+        });
+      } catch (e) {
+        const st = e.status || 500;
+        if (st === 404 || st === 400) {
+          return res.status(st).json({ error: e.message });
+        }
+        throw e;
+      }
+      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
+      return res.json({ data: member });
+    }
+
+    if (clearingByRole) {
+      await db.transaction(async (trx) => {
+        updates.updated_at = new Date();
+        await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
+        await setDistributorReceivingWarehouse(trx, tenantId, id, null);
+      });
+      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
+      return res.json({ data: member });
     }
 
     if (Object.keys(updates).length === 0) {
@@ -3008,6 +3132,9 @@ router.patch('/team-members/by-email/:email', requirePermission(Permission.SETTI
     }
 
     const { name, email, role, phone, department, is_active } = req.body || {};
+    const pwOpt = parseOptionalPrimaryWarehouseId(req.body);
+    const id = current.id;
+
     const updates = {};
     if (name != null) updates.name = String(name).trim();
     if (role != null) updates.role = String(role).trim();
@@ -3028,6 +3155,46 @@ router.patch('/team-members/by-email/:email', requirePermission(Permission.SETTI
         return res.status(409).json({ error: 'A CRM contact with this email already exists.' });
       }
       updates.email = normalizedEmail;
+    }
+
+    const effectiveRole = updates.role !== undefined ? updates.role : current.role;
+    const clearingByRole =
+      updates.role != null && updates.role !== 'distributor' && current.role === 'distributor';
+
+    if (pwOpt !== undefined) {
+      if (effectiveRole !== 'distributor') {
+        return res.status(400).json({
+          error: 'primary_warehouse_id applies only to distributor contacts.',
+        });
+      }
+      const wid = pwOpt === null || pwOpt === '' ? null : String(pwOpt).trim();
+      try {
+        await db.transaction(async (trx) => {
+          if (Object.keys(updates).length > 0) {
+            updates.updated_at = new Date();
+            await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
+          }
+          await setDistributorReceivingWarehouse(trx, tenantId, id, wid);
+        });
+      } catch (e) {
+        const st = e.status || 500;
+        if (st === 404 || st === 400) {
+          return res.status(st).json({ error: e.message });
+        }
+        throw e;
+      }
+      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
+      return res.json({ data: member });
+    }
+
+    if (clearingByRole) {
+      await db.transaction(async (trx) => {
+        updates.updated_at = new Date();
+        await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
+        await setDistributorReceivingWarehouse(trx, tenantId, id, null);
+      });
+      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
+      return res.json({ data: member });
     }
 
     if (Object.keys(updates).length === 0) {
@@ -3839,6 +4006,16 @@ router.patch('/warehouses/:id', requirePermission(Permission.SETTINGS_WRITE), as
     if (updates.name !== undefined) snake.name = updates.name;
     if (updates.is_active !== undefined) snake.is_active = Boolean(updates.is_active);
     if (updates.sort_order !== undefined) snake.sort_order = Number(updates.sort_order);
+    if (updates.linked_account_id !== undefined) {
+      const v = updates.linked_account_id;
+      snake.linked_account_id =
+        v === null || v === '' ? null : String(v).trim() || null;
+    }
+    if (updates.linked_team_member_id !== undefined) {
+      const v = updates.linked_team_member_id;
+      snake.linked_team_member_id =
+        v === null || v === '' ? null : String(v).trim() || null;
+    }
 
     snake.updated_at = new Date();
 
@@ -3858,6 +4035,86 @@ router.patch('/warehouses/:id', requirePermission(Permission.SETTINGS_WRITE), as
       return res.status(409).json({ error: 'A warehouse with this name already exists.' });
     }
     res.status(500).json({ error: 'Failed to update warehouse' });
+  }
+});
+
+/**
+ * GET /api/v1/me/warehouse-options
+ * Active warehouses for tenants — distributors (and others with inventory read) can pick a receiving depot without SETTINGS_READ.
+ */
+router.get('/me/warehouse-options', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+
+    await ensureDefaultWarehouses(tenantId);
+
+    const rows = await db('warehouses')
+      .where({ tenant_id: tenantId, is_active: true })
+      .orderBy('sort_order', 'asc')
+      .orderBy('name', 'asc')
+      .select('id', 'name', 'sort_order');
+    res.json({ data: rows });
+  } catch (err) {
+    console.error('[API v1] Error listing warehouse options:', err);
+    res.status(500).json({ error: 'Failed to load warehouses' });
+  }
+});
+
+/**
+ * PATCH /api/v1/me/primary-warehouse
+ * Distributor sets which depot they operate from; syncs warehouses.linked_team_member_id.
+ */
+router.patch('/me/primary-warehouse', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+
+    if (req.user.role !== 'distributor') {
+      return res.status(403).json({
+        error: 'Only distributor portal users can set a primary receiving warehouse.',
+      });
+    }
+
+    const email = String(req.user.email || '').trim().toLowerCase();
+    const body = req.body || {};
+    const warehouseIdRaw = body.warehouse_id ?? body.warehouseId;
+    const wid =
+      warehouseIdRaw === null || warehouseIdRaw === undefined || warehouseIdRaw === ''
+        ? null
+        : String(warehouseIdRaw).trim();
+
+    const member = await db('team_members').where({ tenant_id: tenantId, email }).first();
+    if (!member || member.role !== 'distributor') {
+      return res.status(404).json({
+        error: 'No distributor CRM contact matches this login email.',
+      });
+    }
+
+    try {
+      await db.transaction(async (trx) => {
+        await setDistributorReceivingWarehouse(trx, tenantId, member.id, wid);
+      });
+    } catch (e) {
+      const st = e.status || 500;
+      if (st === 404 || st === 400) {
+        return res.status(st).json({ error: e.message });
+      }
+      throw e;
+    }
+
+    const updated = await db('team_members').where({ id: member.id, tenant_id: tenantId }).first();
+    const warehouseRows = await db('warehouses').where({ tenant_id: tenantId }).orderBy('sort_order', 'asc').orderBy('name', 'asc');
+
+    res.json({
+      data: {
+        team_member: updated,
+        warehouses: warehouseRows,
+      },
+    });
+  } catch (err) {
+    console.error('[API v1] Error setting primary warehouse:', err);
+    res.status(500).json({ error: 'Failed to update primary warehouse' });
   }
 });
 

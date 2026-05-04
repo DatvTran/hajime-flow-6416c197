@@ -3,13 +3,38 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAppData, useSalesOrders, useDepletionReports } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { computeInventorySummary, deriveAlerts } from "@/lib/hajime-metrics";
+import { getMyWarehouseOptions, updateMyPrimaryWarehouse } from "@/lib/api-v1-mutations";
+import type { Warehouse } from "@/types/app-data";
+import { toast } from "@/components/ui/sonner";
+import { DistributorSkeleton } from "@/components/skeletons";
 import { Package, ShoppingCart, Truck, Users, AlertTriangle, Warehouse, Calendar, TrendingDown } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+function warehousesFromApiRows(rows: Record<string, unknown>[]): Warehouse[] {
+  return rows.map((row) => {
+    const lt = row.linked_team_member_id;
+    const la = row.linked_account_id;
+    return {
+      id: String(row.id ?? ""),
+      name: String(row.name ?? "").trim(),
+      isActive: row.is_active !== false,
+      sortOrder: Number(row.sort_order ?? 0),
+      ...(lt ? { linkedTeamMemberId: String(lt) } : {}),
+      ...(la ? { linkedAccountId: String(la) } : {}),
+    };
+  });
+}
 
 export default function DistributorHomePage() {
-  const { data, loading } = useAppData();
+  const { user } = useAuth();
+  const { data, loading, updateData, refreshTeamMembers } = useAppData();
+  const [warehouseOptions, setWarehouseOptions] = useState<{ id: string; name: string }[]>([]);
+  const [primarySaving, setPrimarySaving] = useState(false);
 
   const { salesOrders } = useSalesOrders();
   const { depletionReports } = useDepletionReports();
@@ -41,6 +66,61 @@ export default function DistributorHomePage() {
     [depletionReports],
   );
 
+  const myCrmRow = useMemo(() => {
+    const em = user?.email?.trim().toLowerCase();
+    if (!em) return undefined;
+    return (data.teamMembers ?? []).find((m) => m.email?.toLowerCase() === em);
+  }, [data.teamMembers, user?.email]);
+
+  const selectedPrimaryWarehouseId = myCrmRow?.primaryWarehouseId ?? "";
+
+  useEffect(() => {
+    if (user?.role !== "distributor") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = (await getMyWarehouseOptions()) as { data?: { id: string; name: string }[] };
+        const rows = Array.isArray(res.data) ? res.data : [];
+        if (!cancelled) setWarehouseOptions(rows);
+      } catch {
+        if (!cancelled) setWarehouseOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.role]);
+
+  const onPrimaryWarehouseChange = async (warehouseId: string) => {
+    if (user?.role !== "distributor") return;
+    const next = warehouseId === "__none__" ? null : warehouseId;
+    setPrimarySaving(true);
+    try {
+      const res = (await updateMyPrimaryWarehouse(next)) as {
+        data?: { team_member?: Record<string, unknown>; warehouses?: Record<string, unknown>[] };
+      };
+      const payload = res.data;
+      if (payload?.warehouses?.length) {
+        updateData((d) => ({
+          ...d,
+          warehouses: warehousesFromApiRows(payload.warehouses ?? []),
+        }));
+      }
+      await refreshTeamMembers();
+      toast.success(next ? "Receiving warehouse updated" : "Receiving warehouse cleared", {
+        description: next
+          ? "Your depot selection is saved and visible to Hajime HQ."
+          : "You can pick a depot again anytime.",
+      });
+    } catch (e) {
+      toast.error("Could not save warehouse", {
+        description: e instanceof Error ? e.message : "Try again.",
+      });
+    } finally {
+      setPrimarySaving(false);
+    }
+  };
+
   if (loading) {
     return <DistributorSkeleton />;
   }
@@ -51,6 +131,53 @@ export default function DistributorHomePage() {
         title="Distributor · floor & depletion"
         description="Floor-first view: what needs picking today, what’s in motion, and where retail depletion flags replenishment — every side-effect is inventory truth, not a separate spreadsheet."
       />
+
+      {user?.role === "distributor" ? (
+        <Card className="border-border/80">
+          <CardHeader className="pb-2">
+            <CardTitle className="font-display flex items-center gap-2 text-base">
+              <Warehouse className="h-5 w-5" />
+              Your receiving warehouse
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Choose which Hajime depot you operate from — same locations Brand Operator configured under Settings →
+              Warehouses. This updates your CRM profile and lets HQ route stock and shipments to the right DC.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2 max-w-md">
+              <Label htmlFor="dist-primary-wh">Primary depot</Label>
+              <Select
+                value={selectedPrimaryWarehouseId || "__none__"}
+                onValueChange={(v) => void onPrimaryWarehouseChange(v)}
+                disabled={primarySaving || warehouseOptions.length === 0}
+              >
+                <SelectTrigger id="dist-primary-wh" className="touch-manipulation">
+                  <SelectValue placeholder={warehouseOptions.length === 0 ? "Loading depots…" : "Select depot"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None selected</SelectItem>
+                  {warehouseOptions.map((w) => (
+                    <SelectItem key={w.id} value={w.id}>
+                      {w.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {warehouseOptions.length === 0 ? (
+                <p className="text-xs text-amber-700 dark:text-amber-500">
+                  No active warehouses returned — confirm Brand Operator added depots and your CRM email matches your login.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Signed in as <span className="font-medium text-foreground">{user.email}</span>. Must match your CRM
+                  distributor contact email.
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="card-interactive p-4">

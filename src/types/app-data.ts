@@ -58,6 +58,8 @@ export type TeamMember = {
   createdAt: string;
   /** When false, row exists in DB but was soft-deleted from CRM (not returned by default API). */
   isActive?: boolean;
+  /** Receiving depot chosen by distributor (`PATCH /me/primary-warehouse`). */
+  primaryWarehouseId?: string;
 };
 
 /** Brand HQ warehouse / depot locations for inventory and transfers. */
@@ -66,6 +68,10 @@ export type Warehouse = {
   name: string;
   isActive: boolean;
   sortOrder: number;
+  /** @deprecated Prefer linkedTeamMemberId — CRM distributor contact */
+  linkedAccountId?: string;
+  /** CRM contact (`team_members`) with distributor role — matches Settings → CRM. */
+  linkedTeamMemberId?: string;
 };
 
 export type ManufacturerProfileCertification = {

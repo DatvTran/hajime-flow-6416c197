@@ -650,6 +650,8 @@ export async function createTeamMember(memberData: {
   role: string;
   phone?: string;
   department?: string;
+  /** Receiving depot for distributor CRM contacts (optional). */
+  primary_warehouse_id?: string | null;
 }) {
   return apiFetch("/api/v1/team-members", {
     method: "POST",
@@ -692,6 +694,7 @@ export async function updateTeamMember(
     phone?: string;
     department?: string;
     is_active?: boolean;
+    primary_warehouse_id?: string | null;
   },
 ) {
   return apiFetch(`/api/v1/team-members/${id}`, {
@@ -709,6 +712,7 @@ export async function updateTeamMemberByEmail(
     phone?: string;
     department?: string;
     is_active?: boolean;
+    primary_warehouse_id?: string | null;
   },
 ) {
   const normalized = String(email).trim().toLowerCase();
@@ -735,11 +739,30 @@ export async function createWarehouse(body: { name: string }) {
 
 export async function updateWarehouse(
   id: string,
-  body: Partial<{ name: string; is_active: boolean; sort_order: number }>,
+  body: Partial<{
+    name: string;
+    is_active: boolean;
+    sort_order: number;
+    linked_account_id: string | null;
+    linked_team_member_id: string | null;
+  }>,
 ) {
   return apiFetch(`/api/v1/warehouses/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify(body),
+  });
+}
+
+/** Active warehouses — Works with INVENTORY_READ (distributor) without SETTINGS_READ. */
+export async function getMyWarehouseOptions() {
+  return apiFetch("/api/v1/me/warehouse-options");
+}
+
+/** Distributor sets receiving depot; syncs CRM + warehouse link server-side. */
+export async function updateMyPrimaryWarehouse(warehouseId: string | null) {
+  return apiFetch("/api/v1/me/primary-warehouse", {
+    method: "PATCH",
+    body: JSON.stringify({ warehouse_id: warehouseId }),
   });
 }
 
