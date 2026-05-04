@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Account } from "@/data/mockData";
 import { Plus, Search, MapPin, Mail, Phone, Users } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CSVImportButton } from "@/components/CSVImportButton";
 import { toast } from "@/components/ui/sonner";
@@ -122,6 +122,20 @@ export default function Accounts() {
     );
   };
 
+  useEffect(() => {
+    const id = searchParams.get("account");
+    if (!id || !accounts.some((a) => a.id === id)) return;
+    setSelectedAccountId(id);
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.delete("account");
+        return n;
+      },
+      { replace: true },
+    );
+  }, [searchParams, accounts, setSearchParams]);
+
   if (loading) {
     return <AccountsSkeleton />;
   }
@@ -139,7 +153,7 @@ export default function Accounts() {
                 ? "Distributors and retail chains for sell-in planning and production forecasting."
                 : user.role === "retail"
                   ? "Your account profile and order history."
-                  : "Retailers and distributors — market assignment, sell-in history, onboarding pipeline, and account managers."
+                  : "Retailers and distributors — market assignment, sell-in history, onboarding pipeline, and account managers. Brand Operator: create distributor accounts and profiles here first, add warehouses in Settings, then send portal invite emails from Settings → CRM."
         }
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">

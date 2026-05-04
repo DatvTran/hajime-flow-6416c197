@@ -6,6 +6,7 @@ import { useNewProductRequests } from "@/contexts/AppDataContext";
 import { Factory, FileText, ChevronRight, Plus, Calendar, Package, DollarSign } from "lucide-react";
 import { ManufacturerProposalDialog } from "@/components/ManufacturerProposalDialog";
 import { ManufacturerNewProductDialog } from "@/components/ManufacturerNewProductDialog";
+import { formatBaseSpiritLabel } from "@/lib/base-spirit-options";
 
 const STATUS_STYLES: Record<string, string> = {
   submitted: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
@@ -116,7 +117,7 @@ export default function ManufacturerProductRequestsPage() {
                 <div className="space-y-1.5 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <FileText className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
-                    {npr.specs.baseSpirit.replace(/_/g, " ")} · {npr.specs.targetAbv}% ABV
+                    {formatBaseSpiritLabel(npr.specs.baseSpirit)} · {npr.specs.targetAbv}% ABV
                   </div>
                   <div className="flex items-center gap-2">
                     <Calendar className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />

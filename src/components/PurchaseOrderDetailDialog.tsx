@@ -1,4 +1,6 @@
 import type { PurchaseOrder } from "@/data/mockData";
+import { useAppData } from "@/contexts/AppDataContext";
+import { resolveReceivingLocationForPo } from "@/lib/po-destination-warehouse";
 import {
   Dialog,
   DialogContent,
@@ -22,18 +24,6 @@ const PO_STATUSES: PurchaseOrder["status"][] = [
   "delayed",
 ];
 
-/** Map market destination to receiving warehouse */
-function getWarehouseForMarket(market: string): string {
-  const warehouseMap: Record<string, string> = {
-    "Ontario": "Toronto Main",
-    "Toronto": "Toronto Main",
-    "Milan": "Milan DC",
-    "Paris": "Paris Hub",
-    "NYC": "NYC Warehouse",
-  };
-  return warehouseMap[market] || "Toronto Main";
-}
-
 type Props = {
   purchaseOrder: PurchaseOrder | null;
   open: boolean;
@@ -52,6 +42,8 @@ export function PurchaseOrderDetailDialog({
   readOnly = false,
   readOnlyHint,
 }: Props) {
+  const { data } = useAppData();
+
   const handleStatus = async (value: string) => {
     if (!purchaseOrder) return;
     const status = value as PurchaseOrder["status"];
@@ -60,7 +52,7 @@ export function PurchaseOrderDetailDialog({
 
   if (!purchaseOrder) return null;
 
-  const destinationWarehouse = getWarehouseForMarket(purchaseOrder.marketDestination);
+  const destinationWarehouse = resolveReceivingLocationForPo(purchaseOrder.marketDestination, data.warehouses);
   const willReceiveInventory = purchaseOrder.status !== "delivered";
 
   return (
@@ -103,8 +95,8 @@ export function PurchaseOrderDetailDialog({
               <span className="font-medium">{purchaseOrder.requestedShipDate}</span>
             </div>
             <div className="flex justify-between gap-4">
-              <span className="text-muted-foreground">Market destination</span>
-              <span className="font-medium">{purchaseOrder.marketDestination}</span>
+              <span className="text-muted-foreground">Destination warehouse</span>
+              <span className="font-medium text-right">{purchaseOrder.marketDestination}</span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-muted-foreground">Packaging</span>

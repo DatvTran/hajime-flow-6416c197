@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Download, Factory, Truck } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { useInventory, usePurchaseOrders, useTransferOrders, useAppData } from "@/contexts/AppDataContext";
+import { resolveReceivingLocationForPo } from "@/lib/po-destination-warehouse";
 import { PurchaseOrdersSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -22,21 +23,9 @@ function shouldAddInventoryForTransition(p: PurchaseOrder, nextStatus: PurchaseO
   return true;
 }
 
-/** Map market destination to receiving warehouse */
-function getWarehouseForMarket(market: string): string {
-  const warehouseMap: Record<string, string> = {
-    "Ontario": "Toronto Main",
-    "Toronto": "Toronto Main",
-    "Milan": "Milan DC",
-    "Paris": "Paris Hub",
-    "NYC": "NYC Warehouse",
-  };
-  return warehouseMap[market] || "Toronto Main";
-}
-
 export default function PurchaseOrders() {
   const { user } = useAuth();
-  const { loading } = useAppData();
+  const { loading, data } = useAppData();
 
   const canCreateProductionRequest = user.role === "brand_operator" || user.role === "operations" || user.role === "founder_admin";
   const canCreateTransfer = user.role === "brand_operator" || user.role === "operations" || user.role === "distributor" || user.role === "founder_admin";
@@ -115,7 +104,7 @@ export default function PurchaseOrders() {
     // Production POs ADD inventory when delivered (manufacturer shipment arrives)
     if (patch.status !== undefined && shouldAddInventoryForTransition(p, patch.status)) {
       // Determine destination warehouse based on market
-      const destinationWarehouse = getWarehouseForMarket(p.marketDestination);
+      const destinationWarehouse = resolveReceivingLocationForPo(p.marketDestination, data.warehouses);
       const r = await addForPo(merged, destinationWarehouse);
       if (!r.ok) {
         toast.error("Failed to receive inventory", {
@@ -338,6 +327,7 @@ export default function PurchaseOrders() {
               onCreate={handleCreatePo}
               prefill={newPoPrefill}
               variant="production"
+              userRole={user.role}
             />
           ) : null}
           <PurchaseOrderDetailDialog
@@ -363,7 +353,7 @@ export default function PurchaseOrders() {
                     <tr className="border-b text-left">
                       <th className="pb-3 font-medium text-muted-foreground">Request</th>
                       <th className="pb-3 font-medium text-muted-foreground">Qty (btl)</th>
-                      <th className="pb-3 font-medium text-muted-foreground">Target region</th>
+                      <th className="pb-3 font-medium text-muted-foreground">Destination warehouse</th>
                       <th className="pb-3 font-medium text-muted-foreground">Manufacturer</th>
                       <th className="pb-3 font-medium text-muted-foreground">SKU</th>
                       <th className="pb-3 font-medium text-muted-foreground">Status</th>

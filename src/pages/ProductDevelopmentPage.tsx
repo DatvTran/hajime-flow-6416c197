@@ -6,6 +6,7 @@ import { useNewProductRequests } from "@/contexts/AppDataContext";
 import { Plus, FileText, ChevronRight, Factory, Calendar, DollarSign, FlaskConical } from "lucide-react";
 import { NewProductRequestDialog } from "@/components/NewProductRequestDialog";
 import { ProductRequestDetailDialog } from "@/components/ProductRequestDetailDialog";
+import { formatBaseSpiritLabel } from "@/lib/base-spirit-options";
 
 const STATUS_STYLES: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -128,7 +129,7 @@ export default function ProductDevelopmentPage() {
                 <div className="space-y-1.5 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <FileText className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
-                    {npr.specs.baseSpirit.replace(/_/g, " ")} · {npr.specs.targetAbv}% ABV
+                    {formatBaseSpiritLabel(npr.specs.baseSpirit)} · {npr.specs.targetAbv}% ABV
                   </div>
                   <div className="flex items-center gap-2">
                     <Factory className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />

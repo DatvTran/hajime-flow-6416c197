@@ -41,11 +41,6 @@ export function emptyProfile(): ManufacturerProfile {
   };
 }
 
-export function formatAddressLine(street: string, region: string, postal: string): string {
-  const parts = [street, region, postal].map((s) => String(s || "").trim()).filter(Boolean);
-  return parts.join(", ");
-}
-
 export function mapApiRowToProfile(row: Record<string, unknown>): ManufacturerProfile {
   const certificationsRaw = String(row.certifications ?? "").trim();
   const certifications: ManufacturerProfileCertification[] = certificationsRaw
@@ -67,9 +62,9 @@ export function mapApiRowToProfile(row: Record<string, unknown>): ManufacturerPr
     address: {
       street: String(row.address ?? ""),
       city: String(row.city ?? ""),
-      region: "",
+      region: String(row.region ?? ""),
       country: String(row.country ?? ""),
-      postalCode: "",
+      postalCode: String(row.postal_code ?? ""),
     },
     primaryContact: {
       name: String(row.contact_name ?? ""),

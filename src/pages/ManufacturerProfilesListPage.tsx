@@ -23,7 +23,13 @@ import type { ManufacturerProfile } from "@/types/app-data";
 
 function ProfileCard({ profile }: { profile: ManufacturerProfile }) {
   const p = profile;
-  const addrParts = [p.address.street, p.address.city, p.address.country].filter(Boolean);
+  const addrParts = [
+    p.address.street,
+    p.address.city,
+    p.address.region,
+    p.address.postalCode,
+    p.address.country,
+  ].filter(Boolean);
 
   return (
     <Card className="overflow-hidden">

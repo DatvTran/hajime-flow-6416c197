@@ -525,6 +525,33 @@
       "deliveryAddress": "Otto Atelier, Stackt Market Unit 4-120, 28 Bathurst St, Toronto, ON M5V 0C6, Canada",
       "billingAddress": "Otto Atelier Collective ULC, Toronto, ON, Canada",
       "internalNotes": "SO-2025-011 completed. Asking for gift box SKU in Q1 — tie to Sparkling launch. High Instagram ROI; use for marketing pull-through metrics."
+    },
+    {
+      "id": "ACC-MFG-KIRIN",
+      "legalName": "Kirin Brewery Co., Ltd.",
+      "tradingName": "Kirin Brewery Co.",
+      "country": "Japan",
+      "city": "Yokohama",
+      "type": "manufacturer",
+      "contactName": "Export Liaison",
+      "contactRole": "Production & export scheduling",
+      "phone": "+81-3-0000-0000",
+      "email": "export@kirin.example",
+      "salesOwner": "Marcus Chen",
+      "paymentTerms": "Net 45",
+      "firstOrderDate": "2024-01-10",
+      "lastOrderDate": "2025-01-20",
+      "avgOrderSize": 120000,
+      "status": "active",
+      "tags": [
+        "production-partner",
+        "export",
+        "primary-mfg"
+      ],
+      "defaultCurrency": "JPY",
+      "timezone": "Asia/Tokyo",
+      "networkRole": "Primary contract manufacturer — Hajime production POs, batch releases, and inbound freight from Kirin Facility.",
+      "internalNotes": "CRM manufacturer contacts (export@ / scheduling@) roll up to this account. Brand ops: open this row after creating a production PO to confirm terms and contacts."
     }
   ],
   "salesOrders": [
@@ -1024,7 +1051,7 @@
       "requestedBy": "brand_operator",
       "requestedAt": "2025-04-01T10:00:00Z",
       "specs": {
-        "baseSpirit": "coffee_rhum",
+        "baseSpirit": "rhum",
         "targetAbv": 30,
         "flavorProfile": [
           "hazelnut",
@@ -1059,7 +1086,7 @@
       "requestedBy": "brand_operator",
       "requestedAt": "2025-03-15T10:00:00Z",
       "specs": {
-        "baseSpirit": "coffee_rhum",
+        "baseSpirit": "rhum",
         "targetAbv": 25,
         "flavorProfile": [
           "vanilla",

@@ -655,8 +655,20 @@ export default function SettingsPage() {
     <div>
       <PageHeader
         title="CRM & settings"
-        description="CRM contacts, catalog, replenishment rules, and audit trail — Brand Operator (HQ)."
+        description="CRM contacts, catalog, replenishment rules, and audit trail — Brand Operator (HQ). Create warehouses and distributor accounts first; then invite portal users by email from CRM."
       />
+
+      <Alert className="mb-6 border-border/80 bg-muted/30">
+        <AlertDescription className="text-sm text-foreground/90">
+          <span className="font-medium text-foreground">Partner onboarding (Brand Operator).</span> Add{" "}
+          <strong className="font-medium">warehouses</strong> below for inventory destinations. Create{" "}
+          <strong className="font-medium">distributor accounts</strong> (with profile and contact details) under{" "}
+          <strong className="font-medium">Accounts</strong>. When those records exist, add matching people in{" "}
+          <strong className="font-medium">CRM contacts</strong> and send the{" "}
+          <strong className="font-medium">portal invite</strong> so each distributor or warehouse contact can set up
+          their login.
+        </AlertDescription>
+      </Alert>
 
       <Card className="border-border/80">
         <CardHeader className="pb-3">
@@ -714,7 +726,10 @@ export default function SettingsPage() {
               Warehouses
             </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Inventory and transfer locations. Stored in Postgres — used for stock routing and fulfillment.
+              Inventory and transfer locations you define as Brand Operator. Stored in Postgres — used for stock routing,
+              purchase-order destinations, and fulfillment. After saving a site here, invite the people who run that
+              location via <span className="font-medium text-foreground">CRM contacts</span> (matching role) so they
+              receive the email to set up portal login.
             </p>
           </div>
           <Button
@@ -731,7 +746,8 @@ export default function SettingsPage() {
               <DialogHeader>
                 <DialogTitle className="font-display">Add warehouse</DialogTitle>
                 <DialogDescription>
-                  Name appears on inventory, transfers, and shipment routing.
+                  Name appears on inventory, transfers, and shipment routing. Invite people who operate this location from
+                  CRM contacts when you want them to sign in to the portal.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
@@ -875,7 +891,10 @@ export default function SettingsPage() {
                 CRM contacts
               </CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                CRM directory for partner contacts and portal identities. Add sales reps, retail accounts, distributors, and manufacturer contacts — roles map to sign-in personas.
+                Directory for portal identities and invite emails. After distributor accounts (Accounts) and warehouses
+                (above) exist, add each contact here with the right role — then use{" "}
+                <span className="font-medium text-foreground">Resend invite</span> or the link from the add flow so they
+                can set up login. Sales reps, retail, distributors, and manufacturer contacts map to sign-in personas.
               </p>
             </div>
             <Button type="button" className="w-full shrink-0 touch-manipulation sm:w-auto" onClick={() => setTeamDialogOpen(true)}>
@@ -904,7 +923,9 @@ export default function SettingsPage() {
                 <DialogHeader>
                   <DialogTitle className="font-display">Add CRM contact</DialogTitle>
                   <DialogDescription>
-                    Choose their portal role for sign-in and workflow routing.
+                    Choose their portal role for sign-in and workflow routing. Use the same email you recorded on the
+                    distributor or warehouse-side account when possible. Saving sends a portal invite email when the API
+                    is configured.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-2">

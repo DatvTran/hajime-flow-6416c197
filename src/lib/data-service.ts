@@ -196,7 +196,7 @@ function parseMaybeJson<T>(value: unknown, fallback: T): T {
 
 function mapRowToNewProductRequest(row: Record<string, unknown>): NewProductRequest {
   const specs = parseMaybeJson<NewProductRequest["specs"]>(row.specs, {
-    baseSpirit: "coffee_rhum",
+    baseSpirit: "rhum",
     targetAbv: 25,
     flavorProfile: [],
     targetPricePoint: "premium",
