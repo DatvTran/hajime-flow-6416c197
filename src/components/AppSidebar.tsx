@@ -33,6 +33,7 @@ import {
   Scale,
   Store,
   Building2,
+  UserPlus,
 } from "lucide-react";
 import {
   Sidebar,
@@ -146,6 +147,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
             { title: "Production requests", url: "/distributor/purchase-orders", icon: FileText },
             { title: "Deliveries", url: "/distributor/shipments", icon: Truck },
             { title: "Retail accounts", url: "/distributor/accounts", icon: Users },
+            { title: "Partner CRM", url: "/distributor/crm", icon: UserPlus },
             { title: "Backorders", url: "/distributor/backorders", icon: ClipboardList },
             { title: "Payments & remits", url: "/distributor/finance", icon: Receipt },
           ],
@@ -191,6 +193,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           label: "Field",
           items: [
             { title: "Field · today", url: "/sales", icon: LayoutDashboard },
+            { title: "Retail CRM requests", url: "/sales/crm", icon: UserPlus },
             { title: "My accounts", url: "/sales/accounts", icon: Users },
             { title: "Opportunities", url: "/sales/opportunities", icon: TrendingUp },
             { title: "Visit notes", url: "/sales/visits", icon: ClipboardList },

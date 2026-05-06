@@ -332,6 +332,8 @@ export const accounts: Account[] = accountsJson as Account[];
 
 export type PurchaseOrder = {
   id: string;
+  /** Internal DB id for API links (e.g. `shipments.order_id`) when loaded from the server. */
+  databaseId?: number;
   manufacturer: string;
   issueDate: string;
   requiredDate: string;
@@ -457,6 +459,27 @@ export type Shipment = {
   type: "inbound" | "outbound";
   status: "preparing" | "in-transit" | "delivered" | "delayed";
   notes: string;
+  /** API `order_type` when synced from granular shipments. */
+  orderType?: "purchase_order" | "sales_order" | "transfer_order";
+  /** Populated from `shipment_items` on list/detail when provided by API (`quantity` = bottles). */
+  lineItems?: {
+    sku: string;
+    productName?: string;
+    quantity: number;
+    /** Whole-case equivalent for distributor outbound when case size is known (from product metadata). */
+    cases?: number;
+    caseSize?: number;
+  }[];
+  /** Receiving depot from warehouse directory (purchase-order / inbound shipments). */
+  destinationWarehouseId?: string;
+  /** Joined label from API for display. */
+  destinationWarehouseName?: string;
+  /** Port of loading / port as shown on the waybill (inbound). */
+  originPort?: string;
+  /** Waybill / BOL reference (inbound). */
+  waybillNumber?: string;
+  /** Full departure timestamp ISO from API (`ship_date`). */
+  shippedAt?: string;
 };
 
 export const shipments: Shipment[] = [

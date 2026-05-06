@@ -6,14 +6,16 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAppData, useSalesOrders, useDepletionReports } from "@/contexts/AppDataContext";
+import { useShipmentsAutoRefresh } from "@/hooks/useShipmentsAutoRefresh";
 import { useAuth } from "@/contexts/AuthContext";
 import { computeInventorySummary, deriveAlerts } from "@/lib/hajime-metrics";
+import { shipmentLineContentsLabel } from "@/lib/order-lines";
 import { getMyWarehouseOptions, updateMyPrimaryWarehouse } from "@/lib/api-v1-mutations";
 import type { Warehouse } from "@/types/app-data";
 import { toast } from "@/components/ui/sonner";
 import { DistributorSkeleton } from "@/components/skeletons";
 import { Package, ShoppingCart, Truck, Users, AlertTriangle, Warehouse, Calendar, TrendingDown } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 function warehousesFromApiRows(rows: Record<string, unknown>[]): Warehouse[] {
   return rows.map((row) => {
@@ -32,7 +34,7 @@ function warehousesFromApiRows(rows: Record<string, unknown>[]): Warehouse[] {
 
 export default function DistributorHomePage() {
   const { user } = useAuth();
-  const { data, loading, updateData, refreshTeamMembers } = useAppData();
+  const { data, loading, updateData, refreshTeamMembers, refreshShipments } = useAppData();
   const [warehouseOptions, setWarehouseOptions] = useState<{ id: string; name: string }[]>([]);
   const [primarySaving, setPrimarySaving] = useState(false);
 
@@ -74,6 +76,9 @@ export default function DistributorHomePage() {
 
   const selectedPrimaryWarehouseId = myCrmRow?.primaryWarehouseId ?? "";
 
+  const stableRefreshShipments = useCallback(() => refreshShipments(), [refreshShipments]);
+  useShipmentsAutoRefresh(stableRefreshShipments, !loading);
+
   useEffect(() => {
     if (user?.role !== "distributor") return;
     let cancelled = false;
@@ -107,6 +112,7 @@ export default function DistributorHomePage() {
         }));
       }
       await refreshTeamMembers();
+      await refreshShipments();
       toast.success(next ? "Receiving warehouse updated" : "Receiving warehouse cleared", {
         description: next
           ? "Your depot selection is saved and visible to Hajime HQ."
@@ -210,7 +216,7 @@ export default function DistributorHomePage() {
           <p className="mt-2 font-display text-2xl font-semibold tabular-nums">{activeShipments.length}</p>
           <p className="text-[10px] text-muted-foreground">active shipments</p>
           <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-            <Link to="/distributor/orders?tab=distributor">Distributor processing</Link>
+            <Link to="/distributor/shipments">Shipment tracker</Link>
           </Button>
         </div>
         <div className="card-interactive p-4">
@@ -282,6 +288,11 @@ export default function DistributorHomePage() {
                 <p className="text-xs text-muted-foreground">
                   {s.origin} → {s.destination}
                 </p>
+                {shipmentLineContentsLabel(s) ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Receiving:</span> {shipmentLineContentsLabel(s)}
+                  </p>
+                ) : null}
               </div>
             ))}
             <Button variant="link" className="h-auto px-0 text-xs" asChild>

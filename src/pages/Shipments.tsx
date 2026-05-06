@@ -1,15 +1,49 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useShipments, useAppData } from "@/contexts/AppDataContext";
+import { useShipmentsAutoRefresh } from "@/hooks/useShipmentsAutoRefresh";
+import { useAuth } from "@/contexts/AuthContext";
 import { ShipmentsSkeleton } from "@/components/skeletons";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { RecordInboundShipmentDialog } from "@/components/RecordInboundShipmentDialog";
+import { RecordDistributorOutboundShipmentDialog } from "@/components/RecordDistributorOutboundShipmentDialog";
 import { Truck, Package, Search, ArrowRight, Clock, CheckCircle2, AlertTriangle, Navigation } from "lucide-react";
+import type { Shipment } from "@/data/mockData";
+import { shipmentLineContentsLabel } from "@/lib/order-lines";
+
+function formatDepartureTimestamp(s: Shipment): string {
+  if (s.shippedAt) {
+    try {
+      return new Date(s.shippedAt).toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+    } catch {
+      return s.shippedAt;
+    }
+  }
+  return s.shipDate ? s.shipDate : "—";
+}
 
 export default function Shipments() {
+  const { user } = useAuth();
   const { shipments } = useShipments();
-  const { loading } = useAppData();
+  const { loading, refreshShipments } = useAppData();
+  const [inboundOpen, setInboundOpen] = useState(false);
+  const [outboundDistOpen, setOutboundDistOpen] = useState(false);
+
+  const stableRefreshShipments = useCallback(() => refreshShipments(), [refreshShipments]);
+  useShipmentsAutoRefresh(stableRefreshShipments, !loading);
+
+  const canRecordInbound =
+    user?.role === "brand_operator" ||
+    user?.role === "manufacturer" ||
+    user?.role === "founder_admin";
+
+  const canRecordOutboundToDistributor = user?.role === "brand_operator" || user?.role === "founder_admin";
 
   const [searchParams] = useSearchParams();
   const [q, setQ] = useState(() => searchParams.get("q") ?? "");
@@ -27,14 +61,19 @@ export default function Shipments() {
   const filtered = useMemo(() => {
     const n = q.trim().toLowerCase();
     if (!n) return shipments;
-    return shipments.filter(
-      (s) =>
+    return shipments.filter((s) => {
+      const lineHay = shipmentLineContentsLabel(s).toLowerCase();
+      return (
         (s.id?.toLowerCase() || "").includes(n) ||
         (s.origin?.toLowerCase() || "").includes(n) ||
         (s.destination?.toLowerCase() || "").includes(n) ||
         (s.carrier?.toLowerCase() || "").includes(n) ||
-        (s.linkedOrder?.toLowerCase() || "").includes(n),
-    );
+        (s.linkedOrder?.toLowerCase() || "").includes(n) ||
+        (s.waybillNumber?.toLowerCase() || "").includes(n) ||
+        (s.originPort?.toLowerCase() || "").includes(n) ||
+        lineHay.includes(n)
+      );
+    });
   }, [shipments, q]);
 
   const { activeShipments, completedShipments } = useMemo(() => {
@@ -47,12 +86,37 @@ export default function Shipments() {
     return <ShipmentsSkeleton />;
   }
 
+  const shipmentKindLabel = (s: Shipment) => {
+    if (s.type === "inbound") return "Inbound (production / PO)";
+    if (s.orderType === "sales_order") return "Outbound (to distributor)";
+    return "Outbound (sales / transfers)";
+  };
+
   return (
     <div>
       <PageHeader
         title="Shipments"
-        description="Shipment tracking — inbound from manufacturer and outbound to accounts; ETA, carrier, and delivery status in one place."
+        description="Inbound production freight and outbound deliveries in one view. HQ can ship from a Hajime depot to a distributor DC (sales-order linked); inbound PO legs can be filed by HQ or manufacturers. Lists refresh periodically while this page is visible."
+        actions={
+          canRecordInbound || canRecordOutboundToDistributor ? (
+            <div className="flex flex-wrap gap-2">
+              {canRecordInbound ? (
+                <Button type="button" className="touch-manipulation" onClick={() => setInboundOpen(true)}>
+                  Record inbound (PO → warehouse)
+                </Button>
+              ) : null}
+              {canRecordOutboundToDistributor ? (
+                <Button type="button" variant="secondary" className="touch-manipulation" onClick={() => setOutboundDistOpen(true)}>
+                  Ship to distributor (warehouse → DC)
+                </Button>
+              ) : null}
+            </div>
+          ) : undefined
+        }
       />
+
+      <RecordInboundShipmentDialog open={inboundOpen} onOpenChange={setInboundOpen} />
+      <RecordDistributorOutboundShipmentDialog open={outboundDistOpen} onOpenChange={setOutboundDistOpen} />
 
       {/* Asymmetric KPI strip */}
       <div className="mb-6 grid gap-3 sm:grid-cols-3">
@@ -126,10 +190,44 @@ export default function Shipments() {
                     <p className="mt-1 text-sm text-muted-foreground">
                       {s.origin} <ArrowRight className="mx-1 inline h-3 w-3" strokeWidth={1.5} /> {s.destination}
                     </p>
+                    {(s.destinationWarehouseId || s.destinationWarehouseName) && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Receiving warehouse{" "}
+                        <span className="font-medium text-foreground">
+                          {s.destinationWarehouseName ?? s.destinationWarehouseId}
+                        </span>
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       Carrier: <span className="font-medium text-foreground">{s.carrier}</span> · Type:{" "}
-                      <span className="font-medium text-foreground">{s.shipmentType}</span>
+                      <span className="font-medium text-foreground">{shipmentKindLabel(s)}</span>
                     </p>
+                    {shipmentLineContentsLabel(s) ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Contents:{" "}
+                        <span className="font-medium text-foreground">{shipmentLineContentsLabel(s)}</span>
+                      </p>
+                    ) : null}
+                    {s.type === "inbound" && (s.shippedAt || s.shipDate || s.originPort || s.waybillNumber) ? (
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        Departed{" "}
+                        <span className="font-medium text-foreground">{formatDepartureTimestamp(s)}</span>
+                        {s.originPort ? (
+                          <>
+                            {" "}
+                            · Port{" "}
+                            <span className="font-medium text-foreground">{s.originPort}</span>
+                          </>
+                        ) : null}
+                        {s.waybillNumber ? (
+                          <>
+                            {" "}
+                            · Waybill{" "}
+                            <span className="font-mono font-medium text-foreground">{s.waybillNumber}</span>
+                          </>
+                        ) : null}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3 sm:flex-col sm:items-end">
@@ -164,6 +262,39 @@ export default function Shipments() {
                     <p className="mt-1 text-sm text-muted-foreground">
                       {s.origin} <ArrowRight className="mx-1 inline h-3 w-3" strokeWidth={1.5} /> {s.destination}
                     </p>
+                    {(s.destinationWarehouseId || s.destinationWarehouseName) && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Receiving warehouse{" "}
+                        <span className="font-medium text-foreground">
+                          {s.destinationWarehouseName ?? s.destinationWarehouseId}
+                        </span>
+                      </p>
+                    )}
+                    {s.type === "inbound" && (s.shippedAt || s.shipDate || s.originPort || s.waybillNumber) ? (
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        Departed{" "}
+                        <span className="font-medium text-foreground">{formatDepartureTimestamp(s)}</span>
+                        {s.originPort ? (
+                          <>
+                            {" "}
+                            · Port <span className="font-medium text-foreground">{s.originPort}</span>
+                          </>
+                        ) : null}
+                        {s.waybillNumber ? (
+                          <>
+                            {" "}
+                            · Waybill{" "}
+                            <span className="font-mono font-medium text-foreground">{s.waybillNumber}</span>
+                          </>
+                        ) : null}
+                      </p>
+                    ) : null}
+                    {shipmentLineContentsLabel(s) ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Contents:{" "}
+                        <span className="font-medium text-foreground">{shipmentLineContentsLabel(s)}</span>
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3 sm:flex-col sm:items-end">

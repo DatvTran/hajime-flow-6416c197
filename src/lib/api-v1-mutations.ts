@@ -217,6 +217,38 @@ export async function getOrderTimeline(id: string) {
   return apiFetch(`/api/v1/orders/${id}/timeline`);
 }
 
+/** GET /orders/:id/receiving-warehouses — CRM + account-linked depot ids for outbound-to-DC dialogs. */
+export type OrderReceivingWarehousesData = {
+  warehouse_ids: string[];
+  kind: "none" | "crm_aligned" | "account_linked";
+  /** Sales order’s wholesale / distributor account — for labels in ship-to-DC UI. */
+  distributor_wholesale_account?: {
+    id: string;
+    trading_name?: string | null;
+    legal_name?: string | null;
+    email?: string | null;
+    type?: string | null;
+  } | null;
+  /** Server: how CRM rows were scoped (`account_email` avoids unrelated distributor depots). */
+  match_basis?: "account_email" | "account_name" | "none";
+  matched_crm_contact_ids: string[];
+  matched_crm_display: {
+    id: string;
+    name: string;
+    email: string;
+    primary_warehouse_id?: string;
+  }[];
+  detail: string;
+};
+
+export async function getOrderReceivingWarehouses(
+  orderId: string,
+): Promise<{ data: OrderReceivingWarehousesData }> {
+  return apiFetch(
+    `/api/v1/orders/${encodeURIComponent(orderId)}/receiving-warehouses`,
+  );
+}
+
 export async function createShipmentForOrder(
   orderId: string,
   shipmentData: {
@@ -642,6 +674,12 @@ export async function getTeamMembers(opts?: { includeInactive?: boolean }) {
       ? "?include_inactive=1"
       : "";
   return apiFetch(`/api/v1/team-members${q}`);
+}
+
+export async function approveRetailCrmContact(teamMemberId: string) {
+  return apiFetch(`/api/v1/team-members/${encodeURIComponent(teamMemberId)}/approve-retail`, {
+    method: "POST",
+  });
 }
 
 export async function createTeamMember(memberData: {
@@ -1111,19 +1149,38 @@ export async function getTransferOrders(params?: {
 // ===== SHIPMENTS =====
 
 export async function createShipment(shipmentData: {
-  shipment_number: string;
-  order_id: number;
-  carrier: string;
+  shipment_number?: string;
+  /** Purchase order PK in `purchase_orders`; optional if `po_number` sent. */
+  order_id?: number;
+  po_number?: string;
+  order_type: "purchase_order" | "sales_order" | "transfer_order";
+  carrier?: string;
   tracking_number?: string;
+  from_location?: string;
+  /** Free-text fallback if no `destination_warehouse_id`. */
+  to_location?: string;
+  destination_warehouse_id?: string;
+  destinationWarehouseId?: string;
+  origin_port?: string;
+  originPort?: string;
+  waybill_number?: string;
+  waybillNumber?: string;
   status?: string;
   shipped_at?: string;
   estimated_delivery_date?: string;
+  ship_date?: string;
+  estimated_delivery?: string;
   notes?: string;
+  total_bottles?: number;
+  totalBottles?: number;
   items?: Array<{
     sku: string;
     product_name?: string;
+    productName?: string;
     quantity: number;
     batch_id?: string;
+    product_id?: string;
+    productId?: string;
   }>;
 }) {
   return apiFetch("/api/v1/shipments", {
@@ -1137,10 +1194,17 @@ export async function updateShipment(
   shipmentData: Partial<{
     carrier: string;
     tracking_number: string;
+    trackingNumber: string;
     status: string;
     shipped_at: string;
+    ship_date: string;
+    shipDate: string;
     estimated_delivery_date: string;
     notes: string;
+    origin_port: string;
+    originPort: string;
+    waybill_number: string;
+    waybillNumber: string;
   }>
 ) {
   return apiFetch(`/api/v1/shipments/${id}`, {

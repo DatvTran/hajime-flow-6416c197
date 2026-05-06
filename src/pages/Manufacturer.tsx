@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useProductionStatuses, usePurchaseOrders } from "@/contexts/AppDataContext";
+import { useProductionStatuses, usePurchaseOrders, useAppData } from "@/contexts/AppDataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAuditLog } from "@/hooks/useAuditLog";
+import { useShipmentsAutoRefresh } from "@/hooks/useShipmentsAutoRefresh";
+import { ManufacturerSkeleton } from "@/components/skeletons";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Factory, CheckCircle, Clock, AlertTriangle, Truck, Globe } from "lucide-react";
 import { MANUFACTURER_STAGE_PIPELINE, manufacturerStageIndex } from "@/data/mockData";
@@ -14,12 +16,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { computeInventorySummary, computeReorderRecommendations, deriveAlerts } from "@/lib/hajime-metrics";
-import { useAppData } from "@/contexts/AppDataContext";
+import type { Shipment } from "@/data/mockData";
+
+function formatInboundDeparted(s: Shipment): string {
+  if (s.shippedAt) {
+    try {
+      return new Date(s.shippedAt).toLocaleString(undefined, {
+        dateStyle: "short",
+        timeStyle: "short",
+      });
+    } catch {
+      return s.shippedAt;
+    }
+  }
+  return s.shipDate ? s.shipDate : "—";
+}
 
 export default function Manufacturer() {
   const { purchaseOrders } = usePurchaseOrders();
   const { productionStatuses, addProductionStatus } = useProductionStatuses();
-  const { data, loading } = useAppData();
+  const { data, loading, refreshShipments } = useAppData();
 
   const { user } = useAuth();
   const logAudit = useAuditLog();
@@ -52,6 +68,19 @@ export default function Manufacturer() {
   );
 
   const leadDays = data.operationalSettings?.manufacturerLeadTimeDays ?? 45;
+
+  const stableRefreshShipments = useCallback(() => refreshShipments(), [refreshShipments]);
+  useShipmentsAutoRefresh(stableRefreshShipments, !loading);
+
+  const poLabelForShipment = useCallback(
+    (s: Shipment) => {
+      const key = String(s.linkedOrder ?? "");
+      const byDb = purchaseOrders.find((p) => p.databaseId != null && String(p.databaseId) === key);
+      if (byDb) return byDb.id;
+      return purchaseOrders.find((p) => p.id === key)?.id ?? (key ? `PO ref ${key}` : "—");
+    },
+    [purchaseOrders],
+  );
 
   const kpi = useMemo(() => {
     const delayed = activePOs.filter((p) => p.status === "delayed").length;
@@ -91,7 +120,7 @@ export default function Manufacturer() {
     <div>
       <PageHeader
         title="Manufacturer"
-        description="Production-board view: what’s approved to run, what’s on the floor, and what ships this week — tied to HQ requests, inbound freight, and market demand. Logistics can record carrier and ETA on Shipments."
+        description="Production-board view tied to HQ requests and inbound freight. Either you or Brand HQ can record inbound logistics (carrier, departure, warehouse destination); anyone with access sees the same shipment row, and open inbound lines below refresh periodically while this page is open."
       />
 
       <div className="mb-6 grid gap-4 lg:grid-cols-5">
@@ -144,6 +173,7 @@ export default function Manufacturer() {
           <div className="flex items-center gap-2 border-b border-border/50 p-4 pb-2">
             <Truck className="h-4 w-4 text-accent" strokeWidth={1.5} />
             <h3 className="font-display text-sm font-semibold">Shipment queue (inbound)</h3>
+            <p className="text-[10px] text-muted-foreground">Receiving warehouse is the route Brand HQ expects; HQ may enter this before cargo leaves.</p>
           </div>
           <div className="space-y-2 p-4 pt-2 text-xs">
             {inboundQueue.length === 0 ? (
@@ -152,14 +182,32 @@ export default function Manufacturer() {
                 <p className="text-sm text-muted-foreground">No open inbound shipments</p>
               </div>
             ) : (
-              inboundQueue.map((s) => (
-                <div key={s.id} className="border-b border-border/40 py-1.5 last:border-0">
-                  <p className="font-mono">{s.id}</p>
-                  <p className="text-muted-foreground">
-                    {s.origin} → {s.destination} · ETA {s.eta}
-                  </p>
-                </div>
-              ))
+              inboundQueue.map((s) => {
+                const receiving = s.destinationWarehouseName?.trim() || s.destination || "Receiving TBD";
+                const logisticsParts = [
+                  s.carrier?.trim(),
+                  s.originPort?.trim() ? `POL ${s.originPort}` : "",
+                  s.waybillNumber?.trim() ? `WB ${s.waybillNumber}` : "",
+                ].filter(Boolean);
+                return (
+                  <div key={s.id} className="border-b border-border/40 py-2 last:border-0">
+                    <div className="flex flex-wrap items-center gap-2 gap-y-1">
+                      <span className="font-mono text-foreground">{s.id}</span>
+                      <StatusBadge status={s.status} />
+                    </div>
+                    <p className="mt-1 font-medium text-foreground">{poLabelForShipment(s)}</p>
+                    <p className="mt-0.5 text-muted-foreground">
+                      <span className="text-foreground">Receives at:</span> {receiving}
+                    </p>
+                    <p className="mt-0.5 text-muted-foreground">
+                      {s.origin} · departed {formatInboundDeparted(s)} · ETA {s.eta}
+                    </p>
+                    {logisticsParts.length > 0 ? (
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">{logisticsParts.join(" · ")}</p>
+                    ) : null}
+                  </div>
+                );
+              })
             )}
             <Button variant="link" className="h-auto px-0 text-xs" asChild>
               <Link to="/manufacturer/shipments">Shipments</Link>
@@ -290,7 +338,7 @@ export default function Manufacturer() {
         <Card className="card-elevated mb-6">
           <CardHeader className="border-b border-border/50 p-5 pb-3">
             <CardTitle className="font-display text-base">Post production update</CardTitle>
-            <p className="text-sm text-muted-foreground">Log stage changes for audit trail (brief §6, §8).</p>
+            <p className="text-sm text-muted-foreground">Log stage changes for audit trail (contractual logging requirements).</p>
           </CardHeader>
           <CardContent className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
             <div className="min-w-[200px] flex-1 space-y-2">
