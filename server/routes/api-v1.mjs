@@ -4969,6 +4969,18 @@ router.patch('/warehouses/:id', requirePermission(Permission.SETTINGS_WRITE), as
       }
     }
 
+    /** When HQ sets CRM link, reuse portal-side atomics (single depot / mirrored primary warehouse). Undefined = omit. */
+    let linkedTeamMemberIdPatch;
+    const hasLinkedTeamMemberPatch = Object.prototype.hasOwnProperty.call(
+      updates,
+      'linked_team_member_id',
+    );
+    if (hasLinkedTeamMemberPatch) {
+      const v = updates.linked_team_member_id;
+      linkedTeamMemberIdPatch =
+        v === null || v === '' ? null : String(v).trim() || null;
+    }
+
     const snake = {};
     if (updates.name !== undefined) snake.name = updates.name;
     if (updates.is_active !== undefined) snake.is_active = Boolean(updates.is_active);
@@ -4978,18 +4990,56 @@ router.patch('/warehouses/:id', requirePermission(Permission.SETTINGS_WRITE), as
       snake.linked_account_id =
         v === null || v === '' ? null : String(v).trim() || null;
     }
-    if (updates.linked_team_member_id !== undefined) {
-      const v = updates.linked_team_member_id;
-      snake.linked_team_member_id =
-        v === null || v === '' ? null : String(v).trim() || null;
-    }
 
     snake.updated_at = new Date();
 
-    const [row] = await db('warehouses')
-      .where({ id, tenant_id: tenantId })
-      .update(snake)
-      .returning('*');
+    let row;
+
+    if (hasLinkedTeamMemberPatch) {
+      await db.transaction(async (trx) => {
+        const existing = await trx('warehouses').where({ id, tenant_id: tenantId }).first();
+        if (!existing) {
+          const e = new Error('Warehouse not found');
+          e.status = 404;
+          throw e;
+        }
+
+        if (linkedTeamMemberIdPatch) {
+          const member = await trx('team_members')
+            .where({ id: linkedTeamMemberIdPatch, tenant_id: tenantId })
+            .first();
+          if (!member) {
+            const e = new Error('CRM team member not found');
+            e.status = 404;
+            throw e;
+          }
+          if (String(member.role ?? '') !== 'distributor') {
+            const e = new Error(
+              'linked_team_member_id must reference a CRM contact with distributor role',
+            );
+            e.status = 400;
+            throw e;
+          }
+          await setDistributorReceivingWarehouse(trx, tenantId, linkedTeamMemberIdPatch, id);
+        } else {
+          await trx('warehouses').where({ id, tenant_id: tenantId }).update({
+            linked_team_member_id: null,
+            updated_at: new Date(),
+          });
+        }
+
+        const [upd] = await trx('warehouses')
+          .where({ id, tenant_id: tenantId })
+          .update(snake)
+          .returning('*');
+        row = upd;
+      });
+    } else {
+      [row] = await db('warehouses')
+        .where({ id, tenant_id: tenantId })
+        .update(snake)
+        .returning('*');
+    }
 
     if (!row) {
       return res.status(404).json({ error: 'Warehouse not found' });
@@ -4998,6 +5048,10 @@ router.patch('/warehouses/:id', requirePermission(Permission.SETTINGS_WRITE), as
     res.json({ data: row });
   } catch (err) {
     console.error('[API v1] Error updating warehouse:', err);
+    const st = typeof err.status === 'number' ? err.status : null;
+    if (st === 400 || st === 404) {
+      return res.status(st).json({ error: String(err.message || 'Request failed') });
+    }
     if (err.code === '23505') {
       return res.status(409).json({ error: 'A warehouse with this name already exists.' });
     }

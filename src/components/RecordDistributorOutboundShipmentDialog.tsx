@@ -401,11 +401,18 @@ export function RecordDistributorOutboundShipmentDialog({ open, onOpenChange }: 
     warehouses,
   ]);
 
-  /** Prefer server CRM snapshot; until it loads, show locally matched distributors so identity is never blank. */
+  /**
+   * Prefer server CRM snapshot; until it loads, show locally matched distributors so identity is never blank.
+   * When the server says depots are account-linked only (`server_account`), do not substitute local fuzzy matches —
+   * that would contradict the authoritative “no CRM matched” state.
+   */
   const distributorContactsForSummary = useMemo((): CrmDepotMatchRow[] => {
+    if (receivingDepots.usedServer && receivingDepots.kind === "server_account") {
+      return [];
+    }
     if (receivingDepots.crmRows.length > 0) return receivingDepots.crmRows;
     return crmRowsFromTeamMembers(matchedDistributorContacts);
-  }, [matchedDistributorContacts, receivingDepots.crmRows]);
+  }, [matchedDistributorContacts, receivingDepots.crmRows, receivingDepots.kind, receivingDepots.usedServer]);
 
   const wholesaleDistributorForShipment = useMemo(() => {
     const srv = serverReceivingDepots?.distributor_wholesale_account;
@@ -745,9 +752,35 @@ export function RecordDistributorOutboundShipmentDialog({ open, onOpenChange }: 
                       </li>
                     ))}
                   </ul>
+                ) : receivingDepots.usedServer && receivingDepots.kind === "server_account" ? (
+                  <div className="mt-1 space-y-2 text-xs leading-relaxed">
+                    <p className="text-amber-900 dark:text-amber-400">
+                      {wholesaleDistributorForShipment.email ? (
+                        <>
+                          Email on this distributor account is{" "}
+                          <span className="break-all font-mono font-medium text-foreground">
+                            {wholesaleDistributorForShipment.email}
+                          </span>{" "}
+                          but no CRM distributor invite uses that email. Add a CRM distributor contact in{" "}
+                          <span className="font-medium text-foreground">Settings → CRM</span> with that email, or update
+                          an existing distributor contact&apos;s email to match.
+                        </>
+                      ) : (
+                        <>
+                          This wholesale account has no email yet. Add an email under{" "}
+                          <span className="font-medium text-foreground">Accounts</span>, then add or update a CRM
+                          distributor contact with the same email (or link the depot to a distributor contact in{" "}
+                          <span className="font-medium text-foreground">Settings → Warehouses</span> → Edit warehouse).
+                        </>
+                      )}
+                    </p>
+                    <p className="text-muted-foreground">
+                      Receiving depots listed below are tied to this account only until CRM email alignment is fixed.
+                    </p>
+                  </div>
                 ) : (
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    No CRM distributor invite matched yet. Receiving depots can still list if warehouses are linked to this
+                    No CRM distributor invite matched yet. Receiving depots can still appear if warehouses are linked to this
                     wholesale account.
                   </p>
                 )}
