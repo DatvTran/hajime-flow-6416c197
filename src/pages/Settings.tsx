@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL } from "@/data/team-roster";
+import type { Account } from "@/data/mockData";
 import type { TeamMember, TeamMemberPortalRole, Warehouse } from "@/types/app-data";
 import { CSVImportButton } from "@/components/CSVImportButton";
 import {
@@ -80,6 +81,9 @@ const TEAM_ROLE_ORDER: TeamMemberPortalRole[] = ["sales_rep", "retail", "distrib
 /** CRM form: no receiving depot chosen yet (same pattern as optional selects elsewhere). */
 const CRM_NO_WAREHOUSE = "__none__";
 
+/** Edit warehouse: no account / no CRM link */
+const WH_LINK_NONE = "__none__";
+
 export default function SettingsPage() {
   const { products, addProduct, removeProduct, patchProduct } = useProducts();
   const { data, updateData, loading, refreshTeamMembers } = useAppData();
@@ -126,6 +130,8 @@ export default function SettingsPage() {
   const [editWarehouseName, setEditWarehouseName] = useState("");
   const [editWarehouseSortOrder, setEditWarehouseSortOrder] = useState("0");
   const [editWarehouseActive, setEditWarehouseActive] = useState(true);
+  const [editWarehouseLinkedAccountId, setEditWarehouseLinkedAccountId] = useState(WH_LINK_NONE);
+  const [editWarehouseLinkedTeamMemberId, setEditWarehouseLinkedTeamMemberId] = useState(WH_LINK_NONE);
 
   const warehousesSorted = useMemo(() => {
     const list = [...(data.warehouses ?? [])];
@@ -153,6 +159,27 @@ export default function SettingsPage() {
     }
     return map;
   }, [data.warehouses]);
+
+  const accountsSortedForWarehouseLink = useMemo(() => {
+    const list = [...(data.accounts ?? [])];
+    list.sort((a, b) =>
+      (a.tradingName || a.name).localeCompare(b.tradingName || b.name, undefined, { sensitivity: "base" }),
+    );
+    return list;
+  }, [data.accounts]);
+
+  const distributorTeamMembersForWarehouseLink = useMemo(() => {
+    const list = teamMembers.filter((m) => m.role === "distributor");
+    list.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }));
+    return list;
+  }, [teamMembers]);
+
+  function accountOptionLabel(a: Account): string {
+    const label = (a.tradingName || a.legalName || a.name).trim();
+    const t = (a.type || "").trim();
+    const em = a.email?.trim();
+    return [label, t || null, em || null].filter(Boolean).join(" · ");
+  }
 
   useEffect(() => {
     if (newMemberRole !== "distributor") {
@@ -694,6 +721,16 @@ export default function SettingsPage() {
     setEditWarehouseName(w.name);
     setEditWarehouseSortOrder(String(w.sortOrder ?? 0));
     setEditWarehouseActive(w.isActive !== false);
+    setEditWarehouseLinkedAccountId(
+      w.linkedAccountId != null && String(w.linkedAccountId).trim() !== ""
+        ? String(w.linkedAccountId).trim()
+        : WH_LINK_NONE,
+    );
+    setEditWarehouseLinkedTeamMemberId(
+      w.linkedTeamMemberId != null && String(w.linkedTeamMemberId).trim() !== ""
+        ? String(w.linkedTeamMemberId).trim()
+        : WH_LINK_NONE,
+    );
     setEditWarehouseOpen(true);
   };
 
@@ -707,10 +744,17 @@ export default function SettingsPage() {
     const sort = Math.max(0, Math.floor(Number(editWarehouseSortOrder) || 0));
 
     try {
+      const linked_account_id =
+        editWarehouseLinkedAccountId === WH_LINK_NONE ? null : editWarehouseLinkedAccountId.trim();
+      const linked_team_member_id =
+        editWarehouseLinkedTeamMemberId === WH_LINK_NONE ? null : editWarehouseLinkedTeamMemberId.trim();
+
       const res = await updateWarehouse(editWarehouse.id, {
         name,
         is_active: editWarehouseActive,
         sort_order: sort,
+        linked_account_id,
+        linked_team_member_id,
       });
 
       const row = res.data as {
@@ -818,10 +862,11 @@ export default function SettingsPage() {
               <WarehouseIcon className="h-5 w-5" />
               Warehouses
             </CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-1 text-sm text-muted-foreground">
               Inventory and transfer locations you define as Brand Operator. Stored in Postgres — used for stock routing,
-              purchase-order destinations, and fulfillment.{" "}
-              <span className="font-medium text-foreground">Distributors</span> choose which depot they receive from on{" "}
+              purchase-order destinations, and fulfillment. Link depots to commercial accounts and CRM distributor
+              contacts when editing a warehouse, or let{" "}
+              <span className="font-medium text-foreground">distributors</span> set their receiving depot on{" "}
               <span className="font-medium text-foreground">Distributor home</span> after you invite them from{" "}
               <span className="font-medium text-foreground">CRM contacts</span>.
             </p>
@@ -874,12 +919,12 @@ export default function SettingsPage() {
               if (!open) setEditWarehouse(null);
             }}
           >
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle className="font-display">Edit warehouse</DialogTitle>
                 <DialogDescription>
-                  Update the display name, active status, and sort order. Distributor-to-depot assignment is managed by
-                  each distributor from their portal (Distributor home).
+                  Update the display name, sort order, active status, and optional links to Accounts and CRM distributor
+                  contacts. Links drive ship-to-distributor routing and eligibility in Brand Operator tools.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
@@ -904,11 +949,56 @@ export default function SettingsPage() {
                     className="touch-manipulation"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="wh-edit-linked-account">Linked commercial account</Label>
+                  <Select value={editWarehouseLinkedAccountId} onValueChange={setEditWarehouseLinkedAccountId}>
+                    <SelectTrigger id="wh-edit-linked-account" className="touch-manipulation">
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[min(60vh,20rem)]">
+                      <SelectItem value={WH_LINK_NONE}>None</SelectItem>
+                      {accountsSortedForWarehouseLink.map((a) => (
+                        <SelectItem key={a.id} value={a.id} className="items-start">
+                          <span className="line-clamp-2 whitespace-normal text-left text-sm">
+                            {accountOptionLabel(a)}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Receiving depots for a wholesale order show when this matches the order&apos;s account (e.g. LCBO
+                    Ontario). Leave empty for brand-pool depots only.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="wh-edit-linked-tm">Linked CRM distributor</Label>
+                  <Select value={editWarehouseLinkedTeamMemberId} onValueChange={setEditWarehouseLinkedTeamMemberId}>
+                    <SelectTrigger id="wh-edit-linked-tm" className="touch-manipulation">
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[min(60vh,20rem)]">
+                      <SelectItem value={WH_LINK_NONE}>None</SelectItem>
+                      {distributorTeamMembersForWarehouseLink.map((m) => (
+                        <SelectItem key={m.id} value={m.id} className="items-start">
+                          <span className="line-clamp-2 whitespace-normal text-left text-sm">
+                            {m.displayName} · &lt;{m.email}&gt;
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Must be a <span className="font-medium text-foreground">distributor</span> role row from Settings →
+                    CRM. Align invite email with the wholesale account when possible.
+                  </p>
+                </div>
                 <Alert className="border-border/80 bg-muted/20 py-2">
                   <AlertDescription className="text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">Distributor receiving site</span> is chosen by each
-                    distributor on <span className="font-medium text-foreground">Distributor home</span> (requires CRM
-                    email to match their login). HQ no longer assigns the depot link from this dialog.
+                    <span className="font-medium text-foreground">Brand Operator</span> can set account and CRM links
+                    here. <span className="font-medium text-foreground">Distributors</span> can still choose or change
+                    their receiving depot on <span className="font-medium text-foreground">Distributor home</span> after
+                    they accept a CRM invite.
                   </AlertDescription>
                 </Alert>
                 <div className="flex items-center justify-between rounded-lg border border-border/80 px-3 py-2">
