@@ -137,6 +137,8 @@ export const ROLE_PERMISSIONS = {
     Permission.PRODUCTION_READ,
     Permission.PRODUCTION_WRITE,
     Permission.SHIPMENTS_READ,
+    /** Record inbound finished-goods shipment to brand / DC warehouse (purchase-order linked). */
+    Permission.SHIPMENTS_WRITE,
     Permission.INVENTORY_READ,
   ],
 

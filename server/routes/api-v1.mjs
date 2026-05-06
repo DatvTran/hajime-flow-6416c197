@@ -5,8 +5,13 @@
  */
 import { Router } from 'express';
 import { db } from '../config/database.mjs';
-import { authenticateToken, requirePermission, requireTenantAccess } from '../middleware/auth.mjs';
-import { Permission } from '../rbac/permissions.mjs';
+import {
+  authenticateToken,
+  requireAnyPermission,
+  requirePermission,
+  requireTenantAccess,
+} from '../middleware/auth.mjs';
+import { Permission, Role, hasPermission } from '../rbac/permissions.mjs';
 import {
   createCrmUserInvite,
   sendCrmInviteEmail,
@@ -135,6 +140,64 @@ function getTenantId(req, res) {
     return null;
   }
   return tenantId;
+}
+
+/** Normalize multi-line / duplicate spaces for fuzzy CRM ↔ account matching. */
+function normalizeReceivingLabelPart(s) {
+  return String(s ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+/** Conservative fuzzy equality for trading / CRM display names */
+function receivingLabelsLikelySame(a, b) {
+  const x = normalizeReceivingLabelPart(a);
+  const y = normalizeReceivingLabelPart(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const min = 4;
+  if (x.length < min || y.length < min) return false;
+  return x.includes(y) || y.includes(x);
+}
+
+/**
+ * Fuzzy name match CRM distributor ↔ commercial account when emails differ.
+ */
+function distributorTeamMemberMatchesSalesOrderAccountByName(tm, joinAccount, orderJoined) {
+  if (!tm || String(tm.role ?? '') !== 'distributor') return false;
+  const tmName = normalizeReceivingLabelPart(tm.name);
+  const hints = [
+    joinAccount?.trading_name,
+    joinAccount?.name,
+    orderJoined?.account_trading_name,
+    orderJoined?.account_name,
+  ];
+  for (const h of hints) {
+    if (receivingLabelsLikelySame(tmName, h)) return true;
+  }
+  return false;
+}
+
+/**
+ * Prefer **exact wholesale account email** vs `team_members.email` so one distributor CRM row wins
+ * (avoids stacking unrelated depots when trading names collide).
+ */
+function distributorsForSalesOrderReceivingDepots(distributors, joinAccount, orderJoined) {
+  const ae = normalizeReceivingLabelPart(joinAccount?.email);
+  if (ae) {
+    const byEmail = distributors.filter((tm) => normalizeReceivingLabelPart(tm.email) === ae);
+    if (byEmail.length > 0) {
+      return { matched: byEmail, match_basis: 'account_email' };
+    }
+  }
+  const byName = distributors.filter((tm) =>
+    distributorTeamMemberMatchesSalesOrderAccountByName(tm, joinAccount, orderJoined),
+  );
+  return {
+    matched: byName,
+    match_basis: byName.length > 0 ? 'account_name' : 'none',
+  };
 }
 
 // ===== PRODUCTS =====
@@ -589,6 +652,7 @@ router.get('/orders/:id', requirePermission(Permission.ORDERS_READ), async (req,
       .select(
         'sales_orders.*',
         'accounts.name as account_name',
+        'accounts.email as account_email',
         'accounts.account_number',
         'accounts.trading_name as account_trading_name'
       )
@@ -613,6 +677,162 @@ router.get('/orders/:id', requirePermission(Permission.ORDERS_READ), async (req,
     res.status(500).json({ error: 'Failed to fetch order' });
   }
 });
+
+/**
+ * GET /api/v1/orders/:id/receiving-warehouses
+ * Authoritative resolver: warehouses linked to the order account and/or CRM distributor contacts
+ * (primary_warehouse_id + warehouses.linked_team_member_id), keyed off the joined commercial account fields.
+ */
+router.get(
+  '/orders/:id/receiving-warehouses',
+  requirePermission(Permission.ORDERS_READ),
+  async (req, res) => {
+    try {
+      const tenantId = getTenantId(req, res);
+      if (!tenantId) return;
+      const { id } = req.params;
+
+      const order = await db('sales_orders')
+        .where({ 'sales_orders.id': id, 'sales_orders.tenant_id': tenantId })
+        .whereNull('sales_orders.deleted_at')
+        .leftJoin('accounts', 'sales_orders.account_id', 'accounts.id')
+        .select(
+          'sales_orders.*',
+          'accounts.name as account_name',
+          'accounts.email as account_email',
+          'accounts.account_number',
+          'accounts.trading_name as account_trading_name',
+          'accounts.type as account_type',
+        )
+        .first();
+
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      const rawType = String(order.account_type ?? '').toLowerCase().trim();
+      if (
+        rawType &&
+        rawType !== 'distributor' &&
+        rawType !== 'wholesaler'
+      ) {
+        return res.status(400).json({
+          error: 'Receiving depots apply to distributor or wholesaler orders only.',
+        });
+      }
+
+      const accountIdStr = order.account_id != null ? String(order.account_id) : '';
+
+      const joinAccount = {
+        email: order.account_email,
+        trading_name: order.account_trading_name,
+        name: order.account_name,
+      };
+
+      const [warehouseRows, distributorRows] = await Promise.all([
+        db('warehouses').where({ tenant_id: tenantId }).orderBy('sort_order', 'asc'),
+        db('team_members')
+          .where({ tenant_id: tenantId, role: 'distributor' })
+          .select('*'),
+      ]);
+
+      const { matched, match_basis: matchBasis } = distributorsForSalesOrderReceivingDepots(
+        distributorRows,
+        joinAccount,
+        order,
+      );
+
+      const ids = new Set();
+      for (const w of warehouseRows) {
+        if (
+          w.linked_account_id != null &&
+          accountIdStr &&
+          String(w.linked_account_id) === accountIdStr
+        ) {
+          ids.add(String(w.id));
+        }
+      }
+      for (const tm of matched) {
+        const tid = String(tm.id);
+        if (tm.primary_warehouse_id != null && String(tm.primary_warehouse_id).trim() !== '') {
+          ids.add(String(tm.primary_warehouse_id));
+        }
+        for (const w of warehouseRows) {
+          if (w.linked_team_member_id != null && String(w.linked_team_member_id) === tid) {
+            ids.add(String(w.id));
+          }
+        }
+      }
+
+      let kind = 'none';
+      if (ids.size > 0) kind = matched.length > 0 ? 'crm_aligned' : 'account_linked';
+
+      let detail = '';
+      if (matched.length > 0) {
+        const labels = matched
+          .map((m) => String(m.name ?? '').trim() || String(m.email ?? '').trim())
+          .filter(Boolean);
+        const basisPhrase =
+          matchBasis === 'account_email'
+            ? 'matched by the same email as this wholesale account'
+            : 'matched by trading/legal name similarity (emails did not align — update CRM email to match when possible)';
+        detail =
+          labels.length > 0
+            ? `Receiving options mapped from CRM distributor contact(s), ${basisPhrase}: ${labels.join(', ')}.`
+            : `Receiving options mapped from CRM distributor contact(s); ${basisPhrase}.`;
+      } else if (ids.size > 0) {
+        detail =
+          'Depots linked to this distributor account under Settings → Warehouses (no CRM distributor row matched the account email/name).';
+      } else {
+        detail =
+          'No receiving depot matched. Align CRM distributor email with the wholesale account email, match trading or legal names, or link a depot to this account.';
+      }
+
+      const distributorWholesaleAccount =
+        accountIdStr !== ''
+          ? {
+              id: accountIdStr,
+              trading_name:
+                order.account_trading_name != null && String(order.account_trading_name).trim() !== ''
+                  ? String(order.account_trading_name).trim()
+                  : null,
+              legal_name:
+                order.account_name != null && String(order.account_name).trim() !== ''
+                  ? String(order.account_name).trim()
+                  : null,
+              email:
+                order.account_email != null && String(order.account_email).trim() !== ''
+                  ? String(order.account_email).trim().toLowerCase()
+                  : null,
+              type: order.account_type != null ? String(order.account_type).trim() : null,
+            }
+          : null;
+
+      res.json({
+        data: {
+          warehouse_ids: Array.from(ids),
+          kind,
+          distributor_wholesale_account: distributorWholesaleAccount,
+          matched_crm_contact_ids: matched.map((m) => String(m.id)),
+          matched_crm_display: matched.map((m) => ({
+            id: String(m.id),
+            name: String(m.name ?? '').trim(),
+            email: String(m.email ?? '').trim().toLowerCase(),
+            primary_warehouse_id:
+              m.primary_warehouse_id != null && String(m.primary_warehouse_id).trim() !== ''
+                ? String(m.primary_warehouse_id).trim()
+                : undefined,
+          })),
+          detail,
+          match_basis: matchBasis,
+        },
+      });
+    } catch (err) {
+      console.error('[API v1] Error resolving receiving warehouses:', err);
+      res.status(500).json({ error: 'Failed to resolve receiving warehouses' });
+    }
+  },
+);
 
 // POST /api/v1/orders - Create order
 router.post('/orders', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
@@ -2317,42 +2537,208 @@ router.delete('/transfer-orders/:id', requirePermission(Permission.INVENTORY_WRI
 
 // ===== SHIPMENTS =====
 
+function bottlesPerCaseFromProductMetadata(metadata) {
+  if (metadata == null) return 12;
+  let m = metadata;
+  if (typeof m === 'string') {
+    try {
+      m = JSON.parse(m);
+    } catch {
+      m = {};
+    }
+  }
+  if (typeof m !== 'object' || m == null) return 12;
+  const raw = m.caseSize ?? m.case_size ?? m.bottlesPerCase ?? m.bottles_per_case;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 12;
+}
+
+async function skuToBottlesPerCaseMap(tenantId, skus) {
+  const clean = [...new Set((skus || []).map((s) => String(s || '').trim()).filter(Boolean))];
+  if (clean.length === 0) return new Map();
+  const products = await db('products').where({ tenant_id: tenantId }).whereIn('sku', clean).select('sku', 'metadata');
+  return new Map(products.map((p) => [String(p.sku), bottlesPerCaseFromProductMetadata(p.metadata)]));
+}
+
+function enrichLineItemsWithCaseFields(orderType, lineRows, bppcBySku) {
+  const ot = String(orderType || '');
+  return (lineRows || []).map((li) => {
+    const sku = String(li.sku || '');
+    const bppc = bppcBySku.get(sku) || 12;
+    const bt = li.quantity != null ? Number(li.quantity) : 0;
+    const base = {
+      sku,
+      product_name: li.product_name,
+      quantity: bt,
+      case_size: bppc,
+    };
+    if (ot === 'sales_order' && bppc > 0) {
+      base.cases = Math.round((bt / bppc) * 1000) / 1000;
+    }
+    return base;
+  });
+}
+
+async function hydrateShipmentDestinationWarehouseNames(tenantId, rows) {
+  if (!rows?.length) return rows;
+  const ids = [...new Set(rows.map((r) => r.destination_warehouse_id).filter(Boolean).map(String))];
+  if (ids.length === 0) return rows.map((r) => ({ ...r, destination_warehouse_name: null }));
+  const wh = await db('warehouses').where({ tenant_id: tenantId }).whereIn('id', ids);
+  const nameById = new Map(wh.map((w) => [String(w.id), String(w.name || '')]));
+  return rows.map((r) => ({
+    ...r,
+    destination_warehouse_name: r.destination_warehouse_id
+      ? nameById.get(String(r.destination_warehouse_id)) ?? null
+      : null,
+  }));
+}
+
+/** Batch-attach line items for shipment list/detail consistency (distributor "what is arriving"). */
+async function hydrateShipmentLineItems(tenantId, rows) {
+  if (!rows?.length) return rows;
+  const ids = rows.map((r) => r.id).filter(Boolean);
+  if (ids.length === 0) return rows.map((r) => ({ ...r, line_items: [] }));
+
+  const items = await db('shipment_items').where({ tenant_id: tenantId }).whereIn('shipment_id', ids);
+  const bppcBySku = await skuToBottlesPerCaseMap(
+    tenantId,
+    items.map((i) => i.sku),
+  );
+  const bySid = new Map();
+  for (const it of items) {
+    const sid = String(it.shipment_id);
+    if (!bySid.has(sid)) bySid.set(sid, []);
+    bySid.get(sid).push({
+      sku: it.sku,
+      product_name: it.product_name,
+      quantity: it.quantity != null ? Number(it.quantity) : 0,
+    });
+  }
+  return rows.map((r) => {
+    const raw = bySid.get(String(r.id)) ?? [];
+    return { ...r, line_items: enrichLineItemsWithCaseFields(r.order_type, raw, bppcBySku) };
+  });
+}
+
+async function distributorReceivingWarehouseIdsForUser(tenantId, email) {
+  const em = String(email ?? '')
+    .toLowerCase()
+    .trim();
+  if (!em) return [];
+
+  const member = await db('team_members').where({ tenant_id: tenantId, email: em, is_active: true }).first();
+  if (!member) return [];
+
+  const ids = new Set();
+  if (member.primary_warehouse_id != null && String(member.primary_warehouse_id).trim() !== '') {
+    ids.add(String(member.primary_warehouse_id).trim());
+  }
+  const linked = await db('warehouses')
+    .where({ tenant_id: tenantId, linked_team_member_id: member.id })
+    .select('id');
+  for (const w of linked) {
+    if (w.id != null) ids.add(String(w.id));
+  }
+  return [...ids];
+}
+
+function distributorHasShipmentAccess(shipmentRow, allowedWarehouseIds) {
+  if (!shipmentRow || !allowedWarehouseIds?.length) return false;
+  const dest = shipmentRow.destination_warehouse_id;
+  if (dest == null || String(dest).trim() === '') return false;
+  return allowedWarehouseIds.includes(String(dest).trim());
+}
+
+/**
+ * Validates optional `destination_warehouse_id`; fills `to_location` from warehouse name when omitted.
+ */
+async function resolveShipmentWarehouseFields(tenantId, body) {
+  const widRaw = body?.destination_warehouse_id ?? body?.destinationWarehouseId ?? null;
+  const wid = widRaw != null && String(widRaw).trim() !== '' ? String(widRaw).trim() : null;
+  let toLocation =
+    body?.to_location != null
+      ? String(body.to_location).trim()
+      : body?.toLocation != null
+        ? String(body.toLocation).trim()
+        : '';
+  let destinationWarehouseId = wid;
+  if (destinationWarehouseId) {
+    const wh = await db('warehouses').where({ id: destinationWarehouseId, tenant_id: tenantId }).first();
+    if (!wh) {
+      const e = new Error('destination_warehouse_id does not match a warehouse in this tenant');
+      e.status = 400;
+      throw e;
+    }
+    if (!toLocation) toLocation = String(wh.name || '').trim();
+  }
+  return { toLocation: toLocation || null, destinationWarehouseId };
+}
+
+function manufacturerShipmentScopeDenied(existingRow) {
+  if (!existingRow || existingRow.order_type !== 'purchase_order') {
+    return {
+      status: 403,
+      error:
+        'Manufacturer portal users may only work with inbound shipments tied to purchase orders.',
+    };
+  }
+  return null;
+}
+
+const shipmentWriteMiddleware = requireAnyPermission(Permission.INVENTORY_WRITE, Permission.SHIPMENTS_WRITE);
+
 // GET /api/v1/shipments - List shipments
 router.get('/shipments', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { page = 1, limit = 50, status, carrier, order_id, order_type } = req.query;
-    
+
     let baseQuery = db('shipments')
       .where({ tenant_id: tenantId })
       .whereNull('deleted_at');
-    
+
+    if (req.user.role === Role.MANUFACTURER) {
+      baseQuery = baseQuery.where('order_type', 'purchase_order');
+    }
+
+    if (req.user.role === Role.DISTRIBUTOR) {
+      const whIds = await distributorReceivingWarehouseIdsForUser(tenantId, req.user.email);
+      if (whIds.length === 0) {
+        baseQuery = baseQuery.whereRaw('1 = 0');
+      } else {
+        baseQuery = baseQuery.whereIn('destination_warehouse_id', whIds);
+      }
+    }
+
     if (status) baseQuery = baseQuery.where('status', status);
     if (carrier) baseQuery = baseQuery.where('carrier', carrier);
     if (order_id) baseQuery = baseQuery.where('order_id', order_id);
     if (order_type) baseQuery = baseQuery.where('order_type', order_type);
-    
+
     const offset = (Number(page) - 1) * Number(limit);
-    
+
     const countQuery = baseQuery.clone().count('id as count').first();
-    
+
     const dataQuery = baseQuery
       .clone()
       .orderBy('created_at', 'desc')
       .limit(Number(limit))
       .offset(offset);
-    
-    const [countResult, shipments] = await Promise.all([countQuery, dataQuery]);
-    
+
+    const [countResult, shipmentsRaw] = await Promise.all([countQuery, dataQuery]);
+
+    const named = await hydrateShipmentDestinationWarehouseNames(tenantId, shipmentsRaw);
+    const shipments = await hydrateShipmentLineItems(tenantId, named);
+
     res.json({
       data: shipments,
       pagination: {
         page: Number(page),
         limit: Number(limit),
         total: Number(countResult?.count || 0),
-        totalPages: Math.ceil(Number(countResult?.count || 0) / Number(limit))
-      }
+        totalPages: Math.ceil(Number(countResult?.count || 0) / Number(limit)),
+      },
     });
   } catch (err) {
     console.error('[API v1] Error fetching shipments:', err);
@@ -2366,20 +2752,45 @@ router.get('/shipments/:id', requirePermission(Permission.INVENTORY_READ), async
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { id } = req.params;
-    
-    const shipment = await db('shipments')
+
+    const shipmentRow = await db('shipments')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .first();
-    
-    if (!shipment) {
+
+    if (!shipmentRow) {
       return res.status(404).json({ error: 'Shipment not found' });
     }
-    
-    const items = await db('shipment_items')
-      .where({ shipment_id: id, tenant_id: tenantId });
-    
-    res.json({ data: { ...shipment, items } });
+
+    if (req.user.role === Role.MANUFACTURER) {
+      const denied = manufacturerShipmentScopeDenied(shipmentRow);
+      if (denied) return res.status(denied.status).json({ error: denied.error });
+    }
+
+    if (req.user.role === Role.DISTRIBUTOR) {
+      const whIds = await distributorReceivingWarehouseIdsForUser(tenantId, req.user.email);
+      if (!distributorHasShipmentAccess(shipmentRow, whIds)) {
+        return res.status(403).json({ error: 'You can only view shipments routed to your receiving warehouse.' });
+      }
+    }
+
+    const [shipmentHydrated] = await hydrateShipmentDestinationWarehouseNames(tenantId, [shipmentRow]);
+    const itemsRaw = await db('shipment_items').where({ shipment_id: id, tenant_id: tenantId });
+    const bppcBySku = await skuToBottlesPerCaseMap(
+      tenantId,
+      itemsRaw.map((i) => i.sku),
+    );
+    const items = enrichLineItemsWithCaseFields(
+      shipmentHydrated.order_type,
+      itemsRaw.map((it) => ({
+        sku: it.sku,
+        product_name: it.product_name,
+        quantity: it.quantity != null ? Number(it.quantity) : 0,
+      })),
+      bppcBySku,
+    );
+
+    res.json({ data: { ...shipmentHydrated, items } });
   } catch (err) {
     console.error('[API v1] Error fetching shipment:', err);
     res.status(500).json({ error: 'Failed to fetch shipment' });
@@ -2387,69 +2798,223 @@ router.get('/shipments/:id', requirePermission(Permission.INVENTORY_READ), async
 });
 
 // POST /api/v1/shipments - Create shipment
-router.post('/shipments', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+router.post('/shipments', shipmentWriteMiddleware, async (req, res) => {
   const trx = await db.transaction();
-  
+
   try {
     const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const { 
-      shipment_number, 
-      order_id, 
+    if (!tenantId) {
+      await trx.rollback();
+      return;
+    }
+
+    const {
+      shipment_number: shipmentNumberIn,
+      order_id: orderIdIn,
       order_type,
-      carrier, 
+      po_number,
+      carrier,
       tracking_number,
       from_location,
       to_location,
+      destination_warehouse_id,
+      destinationWarehouseId,
       status,
       ship_date,
       estimated_delivery,
+      total_bottles: totalBottlesIn,
       items,
-      ...shipmentData 
+      ...shipmentData
     } = req.body;
-    
-    if (!shipment_number || !order_id || !order_type) {
-      await trx.rollback();
-      return res.status(400).json({ error: 'shipment_number, order_id, and order_type are required' });
+
+    const shipment_number =
+      shipmentNumberIn != null && String(shipmentNumberIn).trim() !== ''
+        ? String(shipmentNumberIn).trim()
+        : `SHIP-${Date.now()}`;
+
+    let order_id = orderIdIn != null && orderIdIn !== '' ? Number(orderIdIn) : NaN;
+    if (!Number.isFinite(order_id) && po_number != null && String(po_number).trim() !== '') {
+      const po = await db('purchase_orders')
+        .where({ tenant_id: tenantId, po_number: String(po_number).trim() })
+        .first();
+      if (po) order_id = Number(po.id);
     }
-    
+
+    if (!Number.isFinite(order_id) || !order_type) {
+      await trx.rollback();
+      return res.status(400).json({
+        error: 'order_type is required and order_id must be set or resolvable from po_number',
+      });
+    }
+
+    const ot = String(order_type).trim();
+    if (req.user.role === Role.MANUFACTURER && ot !== 'purchase_order') {
+      await trx.rollback();
+      return res.status(403).json({
+        error:
+          'Manufacturer portal users may only record shipments tied to purchase orders (inbound finished goods).',
+      });
+    }
+
+    let warehouseFields;
+    try {
+      warehouseFields = await resolveShipmentWarehouseFields(tenantId, {
+        destination_warehouse_id: destination_warehouse_id ?? destinationWarehouseId,
+        to_location: to_location ?? req.body.toLocation,
+      });
+    } catch (we) {
+      await trx.rollback();
+      const st = we.status || 500;
+      return res.status(st).json({ error: we.message });
+    }
+
+    const toLocFinal = warehouseFields.toLocation;
+    const destWhIdFinal = warehouseFields.destinationWarehouseId;
+    if (!toLocFinal) {
+      await trx.rollback();
+      return res.status(400).json({
+        error:
+          'Receiving location is required: set destination_warehouse_id (preferred) or to_location (free text).',
+      });
+    }
+
+    if (ot === 'sales_order') {
+      const so = await trx('sales_orders')
+        .where({ id: order_id, tenant_id: tenantId })
+        .whereNull('deleted_at')
+        .first();
+      if (!so) {
+        await trx.rollback();
+        return res.status(400).json({ error: 'Sales order not found for this tenant.' });
+      }
+      const acc =
+        so.account_id != null
+          ? await trx('accounts').where({ id: so.account_id, tenant_id: tenantId }).first()
+          : null;
+      const at = String(acc?.type ?? '').toLowerCase();
+      if (at !== 'distributor' && at !== 'wholesaler') {
+        await trx.rollback();
+        return res.status(400).json({
+          error:
+            'Warehouse-to-distributor shipments require the sales order account type to be distributor or wholesaler.',
+        });
+      }
+      if (destWhIdFinal) {
+        const whRow = await trx('warehouses').where({ id: destWhIdFinal, tenant_id: tenantId }).first();
+        if (whRow?.linked_account_id && String(whRow.linked_account_id).trim() !== String(so.account_id).trim()) {
+          await trx.rollback();
+          return res.status(400).json({
+            error:
+              'Receiving warehouse must be the distributor depot linked to this order account (Settings → Warehouses → linked distributor account).',
+          });
+        }
+      }
+    }
+
+    const fl =
+      from_location != null ? String(from_location).trim() : req.body.fromLocation != null ? String(req.body.fromLocation).trim() : null;
+
+    const originPortIn = req.body.origin_port ?? req.body.originPort;
+    const waybillIn = req.body.waybill_number ?? req.body.waybillNumber;
+
+    let originPortFinal = originPortIn != null ? String(originPortIn).trim() : null;
+    let waybillFinal = waybillIn != null ? String(waybillIn).trim() : null;
+
+    const shipDateInput = ship_date ?? req.body.shipDate;
+    let shipDateForInsert;
+    if (ot === 'purchase_order') {
+      const sd = shipDateInput != null ? new Date(shipDateInput) : null;
+      if (!sd || Number.isNaN(sd.getTime())) {
+        await trx.rollback();
+        return res.status(400).json({
+          error:
+            'Purchase order shipments require a valid shipping timestamp (ship_date / shipDate), e.g. ISO-8601 or datetime.',
+        });
+      }
+      const car = carrier != null ? String(carrier).trim() : '';
+      if (!car || car === '—') {
+        await trx.rollback();
+        return res.status(400).json({ error: 'Purchase order shipments require carrier.' });
+      }
+      if (!originPortFinal) {
+        await trx.rollback();
+        return res.status(400).json({
+          error: 'Purchase order shipments require origin_port (port as shown on the waybill).',
+        });
+      }
+      if (!waybillFinal) {
+        await trx.rollback();
+        return res.status(400).json({ error: 'Purchase order shipments require waybill_number.' });
+      }
+      shipDateForInsert = sd;
+    } else {
+      shipDateForInsert =
+        shipDateInput != null && String(shipDateInput).trim() !== ''
+          ? new Date(shipDateInput)
+          : new Date();
+      if (Number.isNaN(shipDateForInsert.getTime())) shipDateForInsert = new Date();
+    }
+
+    const carrierFinal =
+      ot === 'purchase_order'
+        ? String(carrier ?? '').trim()
+        : carrier != null && String(carrier).trim() !== '' && String(carrier).trim() !== '—'
+          ? String(carrier).trim()
+          : null;
+
+    const fromItemsQty =
+      Array.isArray(items) && items.length > 0
+        ? items.reduce((acc, it) => acc + Number(it.quantity ?? 0), 0)
+        : 0;
+    const totalBottlesPayload =
+      totalBottlesIn != null && String(totalBottlesIn).trim() !== ''
+        ? Number(totalBottlesIn)
+        : shipmentData.totalBottles != null && String(shipmentData.totalBottles).trim() !== ''
+          ? Number(shipmentData.totalBottles)
+          : fromItemsQty;
+
     const [shipment] = await trx('shipments')
       .insert({
         tenant_id: tenantId,
         shipment_number,
         order_id,
-        order_type,
-        carrier,
-        tracking_number,
-        from_location,
-        to_location,
+        order_type: ot,
+        carrier: carrierFinal,
+        tracking_number: tracking_number != null ? String(tracking_number).trim() : null,
+        from_location: fl,
+        to_location: toLocFinal,
+        destination_warehouse_id: destWhIdFinal,
+        origin_port: originPortFinal,
+        waybill_number: waybillFinal,
         status: status || 'packed',
-        ship_date: ship_date || new Date(),
+        ship_date: shipDateForInsert,
         estimated_delivery,
         delivered_at: shipmentData.deliveredAt,
-        total_bottles: shipmentData.totalBottles || 0,
+        total_bottles: Number.isFinite(totalBottlesPayload) ? totalBottlesPayload : 0,
         notes: shipmentData.notes,
-        created_by: req.user?.userId
+        created_by: req.user?.userId,
       })
       .returning('*');
-    
+
     if (items && items.length > 0) {
-      const shipmentItems = items.map(item => ({
+      const shipmentItems = items.map((item) => ({
         tenant_id: tenantId,
         shipment_id: shipment.id,
         product_id: item.productId || item.product_id,
         sku: item.sku,
         product_name: item.productName || item.product_name || item.name,
         quantity: item.quantity,
-        batch_id: item.batchId || item.batch_id
+        batch_id: item.batchId || item.batch_id,
       }));
-      
+
       await trx('shipment_items').insert(shipmentItems);
     }
-    
+
     await trx.commit();
-    
-    res.status(201).json({ data: shipment });
+
+    const [named] = await hydrateShipmentDestinationWarehouseNames(tenantId, [shipment]);
+    const [out] = await hydrateShipmentLineItems(tenantId, named);
+    res.status(201).json({ data: out });
   } catch (err) {
     await trx.rollback();
     console.error('[API v1] Error creating shipment:', err);
@@ -2458,60 +3023,144 @@ router.post('/shipments', requirePermission(Permission.INVENTORY_WRITE), async (
 });
 
 // PUT /api/v1/shipments/:id - Update shipment
-router.put('/shipments/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+router.put('/shipments/:id', shipmentWriteMiddleware, async (req, res) => {
   const trx = await db.transaction();
-  
+
   try {
     const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
+    if (!tenantId) {
+      await trx.rollback();
+      return;
+    }
     const { id } = req.params;
     const { items, ...shipmentData } = req.body;
-    
+
+    const existing = await trx('shipments')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .first();
+
+    if (!existing) {
+      await trx.rollback();
+      return res.status(404).json({ error: 'Shipment not found' });
+    }
+
+    if (req.user.role === Role.MANUFACTURER) {
+      const denied = manufacturerShipmentScopeDenied(existing);
+      if (denied) {
+        await trx.rollback();
+        return res.status(denied.status).json({ error: denied.error });
+      }
+    }
+
+    if (req.user.role === Role.DISTRIBUTOR) {
+      const whIds = await distributorReceivingWarehouseIdsForUser(tenantId, req.user.email);
+      if (!distributorHasShipmentAccess(existing, whIds)) {
+        await trx.rollback();
+        return res.status(403).json({ error: 'You can only update shipments routed to your receiving warehouse.' });
+      }
+    }
+
     const updates = {
       carrier: shipmentData.carrier,
       tracking_number: shipmentData.tracking_number || shipmentData.trackingNumber,
       from_location: shipmentData.from_location || shipmentData.fromLocation,
-      to_location: shipmentData.to_location || shipmentData.toLocation,
+      origin_port: shipmentData.origin_port ?? shipmentData.originPort,
+      waybill_number: shipmentData.waybill_number ?? shipmentData.waybillNumber,
       ship_date: shipmentData.ship_date || shipmentData.shipDate,
       estimated_delivery: shipmentData.estimated_delivery || shipmentData.estimatedDelivery,
       delivered_at: shipmentData.delivered_at || shipmentData.deliveredAt,
       total_bottles: shipmentData.total_bottles || shipmentData.totalBottles,
       notes: shipmentData.notes,
-      updated_at: new Date()
+      updated_at: new Date(),
     };
-    
+
+    const hasWarehousePatch =
+      shipmentData.destination_warehouse_id ||
+      shipmentData.destinationWarehouseId ||
+      shipmentData.to_location ||
+      shipmentData.toLocation;
+    if (hasWarehousePatch) {
+      try {
+        const w = await resolveShipmentWarehouseFields(tenantId, {
+          destination_warehouse_id:
+            shipmentData.destination_warehouse_id ?? shipmentData.destinationWarehouseId,
+          to_location: shipmentData.to_location ?? shipmentData.toLocation,
+        });
+        updates.to_location = w.toLocation;
+        updates.destination_warehouse_id = w.destinationWarehouseId;
+      } catch (we) {
+        await trx.rollback();
+        const st = we.status || 500;
+        return res.status(st).json({ error: we.message });
+      }
+    }
+
+    Object.keys(updates).forEach((k) => updates[k] === undefined && delete updates[k]);
+
+    const merged = { ...existing };
+    for (const key of Object.keys(updates)) {
+      if (updates[key] !== undefined) merged[key] = updates[key];
+    }
+    if (merged.order_type === 'purchase_order') {
+      const sd = merged.ship_date != null ? new Date(merged.ship_date) : null;
+      if (!sd || Number.isNaN(sd.getTime())) {
+        await trx.rollback();
+        return res.status(400).json({
+          error:
+            'Purchase order shipments must keep a valid shipping timestamp (ship_date).',
+        });
+      }
+      const car = merged.carrier != null ? String(merged.carrier).trim() : '';
+      if (!car || car === '—') {
+        await trx.rollback();
+        return res.status(400).json({ error: 'Purchase order shipments require carrier.' });
+      }
+      const op = merged.origin_port != null ? String(merged.origin_port).trim() : '';
+      if (!op) {
+        await trx.rollback();
+        return res.status(400).json({
+          error: 'Purchase order shipments require origin_port (port as on the waybill).',
+        });
+      }
+      const wb = merged.waybill_number != null ? String(merged.waybill_number).trim() : '';
+      if (!wb) {
+        await trx.rollback();
+        return res.status(400).json({ error: 'Purchase order shipments require waybill_number.' });
+      }
+    }
+
     const [shipment] = await trx('shipments')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update(updates)
       .returning('*');
-    
+
     if (!shipment) {
       await trx.rollback();
       return res.status(404).json({ error: 'Shipment not found' });
     }
-    
+
     if (items && items.length > 0) {
-      await trx('shipment_items')
-        .where({ shipment_id: id, tenant_id: tenantId })
-        .delete();
-      
-      const shipmentItems = items.map(item => ({
+      await trx('shipment_items').where({ shipment_id: id, tenant_id: tenantId }).delete();
+
+      const shipmentItems = items.map((item) => ({
         tenant_id: tenantId,
         shipment_id: id,
         product_id: item.productId || item.product_id,
         sku: item.sku,
         product_name: item.productName || item.product_name || item.name,
         quantity: item.quantity,
-        batch_id: item.batchId || item.batch_id
+        batch_id: item.batchId || item.batch_id,
       }));
-      
+
       await trx('shipment_items').insert(shipmentItems);
     }
-    
+
     await trx.commit();
-    
-    res.json({ data: shipment });
+
+    const [out] = await hydrateShipmentDestinationWarehouseNames(tenantId, [shipment]);
+    res.json({ data: out });
   } catch (err) {
     await trx.rollback();
     console.error('[API v1] Error updating shipment:', err);
@@ -2520,38 +3169,66 @@ router.put('/shipments/:id', requirePermission(Permission.INVENTORY_WRITE), asyn
 });
 
 // PATCH /api/v1/shipments/:id/status - Update shipment status
-router.patch('/shipments/:id/status', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+router.patch('/shipments/:id/status', shipmentWriteMiddleware, async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { id } = req.params;
     const { status } = req.body;
-    
-    const validStatuses = ['packed', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'exception', 'cancelled'];
+
+    const existing = await db('shipments')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .first();
+    if (!existing) {
+      return res.status(404).json({ error: 'Shipment not found' });
+    }
+    if (req.user.role === Role.MANUFACTURER) {
+      const denied = manufacturerShipmentScopeDenied(existing);
+      if (denied) return res.status(denied.status).json({ error: denied.error });
+    }
+
+    if (req.user.role === Role.DISTRIBUTOR) {
+      const whIds = await distributorReceivingWarehouseIdsForUser(tenantId, req.user.email);
+      if (!distributorHasShipmentAccess(existing, whIds)) {
+        return res.status(403).json({ error: 'You can only update shipments routed to your receiving warehouse.' });
+      }
+    }
+
+    const validStatuses = [
+      'packed',
+      'picked_up',
+      'in_transit',
+      'out_for_delivery',
+      'delivered',
+      'exception',
+      'cancelled',
+    ];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
-    
-    const updates = { 
-      status, 
-      updated_at: new Date() 
+
+    const updates = {
+      status,
+      updated_at: new Date(),
     };
-    
+
     if (status === 'delivered') {
       updates.delivered_at = new Date();
     }
-    
+
     const [shipment] = await db('shipments')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update(updates)
       .returning('*');
-    
+
     if (!shipment) {
       return res.status(404).json({ error: 'Shipment not found' });
     }
-    
-    res.json({ data: shipment });
+
+    const [out] = await hydrateShipmentDestinationWarehouseNames(tenantId, [shipment]);
+    res.json({ data: out });
   } catch (err) {
     console.error('[API v1] Error updating shipment status:', err);
     res.status(500).json({ error: 'Failed to update shipment status' });
@@ -2559,22 +3236,41 @@ router.patch('/shipments/:id/status', requirePermission(Permission.INVENTORY_WRI
 });
 
 // DELETE /api/v1/shipments/:id - Soft delete shipment
-router.delete('/shipments/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+router.delete('/shipments/:id', shipmentWriteMiddleware, async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { id } = req.params;
-    
+
+    const existing = await db('shipments')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .first();
+    if (!existing) {
+      return res.status(404).json({ error: 'Shipment not found' });
+    }
+    if (req.user.role === Role.MANUFACTURER) {
+      const denied = manufacturerShipmentScopeDenied(existing);
+      if (denied) return res.status(denied.status).json({ error: denied.error });
+    }
+
+    if (req.user.role === Role.DISTRIBUTOR) {
+      const whIds = await distributorReceivingWarehouseIdsForUser(tenantId, req.user.email);
+      if (!distributorHasShipmentAccess(existing, whIds)) {
+        return res.status(403).json({ error: 'You can only delete shipments routed to your receiving warehouse.' });
+      }
+    }
+
     const [shipment] = await db('shipments')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update({ deleted_at: new Date(), updated_at: new Date() })
       .returning('*');
-    
+
     if (!shipment) {
       return res.status(404).json({ error: 'Shipment not found' });
     }
-    
+
     res.json({ data: shipment, message: 'Shipment deleted' });
   } catch (err) {
     console.error('[API v1] Error deleting shipment:', err);
@@ -2794,18 +3490,41 @@ router.delete('/incentives/:id', requirePermission(Permission.SETTINGS_WRITE), a
 // ===== TEAM MEMBERS =====
 
 // GET /api/v1/team-members
-router.get('/team-members', requirePermission(Permission.SETTINGS_READ), async (req, res) => {
+router.get('/team-members', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+
+    const canSettings = hasPermission(req.user.role, Permission.SETTINGS_READ);
+    const isDistributor = req.user.role === 'distributor';
+    const isSalesRep = req.user.role === 'sales_rep';
+
+    if (!canSettings && !isDistributor && !isSalesRep) {
+      return res.status(403).json({ error: 'Insufficient permissions to list CRM contacts.' });
+    }
 
     const includeInactive =
       req.query.include_inactive === 'true' ||
       req.query.include_inactive === '1';
 
     let query = db('team_members').where({ tenant_id: tenantId });
+
+    if (isDistributor) {
+      query = query.whereIn('role', ['sales_rep', 'retail']);
+    } else if (isSalesRep) {
+      query = query.where('role', 'retail').andWhere(function scopeRetailVisibility() {
+        this.where(function notPendingOrLegacy() {
+          this.where('pending_distributor_approval', false).orWhereNull('pending_distributor_approval');
+        }).orWhere('crm_requested_by_user_id', req.user.userId);
+      });
+    }
+
     if (!includeInactive) {
-      query = query.where('is_active', true);
+      query = query.where(function activeOrPending() {
+        this.where('is_active', true).orWhere(function pendingRetailRow() {
+          this.where('pending_distributor_approval', true);
+        });
+      });
     }
 
     const members = await query.orderBy('created_at', 'desc');
@@ -2886,18 +3605,119 @@ router.get('/purchase-order-manufacturer-options', requirePermission(Permission.
   }
 });
 
+/** CRM retail row submitted by this sales rep (`team_members.crm_requested_by_user_id`). */
+function salesRepOwnsRetailRow(member, userId) {
+  if (member?.role !== 'retail') return false;
+  const uid = userId != null && userId !== '' ? String(userId) : '';
+  const owner =
+    member.crm_requested_by_user_id != null && member.crm_requested_by_user_id !== ''
+      ? String(member.crm_requested_by_user_id)
+      : '';
+  return uid !== '' && owner !== '' && uid === owner;
+}
+
+/**
+ * Wholesaler/distributor may edit, deactivate, resend invites only for `sales_rep` CRM rows.
+ */
+function assertDistributorManagesSalesRepOnly(current, body) {
+  if (current.role !== 'sales_rep') {
+    return {
+      ok: false,
+      error: 'Distributors may only manage Sales rep CRM contacts on this action.',
+    };
+  }
+  const nextRole = body?.role != null ? String(body.role).trim() : null;
+  if (nextRole != null && nextRole !== 'sales_rep') {
+    return {
+      ok: false,
+      error: 'Distributors cannot change a Sales rep into another CRM role.',
+    };
+  }
+  return { ok: true };
+}
+
+function assertSalesRepOwnRetailOnly(current, body) {
+  if (current.role !== 'retail') {
+    return {
+      ok: false,
+      error: 'Sales reps may only manage Retail store CRM contacts they submitted.',
+    };
+  }
+  const nextRole = body?.role != null ? String(body.role).trim() : null;
+  if (nextRole != null && nextRole !== 'retail') {
+    return {
+      ok: false,
+      error: 'Sales reps cannot change a Retail contact into another CRM role.',
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * Brand HQ: full access. Distributor: `sales_rep` rows only. Sales rep: own `retail` rows only (by crm_requested_by_user_id).
+ */
+function canMutateTeamMember(req, current, body) {
+  if (hasPermission(req.user.role, Permission.SETTINGS_WRITE)) {
+    return { ok: true };
+  }
+  const actor = req.user.role;
+  if (actor === 'distributor') {
+    const d = assertDistributorManagesSalesRepOnly(current, body || {});
+    if (!d.ok) return { ok: false, status: 403, error: d.error };
+    return { ok: true };
+  }
+  if (actor === 'sales_rep') {
+    const s = assertSalesRepOwnRetailOnly(current, body || {});
+    if (!s.ok) return { ok: false, status: 403, error: s.error };
+    if (!salesRepOwnsRetailRow(current, req.user.userId)) {
+      return {
+        ok: false,
+        status: 403,
+        error: 'You can only manage retail CRM contacts you submitted.',
+      };
+    }
+    return { ok: true };
+  }
+  return { ok: false, status: 403, error: 'Insufficient permissions.' };
+}
+
 // POST /api/v1/team-members
-router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+router.post('/team-members', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { name, email, role, phone, department } = req.body;
-    
+
     if (!name || !email || !role) {
       return res.status(400).json({ error: 'name, email, and role are required' });
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
+    const roleToCreate = String(role).trim();
+    const hasSettingsWrite = hasPermission(req.user.role, Permission.SETTINGS_WRITE);
+    const actor = req.user.role;
+
+    if (!hasSettingsWrite) {
+      if (actor === 'distributor') {
+        if (roleToCreate !== 'sales_rep') {
+          return res.status(403).json({
+            error:
+              'Distributors may only add Sales rep CRM contacts. Other roles are managed by Brand HQ.',
+          });
+        }
+      } else if (actor === 'sales_rep') {
+        if (roleToCreate !== 'retail') {
+          return res.status(403).json({
+            error:
+              'Sales reps may only submit Retail store contacts for wholesaler / distributor approval.',
+          });
+        }
+      } else {
+        return res.status(403).json({ error: 'Insufficient permissions to create CRM contacts.' });
+      }
+    }
+
+    const pendingRetail = !hasSettingsWrite && actor === 'sales_rep' && roleToCreate === 'retail';
 
     // If this email already exists for the tenant, return a clear 409 (or reactivate).
     const existing = await db('team_members')
@@ -2905,6 +3725,47 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
       .first();
     if (existing) {
       if (existing.is_active === false) {
+        if (!hasSettingsWrite) {
+          const salesRepReaddingOwnRetail =
+            actor === 'sales_rep' &&
+            roleToCreate === 'retail' &&
+            existing.role === 'retail' &&
+            salesRepOwnsRetailRow(existing, req.user.userId);
+          if (!salesRepReaddingOwnRetail) {
+            return res.status(403).json({
+              error: 'Only Brand HQ can reactivate archived CRM contacts you do not own.',
+            });
+          }
+          const [reactivated] = await db('team_members')
+            .where({ tenant_id: tenantId, email: normalizedEmail })
+            .update({
+              name,
+              role: 'retail',
+              phone,
+              department,
+              is_active: true,
+              updated_at: new Date(),
+            })
+            .returning('*');
+          let member = reactivated;
+          member = await db('team_members').where({ id: member.id, tenant_id: tenantId }).first();
+          if (member.pending_distributor_approval) {
+            return res.status(200).json({
+              data: member,
+              invite: {
+                status: 'pending_distributor_approval',
+                reason: 'Awaiting wholesaler / distributor approval before portal invite.',
+              },
+              message: 'Retail CRM contact restored — still awaiting distributor approval.',
+            });
+          }
+          const payload = await buildCrmContactInvitePayload(req, tenantId, member, {
+            email: normalizedEmail,
+            name,
+            role: 'retail',
+          });
+          return res.status(200).json({ ...payload, message: 'Retail CRM contact reactivated' });
+        }
         const [reactivated] = await db('team_members')
           .where({ tenant_id: tenantId, email: normalizedEmail })
           .update({
@@ -2941,7 +3802,7 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
       }
       return res.status(409).json({ error: 'A CRM contact with this email already exists.' });
     }
-    
+
     const id = `tm-${Date.now()}`;
     let [member] = await db('team_members')
       .insert({
@@ -2949,18 +3810,31 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
         tenant_id: tenantId,
         name,
         email: normalizedEmail,
-        role,
+        role: roleToCreate,
         phone,
         department,
-        is_active: true,
+        is_active: pendingRetail ? false : true,
+        pending_distributor_approval: pendingRetail,
+        crm_requested_by_user_id: pendingRetail ? req.user.userId : null,
         created_by: req.user?.userId,
         created_at: new Date(),
-        updated_at: new Date()
+        updated_at: new Date(),
       })
       .returning('*');
 
+    if (pendingRetail) {
+      member = await db('team_members').where({ id: member.id, tenant_id: tenantId }).first();
+      return res.status(201).json({
+        data: member,
+        invite: {
+          status: 'pending_distributor_approval',
+          reason: 'Awaiting wholesaler / distributor approval before portal invite.',
+        },
+      });
+    }
+
     const pwOpt = parseOptionalPrimaryWarehouseId(req.body);
-    if (role === 'distributor' && pwOpt != null && pwOpt !== '') {
+    if (roleToCreate === 'distributor' && pwOpt != null && pwOpt !== '') {
       try {
         await db.transaction(async (trx) => {
           await setDistributorReceivingWarehouse(trx, tenantId, member.id, pwOpt);
@@ -2978,7 +3852,7 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
     const payload = await buildCrmContactInvitePayload(req, tenantId, member, {
       email: normalizedEmail,
       name,
-      role,
+      role: roleToCreate,
     });
     res.status(201).json(payload);
   } catch (err) {
@@ -2987,8 +3861,51 @@ router.post('/team-members', requirePermission(Permission.SETTINGS_WRITE), async
   }
 });
 
+// POST /api/v1/team-members/:id/approve-retail — distributor / HQ approves sales-rep-submitted retail CRM
+router.post('/team-members/:id/approve-retail', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+
+    const actor = req.user.role;
+    const canApprove =
+      hasPermission(actor, Permission.SETTINGS_WRITE) || actor === 'distributor';
+    if (!canApprove) {
+      return res.status(403).json({
+        error: 'Only a wholesaler/distributor or Brand HQ can approve retail CRM requests.',
+      });
+    }
+
+    const row = await db('team_members').where({ id, tenant_id: tenantId }).first();
+    if (!row) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+    if (row.role !== 'retail' || !row.pending_distributor_approval) {
+      return res.status(400).json({ error: 'Not a pending retail CRM request.' });
+    }
+
+    await db('team_members').where({ id, tenant_id: tenantId }).update({
+      pending_distributor_approval: false,
+      is_active: true,
+      updated_at: new Date(),
+    });
+
+    const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
+    const payload = await buildCrmContactInvitePayload(req, tenantId, member, {
+      email: member.email,
+      name: member.name,
+      role: member.role,
+    });
+    res.json({ ...payload, message: 'Retail CRM contact approved' });
+  } catch (err) {
+    console.error('[API v1] Error approving retail CRM:', err);
+    res.status(500).json({ error: 'Failed to approve retail CRM contact' });
+  }
+});
+
 // POST /api/v1/team-members/:id/resend-invite
-router.post('/team-members/:id/resend-invite', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+router.post('/team-members/:id/resend-invite', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -3001,6 +3918,19 @@ router.post('/team-members/:id/resend-invite', requirePermission(Permission.SETT
     if (!member) {
       return res.status(404).json({ error: 'Team member not found' });
     }
+
+    const gate = canMutateTeamMember(req, member, {});
+    if (!gate.ok) {
+      return res.status(gate.status).json({ error: gate.error });
+    }
+
+    if (member.pending_distributor_approval) {
+      return res.status(400).json({
+        error:
+          'This retail contact is still awaiting wholesaler / distributor approval before a portal invite can be sent.',
+      });
+    }
+
     if (member.is_active === false) {
       return res.status(400).json({ error: 'Cannot resend invite for an inactive CRM contact' });
     }
@@ -3019,7 +3949,7 @@ router.post('/team-members/:id/resend-invite', requirePermission(Permission.SETT
 });
 
 // PATCH /api/v1/team-members/:id
-router.patch('/team-members/:id', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+router.patch('/team-members/:id', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -3033,6 +3963,11 @@ router.patch('/team-members/:id', requirePermission(Permission.SETTINGS_WRITE), 
       .first();
     if (!current) {
       return res.status(404).json({ error: 'Team member not found' });
+    }
+
+    const gate = canMutateTeamMember(req, current, req.body || {});
+    if (!gate.ok) {
+      return res.status(gate.status).json({ error: gate.error });
     }
 
     const updates = {};
@@ -3117,7 +4052,7 @@ router.patch('/team-members/:id', requirePermission(Permission.SETTINGS_WRITE), 
 });
 
 // PATCH /api/v1/team-members/by-email/:email
-router.patch('/team-members/by-email/:email', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+router.patch('/team-members/by-email/:email', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -3129,6 +4064,11 @@ router.patch('/team-members/by-email/:email', requirePermission(Permission.SETTI
       .first();
     if (!current) {
       return res.status(404).json({ error: 'Team member not found' });
+    }
+
+    const gate = canMutateTeamMember(req, current, req.body || {});
+    if (!gate.ok) {
+      return res.status(gate.status).json({ error: gate.error });
     }
 
     const { name, email, role, phone, department, is_active } = req.body || {};
@@ -3216,7 +4156,7 @@ router.patch('/team-members/by-email/:email', requirePermission(Permission.SETTI
 });
 
 // POST /api/v1/team-members/by-email/:email/resend-invite
-router.post('/team-members/by-email/:email/resend-invite', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+router.post('/team-members/by-email/:email/resend-invite', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -3229,6 +4169,19 @@ router.post('/team-members/by-email/:email/resend-invite', requirePermission(Per
     if (!member) {
       return res.status(404).json({ error: 'Team member not found' });
     }
+
+    const gate = canMutateTeamMember(req, member, {});
+    if (!gate.ok) {
+      return res.status(gate.status).json({ error: gate.error });
+    }
+
+    if (member.pending_distributor_approval) {
+      return res.status(400).json({
+        error:
+          'This retail contact is still awaiting wholesaler / distributor approval before a portal invite can be sent.',
+      });
+    }
+
     if (member.is_active === false) {
       return res.status(400).json({ error: 'Cannot resend invite for an inactive CRM contact' });
     }
@@ -3246,21 +4199,27 @@ router.post('/team-members/by-email/:email/resend-invite', requirePermission(Per
 });
 
 // DELETE /api/v1/team-members/:id
-router.delete('/team-members/:id', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+router.delete('/team-members/:id', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { id } = req.params;
-    
+
+    const existing = await db('team_members').where({ id, tenant_id: tenantId }).first();
+    if (!existing) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+
+    const gate = canMutateTeamMember(req, existing, {});
+    if (!gate.ok) {
+      return res.status(gate.status).json({ error: gate.error });
+    }
+
     const [member] = await db('team_members')
       .where({ id, tenant_id: tenantId })
       .update({ is_active: false, updated_at: new Date() })
       .returning('*');
-    
-    if (!member) {
-      return res.status(404).json({ error: 'Team member not found' });
-    }
-    
+
     res.json({ data: member, message: 'Team member deactivated' });
   } catch (err) {
     console.error('[API v1] Error deleting team member:', err);
@@ -3269,21 +4228,29 @@ router.delete('/team-members/:id', requirePermission(Permission.SETTINGS_WRITE),
 });
 
 // DELETE /api/v1/team-members/by-email/:email
-router.delete('/team-members/by-email/:email', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
+router.delete('/team-members/by-email/:email', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const emailParam = String(req.params.email || '').trim().toLowerCase();
     if (!emailParam) return res.status(400).json({ error: 'email is required' });
 
+    const existing = await db('team_members')
+      .where({ tenant_id: tenantId, email: emailParam })
+      .first();
+    if (!existing) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+
+    const gate = canMutateTeamMember(req, existing, {});
+    if (!gate.ok) {
+      return res.status(gate.status).json({ error: gate.error });
+    }
+
     const [member] = await db('team_members')
       .where({ tenant_id: tenantId, email: emailParam })
       .update({ is_active: false, updated_at: new Date() })
       .returning('*');
-
-    if (!member) {
-      return res.status(404).json({ error: 'Team member not found' });
-    }
 
     res.json({ data: member, message: 'Team member deactivated' });
   } catch (err) {

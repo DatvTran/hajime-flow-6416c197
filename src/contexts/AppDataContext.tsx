@@ -68,12 +68,14 @@ import {
   updateIncentiveStatus as apiUpdateIncentiveStatus,
   deleteIncentive as apiDeleteIncentive,
   getTeamMembers as apiGetTeamMembers,
+  getShipments as apiGetShipments,
   getIncentives as apiGetIncentives,
   createProductionStatus as apiCreateProductionStatus,
   updateProductionStatus as apiUpdateProductionStatus,
   deleteProductionStatus as apiDeleteProductionStatus,
   getProductionStatuses as apiGetProductionStatuses,
 } from "@/lib/api-v1-mutations";
+import { mapRowToShipment } from "@/lib/data-service";
 import {
   getNewProductRequests,
   createNewProductRequest as apiCreateNewProductRequest,
@@ -176,6 +178,15 @@ function mapApiRowToTeamMember(row: Record<string, unknown>): TeamMember {
   const pwRaw = row.primary_warehouse_id;
   const primaryWarehouseId =
     pwRaw != null && String(pwRaw).trim() !== "" ? String(pwRaw).trim() : undefined;
+  const pendingRaw = row.pending_distributor_approval;
+  const pendingDistributorApproval =
+    pendingRaw === undefined || pendingRaw === null ? undefined : Boolean(pendingRaw);
+  const crmReqRaw = row.crm_requested_by_user_id;
+  const crmRequestedByUserId =
+    crmReqRaw != null && String(crmReqRaw).trim() !== ""
+      ? String(crmReqRaw).trim()
+      : undefined;
+
   return {
     id: String(row.id ?? ""),
     displayName: String(row.name ?? row.display_name ?? ""),
@@ -184,6 +195,8 @@ function mapApiRowToTeamMember(row: Record<string, unknown>): TeamMember {
     createdAt: sliceIsoDate(row.created_at ?? row.createdAt),
     isActive,
     ...(primaryWarehouseId ? { primaryWarehouseId } : {}),
+    ...(pendingDistributorApproval === true ? { pendingDistributorApproval: true } : {}),
+    ...(crmRequestedByUserId ? { crmRequestedByUserId } : {}),
   };
 }
 
@@ -252,6 +265,8 @@ type AppDataContextValue = {
   updateData: (fn: (prev: AppData) => AppData) => void;
   /** Re-fetch CRM contacts from the API and merge into local app state + localStorage. */
   refreshTeamMembers: () => Promise<void>;
+  /** Re-fetch shipments from the API and merge into app state. */
+  refreshShipments: () => Promise<void>;
 };
 
 const AppDataStateContext = createContext<AppDataContextValue | null>(null);
@@ -360,6 +375,16 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const refreshShipments = useCallback(async () => {
+    const res = (await apiGetShipments({ limit: 200 })) as { data?: unknown[] };
+    const rows = Array.isArray(res.data) ? res.data : [];
+    const shipments = rows.map((r) => mapRowToShipment(r as Record<string, unknown>));
+    setData((prev) => {
+      if (!prev) return prev;
+      return normalizeAppData({ ...prev, shipments });
+    });
+  }, []);
+
   // Stage 4: Removed auto-save useEffect — writes now use granular API mutations
   // Local changes are persisted via saveLocalAppData only
   useEffect(() => {
@@ -369,8 +394,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo((): AppDataContextValue | null => {
     if (!data) return null;
-    return { data, loading, error, updateData, refreshTeamMembers };
-  }, [data, loading, error, updateData, refreshTeamMembers]);
+    return { data, loading, error, updateData, refreshTeamMembers, refreshShipments };
+  }, [data, loading, error, updateData, refreshTeamMembers, refreshShipments]);
 
   if (!data || !value) {
     return (

@@ -189,6 +189,10 @@ export interface Order {
   order_number: string;
   account_id?: string;
   account_name?: string;
+  /** Present on GET /orders/:id join (`accounts.email`). */
+  account_email?: string;
+  /** Present on some GET order joins (matches `accounts.trading_name`). */
+  account_trading_name?: string;
   account_number?: string;
   status: string;
   order_date: string;

@@ -52,6 +52,8 @@ const BackordersPage = lazyWithChunkReload(() => import("./pages/BackordersPage"
 const DistributorDepletionsPage = lazyWithChunkReload(() => import("./pages/DistributorDepletionsPage"));
 const DistributorInventoryAdjustmentsPage = lazyWithChunkReload(() => import("./pages/DistributorInventoryAdjustmentsPage"));
 const DistributorSellThroughPage = lazyWithChunkReload(() => import("./pages/DistributorSellThroughPage"));
+const DistributorCrmPage = lazyWithChunkReload(() => import("./pages/DistributorCrmPage"));
+const SalesRepCrmPage = lazyWithChunkReload(() => import("./pages/SalesRepCrmPage"));
 
 // Sales routes
 const SalesRepHomePage = lazyWithChunkReload(() => import("./pages/SalesRepHomePage"));
@@ -159,6 +161,7 @@ const App = () => {
                   <Route path="/distributor/inventory" element={<Inventory />} />
                   <Route path="/distributor/orders" element={<Orders />} />
                   <Route path="/distributor/accounts" element={<Accounts />} />
+                  <Route path="/distributor/crm" element={<DistributorCrmPage />} />
                   <Route path="/distributor/purchase-orders" element={<PurchaseOrders />} />
                   <Route path="/distributor/shipments" element={<Shipments />} />
                   <Route path="/distributor/backorders" element={<BackordersPage />} />
@@ -170,6 +173,7 @@ const App = () => {
                   <Route path="/distributor/reports" element={<Reports />} />
                   {/* Sales namespaced routes */}
                   <Route path="/sales" element={<SalesRepHomePage />} />
+                  <Route path="/sales/crm" element={<SalesRepCrmPage />} />
                   <Route path="/sales/accounts" element={<Accounts />} />
                   <Route path="/sales/orders" element={<Orders />} />
                   <Route path="/sales/opportunities" element={<SalesOpportunitiesPage />} />

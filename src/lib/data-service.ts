@@ -71,6 +71,14 @@ function mapRowToTeamMember(row: Record<string, unknown>): TeamMember {
   const pwRaw = row.primary_warehouse_id;
   const primaryWarehouseId =
     pwRaw != null && String(pwRaw).trim() !== "" ? String(pwRaw).trim() : undefined;
+  const pendingRaw = row.pending_distributor_approval;
+  const pendingDistributorApproval =
+    pendingRaw === undefined || pendingRaw === null ? undefined : Boolean(pendingRaw);
+  const crmReqRaw = row.crm_requested_by_user_id;
+  const crmRequestedByUserId =
+    crmReqRaw != null && String(crmReqRaw).trim() !== ""
+      ? String(crmReqRaw).trim()
+      : undefined;
   return {
     id: String(row.id ?? ""),
     displayName: String(row.name ?? row.display_name ?? ""),
@@ -79,6 +87,8 @@ function mapRowToTeamMember(row: Record<string, unknown>): TeamMember {
     createdAt: sliceIsoDate(row.created_at ?? row.createdAt),
     isActive,
     ...(primaryWarehouseId ? { primaryWarehouseId } : {}),
+    ...(pendingDistributorApproval === true ? { pendingDistributorApproval: true } : {}),
+    ...(crmRequestedByUserId ? { crmRequestedByUserId } : {}),
   };
 }
 
@@ -120,8 +130,11 @@ function mapRowToPurchaseOrder(po: Record<string, unknown>): PurchaseOrder {
       ? poTypeRaw
       : undefined;
 
+  const dbPk = po.id != null && String(po.id).trim() !== "" ? Number(po.id) : NaN;
+
   return {
     id,
+    ...(Number.isFinite(dbPk) ? { databaseId: dbPk } : {}),
     manufacturer,
     issueDate,
     requiredDate,
@@ -162,9 +175,10 @@ function productionStageLabel(po: PurchaseOrder): string {
   }
 }
 
-function mapRowToShipment(s: Record<string, unknown>): Shipment {
-  const orderType = String(s.order_type ?? "");
-  const type: Shipment["type"] = orderType === "purchase_order" ? "inbound" : "outbound";
+/** Map `/api/v1/shipments` rows → client `Shipment`. */
+export function mapRowToShipment(s: Record<string, unknown>): Shipment {
+  const orderTypeRaw = String(s.order_type ?? "").trim();
+  const type: Shipment["type"] = orderTypeRaw === "purchase_order" ? "inbound" : "outbound";
 
   const rawStatus = String(s.status ?? "packed").toLowerCase();
   let status: Shipment["status"] = "preparing";
@@ -180,10 +194,69 @@ function mapRowToShipment(s: Record<string, unknown>): Shipment {
   const etaTs = s.estimated_delivery ?? s.eta;
   const delTs = s.delivered_at;
 
+  const shippedAtIso =
+    shipTs != null && String(shipTs).trim() !== ""
+      ? (() => {
+          const d = new Date(shipTs as string | number | Date);
+          return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+        })()
+      : undefined;
+
+  const originPortRaw = s.origin_port ?? s.originPort;
+  const originPort =
+    originPortRaw != null && String(originPortRaw).trim() !== ""
+      ? String(originPortRaw).trim()
+      : undefined;
+  const waybillRaw = s.waybill_number ?? s.waybillNumber;
+  const waybillNumber =
+    waybillRaw != null && String(waybillRaw).trim() !== "" ? String(waybillRaw).trim() : undefined;
+
+  const destWhId =
+    s.destination_warehouse_id != null && String(s.destination_warehouse_id).trim() !== ""
+      ? String(s.destination_warehouse_id).trim()
+      : undefined;
+  const destWhName =
+    s.destination_warehouse_name != null && String(s.destination_warehouse_name).trim() !== ""
+      ? String(s.destination_warehouse_name).trim()
+      : undefined;
+
+  const orderKind: Shipment["orderType"] | undefined =
+    orderTypeRaw === "purchase_order" || orderTypeRaw === "sales_order" || orderTypeRaw === "transfer_order"
+      ? (orderTypeRaw as Shipment["orderType"])
+      : undefined;
+
+  const lineRaw = s.line_items ?? s.lineItems;
+  const lineItems: Shipment["lineItems"] | undefined = Array.isArray(lineRaw)
+    ? (lineRaw as Record<string, unknown>[]).map((row) => {
+        const caseSizeRaw = row.case_size ?? row.caseSize;
+        const caseSize =
+          caseSizeRaw != null && String(caseSizeRaw).trim() !== ""
+            ? Math.max(1, Number(caseSizeRaw))
+            : undefined;
+        const casesRaw = row.cases;
+        const cases =
+          casesRaw != null && String(casesRaw).trim() !== "" ? Number(casesRaw) : undefined;
+        return {
+          sku: String(row.sku ?? "").trim() || "—",
+          productName:
+            row.product_name != null
+              ? String(row.product_name)
+              : row.productName != null
+                ? String(row.productName)
+                : undefined,
+          quantity: Math.max(0, Number(row.quantity ?? 0)),
+          ...(caseSize != null && Number.isFinite(caseSize) ? { caseSize } : {}),
+          ...(cases != null && Number.isFinite(cases) ? { cases } : {}),
+        };
+      })
+    : undefined;
+
   return {
     id: s.shipment_number != null ? String(s.shipment_number) : String(s.id ?? ""),
     origin: String(s.from_location ?? s.fromLocation ?? "—"),
     destination: String(s.to_location ?? s.toLocation ?? "—"),
+    ...(destWhId ? { destinationWarehouseId: destWhId } : {}),
+    ...(destWhName ? { destinationWarehouseName: destWhName } : {}),
     carrier: String(s.carrier ?? ""),
     shipDate: shipTs ? String(shipTs).slice(0, 10) : "",
     eta: etaTs ? String(etaTs).slice(0, 10) : "",
@@ -192,6 +265,11 @@ function mapRowToShipment(s: Record<string, unknown>): Shipment {
     type,
     status,
     notes: String(s.notes ?? ""),
+    ...(orderKind ? { orderType: orderKind } : {}),
+    ...(lineItems?.length ? { lineItems } : {}),
+    ...(originPort ? { originPort } : {}),
+    ...(waybillNumber ? { waybillNumber } : {}),
+    ...(shippedAtIso ? { shippedAt: shippedAtIso } : {}),
   };
 }
 

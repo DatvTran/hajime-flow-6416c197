@@ -60,6 +60,9 @@ export type TeamMember = {
   isActive?: boolean;
   /** Receiving depot chosen by distributor (`PATCH /me/primary-warehouse`). */
   primaryWarehouseId?: string;
+  /** Sales-rep-submitted retail row awaiting wholesaler approval (`POST /team-members/:id/approve-retail`). */
+  pendingDistributorApproval?: boolean;
+  crmRequestedByUserId?: string;
 };
 
 /** Brand HQ warehouse / depot locations for inventory and transfers. */
