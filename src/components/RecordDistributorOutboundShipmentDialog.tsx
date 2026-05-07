@@ -17,11 +17,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { useAppData } from "@/contexts/AppDataContext";
 import {
   createShipment,
   getOrderReceivingWarehouses,
   type OrderReceivingWarehousesData,
+  type OrderReceivingWarehousesDepotDisplay,
 } from "@/lib/api-v1-mutations";
 import { getOrder, type Order, type OrderItem } from "@/lib/api-v1";
 import { isDistributorAccountType } from "@/lib/distributor-accounts";
@@ -83,13 +85,65 @@ type CommercialAccountHints = {
 };
 
 /**
- * CRM distributors for this wholesale account — **exact account email wins** over fuzzy name overlap.
+ * Distributors tied to depots HQ linked to this wholesale account (`linkedAccountId` on warehouse rows).
+ */
+function matchedDistributorsViaWarehouseAccountBridge(
+  teamMembers: TeamMember[] | undefined,
+  warehouses: Warehouse[] | undefined,
+  accountId: string | undefined,
+): TeamMember[] {
+  const aid = String(accountId ?? "").trim();
+  if (!aid) return [];
+  const distributors = (teamMembers ?? []).filter((tm) => tm.role === "distributor");
+  const rows = warehouses ?? [];
+  const byId = new Map(rows.map((w) => [String(w.id), w]));
+  const out: TeamMember[] = [];
+  const seen = new Set<string>();
+
+  for (const tm of distributors) {
+    const tid = String(tm.id);
+    if (seen.has(tid)) continue;
+
+    const pw = tm.primaryWarehouseId;
+    if (pw != null && String(pw).trim() !== "") {
+      const w = byId.get(String(pw).trim());
+      if (
+        w?.linkedAccountId != null &&
+        String(w.linkedAccountId).trim() !== "" &&
+        String(w.linkedAccountId) === aid
+      ) {
+        seen.add(tid);
+        out.push(tm);
+        continue;
+      }
+    }
+
+    const linkedWh = rows.find(
+      (wh) =>
+        wh.linkedTeamMemberId != null &&
+        String(wh.linkedTeamMemberId) === tid &&
+        wh.linkedAccountId != null &&
+        String(wh.linkedAccountId).trim() !== "" &&
+        String(wh.linkedAccountId) === aid,
+    );
+    if (linkedWh) {
+      seen.add(tid);
+      out.push(tm);
+    }
+  }
+  return out;
+}
+
+/**
+ * CRM distributors for this wholesale account — **exact account email** → fuzzy name → **depot/account bridge**.
  * Mirrors server `/orders/:id/receiving-warehouses` logic.
  */
 function matchedDistributorsForCommercialAccount(
   teamMembers: TeamMember[] | undefined,
   hints: CommercialAccountHints,
   orderAccountTradingLabel: string | undefined,
+  warehouses?: Warehouse[] | undefined,
+  accountId?: string | undefined,
 ): TeamMember[] {
   const distributors = (teamMembers ?? []).filter((tm) => tm.role === "distributor");
   const ae = normalizeLabelPart(hints.email);
@@ -104,9 +158,12 @@ function matchedDistributorsForCommercialAccount(
     orderAccountTradingLabel,
   ].filter((x): x is string => normalizeLabelPart(x).length > 0);
 
-  return distributors.filter((tm) =>
+  const byName = distributors.filter((tm) =>
     nameHints.some((h) => labelsLikelySame(tm.displayName, h)),
   );
+  if (byName.length > 0) return byName;
+
+  return matchedDistributorsViaWarehouseAccountBridge(teamMembers, warehouses, accountId);
 }
 
 /** Hajime pool only: exclude CRM-linked depots + account-linked locations + distributor primaries. */
@@ -163,7 +220,30 @@ function distributorSalesOrderDropdownLabel(order: SalesOrder, accounts: Account
   return `${order.orderNumber ?? order.id} · Wholesale: ${wholesale}${mail ? ` · ${mail}` : ""}`;
 }
 
-/** One line per receiving depot tying physical depot name to distributor account + CRM where known. */
+/** Server-built line from GET /orders/:id/receiving-warehouses — matches Settings → Warehouses + CRM in Postgres. */
+function receivingDepotLineFromServerDisplay(
+  row: OrderReceivingWarehousesDepotDisplay,
+  orderWholesale: { trading: string; email?: string },
+): string {
+  const name = row.warehouse_name.trim() || "Depot";
+  const accPart =
+    row.depot_linked_account_label != null && String(row.depot_linked_account_label).trim() !== ""
+      ? `${String(row.depot_linked_account_label).trim()}${
+          row.depot_linked_account_email ? ` (${row.depot_linked_account_email})` : ""
+        }`
+      : `${orderWholesale.trading}${orderWholesale.email ? ` (${orderWholesale.email})` : ""}`;
+  const crm = row.crm_contact;
+  if (crm && (crm.name || crm.email)) {
+    const nm = String(crm.name || "").trim();
+    const em = String(crm.email || "").trim();
+    const crmBit =
+      nm && em ? `${nm} <${em}>` : em ? `<${em}>` : nm;
+    return `${name} — ${accPart} · CRM ${crmBit}`;
+  }
+  return `${name} — ${accPart}`;
+}
+
+/** Client fallback when depots_display missing — uses cached warehouses + teamMembers. */
 function receivingDepotDropdownLabel(
   w: Warehouse,
   wholesale: { trading: string; email?: string },
@@ -201,6 +281,7 @@ function receivingDepotDropdownLabel(
 
 export function RecordDistributorOutboundShipmentDialog({ open, onOpenChange }: Props) {
   const { data, refreshShipments } = useAppData();
+
   const [orderId, setOrderId] = useState<string>("");
   const [orderDetail, setOrderDetail] = useState<Order | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -209,6 +290,15 @@ export function RecordDistributorOutboundShipmentDialog({ open, onOpenChange }: 
     useState<OrderReceivingWarehousesData | null>(null);
   const [loadingReceivingDepots, setLoadingReceivingDepots] = useState(false);
   const [depotsResolveError, setDepotsResolveError] = useState<string | null>(null);
+
+  const depotsDisplayByWarehouseId = useMemo(() => {
+    const rows = serverReceivingDepots?.depots_display ?? [];
+    const m = new Map<string, OrderReceivingWarehousesDepotDisplay>();
+    for (const r of rows) {
+      m.set(String(r.warehouse_id), r);
+    }
+    return m;
+  }, [serverReceivingDepots?.depots_display]);
 
   const [originWarehouseId, setOriginWarehouseId] = useState<string>("");
   const [destWarehouseId, setDestWarehouseId] = useState<string>("");
@@ -287,8 +377,15 @@ export function RecordDistributorOutboundShipmentDialog({ open, onOpenChange }: 
 
   /** CRM roster rows (Settings → CRM) aligned to this wholesale account — fallback when depot API unavailable. */
   const matchedDistributorContacts = useMemo(
-    () => matchedDistributorsForCommercialAccount(data.teamMembers, commercialHints, orderCommercialLabel),
-    [commercialHints, data.teamMembers, orderCommercialLabel],
+    () =>
+      matchedDistributorsForCommercialAccount(
+        data.teamMembers,
+        commercialHints,
+        orderCommercialLabel,
+        data.warehouses,
+        accountIdForOrder || undefined,
+      ),
+    [accountIdForOrder, commercialHints, data.teamMembers, data.warehouses, orderCommercialLabel],
   );
 
   type DepotPickKind =
@@ -785,6 +882,42 @@ export function RecordDistributorOutboundShipmentDialog({ open, onOpenChange }: 
                   </p>
                 )}
               </div>
+
+              {serverReceivingDepots ? (
+                <>
+                  <Separator className="my-3" />
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Debug (server)
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      kind: <span className="font-mono text-foreground">{serverReceivingDepots.kind}</span>
+                      {" · "}
+                      match_basis:{" "}
+                      <span className="font-mono text-foreground">
+                        {serverReceivingDepots.match_basis ?? "—"}
+                      </span>
+                      {" · "}
+                      order account id:{" "}
+                      <span className="font-mono text-foreground">
+                        {(serverReceivingDepots.distributor_wholesale_account?.id ?? accountIdForOrder) || "—"}
+                      </span>
+                    </p>
+                    {(serverReceivingDepots.depots_display ?? []).length > 0 ? (
+                      <ul className="mt-1 space-y-1 text-[11px] text-muted-foreground">
+                        {(serverReceivingDepots.depots_display ?? []).map((d) => (
+                          <li key={d.warehouse_id} className="font-mono">
+                            {d.warehouse_name} · wid={d.warehouse_id} · linked_account_id=
+                            {d.linked_account_id ?? "null"} · linked_team_member_id=
+                            {d.linked_team_member_id ?? "null"} · crm_contact=
+                            {d.crm_contact?.email ?? "null"}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
             </div>
           ) : null}
 
@@ -896,8 +1029,8 @@ export function RecordDistributorOutboundShipmentDialog({ open, onOpenChange }: 
           <div className="space-y-2">
             <Label>Distributor receiving depot</Label>
             <p className="text-[10px] leading-relaxed text-muted-foreground">
-              Each option includes the wholesale account and CRM distributor contact when that depot is tied to them in
-              Settings.
+              Options load linked commercial account and CRM distributor labels from the server (same as Settings →
+              Warehouses + CRM), so they stay accurate even if this browser hasn&apos;t refreshed yet.
             </p>
             <Select
               value={destWarehouseId || undefined}
@@ -923,10 +1056,16 @@ export function RecordDistributorOutboundShipmentDialog({ open, onOpenChange }: 
                         : "No warehouses in directory."}
                   </div>
                 ) : (
-                  receivingDepots.list.map((w) => (
-                    <SelectItem key={w.id} value={w.id} className="items-start py-2">
-                      <span className="line-clamp-4 whitespace-normal text-left text-xs leading-snug">
-                        {receivingDepotDropdownLabel(
+                  receivingDepots.list.map((w) => {
+                    const serverRow = depotsDisplayByWarehouseId.get(w.id);
+                    const useServerLabel =
+                      Boolean(serverReceivingDepots && !depotsResolveError && serverRow);
+                    const line = useServerLabel
+                      ? receivingDepotLineFromServerDisplay(serverRow, {
+                          trading: wholesaleDistributorForShipment.trading,
+                          email: wholesaleDistributorForShipment.email,
+                        })
+                      : receivingDepotDropdownLabel(
                           w,
                           {
                             trading: wholesaleDistributorForShipment.trading,
@@ -936,10 +1075,13 @@ export function RecordDistributorOutboundShipmentDialog({ open, onOpenChange }: 
                             ? receivingDepots.crmRows
                             : distributorContactsForSummary,
                           teamMemberById,
-                        )}
-                      </span>
-                    </SelectItem>
-                  ))
+                        );
+                    return (
+                      <SelectItem key={w.id} value={w.id} className="items-start py-2">
+                        <span className="line-clamp-4 whitespace-normal text-left text-xs leading-snug">{line}</span>
+                      </SelectItem>
+                    );
+                  })
                 )}
               </SelectContent>
             </Select>

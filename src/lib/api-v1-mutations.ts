@@ -217,10 +217,24 @@ export async function getOrderTimeline(id: string) {
   return apiFetch(`/api/v1/orders/${id}/timeline`);
 }
 
+/** Per-depot labels from DB (Settings → Warehouses + CRM) — use for dropdown text when present. */
+export type OrderReceivingWarehousesDepotDisplay = {
+  warehouse_id: string;
+  warehouse_name: string;
+  /** Raw linkage fields from `warehouses` (debuggable, avoids guesswork). */
+  linked_account_id?: string | null;
+  linked_team_member_id?: string | null;
+  depot_linked_account_label?: string | null;
+  depot_linked_account_email?: string | null;
+  crm_contact?: { id: string; name: string; email: string } | null;
+};
+
 /** GET /orders/:id/receiving-warehouses — CRM + account-linked depot ids for outbound-to-DC dialogs. */
 export type OrderReceivingWarehousesData = {
   warehouse_ids: string[];
   kind: "none" | "crm_aligned" | "account_linked";
+  /** Authoritative labels per depot id (avoids stale browser warehouse snapshots). */
+  depots_display?: OrderReceivingWarehousesDepotDisplay[];
   /** Sales order’s wholesale / distributor account — for labels in ship-to-DC UI. */
   distributor_wholesale_account?: {
     id: string;
@@ -229,8 +243,8 @@ export type OrderReceivingWarehousesData = {
     email?: string | null;
     type?: string | null;
   } | null;
-  /** Server: how CRM rows were scoped (`account_email` avoids unrelated distributor depots). */
-  match_basis?: "account_email" | "account_name" | "none";
+  /** Server: how CRM rows were scoped (`depot_account_bridge` = warehouse.linked_account matches order account). */
+  match_basis?: "account_email" | "account_name" | "depot_account_bridge" | "none";
   matched_crm_contact_ids: string[];
   matched_crm_display: {
     id: string;
