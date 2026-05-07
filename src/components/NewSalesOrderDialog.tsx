@@ -165,6 +165,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   const [sku, setSku] = useState("");
   const [quantity, setQuantity] = useState("12");
   const [price, setPrice] = useState("");
+  const [priceAuto, setPriceAuto] = useState(true);
   const [salesRep, setSalesRep] = useState<string>(SALES_REPS[0]);
   const [status, setStatus] = useState<SalesOrder["status"]>("draft");
   const [paymentStatus, setPaymentStatus] = useState<SalesOrder["paymentStatus"]>("pending");
@@ -179,6 +180,18 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   const [isProxyMode, setIsProxyMode] = useState(false);
   const [onBehalfOfAccountId, setOnBehalfOfAccountId] = useState<string>("");
 
+  const sessionRoleLabel = useMemo(() => {
+    const r = user?.role || "brand_operator";
+    if (r === "founder_admin") return "Founder Admin";
+    if (r === "brand_operator") return "Brand Operator";
+    if (r === "operations") return "Operations";
+    if (r === "manufacturer") return "Manufacturer";
+    if (r === "distributor") return "Distributor";
+    if (r === "sales_rep") return "Sales Rep";
+    if (r === "retail") return "Retail";
+    return r.replace(/_/g, " ");
+  }, [user?.role]);
+
   useEffect(() => {
     if (!open) return;
     setAccount("");
@@ -189,6 +202,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     setSku("");
     setQuantity("12");
     setPrice("");
+    setPriceAuto(true);
     setSalesRep(SALES_REPS[0]);
     setStatus(variant === "manufacturer" ? "draft" : "draft");
     setPaymentStatus("pending");
@@ -360,12 +374,33 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     })();
 
     const set = new Set<string>();
+    const op = String(appData.operationalSettings?.primaryMarkets ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const m of op) set.add(m);
     for (const a of filtered) {
       const label = marketLabelForAccount(a).trim();
       if (label) set.add(label);
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [allAccounts, pathwayTarget, teamMembers]);
+  }, [allAccounts, appData.operationalSettings?.primaryMarkets, pathwayTarget, teamMembers]);
+
+  const selectedSku = useMemo(() => skuOptions.find((p) => p.sku === sku), [sku, skuOptions]);
+
+  useEffect(() => {
+    if (!open) return;
+    const qty = Math.max(1, parseInt(quantity, 10) || 1);
+    const caseSize = Number(selectedSku?.caseSize);
+    const casePrice = Number(selectedSku?.wholesaleCasePrice);
+    if (!Number.isFinite(caseSize) || caseSize <= 0) return;
+    if (!Number.isFinite(casePrice) || casePrice <= 0) return;
+    const next = (qty / caseSize) * casePrice;
+    if (!Number.isFinite(next) || next <= 0) return;
+    if (!priceAuto && price.trim() !== "") return;
+    setPriceAuto(true);
+    setPrice(String(Math.round(next * 100) / 100));
+  }, [open, price, priceAuto, quantity, selectedSku?.caseSize, selectedSku?.wholesaleCasePrice]);
 
   useEffect(() => {
     if (!open || variant !== "sales_rep") return;
@@ -600,7 +635,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
                     Proxy Mode — Place order on behalf of another account
                   </label>
                   <p className="text-xs text-muted-foreground">
-                    Order will be recorded as placed by {user?.role || "brand_operator"} on behalf of the selected account. 
+                    Order will be recorded as placed by {sessionRoleLabel} on behalf of the selected account. 
                     Downstream roles will see it as coming from the original account.
                   </p>
                 </div>
@@ -623,7 +658,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
                   </Select>
                   {onBehalfOfAccountId && (
                     <p className="text-xs text-amber-700">
-                      Audit trail: {user?.role || "brand_operator"} placing order for account {onBehalfOfAccountId}
+                      Audit trail: {sessionRoleLabel} placing order for account {onBehalfOfAccountId}
                     </p>
                   )}
                 </div>
@@ -844,10 +879,22 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
                   step={0.01}
                   inputMode="decimal"
                   value={price}
-                  onChange={(e) => setPrice(e.target.value)}
+                  onChange={(e) => {
+                    setPriceAuto(false);
+                    setPrice(e.target.value);
+                  }}
                   placeholder="0.00"
                   required
                 />
+                {selectedSku?.wholesaleCasePrice ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Auto-priced from catalog: {selectedSku.wholesaleCasePrice.toLocaleString()} CAD / case ({selectedSku.caseSize} bt).
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Enter order value manually (no wholesale case price set on this SKU).
+                  </p>
+                )}
               </div>
             </div>
           </div>
