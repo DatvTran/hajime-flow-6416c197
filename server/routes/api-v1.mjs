@@ -180,10 +180,67 @@ function distributorTeamMemberMatchesSalesOrderAccountByName(tm, joinAccount, or
 }
 
 /**
- * Prefer **exact wholesale account email** vs `team_members.email` so one distributor CRM row wins
- * (avoids stacking unrelated depots when trading names collide).
+ * Distributors tied to depots HQ linked to **this wholesale account** (`warehouses.linked_account_id`),
+ * even when CRM person email/name ≠ Accounts row (Metro / Convoy reps sharing “Toronto LCBO Warehouse”).
+ * Uses `primary_warehouse_id` pointing at such a depot, or warehouse `linked_team_member_id` pointing at TM.
  */
-function distributorsForSalesOrderReceivingDepots(distributors, joinAccount, orderJoined) {
+function distributorsMatchedViaWarehouseAccountBridge(distributors, warehouseRows, accountIdStr) {
+  const aid =
+    accountIdStr != null && String(accountIdStr).trim() !== '' ? String(accountIdStr).trim() : '';
+  if (!aid) return [];
+
+  const byWhId = new Map(warehouseRows.map((w) => [String(w.id), w]));
+  const out = [];
+  const seen = new Set();
+
+  for (const tm of distributors) {
+    if (String(tm.role ?? '') !== 'distributor') continue;
+    const tid = String(tm.id);
+    if (seen.has(tid)) continue;
+
+    const pwRaw = tm.primary_warehouse_id;
+    if (pwRaw != null && String(pwRaw).trim() !== '') {
+      const w = byWhId.get(String(pwRaw).trim());
+      if (
+        w &&
+        w.linked_account_id != null &&
+        String(w.linked_account_id).trim() !== '' &&
+        String(w.linked_account_id) === aid
+      ) {
+        seen.add(tid);
+        out.push(tm);
+        continue;
+      }
+    }
+
+    const whLinked = warehouseRows.find(
+      (wh) =>
+        wh.linked_team_member_id != null &&
+        String(wh.linked_team_member_id) === tid &&
+        wh.linked_account_id != null &&
+        String(wh.linked_account_id).trim() !== '' &&
+        String(wh.linked_account_id) === aid,
+    );
+    if (whLinked) {
+      seen.add(tid);
+      out.push(tm);
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Prefer **exact wholesale account email** vs `team_members.email`; then fuzzy name on account;
+ * then **depot ↔ account linkage** configured in Warehouses when those differ from person/email.
+ */
+function distributorsForSalesOrderReceivingDepots(
+  distributors,
+  joinAccount,
+  orderJoined,
+  warehouseRows,
+  accountIdStr,
+) {
   const ae = normalizeReceivingLabelPart(joinAccount?.email);
   if (ae) {
     const byEmail = distributors.filter((tm) => normalizeReceivingLabelPart(tm.email) === ae);
@@ -194,9 +251,13 @@ function distributorsForSalesOrderReceivingDepots(distributors, joinAccount, ord
   const byName = distributors.filter((tm) =>
     distributorTeamMemberMatchesSalesOrderAccountByName(tm, joinAccount, orderJoined),
   );
+  if (byName.length > 0) {
+    return { matched: byName, match_basis: 'account_name' };
+  }
+  const byBridge = distributorsMatchedViaWarehouseAccountBridge(distributors, warehouseRows, accountIdStr);
   return {
-    matched: byName,
-    match_basis: byName.length > 0 ? 'account_name' : 'none',
+    matched: byBridge,
+    match_basis: byBridge.length > 0 ? 'depot_account_bridge' : 'none',
   };
 }
 
@@ -740,6 +801,8 @@ router.get(
         distributorRows,
         joinAccount,
         order,
+        warehouseRows,
+        accountIdStr,
       );
 
       const ids = new Set();
@@ -772,10 +835,18 @@ router.get(
         const labels = matched
           .map((m) => String(m.name ?? '').trim() || String(m.email ?? '').trim())
           .filter(Boolean);
-        const basisPhrase =
-          matchBasis === 'account_email'
-            ? 'matched by the same email as this wholesale account'
-            : 'matched by trading/legal name similarity (emails did not align — update CRM email to match when possible)';
+        let basisPhrase;
+        if (matchBasis === 'account_email') {
+          basisPhrase = 'matched by the same email as this wholesale account';
+        } else if (matchBasis === 'account_name') {
+          basisPhrase =
+            'matched by trading/legal name similarity (emails did not align — update CRM email to match when possible)';
+        } else if (matchBasis === 'depot_account_bridge') {
+          basisPhrase =
+            'matched via Settings → Warehouses: each contact’s depot is linked to this wholesale account (person email/name can differ)';
+        } else {
+          basisPhrase = 'mapped for this distributor order';
+        }
         detail =
           labels.length > 0
             ? `Receiving options mapped from CRM distributor contact(s), ${basisPhrase}: ${labels.join(', ')}.`
@@ -786,6 +857,107 @@ router.get(
       } else {
         detail =
           'No receiving depot matched. Align CRM distributor email with the wholesale account email, match trading or legal names, or link a depot to this account.';
+      }
+
+      /** Labels aligned with Settings → Warehouses + CRM (authoritative — avoids stale client cache). */
+      let depots_display = [];
+      if (ids.size > 0) {
+        const idSet = ids;
+        const whSubset = warehouseRows.filter((x) => idSet.has(String(x.id)));
+        const accIds = [
+          ...new Set(
+            whSubset
+              .map((x) => x.linked_account_id)
+              .filter((x) => x != null && String(x).trim() !== '')
+              .map((x) => String(x)),
+          ),
+        ];
+        const accountsForLabels =
+          accIds.length > 0
+            ? await db('accounts').where({ tenant_id: tenantId }).whereIn('id', accIds)
+            : [];
+        const accById = new Map(accountsForLabels.map((a) => [String(a.id), a]));
+
+        const tmIdsFromWh = [
+          ...new Set(
+            whSubset
+              .map((x) => x.linked_team_member_id)
+              .filter((x) => x != null && String(x).trim() !== '')
+              .map((x) => String(x)),
+          ),
+        ];
+        const tmRowsFromWh =
+          tmIdsFromWh.length > 0
+            ? await db('team_members').where({ tenant_id: tenantId }).whereIn('id', tmIdsFromWh)
+            : [];
+        const tmById = new Map(tmRowsFromWh.map((tm) => [String(tm.id), tm]));
+
+        const matchedByPrimaryWh = new Map();
+        for (const tm of matched) {
+          const pw =
+            tm.primary_warehouse_id != null && String(tm.primary_warehouse_id).trim() !== ''
+              ? String(tm.primary_warehouse_id).trim()
+              : '';
+          if (pw && !matchedByPrimaryWh.has(pw)) matchedByPrimaryWh.set(pw, tm);
+        }
+
+        for (const whRow of warehouseRows) {
+          const wid = String(whRow.id);
+          if (!idSet.has(wid)) continue;
+
+          let depot_linked_account_label = null;
+          let depot_linked_account_email = null;
+          if (whRow.linked_account_id != null && String(whRow.linked_account_id).trim() !== '') {
+            const acc = accById.get(String(whRow.linked_account_id));
+            if (acc) {
+              depot_linked_account_label =
+                String(acc.trading_name ?? acc.name ?? '')
+                  .trim() || null;
+              depot_linked_account_email =
+                acc.email != null && String(acc.email).trim() !== ''
+                  ? String(acc.email).trim().toLowerCase()
+                  : null;
+            }
+          }
+
+          let crm_contact = null;
+          if (whRow.linked_team_member_id != null && String(whRow.linked_team_member_id).trim() !== '') {
+            const tm = tmById.get(String(whRow.linked_team_member_id));
+            if (tm) {
+              crm_contact = {
+                id: String(tm.id),
+                name: String(tm.name ?? '').trim(),
+                email: String(tm.email ?? '').trim().toLowerCase(),
+              };
+            }
+          }
+          if (!crm_contact) {
+            const tm = matchedByPrimaryWh.get(wid);
+            if (tm) {
+              crm_contact = {
+                id: String(tm.id),
+                name: String(tm.name ?? '').trim(),
+                email: String(tm.email ?? '').trim().toLowerCase(),
+              };
+            }
+          }
+
+          depots_display.push({
+            warehouse_id: wid,
+            warehouse_name: String(whRow.name ?? '').trim(),
+            linked_account_id:
+              whRow.linked_account_id != null && String(whRow.linked_account_id).trim() !== ''
+                ? String(whRow.linked_account_id).trim()
+                : null,
+            linked_team_member_id:
+              whRow.linked_team_member_id != null && String(whRow.linked_team_member_id).trim() !== ''
+                ? String(whRow.linked_team_member_id).trim()
+                : null,
+            depot_linked_account_label,
+            depot_linked_account_email,
+            crm_contact,
+          });
+        }
       }
 
       const distributorWholesaleAccount =
@@ -825,6 +997,7 @@ router.get(
           })),
           detail,
           match_basis: matchBasis,
+          depots_display,
         },
       });
     } catch (err) {
