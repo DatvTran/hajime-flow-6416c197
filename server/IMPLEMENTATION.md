@@ -124,10 +124,10 @@ The implementation uses a **6-stage incremental migration** approach. Stages 0-2
 
 | Stage | Reads From | Writes To | Duration |
 |-------|------------|-----------|----------|
-| 0 | JSON | JSON | Legacy/local-only baseline |
-| 1 | JSON | JSON + PostgreSQL | Legacy/local-only shadow write |
-| 2 | JSON (compared) | JSON + PostgreSQL | Legacy/local-only comparison |
-| 3 | PostgreSQL | JSON + PostgreSQL | **Required minimum for shared environments** |
+| 0 | JSON | JSON | Local-only compatibility mode |
+| 1 | JSON | JSON + PostgreSQL | Local-only compatibility mode |
+| 2 | JSON (compared) | JSON + PostgreSQL | Local-only compatibility mode |
+| 3 | PostgreSQL | JSON + PostgreSQL | 4 weeks |
 | 4 | PostgreSQL | PostgreSQL only | 2 weeks |
 | 5 | PostgreSQL | PostgreSQL only (deprecated warning) | 2 weeks |
 | 6 | PostgreSQL | PostgreSQL only (JSON removed) | Complete |
@@ -172,9 +172,13 @@ npm run db:reset
 Set `FEATURE_FLAG_DB_MIGRATION_STAGE` in `.env`:
 
 ```bash
-# Stage 0-2: legacy/local-only modes (do not use in shared envs)
+# Stage 0: JSON only (local-only compatibility mode)
+FEATURE_FLAG_DB_MIGRATION_STAGE=0
 
-# Stage 3+: PostgreSQL as primary (required for staging/production)
+# Stage 1: Shadow writes to PostgreSQL (local-only compatibility mode)
+FEATURE_FLAG_DB_MIGRATION_STAGE=1
+
+# Stage 3: PostgreSQL as primary (required for staging/production)
 FEATURE_FLAG_DB_MIGRATION_STAGE=3
 
 # Optional production startup guard (hard-fail if stage <=2 in production)
@@ -322,7 +326,13 @@ Response:
     "auth": true,
     "csv": true
   },
-  "migrationStage": 3
+  "migrationStage": 3,
+  "migration": {
+    "stage": 3,
+    "configuredStage": 3,
+    "environment": "production",
+    "productionCompatible": true
+  }
 }
 ```
 
@@ -377,10 +387,10 @@ fly secrets set FEATURE_FLAG_AUTH_ENABLED=false
 
 ### Revert Database Migration
 ```bash
-# Stage 3+ → Stage 2 (re-enable JSON reads/writes)
+# Stage 3 → Stage 2 (local-only compatibility mode; do not use in staging/production)
 fly secrets set FEATURE_FLAG_DB_MIGRATION_STAGE=2
 
-# Emergency local-legacy fallback only (JSON-backed)
+# Emergency local rollback to JSON compatibility mode
 fly secrets set FEATURE_FLAG_DB_MIGRATION_STAGE=0
 ```
 
