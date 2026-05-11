@@ -20,7 +20,8 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   product: Product | null;
-  onSave: (sku: string, patch: Partial<Product>) => void;
+  /** Return false to keep the dialog open (save failed). */
+  onSave: (sku: string, patch: Partial<Product>) => boolean | Promise<boolean>;
 };
 
 export function EditProductDialog({ open, onOpenChange, product, onSave }: Props) {
@@ -41,7 +42,7 @@ export function EditProductDialog({ open, onOpenChange, product, onSave }: Props
     setStatus(product.status);
   }, [product, open]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!product) return;
     const cs = Math.max(1, Math.round(Number(caseSize) || 0));
@@ -51,15 +52,17 @@ export function EditProductDialog({ open, onOpenChange, product, onSave }: Props
       return;
     }
     const minCs = Math.max(1, Math.round(Number(minOrderCases) || 1));
-    onSave(product.sku, {
-      name: name.trim() || product.name,
-      size: size.trim() || product.size,
-      caseSize: cs,
-      wholesaleCasePrice: Math.round(priceNum * 100) / 100,
-      minOrderCases: minCs,
-      status,
-    });
-    toast.success("Catalog updated", { description: `${product.sku} — pricing saved; retail and field apps use this on next load.` });
+    const ok = await Promise.resolve(
+      onSave(product.sku, {
+        name: name.trim() || product.name,
+        size: size.trim() || product.size,
+        caseSize: cs,
+        wholesaleCasePrice: Math.round(priceNum * 100) / 100,
+        minOrderCases: minCs,
+        status,
+      }),
+    );
+    if (ok === false) return;
     onOpenChange(false);
   };
 

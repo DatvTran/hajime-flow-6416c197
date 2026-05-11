@@ -168,7 +168,7 @@ export function RetailLayout() {
   return (
     <div className="flex min-h-svh bg-background text-foreground">
       {/* Desktop sidebar */}
-      <aside className="relative hidden w-[240px] shrink-0 flex-col gap-5 border-r border-sidebar-border bg-sidebar px-3.5 pb-5 pt-[calc(18px+env(safe-area-inset-top))] text-sidebar-foreground md:flex">
+      <aside className="relative hidden w-[240px] shrink-0 flex-col gap-5 border-r border-sidebar-border bg-sidebar px-3.5 pb-5 pt-[calc(18px+env(safe-area-inset-top))] text-sidebar-foreground lg:flex">
         {logoBlock}
         <nav className="flex flex-1 flex-col gap-5 text-sm" aria-label="Retail">
           <RetailSidebarNav />
@@ -179,7 +179,7 @@ export function RetailLayout() {
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Mobile header */}
-        <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border/60 bg-[hsl(var(--glass-bg))] px-4 pt-[env(safe-area-inset-top)] backdrop-blur-md md:hidden">
+        <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border/60 bg-[hsl(var(--glass-bg))] px-4 pt-[env(safe-area-inset-top)] backdrop-blur-md lg:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button type="button" variant="ghost" size="icon" className="shrink-0 touch-manipulation" aria-label="Open menu">
@@ -200,14 +200,14 @@ export function RetailLayout() {
         </header>
 
         {/* Top bar: crumbs only (ordering lives on Home catalog + sidebar New order) */}
-        <header className="sticky top-0 z-30 hidden h-14 items-center border-b border-border/60 bg-[hsl(var(--glass-bg))] px-7 backdrop-blur-md md:flex md:pt-0">
+        <header className="sticky top-0 z-30 hidden h-14 items-center border-b border-border/60 bg-[hsl(var(--glass-bg))] px-7 backdrop-blur-md lg:flex lg:pt-0">
           <div className="text-[13px] text-muted-foreground">
             {section} › <strong className="font-medium text-foreground">{page}</strong>
           </div>
         </header>
 
         {totalCases > 0 ? (
-          <div className="border-b border-border/40 bg-muted/30 px-4 py-2 md:px-7">
+          <div className="border-b border-border/40 bg-muted/30 px-4 py-2 lg:px-7">
             <Link
               to="/retail/new-order#retail-cart"
               className="flex items-center justify-center gap-2 text-xs text-muted-foreground no-underline transition-colors hover:text-foreground"
@@ -222,11 +222,11 @@ export function RetailLayout() {
         ) : null}
 
         {/* Crumbs on mobile (under optional cart strip) */}
-        <div className="border-b border-border/40 px-4 py-2.5 text-[13px] text-muted-foreground md:hidden">
+        <div className="border-b border-border/40 px-4 py-2.5 text-[13px] text-muted-foreground lg:hidden">
           {section} › <strong className="font-medium text-foreground">{page}</strong>
         </div>
 
-        <main className="mx-auto w-full max-w-[1160px] flex-1 px-4 py-7 pb-20 sm:px-6 sm:py-7 md:px-10 md:pb-20 lg:px-10">
+        <main className="mx-auto w-full max-w-[1160px] flex-1 px-3 py-6 pb-[max(5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-7 lg:px-10 lg:pb-20">
           <Outlet />
         </main>
       </div>

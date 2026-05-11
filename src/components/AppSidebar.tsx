@@ -110,7 +110,10 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
         },
         {
           label: "HQ",
-          items: [{ title: "CRM / settings", url: "/settings", icon: Settings }],
+          items: [
+            { title: "CRM", url: "/crm", icon: UserPlus },
+            { title: "HQ settings", url: "/settings", icon: Settings },
+          ],
         },
       ];
     case "manufacturer":

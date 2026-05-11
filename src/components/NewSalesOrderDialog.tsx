@@ -151,6 +151,11 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   const sessionRep = resolveSalesRepLabelForSession(user?.email, user?.displayName ?? "");
   const { availableBottlesForSku } = useInventory();
 
+  const skuOptions = useMemo(
+    () => products.filter((p) => p.status === "active" || p.status === "development"),
+    [products],
+  );
+
   const cfg = getSalesOrderFormVariantConfig(variant);
   const baseAccountsForVariant = useMemo(
     () => accountsForSalesOrderVariant(allAccounts, variant),
@@ -540,8 +545,6 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     onOpenChange(false);
   };
 
-  const skuOptions = products.filter((p) => p.status === "active" || p.status === "development");
-
   const showLifecycleDetails = variant !== "manufacturer";
   
   // NEW: Proxy mode available for brand_operator and operations
@@ -677,8 +680,8 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
                   <>
                     <p className="text-xs text-muted-foreground">
                       {brandAccountGuide.hint} Edit roster in{" "}
-                      <Link to="/settings" className="font-medium text-primary underline-offset-2 hover:underline">
-                        Settings → CRM
+                      <Link to="/crm" className="font-medium text-primary underline-offset-2 hover:underline">
+                        CRM
                       </Link>{" "}
                       and{" "}
                       <Link to="/accounts" className="font-medium text-primary underline-offset-2 hover:underline">

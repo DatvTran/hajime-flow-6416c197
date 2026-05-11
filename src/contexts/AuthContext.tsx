@@ -359,6 +359,7 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
   if (role === "distributor") {
     if (
       pathMatches(p, "/settings") ||
+      pathMatches(p, "/crm") ||
       pathMatches(p, "/manufacturer") ||
       pathMatches(p, "/markets") ||
       pathMatches(p, "/global-markets") ||
@@ -373,6 +374,7 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
   if (role === "sales_rep" || role === "sales") {
     if (
       pathMatches(p, "/settings") ||
+      pathMatches(p, "/crm") ||
       pathMatches(p, "/manufacturer") ||
       pathMatches(p, "/purchase-orders") ||
       pathMatches(p, "/markets") ||
@@ -385,15 +387,15 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
   }
 
   if (role === "finance") {
-    // Finance has read access to most areas except settings
-    if (pathMatches(p, "/settings")) {
+    // Finance has read access to most areas except HQ settings / CRM
+    if (pathMatches(p, "/settings") || pathMatches(p, "/crm")) {
       return false;
     }
     return true;
   }
 
   if (role === "operations") {
-    // Operations has access to everything except settings
+    // Operations has access to everything except HQ settings (CRM remains available for onboarding)
     if (pathMatches(p, "/settings")) {
       return false;
     }

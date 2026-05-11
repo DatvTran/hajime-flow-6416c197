@@ -34,6 +34,7 @@ const Manufacturer = lazyWithChunkReload(() => import("./pages/Manufacturer"));
 const Shipments = lazyWithChunkReload(() => import("./pages/Shipments"));
 const Reports = lazyWithChunkReload(() => import("./pages/Reports"));
 const SettingsPage = lazyWithChunkReload(() => import("./pages/Settings"));
+const CrmPage = lazyWithChunkReload(() => import("./pages/CrmPage"));
 const AlertsHubPage = lazyWithChunkReload(() => import("./pages/AlertsHubPage"));
 const MarketsPage = lazyWithChunkReload(() => import("./pages/MarketsPage"));
 const GlobalMarketsPage = lazyWithChunkReload(() => import("./pages/GlobalMarketsPage"));
@@ -155,6 +156,7 @@ const App = () => {
                   <Route path="/alerts" element={<AlertsHubPage />} />
                   <Route path="/finance" element={<FinancePaymentsPage />} />
                   <Route path="/incentives" element={<IncentiveManagerPage />} />
+                  <Route path="/crm" element={<CrmPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                   {/* Distributor namespaced routes */}
                   <Route path="/distributor" element={<RoleHomeEntry />} />

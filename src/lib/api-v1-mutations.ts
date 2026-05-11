@@ -35,19 +35,14 @@ export async function apiFetch(url: string, options: RequestInit = {}) {
 
 // ===== PRODUCTS =====
 
+/** POST /api/v1/products — aligns with server body (sku, name, unit_size, metadata JSONB). */
 export async function createProduct(productData: {
-  name: string;
   sku: string;
-  category: string;
-  abv: string;
-  caseSize: string;
-  unitPrice: string;
-  bottlesPerCase: string;
-  unit: string;
-  status?: string;
+  name: string;
   description?: string;
-  tastingNotes?: string;
-  pairingSuggestions?: string;
+  category?: string;
+  unit_size?: string;
+  metadata?: Record<string, unknown>;
 }) {
   return apiFetch("/api/v1/products", {
     method: "POST",
@@ -68,8 +63,25 @@ export async function updateProduct(id: string, productData: Partial<{
   description: string;
   tastingNotes: string;
   pairingSuggestions: string;
+  unit_size: string;
+  metadata: Record<string, unknown>;
 }>) {
   return apiFetch(`/api/v1/products/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(productData),
+  });
+}
+
+/** Update catalog row when the client only knows SKU (e.g. seed-only rows without DB id yet). */
+export async function updateProductBySku(sku: string, productData: Partial<{
+  name: string;
+  description?: string;
+  category?: string;
+  unit_size?: string;
+  metadata?: Record<string, unknown>;
+}>) {
+  const enc = encodeURIComponent(sku);
+  return apiFetch(`/api/v1/products/by-sku/${enc}`, {
     method: "PUT",
     body: JSON.stringify(productData),
   });
@@ -421,17 +433,22 @@ export async function getInvoices(params?: {
 
 export async function createPurchaseOrder(orderData: {
   po_number: string;
-  supplier_id?: string;
-  supplier_name?: string;
+  supplier_name: string;
+  manufacturer_id?: string;
   po_type?: "sales" | "production";
   status?: string;
   order_date?: string;
   expected_delivery_date?: string;
+  delivery_date?: string;
+  market_destination?: string;
+  total_bottles?: number;
+  metadata?: Record<string, unknown>;
   items?: Array<{
     sku: string;
     product_name?: string;
     quantity: number;
     unit_price?: number;
+    product_id?: string;
   }>;
   total_amount?: number;
   notes?: string;
@@ -453,6 +470,7 @@ export async function updatePurchaseOrder(
     status: string;
     order_date: string;
     expected_delivery_date: string;
+    market_destination: string;
     total_amount: number;
     notes: string;
     distributor_account_id: string;

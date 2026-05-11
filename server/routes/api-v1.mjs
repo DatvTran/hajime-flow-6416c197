@@ -21,6 +21,58 @@ import {
 const router = Router();
 const isDev = process.env.NODE_ENV === 'development';
 
+/** Normalize JSONB metadata from Postgres (object or string). */
+function parseProductMetadata(raw) {
+  if (raw == null) return {};
+  if (typeof raw === 'string') {
+    try {
+      const o = JSON.parse(raw);
+      return typeof o === 'object' && o !== null ? o : {};
+    } catch {
+      return {};
+    }
+  }
+  if (typeof raw === 'object') return { ...raw };
+  return {};
+}
+
+/**
+ * Apply partial updates; merge `metadata` JSONB with existing row so catalog edits
+ * don't wipe fields omitted from the request body.
+ */
+async function updateProductForTenant(tenantId, whereClause, body) {
+  const existing = await db('products')
+    .where(whereClause)
+    .where({ tenant_id: tenantId })
+    .whereNull('deleted_at')
+    .first();
+  if (!existing) return null;
+
+  const updates = { ...body };
+  delete updates.id;
+  delete updates.tenant_id;
+  delete updates.created_at;
+
+  const mergedMeta = parseProductMetadata(existing.metadata);
+  if (updates.metadata !== undefined) {
+    const incoming =
+      typeof updates.metadata === 'string'
+        ? parseProductMetadata(updates.metadata)
+        : updates.metadata;
+    Object.assign(mergedMeta, incoming);
+    updates.metadata = JSON.stringify(mergedMeta);
+  }
+
+  updates.updated_at = new Date();
+
+  const [product] = await db('products')
+    .where({ id: existing.id, tenant_id: tenantId })
+    .whereNull('deleted_at')
+    .update(updates)
+    .returning('*');
+  return product;
+}
+
 /** After creating/reactivating a CRM contact, optionally send portal invite email. */
 async function buildCrmContactInvitePayload(req, tenantId, member, { email, name, role }) {
   const invitedByUserId = req.user?.userId;
@@ -402,34 +454,40 @@ router.delete('/products/by-sku/:sku', requirePermission(Permission.INVENTORY_WR
   }
 });
 
+// PUT /api/v1/products/by-sku/:sku — Update by SKU (metadata merged with existing row)
+router.put('/products/by-sku/:sku', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const sku = decodeURIComponent(String(req.params.sku ?? '').trim());
+    if (!sku) {
+      return res.status(400).json({ error: 'SKU is required' });
+    }
+
+    const product = await updateProductForTenant(tenantId, { sku }, req.body);
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    res.json({ data: product });
+  } catch (err) {
+    console.error('[API v1] Error updating product by SKU:', err);
+    res.status(500).json({ error: 'Failed to update product' });
+  }
+});
+
 // PUT /api/v1/products/:id - Update product
 router.put('/products/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { id } = req.params;
-    const updates = req.body;
-    
-    delete updates.id;
-    delete updates.tenant_id;
-    delete updates.created_at;
-    
-    if (updates.metadata && typeof updates.metadata === 'object') {
-      updates.metadata = JSON.stringify(updates.metadata);
-    }
-    
-    updates.updated_at = new Date();
-    
-    const [product] = await db('products')
-      .where({ id, tenant_id: tenantId })
-      .whereNull('deleted_at')
-      .update(updates)
-      .returning('*');
-    
+
+    const product = await updateProductForTenant(tenantId, { id }, req.body);
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
-    
+
     res.json({ data: product });
   } catch (err) {
     console.error('[API v1] Error updating product:', err);
@@ -2211,6 +2269,31 @@ router.delete('/new-product-requests/:id', requirePermission(Permission.PRODUCTI
 
 // ===== PURCHASE ORDERS =====
 
+async function resolvePurchaseOrderRow(dbConn, tenantId, idParam) {
+  const raw = String(idParam ?? '').trim();
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) {
+    const byId = await dbConn('purchase_orders')
+      .where({ id: raw, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .first();
+    if (byId) return byId;
+  }
+  return dbConn('purchase_orders')
+    .where({ po_number: raw, tenant_id: tenantId })
+    .whereNull('deleted_at')
+    .first();
+}
+
+async function productIdForSkuInTrx(trx, tenantId, sku) {
+  if (!sku) return null;
+  const row = await trx('products')
+    .where({ tenant_id: tenantId, sku: String(sku).trim() })
+    .whereNull('deleted_at')
+    .first('id');
+  return row?.id ?? null;
+}
+
 // GET /api/v1/purchase-orders - List purchase orders
 router.get('/purchase-orders', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
   try {
@@ -2236,9 +2319,28 @@ router.get('/purchase-orders', requirePermission(Permission.PRODUCTION_READ), as
       .offset(offset);
     
     const [countResult, orders] = await Promise.all([countQuery, dataQuery]);
+
+    const ids = (orders || []).map((o) => o.id).filter(Boolean);
+    const itemsByPo = new Map();
+    if (ids.length > 0) {
+      const rows = await db('purchase_order_items')
+        .where({ tenant_id: tenantId })
+        .whereIn('purchase_order_id', ids)
+        .orderBy('id', 'asc');
+      for (const row of rows) {
+        const pid = row.purchase_order_id;
+        if (!itemsByPo.has(pid)) itemsByPo.set(pid, []);
+        itemsByPo.get(pid).push(row);
+      }
+    }
+
+    const enriched = (orders || []).map((o) => ({
+      ...o,
+      items: itemsByPo.get(o.id) || [],
+    }));
     
     res.json({
-      data: orders,
+      data: enriched,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -2257,19 +2359,16 @@ router.get('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_READ)
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
-    const { id } = req.params;
-    
-    const order = await db('purchase_orders')
-      .where({ id, tenant_id: tenantId })
-      .whereNull('deleted_at')
-      .first();
+    const { id: idParam } = req.params;
+
+    const order = await resolvePurchaseOrderRow(db, tenantId, idParam);
     
     if (!order) {
       return res.status(404).json({ error: 'Purchase order not found' });
     }
     
     const items = await db('purchase_order_items')
-      .where({ purchase_order_id: id, tenant_id: tenantId });
+      .where({ purchase_order_id: order.id, tenant_id: tenantId });
     
     res.json({ data: { ...order, items } });
   } catch (err) {
@@ -2284,41 +2383,127 @@ router.post('/purchase-orders', requirePermission(Permission.PRODUCTION_WRITE), 
   
   try {
     const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const { po_number, manufacturer_id, status, order_date, delivery_date, items, ...orderData } = req.body;
-    
-    if (!po_number || !manufacturer_id) {
+    if (!tenantId) {
       await trx.rollback();
-      return res.status(400).json({ error: 'po_number and manufacturer_id are required' });
+      return;
     }
+
+    const body = req.body || {};
+    const {
+      po_number,
+      manufacturer_id,
+      supplier_name,
+      supplierName,
+      status,
+      order_date,
+      orderDate,
+      delivery_date,
+      deliveryDate,
+      expected_delivery_date,
+      expectedDeliveryDate,
+      items,
+      po_type,
+      poType,
+      distributor_account_id,
+      distributorAccountId,
+      metadata,
+      market_destination,
+      marketDestination,
+      total_bottles,
+      totalBottles,
+      total_amount,
+      totalAmount,
+      notes,
+    } = body;
+
+    const supplierLabel = String(
+      supplier_name || supplierName || body.supplier_name || body.manufacturerName || 'Manufacturer',
+    ).trim() || 'Manufacturer';
+
+    if (!po_number) {
+      await trx.rollback();
+      return res.status(400).json({ error: 'po_number is required' });
+    }
+
+    const mfgId =
+      manufacturer_id != null && String(manufacturer_id).trim() !== ''
+        ? String(manufacturer_id).trim()
+        : null;
+
+    const issue = order_date || orderDate;
+    const due =
+      expected_delivery_date ||
+      expectedDeliveryDate ||
+      delivery_date ||
+      deliveryDate ||
+      issue;
+
+    const meta =
+      metadata && typeof metadata === 'object'
+        ? metadata
+        : typeof body.metadata === 'string'
+          ? (() => {
+              try {
+                return JSON.parse(body.metadata);
+              } catch {
+                return {};
+              }
+            })()
+          : {};
+
+    const header = {
+      tenant_id: tenantId,
+      po_number: String(po_number).trim(),
+      supplier_name: supplierLabel,
+      manufacturer_id: mfgId,
+      status: status || 'draft',
+      order_date: issue ? new Date(issue) : new Date(),
+      expected_delivery_date: due ? new Date(due) : null,
+      delivery_date: delivery_date || deliveryDate ? new Date(delivery_date || deliveryDate) : null,
+      market_destination: market_destination || marketDestination || null,
+      total_bottles: Number(total_bottles ?? totalBottles ?? body.totalBottles ?? 0) || 0,
+      total_amount: Number(total_amount ?? totalAmount ?? body.totalAmount ?? 0) || 0,
+      notes: notes != null ? String(notes) : '',
+      po_type: po_type || poType || 'production',
+      distributor_account_id:
+        distributor_account_id != null && String(distributor_account_id).trim() !== ''
+          ? String(distributor_account_id).trim()
+          : distributorAccountId != null && String(distributorAccountId).trim() !== ''
+            ? String(distributorAccountId).trim()
+            : null,
+      metadata: JSON.stringify(meta),
+      created_by: req.user?.userId,
+    };
+
+    const [order] = await trx('purchase_orders').insert(header).returning('*');
     
-    const [order] = await trx('purchase_orders')
-      .insert({
-        tenant_id: tenantId,
-        po_number,
-        manufacturer_id,
-        status: status || 'draft',
-        order_date: order_date || new Date(),
-        delivery_date,
-        market_destination: orderData.marketDestination,
-        total_bottles: orderData.totalBottles || 0,
-        total_amount: orderData.totalAmount || 0,
-        notes: orderData.notes,
-        created_by: req.user?.userId
-      })
-      .returning('*');
-    
-    if (items && items.length > 0) {
-      const orderItems = items.map(item => ({
-        tenant_id: tenantId,
-        purchase_order_id: order.id,
-        product_id: item.productId || item.product_id,
-        sku: item.sku,
-        product_name: item.productName || item.product_name || item.name,
-        quantity: item.quantity,
-        unit_price: item.unitPrice || item.unit_price || 0
-      }));
-      
+    if (items && Array.isArray(items) && items.length > 0) {
+      const orderItems = [];
+      for (const item of items) {
+        const sku = item.sku != null ? String(item.sku).trim() : '';
+        const pid =
+          item.productId ||
+          item.product_id ||
+          (await productIdForSkuInTrx(trx, tenantId, sku));
+        const qty = Math.max(0, Math.round(Number(item.quantity ?? item.quantity_ordered ?? 0)));
+        const unitCost = Number(item.unit_price ?? item.unit_cost ?? item.unitPrice ?? 0) || 0;
+        const pname = String(
+          item.product_name || item.productName || item.name || sku || 'Product',
+        ).trim();
+
+        orderItems.push({
+          tenant_id: tenantId,
+          purchase_order_id: order.id,
+          product_id: pid || null,
+          sku: sku || null,
+          product_name: pname,
+          quantity_ordered: qty || 0,
+          quantity_received: 0,
+          unit_cost: unitCost,
+          line_total: qty && unitCost ? qty * unitCost : null,
+        });
+      }
+
       await trx('purchase_order_items').insert(orderItems);
     }
     
@@ -2332,29 +2517,61 @@ router.post('/purchase-orders', requirePermission(Permission.PRODUCTION_WRITE), 
   }
 });
 
-// PUT /api/v1/purchase-orders/:id - Update purchase order
+// PUT /api/v1/purchase-orders/:id - Update purchase order (id may be numeric PK or po_number)
 router.put('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
   const trx = await db.transaction();
   
   try {
     const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const { id } = req.params;
+    if (!tenantId) {
+      await trx.rollback();
+      return;
+    }
+    const { id: idParam } = req.params;
+
+    const existing = await resolvePurchaseOrderRow(trx, tenantId, idParam);
+    if (!existing) {
+      await trx.rollback();
+      return res.status(404).json({ error: 'Purchase order not found' });
+    }
+
+    const rid = existing.id;
     const { items, ...orderData } = req.body;
-    
+
+    const due =
+      orderData.expected_delivery_date ||
+      orderData.expectedDeliveryDate ||
+      orderData.delivery_date ||
+      orderData.deliveryDate;
+
     const updates = {
-      manufacturer_id: orderData.manufacturer_id || orderData.manufacturerId,
-      order_date: orderData.order_date || orderData.orderDate,
-      delivery_date: orderData.delivery_date || orderData.deliveryDate,
-      market_destination: orderData.market_destination || orderData.marketDestination,
-      total_bottles: orderData.total_bottles || orderData.totalBottles,
-      total_amount: orderData.total_amount || orderData.totalAmount,
-      notes: orderData.notes,
-      updated_at: new Date()
+      manufacturer_id:
+        orderData.manufacturer_id ?? orderData.manufacturerId ?? existing.manufacturer_id,
+      order_date:
+        orderData.order_date != null || orderData.orderDate != null
+          ? new Date(orderData.order_date || orderData.orderDate)
+          : existing.order_date,
+      expected_delivery_date:
+        orderData.expected_delivery_date != null || orderData.expectedDeliveryDate != null
+          ? new Date(orderData.expected_delivery_date || orderData.expectedDeliveryDate)
+          : due != null
+            ? new Date(due)
+            : existing.expected_delivery_date,
+      delivery_date:
+        orderData.delivery_date != null || orderData.deliveryDate != null
+          ? new Date(orderData.delivery_date || orderData.deliveryDate)
+          : existing.delivery_date,
+      market_destination:
+        orderData.market_destination ?? orderData.marketDestination ?? existing.market_destination,
+      total_bottles: orderData.total_bottles ?? orderData.totalBottles ?? existing.total_bottles,
+      total_amount: orderData.total_amount ?? orderData.totalAmount ?? existing.total_amount,
+      notes: orderData.notes != null ? orderData.notes : existing.notes,
+      supplier_name: orderData.supplier_name || orderData.supplierName || existing.supplier_name,
+      updated_at: new Date(),
     };
-    
+
     const [order] = await trx('purchase_orders')
-      .where({ id, tenant_id: tenantId })
+      .where({ id: rid, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update(updates)
       .returning('*');
@@ -2364,21 +2581,37 @@ router.put('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WRITE
       return res.status(404).json({ error: 'Purchase order not found' });
     }
     
-    if (items && items.length > 0) {
+    if (items && Array.isArray(items) && items.length > 0) {
       await trx('purchase_order_items')
-        .where({ purchase_order_id: id, tenant_id: tenantId })
+        .where({ purchase_order_id: rid, tenant_id: tenantId })
         .delete();
-      
-      const orderItems = items.map(item => ({
-        tenant_id: tenantId,
-        purchase_order_id: id,
-        product_id: item.productId || item.product_id,
-        sku: item.sku,
-        product_name: item.productName || item.product_name || item.name,
-        quantity: item.quantity,
-        unit_price: item.unitPrice || item.unit_price || 0
-      }));
-      
+
+      const orderItems = [];
+      for (const item of items) {
+        const sku = item.sku != null ? String(item.sku).trim() : '';
+        const pid =
+          item.productId ||
+          item.product_id ||
+          (await productIdForSkuInTrx(trx, tenantId, sku));
+        const qty = Math.max(0, Math.round(Number(item.quantity ?? item.quantity_ordered ?? 0)));
+        const unitCost = Number(item.unit_price ?? item.unit_cost ?? item.unitPrice ?? 0) || 0;
+        const pname = String(
+          item.product_name || item.productName || item.name || sku || 'Product',
+        ).trim();
+
+        orderItems.push({
+          tenant_id: tenantId,
+          purchase_order_id: rid,
+          product_id: pid || null,
+          sku: sku || null,
+          product_name: pname,
+          quantity_ordered: qty || 0,
+          quantity_received: 0,
+          unit_cost: unitCost,
+          line_total: qty && unitCost ? qty * unitCost : null,
+        });
+      }
+
       await trx('purchase_order_items').insert(orderItems);
     }
     
@@ -2397,12 +2630,17 @@ router.patch('/purchase-orders/:id/status', requirePermission(Permission.PRODUCT
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
-    const { id } = req.params;
+    const { id: idParam } = req.params;
     const { status } = req.body;
     
     const validStatuses = ['draft', 'submitted', 'acknowledged', 'in_production', 'ready_for_shipment', 'shipped', 'delivered', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const row = await resolvePurchaseOrderRow(db, tenantId, idParam);
+    if (!row) {
+      return res.status(404).json({ error: 'Purchase order not found' });
     }
     
     const updates = { 
@@ -2415,7 +2653,7 @@ router.patch('/purchase-orders/:id/status', requirePermission(Permission.PRODUCT
     }
     
     const [order] = await db('purchase_orders')
-      .where({ id, tenant_id: tenantId })
+      .where({ id: row.id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update(updates)
       .returning('*');
@@ -2436,10 +2674,15 @@ router.delete('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WR
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
-    const { id } = req.params;
+    const { id: idParam } = req.params;
+
+    const row = await resolvePurchaseOrderRow(db, tenantId, idParam);
+    if (!row) {
+      return res.status(404).json({ error: 'Purchase order not found' });
+    }
     
     const [order] = await db('purchase_orders')
-      .where({ id, tenant_id: tenantId })
+      .where({ id: row.id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update({ deleted_at: new Date(), updated_at: new Date() })
       .returning('*');

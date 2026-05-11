@@ -2,38 +2,10 @@ import knex from 'knex';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { flyDatabaseConnection } from './fly-database-url.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
-
-// Parse DATABASE_URL if available (Fly.io format)
-function parseDatabaseUrl(url) {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    const sslmode = parsed.searchParams.get('sslmode');
-    
-    // For Fly.io internal networking, use .internal instead of .flycast if needed
-    let host = parsed.hostname;
-    if (host.endsWith('.flycast')) {
-      // Try both .flycast and .internal
-      host = host.replace('.flycast', '.internal');
-    }
-    
-    return {
-      host: host,
-      port: Number(parsed.port) || 5432,
-      database: parsed.pathname.slice(1), // Remove leading /
-      user: parsed.username,
-      password: parsed.password,
-      ssl: sslmode === 'disable' ? false : { rejectUnauthorized: false },
-    };
-  } catch {
-    return null;
-  }
-}
-
-const dbUrlConfig = parseDatabaseUrl(process.env.DATABASE_URL);
 
 const baseConfig = {
   client: 'postgresql',
@@ -77,14 +49,9 @@ const config = {
   },
   production: {
     ...baseConfig,
-    connection: dbUrlConfig || {
-      host: process.env.DB_HOST,
-      port: Number(process.env.DB_PORT) || 5432,
-      database: process.env.DB_NAME,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
+    connection: flyDatabaseConnection({
       ssl: { rejectUnauthorized: false },
-    },
+    }),
     pool: {
       min: 2,
       max: 20,
@@ -92,14 +59,9 @@ const config = {
   },
   staging: {
     ...baseConfig,
-    connection: dbUrlConfig || {
-      host: process.env.DB_HOST,
-      port: Number(process.env.DB_PORT) || 5432,
-      database: process.env.DB_NAME,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
+    connection: flyDatabaseConnection({
       ssl: { rejectUnauthorized: false },
-    },
+    }),
     pool: {
       min: 2,
       max: 20,

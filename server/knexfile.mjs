@@ -1,30 +1,10 @@
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { flyDatabaseConnection } from './config/fly-database-url.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
-
-// Parse DATABASE_URL if available (Fly.io format)
-function parseDatabaseUrl(url) {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    const sslmode = parsed.searchParams.get('sslmode');
-    return {
-      host: parsed.hostname,
-      port: Number(parsed.port) || 5432,
-      database: parsed.pathname.slice(1),
-      user: parsed.username,
-      password: parsed.password,
-      ssl: sslmode === 'disable' ? false : { rejectUnauthorized: false },
-    };
-  } catch {
-    return null;
-  }
-}
-
-const dbUrlConfig = parseDatabaseUrl(process.env.DATABASE_URL);
 
 const baseConfig = {
   client: 'postgresql',
@@ -53,26 +33,16 @@ const config = {
 
   staging: {
     ...baseConfig,
-    connection: dbUrlConfig || {
-      host: process.env.DB_HOST,
-      port: Number(process.env.DB_PORT) || 5432,
-      database: process.env.DB_NAME,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
+    connection: flyDatabaseConnection({
       ssl: { rejectUnauthorized: false },
-    },
+    }),
   },
 
   production: {
     ...baseConfig,
-    connection: dbUrlConfig || {
-      host: process.env.DB_HOST,
-      port: Number(process.env.DB_PORT) || 5432,
-      database: process.env.DB_NAME,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
+    connection: flyDatabaseConnection({
       ssl: { rejectUnauthorized: false },
-    },
+    }),
   },
 };
 
