@@ -247,10 +247,9 @@ export default function PurchaseOrders() {
     toast.success("Transfer updated", { description: `${id} → ${patch.status}` });
   };
 
-  const handleCreatePo = (po: PurchaseOrder) => {
-    // Production POs create inventory (when manufacturer delivers), they don't consume it.
-    // Inventory is added via receive stock or when PO status transitions to delivered.
-    addPurchaseOrder(po);
+  const handleCreatePo = async (po: PurchaseOrder) => {
+    const r = await addPurchaseOrder(po);
+    return r.success;
   };
 
   const handleCreateTo = (to: Omit<TransferOrder, "id">) => {

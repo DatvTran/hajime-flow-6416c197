@@ -84,7 +84,23 @@ interface MarginScenario {
 
 // ===== CONSTANTS =====
 
-const GROSS_MARGIN_PER_CASE = 216; // $48 wholesale - $30 landed = $18/bottle × 12
+/** Bottles per case for wholesale margin math (pricing inputs are per bottle). */
+const BOTTLES_PER_CASE = 12;
+
+const DEFAULT_SUPPLY_CHAIN_PRICING = {
+  landed: 30,
+  wholesale: 48,
+  retail: 60,
+  shelf: 93,
+} as const;
+
+type SupplyChainPricing = {
+  landed: number;
+  wholesale: number;
+  retail: number;
+  shelf: number;
+};
+
 const SPIF_RATES = {
   new_on_premise: 150,
   new_off_premise: 100,
@@ -102,6 +118,29 @@ const QUARTERLY_THRESHOLDS = {
 
 const STORAGE_KEY_PARTNERS = "hajime_incentive_partners";
 const STORAGE_KEY_SPIFS = "hajime_incentive_spifs";
+const STORAGE_KEY_SUPPLY_CHAIN = "hajime_supply_chain_pricing";
+
+function clampUsdPrice(n: number): number {
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(n, 1_000_000);
+}
+
+function loadSupplyChainPricing(): SupplyChainPricing {
+  if (typeof window === "undefined") return { ...DEFAULT_SUPPLY_CHAIN_PRICING };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SUPPLY_CHAIN);
+    if (!raw) return { ...DEFAULT_SUPPLY_CHAIN_PRICING };
+    const p = JSON.parse(raw) as Partial<SupplyChainPricing>;
+    return {
+      landed: clampUsdPrice(Number(p.landed ?? DEFAULT_SUPPLY_CHAIN_PRICING.landed)),
+      wholesale: clampUsdPrice(Number(p.wholesale ?? DEFAULT_SUPPLY_CHAIN_PRICING.wholesale)),
+      retail: clampUsdPrice(Number(p.retail ?? DEFAULT_SUPPLY_CHAIN_PRICING.retail)),
+      shelf: clampUsdPrice(Number(p.shelf ?? DEFAULT_SUPPLY_CHAIN_PRICING.shelf)),
+    };
+  } catch {
+    return { ...DEFAULT_SUPPLY_CHAIN_PRICING };
+  }
+}
 
 // ===== HELPER FUNCTIONS =====
 
@@ -254,6 +293,8 @@ export default function IncentiveManagerPage() {
     ];
   });
 
+  const [supplyChainPricing, setSupplyChainPricing] = useState<SupplyChainPricing>(loadSupplyChainPricing);
+
   // Save to localStorage when data changes
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_PARTNERS, JSON.stringify(partners));
@@ -262,6 +303,21 @@ export default function IncentiveManagerPage() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_SPIFS, JSON.stringify(spifs));
   }, [spifs]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_SUPPLY_CHAIN, JSON.stringify(supplyChainPricing));
+  }, [supplyChainPricing]);
+
+  const grossMarginPerCase = useMemo(() => {
+    const spread = supplyChainPricing.wholesale - supplyChainPricing.landed;
+    return Math.max(0, spread * BOTTLES_PER_CASE);
+  }, [supplyChainPricing.landed, supplyChainPricing.wholesale]);
+
+  const wholesaleMarginPercent = useMemo(() => {
+    const revenueCase = supplyChainPricing.wholesale * BOTTLES_PER_CASE;
+    if (revenueCase <= 0) return 0;
+    return (grossMarginPerCase / revenueCase) * 100;
+  }, [grossMarginPerCase, supplyChainPricing.wholesale]);
 
   // ===== CALCULATED METRICS =====
 
@@ -272,7 +328,7 @@ export default function IncentiveManagerPage() {
     const totalTastings = partners.reduce((sum, p) => sum + p.tastingsCompleted, 0);
     const totalADFSpend = partners.reduce((sum, p) => sum + p.adfSpend, 0);
     const totalSPIFs = spifs.reduce((sum, s) => sum + s.payout, 0);
-    const totalGrossMargin = totalCases * GROSS_MARGIN_PER_CASE;
+    const totalGrossMargin = totalCases * grossMarginPerCase;
     
     // Estimate volume bonuses (simplified)
     const volumeBonuses = partners
@@ -297,7 +353,7 @@ export default function IncentiveManagerPage() {
       netMargin,
       costPercentage,
     };
-  }, [partners, spifs]);
+  }, [partners, spifs, grossMarginPerCase]);
 
   // ===== PARTNER MANAGEMENT =====
 
@@ -452,15 +508,15 @@ export default function IncentiveManagerPage() {
 
     return [base, reorder, maxLoad].map(s => {
       const totalIncentiveCost = s.spifs + s.volumeBonus + s.adfSpend + s.quarterlyBonus;
-      const netMargin = GROSS_MARGIN_PER_CASE - totalIncentiveCost;
+      const netMargin = grossMarginPerCase - totalIncentiveCost;
       return {
         ...s,
         totalIncentiveCost,
         netMargin,
-        costPercentage: (totalIncentiveCost / GROSS_MARGIN_PER_CASE) * 100,
+        costPercentage: grossMarginPerCase > 0 ? (totalIncentiveCost / grossMarginPerCase) * 100 : 0,
       };
     });
-  }, []);
+  }, [grossMarginPerCase]);
 
   const marginBreakdown = useMemo(() => {
     const gross = Math.max(0, dashboardMetrics.totalGrossMargin);
@@ -584,7 +640,7 @@ export default function IncentiveManagerPage() {
             <CardHeader>
               <CardTitle className="font-display flex items-center gap-2">
                 <TrendingUp className="h-5 w-5" />
-                Gross Margin Breakdown (per case: ${GROSS_MARGIN_PER_CASE})
+                Gross Margin Breakdown (per case: ${grossMarginPerCase.toLocaleString()})
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -693,7 +749,7 @@ export default function IncentiveManagerPage() {
                           ? 1200
                           : 0;
                     const partnerTotalCost = partnerSPIFs + partnerVolumeBonus + partner.adfSpend;
-                    const partnerGrossMargin = partner.quarterlyCasesSold * GROSS_MARGIN_PER_CASE;
+                    const partnerGrossMargin = partner.quarterlyCasesSold * grossMarginPerCase;
                     const healthPercentage = partnerGrossMargin > 0 ? (partnerTotalCost / partnerGrossMargin) * 100 : 0;
 
                     return (
@@ -1145,41 +1201,77 @@ export default function IncentiveManagerPage() {
         <TabsContent value="margin" className="space-y-6">
           {/* Pricing Chain */}
           <Card>
-            <CardHeader>
-              <CardTitle className="font-display">Supply Chain Pricing Breakdown</CardTitle>
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="font-display">Supply Chain Pricing Breakdown</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Per-bottle CAD · Edit values to model margin; saved in this browser.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="touch-manipulation shrink-0"
+                onClick={() => {
+                  setSupplyChainPricing({ ...DEFAULT_SUPPLY_CHAIN_PRICING });
+                  toast.success("Pricing reset to defaults");
+                }}
+              >
+                Reset defaults
+              </Button>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between">
-                {[
-                  { label: "Landed Cost", value: 30, color: "bg-slate-500" },
-                  { label: "Wholesale", value: 48, color: "bg-blue-500" },
-                  { label: "Retail", value: 60, color: "bg-indigo-500" },
-                  { label: "Shelf", value: 93, color: "bg-purple-500" },
-                ].map((step, i, arr) => (
-                  <>
-                    <div key={step.label} className="text-center">
-                      <div className={`${step.color} text-white rounded-lg p-4 w-24`}>
-                        <p className="text-2xl font-bold">${step.value}</p>
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-2">{step.label}</p>
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                {(
+                  [
+                    { key: "landed" as const, label: "Landed Cost", color: "bg-slate-500" },
+                    { key: "wholesale" as const, label: "Wholesale", color: "bg-blue-500" },
+                    { key: "retail" as const, label: "Retail", color: "bg-indigo-500" },
+                    { key: "shelf" as const, label: "Shelf", color: "bg-purple-500" },
+                  ] as const
+                ).map((step) => (
+                  <div key={step.key} className="flex flex-col items-center text-center">
+                    <div className={`${step.color} w-full max-w-[11rem] rounded-lg px-3 py-4 text-white`}>
+                      <p className="text-2xl font-bold tabular-nums">
+                        ${supplyChainPricing[step.key].toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </p>
                     </div>
-                    {i < arr.length - 1 && (
-                      <div className="flex-1 h-0.5 bg-border mx-4" />
-                    )}
-                  </>
+                    <Label htmlFor={`price-${step.key}`} className="mt-2 text-sm text-muted-foreground">
+                      {step.label}
+                    </Label>
+                    <Input
+                      id={`price-${step.key}`}
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step={0.01}
+                      className="mt-2 h-9 w-full max-w-[11rem] touch-manipulation tabular-nums"
+                      value={Number.isFinite(supplyChainPricing[step.key]) ? supplyChainPricing[step.key] : 0}
+                      onChange={(e) => {
+                        const v = clampUsdPrice(parseFloat(e.target.value));
+                        setSupplyChainPricing((prev) => ({ ...prev, [step.key]: v }));
+                      }}
+                    />
+                  </div>
                 ))}
               </div>
-              
-              <div className="mt-6 p-4 bg-muted rounded-lg">
-                <div className="flex justify-between items-center">
+
+              <div className="mt-6 rounded-lg bg-muted p-4">
+                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                   <div>
                     <p className="text-sm text-muted-foreground">Gross Margin per Case</p>
-                    <p className="text-3xl font-bold">${GROSS_MARGIN_PER_CASE}</p>
-                    <p className="text-sm text-muted-foreground">$48 wholesale − $30 landed = $18/bottle × 12</p>
+                    <p className="text-3xl font-bold tabular-nums">${grossMarginPerCase.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                    <p className="text-sm text-muted-foreground">
+                      ${supplyChainPricing.wholesale.toFixed(2)} wholesale − ${supplyChainPricing.landed.toFixed(2)} landed = $
+                      {(supplyChainPricing.wholesale - supplyChainPricing.landed).toFixed(2)}
+                      /bottle × {BOTTLES_PER_CASE}
+                    </p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-left sm:text-right">
                     <p className="text-sm text-muted-foreground">Margin %</p>
-                    <p className="text-3xl font-bold">{((GROSS_MARGIN_PER_CASE / (48 * 12)) * 100).toFixed(1)}%</p>
+                    <p className="text-3xl font-bold tabular-nums">{wholesaleMarginPercent.toFixed(1)}%</p>
+                    <p className="text-xs text-muted-foreground">Of wholesale case revenue</p>
                   </div>
                 </div>
               </div>

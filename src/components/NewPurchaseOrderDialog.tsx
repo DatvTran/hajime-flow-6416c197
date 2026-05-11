@@ -69,7 +69,8 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   existing: PurchaseOrder[];
-  onCreate: (po: PurchaseOrder) => void;
+  /** Return false to signal save failure (dialog stays open). */
+  onCreate: (po: PurchaseOrder) => boolean | Promise<boolean>;
   /** Deep link from manufacturer / alerts — pre-fill SKU and bottle quantity. */
   prefill?: { sku?: string; quantity?: string } | null;
   /**
@@ -238,6 +239,13 @@ export function NewPurchaseOrderDialog({
     }
     
     const qty = Math.max(1, Math.round(Number(quantity) || 0));
+
+    let manufacturerId: string | undefined;
+    if (manufacturerKey.startsWith("fallback:") || manufacturerKey.startsWith("prof:")) {
+      manufacturerId = undefined;
+    } else {
+      manufacturerId = manufacturerKey;
+    }
     
     const po: PurchaseOrder = {
       id: nextPoId(existing),
@@ -252,18 +260,16 @@ export function NewPurchaseOrderDialog({
       marketDestination: marketDestination.trim() || "—",
       status,
       notes: notes.trim(),
-      // NEW: PO type fields
       poType,
+      manufacturerId,
       distributorAccountId: poType === "sales" ? (selectedDistributorId || distributorAccountId || undefined) : undefined,
     };
     
     setSubmitting(true);
     try {
-      const { txHash } = await simulateLedgerCommit({ type: "po_create", poId: po.id, sku: po.sku, quantity: po.quantity });
-      onCreate(po);
-      toast.success("Purchase order created", {
-        description: `${po.id} · ${poType === "sales" ? "Sales PO" : "Production PO"} · Network commit ${txHash.slice(0, 10)}…`,
-      });
+      await simulateLedgerCommit({ type: "po_create", poId: po.id, sku: po.sku, quantity: po.quantity });
+      const ok = await Promise.resolve(onCreate(po));
+      if (ok === false) return;
       onOpenChange(false);
 
       const hqProductionNavRoles = ["brand_operator", "founder_admin", "operations"];

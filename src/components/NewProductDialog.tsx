@@ -20,7 +20,8 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   existingSkus: string[];
-  onCreate: (product: Product) => void;
+  /** Return false to keep the dialog open (create failed). */
+  onCreate: (product: Product) => boolean | Promise<boolean>;
 };
 
 export function NewProductDialog({ open, onOpenChange, existingSkus, onCreate }: Props) {
@@ -40,7 +41,7 @@ export function NewProductDialog({ open, onOpenChange, existingSkus, onCreate }:
     }
   }, [open]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const skuNorm = sku.trim().toUpperCase();
     if (!skuNorm || !name.trim()) {
@@ -59,8 +60,8 @@ export function NewProductDialog({ open, onOpenChange, existingSkus, onCreate }:
       caseSize: cs,
       status,
     };
-    onCreate(product);
-    toast.success("Product added", { description: `${product.sku} — ${product.name}` });
+    const ok = await Promise.resolve(onCreate(product));
+    if (ok === false) return;
     onOpenChange(false);
   };
 

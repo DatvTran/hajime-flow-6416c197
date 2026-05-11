@@ -35,14 +35,11 @@ describe("API v1 only regression", () => {
     });
 
     await createProduct({
-      name: "Test Product",
       sku: "SKU-1",
+      name: "Test Product",
+      unit_size: "750ml",
       category: "Rum",
-      abv: "40",
-      caseSize: "12",
-      unitPrice: "30",
-      bottlesPerCase: "12",
-      unit: "750ml",
+      metadata: { caseSize: 12, status: "active" },
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);

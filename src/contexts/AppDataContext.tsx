@@ -40,6 +40,7 @@ import { useAuth } from "./AuthContext";
 import {
   createProduct as apiCreateProduct,
   updateProduct as apiUpdateProduct,
+  updateProductBySku as apiUpdateProductBySku,
   deleteProductBySku as apiDeleteProductBySku,
   createAccount as apiCreateAccount,
   updateAccount as apiUpdateAccount,
@@ -84,6 +85,33 @@ import {
 } from "@/lib/api-v1";
 
 const FALLBACK_SEED = normalizeAppData(seedJson as AppData);
+
+/** Build API payload aligned with `products` table + JSONB metadata (see data-service transformToAppData). */
+function catalogProductApiPayload(merged: Product): {
+  name: string;
+  description?: string;
+  category?: string;
+  unit_size: string;
+  metadata: Record<string, unknown>;
+} {
+  const wholesale = merged.wholesaleCasePrice ?? 0;
+  return {
+    name: merged.name,
+    ...(merged.shortDescription != null ? { description: merged.shortDescription } : {}),
+    unit_size: merged.size,
+    metadata: {
+      size: merged.size,
+      caseSize: merged.caseSize,
+      wholesalePriceCase: wholesale,
+      wholesaleCasePrice: wholesale,
+      retailPriceCase: 0,
+      minOrderCases: merged.minOrderCases ?? 1,
+      status: merged.status,
+      ...(merged.abv != null ? { abv: merged.abv } : {}),
+      ...(merged.imageUrl != null ? { imageUrl: merged.imageUrl, image: merged.imageUrl } : {}),
+    },
+  };
+}
 
 /**
  * Merge server data with local data - local changes take precedence.
@@ -149,6 +177,24 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
   // localStorage copy. If the API returns empty, keep local roster (offline / not migrated).
   if (Array.isArray(server.teamMembers) && server.teamMembers.length > 0) {
     merged.teamMembers = server.teamMembers;
+  }
+
+  // Catalog: keep SKUs that exist only locally (e.g. created offline) while server data wins for shared SKUs.
+  if (Array.isArray(server.products) && server.products.length > 0 && local.products?.length) {
+    const serverSkuSet = new Set(
+      server.products.map((p) => (p.sku?.toLowerCase() ?? "").trim()),
+    );
+    const localOnly = local.products.filter((p) => {
+      const k = (p.sku?.toLowerCase() ?? "").trim();
+      return k && !serverSkuSet.has(k);
+    });
+    merged.products = [...server.products, ...localOnly];
+  }
+
+  if (Array.isArray(server.purchaseOrders) && server.purchaseOrders.length > 0 && local.purchaseOrders?.length) {
+    const serverPoIds = new Set(server.purchaseOrders.map((p) => p.id).filter(Boolean));
+    const localOnlyPos = local.purchaseOrders.filter((p) => p.id && !serverPoIds.has(p.id));
+    merged.purchaseOrders = [...server.purchaseOrders, ...localOnlyPos];
   }
 
   return merged;
@@ -457,23 +503,10 @@ export function useProducts() {
     }
     
     try {
-      // Call granular API
+      const payload = catalogProductApiPayload(p);
       const result = await apiCreateProduct({
         sku: p.sku,
-        name: p.name,
-        description: p.description,
-        category: p.category,
-        unit_size: p.unitSize,
-        metadata: {
-          caseSize: p.caseSize,
-          bottleSizeMl: p.bottleSizeMl,
-          abv: p.abv,
-          wholesalePriceCase: p.wholesalePriceCase,
-          retailPriceCase: p.retailPriceCase,
-          launchDate: p.launchDate,
-          status: p.status,
-          image: p.image,
-        },
+        ...payload,
       });
       
       // Update local state with server response (includes id, timestamps)
@@ -497,32 +530,27 @@ export function useProducts() {
       toast.error("Product not found");
       return { success: false, error: "Product not found" };
     }
-    
+
+    const merged: Product = { ...product, ...patch };
+    const payload = catalogProductApiPayload(merged);
+    const idRaw = product.id;
+    const hasNumericId =
+      idRaw != null && String(idRaw).trim() !== "" && String(idRaw) !== "undefined";
+
     try {
-      // Call granular API
-      const result = await apiUpdateProduct(product.id, {
-        name: patch.name,
-        description: patch.description,
-        category: patch.category,
-        unit_size: patch.unitSize,
-        metadata: patch.caseSize !== undefined ? {
-          caseSize: patch.caseSize,
-          bottleSizeMl: patch.bottleSizeMl,
-          abv: patch.abv,
-          wholesalePriceCase: patch.wholesalePriceCase,
-          retailPriceCase: patch.retailPriceCase,
-          launchDate: patch.launchDate,
-          status: patch.status,
-          image: patch.image,
-        } : undefined,
-      });
-      
-      // Update local state
+      const result = hasNumericId
+        ? await apiUpdateProduct(String(idRaw), payload)
+        : await apiUpdateProductBySku(sku, payload);
+
+      const rid = (result as { data?: { id?: string | number } }).data?.id;
+
       updateData((d) => ({
         ...d,
-        products: d.products.map((x) => (x.sku === sku ? { ...x, ...patch } : x)),
+        products: d.products.map((x) =>
+          x.sku === sku ? { ...merged, id: rid ?? idRaw } : x,
+        ),
       }));
-      
+
       toast.success("Product updated");
       return { success: true, data: result.data };
     } catch (err) {
@@ -1312,57 +1340,106 @@ export function useSalesOrders() {
   );
 }
 
+function purchaseOrderStatusToApi(status: PurchaseOrder["status"]): string {
+  switch (status) {
+    case "approved":
+      return "acknowledged";
+    case "in-production":
+      return "in_production";
+    case "completed":
+      return "ready_for_shipment";
+    case "delayed":
+      return "in_production";
+    default:
+      return String(status).replace(/-/g, "_");
+  }
+}
+
+function purchaseOrderApiId(orders: PurchaseOrder[], clientId: string): string {
+  const po = orders.find((p) => p.id === clientId);
+  if (po?.databaseId != null && Number.isFinite(Number(po.databaseId))) {
+    return String(po.databaseId);
+  }
+  return clientId;
+}
+
 export function usePurchaseOrders() {
   const { data, updateData } = useAppData();
 
   const addPurchaseOrder = useCallback(async (po: PurchaseOrder) => {
     try {
+      const product = data.products.find((p) => p.sku === po.sku);
+      const productName = product ? `${product.name} ${product.size}`.trim() : po.sku;
+
       const result = await apiCreatePurchaseOrder({
-        po_number: po.poNumber || po.id,
-        supplier_id: po.supplierId,
-        supplier_name: po.supplierName,
+        po_number: po.id,
+        supplier_name: po.manufacturer,
+        manufacturer_id: po.manufacturerId,
         po_type: po.poType || "production",
-        status: po.status,
-        order_date: po.orderDate,
-        expected_delivery_date: po.expectedDeliveryDate,
-        items: po.lines?.map((l) => ({
-          sku: l.sku,
-          product_name: l.productName,
-          quantity: l.quantity,
-          unit_price: l.unitPrice,
-        })),
-        total_amount: po.totalAmount,
-        notes: po.notes,
+        status: purchaseOrderStatusToApi(po.status),
+        order_date: po.issueDate,
+        expected_delivery_date: po.requiredDate,
+        delivery_date: po.requiredDate,
+        market_destination: po.marketDestination,
+        total_bottles: po.quantity,
+        total_amount: 0,
+        notes: po.notes || "",
+        distributor_account_id: po.distributorAccountId,
+        metadata: {
+          packagingInstructions: po.packagingInstructions,
+          labelVersion: po.labelVersion,
+          requestedShipDate: po.requestedShipDate,
+        },
+        items: [
+          {
+            sku: po.sku,
+            product_name: productName,
+            quantity: po.quantity,
+            unit_price: 0,
+            product_id: product?.id != null ? String(product.id) : undefined,
+          },
+        ],
       });
+
+      const row = result.data as {
+        id?: string | number;
+        po_number?: string;
+      };
 
       updateData((d) => ({
         ...d,
-        purchaseOrders: [{
-          ...po,
-          id: String(result.data.id),
-          poNumber: result.data.po_number,
-        }, ...d.purchaseOrders],
+        purchaseOrders: [
+          {
+            ...po,
+            id: String(row.po_number ?? po.id),
+            databaseId: row.id != null ? Number(row.id) : po.databaseId,
+          },
+          ...d.purchaseOrders,
+        ],
       }));
-      toast.success("Purchase order created", { description: result.data.po_number });
+      toast.success("Purchase order created", { description: String(row.po_number ?? po.id) });
       return { success: true, data: result.data };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create purchase order";
       toast.error("Failed to create purchase order", { description: message });
       return { success: false, error: message };
     }
-  }, [updateData]);
+  }, [data.products, updateData]);
 
   const patchPurchaseOrder = useCallback(async (id: string, patch: Partial<PurchaseOrder>) => {
     try {
+      const apiId = purchaseOrderApiId(data.purchaseOrders, id);
       if (patch.status && Object.keys(patch).length === 1) {
-        await apiUpdatePurchaseOrderStatus(id, patch.status);
+        await apiUpdatePurchaseOrderStatus(apiId, purchaseOrderStatusToApi(patch.status));
       } else {
-        await apiUpdatePurchaseOrder(id, {
+        await apiUpdatePurchaseOrder(apiId, {
           po_number: patch.poNumber,
-          status: patch.status,
-          expected_delivery_date: patch.expectedDeliveryDate,
+          status: patch.status ? purchaseOrderStatusToApi(patch.status) : undefined,
+          expected_delivery_date: patch.requiredDate,
           total_amount: patch.totalAmount,
           notes: patch.notes,
+          supplier_name: patch.manufacturer,
+          market_destination: patch.marketDestination,
         });
       }
 
@@ -1377,11 +1454,11 @@ export function usePurchaseOrders() {
       toast.error("Failed to update purchase order", { description: message });
       return { success: false, error: message };
     }
-  }, [updateData]);
+  }, [data.purchaseOrders, updateData]);
 
   const removePurchaseOrder = useCallback(async (id: string) => {
     try {
-      await apiDeletePurchaseOrder(id);
+      await apiDeletePurchaseOrder(purchaseOrderApiId(data.purchaseOrders, id));
       updateData((d) => ({
         ...d,
         purchaseOrders: d.purchaseOrders.filter((p) => p.id !== id),
@@ -1393,7 +1470,7 @@ export function usePurchaseOrders() {
       toast.error("Failed to delete purchase order", { description: message });
       return { success: false, error: message };
     }
-  }, [updateData]);
+  }, [data.purchaseOrders, updateData]);
 
   return useMemo(
     () => ({

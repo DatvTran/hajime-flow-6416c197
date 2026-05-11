@@ -92,6 +92,22 @@ function mapRowToTeamMember(row: Record<string, unknown>): TeamMember {
   };
 }
 
+function parsePoMetadata(raw: unknown): Record<string, unknown> {
+  if (raw == null) return {};
+  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw === "string") {
+    try {
+      const o = JSON.parse(raw);
+      return typeof o === "object" && o !== null ? (o as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 function mapRowToPurchaseOrder(po: Record<string, unknown>): PurchaseOrder {
   const id = po.po_number != null ? String(po.po_number) : String(po.id ?? "");
   const rawStatus = String(po.status ?? "draft").toLowerCase().replace(/-/g, "_");
@@ -132,17 +148,28 @@ function mapRowToPurchaseOrder(po: Record<string, unknown>): PurchaseOrder {
 
   const dbPk = po.id != null && String(po.id).trim() !== "" ? Number(po.id) : NaN;
 
+  const lines = Array.isArray(po.items) ? (po.items as Record<string, unknown>[]) : [];
+  const first = lines[0];
+  const meta = parsePoMetadata(po.metadata);
+  const sku = first?.sku != null ? String(first.sku) : "—";
+  const quantity = first ? Number(first.quantity_ordered ?? first.quantity ?? 0) : 0;
+
+  const requestedShip =
+    meta.requestedShipDate != null
+      ? sliceIsoDate(meta.requestedShipDate)
+      : sliceIsoDate(po.requested_ship_date ?? po.delivery_date ?? requiredDate);
+
   return {
     id,
     ...(Number.isFinite(dbPk) ? { databaseId: dbPk } : {}),
     manufacturer,
     issueDate,
     requiredDate,
-    requestedShipDate: requiredDate,
-    sku: "—",
-    quantity: 0,
-    packagingInstructions: "",
-    labelVersion: "",
+    requestedShipDate: requestedShip,
+    sku,
+    quantity,
+    packagingInstructions: String(meta.packagingInstructions ?? ""),
+    labelVersion: String(meta.labelVersion ?? ""),
     marketDestination: String(po.market_destination ?? po.marketDestination ?? "—"),
     status,
     notes: String(po.notes ?? ""),
@@ -153,6 +180,9 @@ function mapRowToPurchaseOrder(po: Record<string, unknown>): PurchaseOrder {
       po.brand_operator_acknowledged_at != null
         ? String(po.brand_operator_acknowledged_at)
         : undefined,
+    ...(po.manufacturer_id != null && String(po.manufacturer_id).trim() !== ""
+      ? { manufacturerId: String(po.manufacturer_id) }
+      : {}),
   };
 }
 
@@ -538,12 +568,12 @@ function transformToAppData(
  */
 export async function fetchAppDataGranular(): Promise<AppData> {
   const results = await Promise.allSettled([
-    getProducts({ limit: 100 }),
+    getProducts({ limit: 500 }),
     getAccounts({ limit: 100 }),
     getOrders({ limit: 100 }),
     getInventory({ limit: 100 }),
     getDepletionReports({ limit: 200 }),
-    getPurchaseOrders({ limit: 100 }),
+    getPurchaseOrders({ limit: 200 }),
     getShipments({ limit: 100 }),
     getNewProductRequests({ limit: 100 }),
     getTeamMembers({ includeInactive: true }),

@@ -349,6 +349,8 @@ export type PurchaseOrder = {
   inventoryConsumed?: boolean;
   /** PO Type: sales (distributor ordering from manufacturer) vs production (brand op ordering directly) */
   poType?: "sales" | "production";
+  /** CRM team_members.id when manufacturer was picked from CRM */
+  manufacturerId?: string;
   /** For sales POs: the distributor account that placed the order */
   distributorAccountId?: string;
   /** For sales POs: brand operator who approved (visibility, not mandatory gate) */
@@ -516,6 +518,8 @@ export const shipments: Shipment[] = [
 ];
 
 export type Product = {
+  /** Postgres row id when loaded from API (required for updates unless server finds by SKU). */
+  id?: string | number;
   sku: string;
   name: string;
   size: string;
