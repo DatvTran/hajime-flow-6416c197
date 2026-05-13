@@ -1,0 +1,103 @@
+name: daily-check
+
+on:
+  schedule:
+    # 09:00 JST (00:00 UTC) every day
+    - cron: "0 0 * * *"
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # ── Tier 2: Code health ──────────────────────────────────────────────────────
+  code-health:
+    name: "Tier 2 · Code health"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: TypeScript (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Vitest unit tests
+        run: npm test
+
+      - name: Vite production build
+        run: npx vite build
+
+      - name: Audit sidebar → route resolution
+        run: npm run audit:sidebar
+
+      - name: Audit import resolution
+        run: npm run audit:imports
+
+  # ── Tier 3: Security & integrity ────────────────────────────────────────────
+  security:
+    name: "Tier 3 · Security & integrity"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install server deps
+        run: npm ci --prefix server
+
+      - name: npm audit (frontend, high+)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: npm audit (server, high+)
+        run: npm audit --omit=dev --audit-level=high --prefix server
+
+      - name: No hardcoded tenant UUIDs (non-DEFAULT)
+        # Fail if any literal UUID appears in a tenant_id context outside a DEFAULT placeholder
+        run: |
+          if grep -rn "tenant_id" server/ src/ \
+               | grep -iE "['\"][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}['\"]" \
+               | grep -iv "DEFAULT"; then
+            echo "Hardcoded tenant UUID detected — remove it."
+            exit 1
+          fi
+          echo "OK: no hardcoded tenant UUIDs."
+
+      - name: Registration schema excludes privileged roles
+        # SELF_REGISTERABLE_ROLES in auth.schemas.mjs must NOT contain
+        # FOUNDER_ADMIN or BRAND_OPERATOR — those are admin-create-only.
+        run: |
+          SCHEMA=server/routes/auth.schemas.mjs
+
+          # Confirm SELF_REGISTERABLE_ROLES block exists
+          if ! grep -q "SELF_REGISTERABLE_ROLES" "$SCHEMA"; then
+            echo "SELF_REGISTERABLE_ROLES not found in $SCHEMA"
+            exit 1
+          fi
+
+          # Extract the SELF_REGISTERABLE_ROLES array lines (stop at first closing bracket)
+          BLOCK=$(awk '/SELF_REGISTERABLE_ROLES\s*=\s*\[/,/\]/' "$SCHEMA")
+
+          for BAD_ROLE in "FOUNDER_ADMIN" "BRAND_OPERATOR"; do
+            if echo "$BLOCK" | grep -q "$BAD_ROLE"; then
+              echo "SECURITY: $BAD_ROLE is in SELF_REGISTERABLE_ROLES — privileged self-registration allowed."
+              exit 1
+            fi
+          done
+
+          echo "OK: FOUNDER_ADMIN and BRAND_OPERATOR absent from SELF_REGISTERABLE_ROLES."
