@@ -9,6 +9,7 @@ import { RetailProductCard } from "@/components/retail/RetailProductCard";
 import { toast } from "@/components/ui/sonner";
 import type { SalesOrder } from "@/data/mockData";
 import { cn } from "@/lib/utils";
+import { IncentiveProgressDashboardCard } from "@/components/incentives/IncentiveProgressDashboardCard";
 
 const STEP_LABELS = ["Placed", "Approved", "Packed", "Shipped", "Delivered"] as const;
 
@@ -163,6 +164,13 @@ export default function RetailHomePage() {
           </div>
         ) : null}
       </div>
+
+      {accountName ? (
+        <IncentiveProgressDashboardCard
+          retailTradingName={accountName}
+          activityHint={`About ${spend30d.casesApprox} cases and $${formatMoney(spend30d.sum)} in the last 30 days from your orders (${spend30d.skuCount} SKUs).`}
+        />
+      ) : null}
 
       {/* Live order tracker — journey: “in motion” before browse */}
       {trackerOrder ? (

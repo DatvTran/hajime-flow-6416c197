@@ -17,6 +17,12 @@ import {
   sendCrmInviteEmail,
   CRM_TEAM_ROLE_LABELS,
 } from '../services/crm-invite.mjs';
+import {
+  normalizeIncentiveManagerState,
+  incentiveStateJsonByteLength,
+  MAX_STATE_JSON,
+} from '../lib/incentive-manager-state.mjs';
+import { buildMyIncentiveProgress } from '../lib/incentive-progress-self.mjs';
 
 const router = Router();
 const isDev = process.env.NODE_ENV === 'development';
@@ -4674,6 +4680,148 @@ router.delete('/team-members/by-email/:email', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete team member' });
   }
 });
+
+// ===== SUPPLY CHAIN INCENTIVE MANAGER (singleton JSON per tenant) =====
+
+// GET /api/v1/supply-chain-incentives — { data: null } if never saved
+router.get(
+  '/supply-chain-incentives',
+  requirePermission(Permission.INCENTIVES_READ),
+  async (req, res) => {
+    try {
+      const tenantId = getTenantId(req, res);
+      if (!tenantId) return;
+
+      const row = await db('supply_chain_incentive_state').where({ tenant_id: tenantId }).first();
+      if (!row) {
+        return res.json({ data: null });
+      }
+
+      let state = row.state;
+      if (typeof state === 'string') {
+        try {
+          state = JSON.parse(state);
+        } catch {
+          state = {};
+        }
+      }
+      if (!state || typeof state !== 'object') {
+        state = {};
+      }
+
+      const normalized = normalizeIncentiveManagerState(state);
+      res.json({
+        data: normalized,
+        updatedAt: row.updated_at,
+        updatedBy: row.updated_by,
+      });
+    } catch (err) {
+      console.error('[API v1] Error fetching supply-chain incentives:', err);
+      res.status(500).json({ error: 'Failed to fetch supply chain incentives' });
+    }
+  },
+);
+
+// PUT /api/v1/supply-chain-incentives — full document replace
+router.put(
+  '/supply-chain-incentives',
+  requirePermission(Permission.INCENTIVES_WRITE),
+  async (req, res) => {
+    try {
+      const tenantId = getTenantId(req, res);
+      if (!tenantId) return;
+
+      const normalized = normalizeIncentiveManagerState(req.body);
+      const bytes = incentiveStateJsonByteLength(normalized);
+      if (bytes > MAX_STATE_JSON) {
+        return res.status(400).json({ error: 'Incentive data payload is too large' });
+      }
+
+      const payload = {
+        state: JSON.stringify(normalized),
+        updated_at: new Date(),
+        updated_by: req.user?.userId ?? null,
+      };
+
+      const existing = await db('supply_chain_incentive_state').where({ tenant_id: tenantId }).first();
+      if (!existing) {
+        await db('supply_chain_incentive_state').insert({
+          tenant_id: tenantId,
+          ...payload,
+        });
+      } else {
+        await db('supply_chain_incentive_state').where({ tenant_id: tenantId }).update(payload);
+      }
+
+      const row = await db('supply_chain_incentive_state').where({ tenant_id: tenantId }).first();
+      res.json({
+        data: normalized,
+        updatedAt: row?.updated_at,
+        updatedBy: row?.updated_by,
+      });
+    } catch (err) {
+      console.error('[API v1] Error saving supply-chain incentives:', err);
+      res.status(500).json({ error: 'Failed to save supply chain incentives' });
+    }
+  },
+);
+
+// GET /api/v1/supply-chain-incentives/me — role-scoped SPIF / partner progress (distributor, sales_rep, retail)
+router.get(
+  '/supply-chain-incentives/me',
+  requirePermission(Permission.INCENTIVES_SELF_READ),
+  async (req, res) => {
+    try {
+      const tenantId = getTenantId(req, res);
+      if (!tenantId) return;
+
+      const row = await db('supply_chain_incentive_state').where({ tenant_id: tenantId }).first();
+      let state = row?.state;
+      if (typeof state === 'string') {
+        try {
+          state = JSON.parse(state);
+        } catch {
+          state = {};
+        }
+      }
+      if (!state || typeof state !== 'object') state = {};
+
+      const normalized = normalizeIncentiveManagerState(state);
+
+      const emailLower = String(req.user.email || '')
+        .trim()
+        .toLowerCase();
+      const tm = await db('team_members')
+        .where({ tenant_id: tenantId, email: emailLower })
+        .where('is_active', true)
+        .first();
+
+      const tradingNameQ =
+        typeof req.query.tradingName === 'string' ? req.query.tradingName.trim().slice(0, 200) : '';
+
+      const payload = buildMyIncentiveProgress({
+        role: req.user.role,
+        user: { displayName: req.user.displayName, email: req.user.email },
+        teamMember: tm ? { name: tm.name } : null,
+        state: normalized,
+        retailTradingName:
+          req.user.role === 'retail' || req.user.role === 'retail_account' ? tradingNameQ : undefined,
+      });
+
+      if (payload.scope === 'unsupported') {
+        return res.status(403).json({ error: 'Incentive progress is not available for this role' });
+      }
+
+      res.json({
+        data: payload,
+        updatedAt: row?.updated_at ?? null,
+      });
+    } catch (err) {
+      console.error('[API v1] supply-chain-incentives/me:', err);
+      res.status(500).json({ error: 'Failed to load incentive progress' });
+    }
+  },
+);
 
 // ===== OPERATIONAL SETTINGS (singleton per tenant) =====
 

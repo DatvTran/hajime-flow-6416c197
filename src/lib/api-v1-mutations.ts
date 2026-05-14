@@ -1390,6 +1390,91 @@ export async function deleteIncentive(id: string) {
   });
 }
 
+// ===== SUPPLY CHAIN INCENTIVE MANAGER (/incentives) — tenant JSON snapshot =====
+
+export type SupplyChainIncentiveStatePayload = {
+  partners: unknown[];
+  spifs: unknown[];
+  supplyChainPricing: {
+    landed: number;
+    wholesale: number;
+    retail: number;
+    shelf: number;
+  };
+  spifRates: {
+    new_on_premise: number;
+    new_off_premise: number;
+    reorder: number;
+    tasting: number;
+  };
+  volumeBonusesUsd: { gold: number; silver: number };
+};
+
+export async function getSupplyChainIncentivesState(): Promise<{
+  data: SupplyChainIncentiveStatePayload | null;
+  updatedAt?: string;
+  updatedBy?: string | number | null;
+}> {
+  return apiFetch("/api/v1/supply-chain-incentives");
+}
+
+export async function putSupplyChainIncentivesState(
+  body: SupplyChainIncentiveStatePayload,
+): Promise<{
+  data: SupplyChainIncentiveStatePayload;
+  updatedAt?: string;
+  updatedBy?: string | number | null;
+}> {
+  return apiFetch("/api/v1/supply-chain-incentives", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export type MyIncentiveProgressData = {
+  scope: "distributor" | "sales_rep" | "retail" | "unsupported";
+  matched: boolean;
+  retailTradingName?: string | null;
+  partner: {
+    id: string;
+    name: string;
+    market: string;
+    tier: string;
+    quarterlyPerformanceTier: string | null;
+    quarterlyCasesSold: number;
+    accountsOpened: number;
+    reorders: number;
+    tastingsCompleted: number;
+    adfSpend: number;
+  } | null;
+  spifs: Array<{
+    id: string;
+    type: string;
+    date: string;
+    quantity: number;
+    payout: number;
+    repName?: string;
+    partnerName?: string;
+    notes?: string;
+  }>;
+  totals: { payoutTotal: number; spifCount: number };
+  program: {
+    spifRates: Record<string, number>;
+    volumeBonusesUsd: { gold: number; silver: number };
+  };
+};
+
+export async function getMySupplyChainIncentiveProgress(tradingName?: string | null): Promise<{
+  data: MyIncentiveProgressData;
+  updatedAt?: string | null;
+}> {
+  const q =
+    tradingName && String(tradingName).trim()
+      ? `?tradingName=${encodeURIComponent(String(tradingName).trim().slice(0, 200))}`
+      : "";
+  return apiFetch(`/api/v1/supply-chain-incentives/me${q}`);
+}
+
 // ===== PRODUCTION STATUSES =====
 
 export async function getProductionStatuses(params?: {

@@ -32,6 +32,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/sonner";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
+import { IncentiveProgressDashboardCard } from "@/components/incentives/IncentiveProgressDashboardCard";
 
 const VISIT_STORAGE = "hajime_rep_visit_notes";
 
@@ -411,6 +412,8 @@ export default function SalesRepHomePage() {
         title="Field sales"
         description="Walk-in → stock check → draft order → offline-safe capture. Same order objects HQ approves and distributors fulfill — no duplicate entry between your notes and the live queue."
       />
+
+      <IncentiveProgressDashboardCard />
 
       <div className="grid gap-4 lg:grid-cols-5">
         <div className="card-elevated lg:col-span-2">

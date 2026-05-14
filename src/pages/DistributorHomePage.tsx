@@ -14,6 +14,7 @@ import { getMyWarehouseOptions, updateMyPrimaryWarehouse } from "@/lib/api-v1-mu
 import type { Warehouse } from "@/types/app-data";
 import { toast } from "@/components/ui/sonner";
 import { DistributorSkeleton } from "@/components/skeletons";
+import { IncentiveProgressDashboardCard } from "@/components/incentives/IncentiveProgressDashboardCard";
 import { Package, ShoppingCart, Truck, Users, AlertTriangle, Warehouse, Calendar, TrendingDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -137,6 +138,8 @@ export default function DistributorHomePage() {
         title="Distributor · floor & depletion"
         description="Floor-first view: what needs picking today, what’s in motion, and where retail depletion flags replenishment — every side-effect is inventory truth, not a separate spreadsheet."
       />
+
+      <IncentiveProgressDashboardCard />
 
       {user?.role === "distributor" ? (
         <Card className="border-border/80">
