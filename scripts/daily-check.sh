@@ -12,8 +12,10 @@
 #    bash scripts/daily-check.sh --tier 2      # start from tier N
 #
 #  Environment overrides:
-#    HAJIME_FLY_APP      fly.io app name       (default: hajime-app)
-#    HAJIME_BASE_URL     prod base URL         (default: https://hajime-app.fly.dev)
+#    HAJIME_FLY_APP             fly.io app name        (default: hajime-app)
+#    HAJIME_BASE_URL            prod base URL          (default: https://hajime-app.fly.dev)
+#    HAJIME_TEST_TOKEN          tenant-A access token  (enables cross-tenant 403 smoke in Tier 3f)
+#    HAJIME_OTHER_TENANT_ID     tenant-B UUID          (required alongside HAJIME_TEST_TOKEN)
 # =============================================================================
 set -uo pipefail
 
@@ -139,6 +141,13 @@ else
     fail "fly status: no machines in started/running state"
     (( T1_FAILS++ )) || true
   fi
+  # Detect restart loops (machine restarting repeatedly = likely OOM or crash)
+  RESTART_LINES=$(echo "$FLY_STATUS" | grep -iE "restart" || true)
+  if [[ -n "$RESTART_LINES" ]]; then
+    fail "fly status: machine(s) appear to be restarting — possible crash loop:"
+    echo "$RESTART_LINES" | sed 's/^/       /'
+    (( T1_FAILS++ )) || true
+  fi
 fi
 
 # ── 1d. Error scan in logs (last 24h) ─────────────────────────────────────────
@@ -148,7 +157,14 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
+  RAW_LOGS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+  # RouteErrorBoundary = a render crash reached a real user — hard stop
+  REB_COUNT=$(echo "$RAW_LOGS" | grep -c "RouteErrorBoundary" || true)
+  if [[ "$REB_COUNT" -gt 0 ]]; then
+    fail "$REB_COUNT RouteErrorBoundary hit(s) in last 24h — render crash(es) reached users"
+    stop "RouteErrorBoundary appeared $REB_COUNT time(s) in logs. A page crashed for real users — diagnose before writing new code."
+  fi
+  LOG_ERRORS=$(echo "$RAW_LOGS" \
     | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
@@ -331,7 +347,33 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  # Cross-tenant isolation — requires HAJIME_TEST_TOKEN + HAJIME_OTHER_TENANT_ID
+  if [[ -n "${HAJIME_TEST_TOKEN:-}" && -n "${HAJIME_OTHER_TENANT_ID:-}" ]]; then
+    CROSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: Bearer $HAJIME_TEST_TOKEN" \
+      "${BASE_URL}/api/products?tenantId=${HAJIME_OTHER_TENANT_ID}" \
+      2>/dev/null || echo "000")
+    if [[ "$CROSS_CODE" == "403" || "$CROSS_CODE" == "401" ]]; then
+      pass "Cross-tenant isolation: /api/products with other tenant → $CROSS_CODE  ✓"
+    else
+      fail "Cross-tenant isolation: expected 403/401, got $CROSS_CODE"
+      stop "Cross-tenant request returned $CROSS_CODE — tenant isolation may be broken."
+    fi
+  else
+    warn "Cross-tenant 403 test skipped — set HAJIME_TEST_TOKEN + HAJIME_OTHER_TENANT_ID to enable"
+  fi
 fi
+
+# ── 3g. auth_events manual reminder ──────────────────────────────────────────
+step "3g. auth_events — manual DB check reminder"
+echo ""
+info "If you have psql access, run for the last 24h:"
+info "  SELECT event_type, COUNT(*) FROM auth_events"
+info "  WHERE created_at > NOW() - INTERVAL '24 hours'"
+info "  GROUP BY event_type ORDER BY count DESC;"
+info "Watch for: permission_denied spikes · repeated account_locked · unexpected 'register' rows."
+info "  (Stop if you see a successful register with role = founder_admin or brand_operator.)"
 fi  # end START_TIER <= 3
 
 # =============================================================================
