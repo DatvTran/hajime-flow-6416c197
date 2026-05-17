@@ -20,7 +20,8 @@
     "check:legacy-startup": "node scripts/validate-legacy-startup.mjs",
     "audit:sidebar": "node scripts/audit-sidebar-links.mjs",
     "audit:imports": "node scripts/audit-imports.mjs",
-    "check:daily": "bash scripts/daily-check.sh"
+    "check:daily": "bash scripts/daily-check.sh",
+    "check:weekly": "bash scripts/daily-check.sh --weekly"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

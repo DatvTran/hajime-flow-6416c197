@@ -10,6 +10,7 @@
 #    bash scripts/daily-check.sh --skip-fly    # skip fly CLI checks (offline)
 #    bash scripts/daily-check.sh --skip-prod   # skip prod HTTP calls
 #    bash scripts/daily-check.sh --tier 2      # start from tier N
+#    bash scripts/daily-check.sh --weekly      # also run weekly add-ons
 #
 #  Environment overrides:
 #    HAJIME_FLY_APP      fly.io app name       (default: hajime-app)
@@ -24,12 +25,14 @@ HEALTH_URL="${BASE_URL}/api/health"
 SKIP_FLY=""
 SKIP_PROD=""
 START_TIER=1
+WEEKLY=""
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-fly)   SKIP_FLY=1 ;;
     --skip-prod)  SKIP_PROD=1 ;;
+    --weekly)     WEEKLY=1 ;;
     --tier)       START_TIER="${2:?'--tier requires a number'}"; shift ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
@@ -331,7 +334,23 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  # Cross-tenant check requires a live token — guidance only
+  warn "Cross-tenant smoke (manual — needs a live token):"
+  info "  TOKEN=<tenant-A access token>"
+  info "  curl -i -H \"Authorization: Bearer \$TOKEN\" \\"
+  info "    \"${BASE_URL}/api/products?tenantId=<tenant-B-uuid>\""
+  info "  Expected: 403 Forbidden — if 200 that is a cross-tenant data leak."
 fi
+
+# ── 3g. auth_events monitoring reminder ──────────────────────────────────────
+step "3g. auth_events monitoring (last 24h)"
+warn "Requires direct DB access — run manually if you have it:"
+info "  SELECT event_type, role, COUNT(*) FROM auth_events"
+info "    WHERE created_at > now() - interval '24 hours'"
+info "    GROUP BY event_type, role ORDER BY count DESC;"
+info "  Look for: permission_denied spikes, repeated account_locked,"
+info "  or any register event with role = founder_admin / brand_operator."
 fi  # end START_TIER <= 3
 
 # =============================================================================
@@ -365,9 +384,71 @@ fi
 fi  # end START_TIER <= 4
 
 # =============================================================================
+#  WEEKLY ADD-ONS  (only when --weekly is passed)
+# =============================================================================
+T_WEEKLY_FAILS=0
+if [[ -n "$WEEKLY" ]]; then
+hdr "WEEKLY — Dependency & infra review"
+
+step "W1. npm outdated (root)"
+if npm outdated 2>&1; then
+  pass "root: all packages up to date"
+else
+  warn "root: some packages have updates — review above and apply minor/patch bumps"
+fi
+
+step "W2. npm outdated (server)"
+if npm outdated --prefix server 2>&1; then
+  pass "server: all packages up to date"
+else
+  warn "server: some packages have updates — review above"
+fi
+
+step "W3. Full Playwright run (all 6 suites)"
+if [[ -f "playwright.config.ts" ]] && has_cmd npx; then
+  if npx playwright test --project=chromium --reporter=line 2>&1; then
+    pass "All 6 Playwright suites passed"
+  else
+    fail "Playwright: failures detected — see output above"
+    (( T_WEEKLY_FAILS++ )) || true
+  fi
+else
+  warn "Playwright not configured — skipping"
+fi
+
+step "W4. Fly volumes / disk usage"
+if [[ -n "$SKIP_FLY" ]]; then
+  warn "SKIP_FLY set — skipping"
+elif ! has_cmd fly; then
+  warn "fly CLI not found"
+else
+  fly volumes list -a "$APP_NAME" 2>&1 || true
+  info "server/data should not be growing if you are past Stage 1."
+fi
+
+step "W5. auth_events & audit_logs (last 7 days)"
+warn "Requires direct DB access — run manually:"
+info "  SELECT event_type, role, COUNT(*) FROM auth_events"
+info "    WHERE created_at > now() - interval '7 days'"
+info "    GROUP BY event_type, role ORDER BY count DESC;"
+info "  SELECT action, COUNT(*) FROM audit_logs"
+info "    WHERE created_at > now() - interval '7 days'"
+info "    GROUP BY action ORDER BY count DESC;"
+info "  Look for: permission_denied spikes, repeated account_locked, unexpected privileged registrations."
+
+step "W6. Known gap review (no automation — human judgement required)"
+echo ""
+echo "  Review whether any of these changed in priority this week:"
+echo "    • Depletion reporting — no automated reorder triggers"
+echo "    • Sales rep inventory visibility — currently inventory-blind on draft orders"
+echo "    • Production PO inventory gate — POs can be created without a stock check"
+echo ""
+fi  # end --weekly
+
+# =============================================================================
 #  SUMMARY
 # =============================================================================
-TOTAL_FAILS=$(( T1_FAILS + T2_FAILS + T3_FAILS + T4_FAILS ))
+TOTAL_FAILS=$(( T1_FAILS + T2_FAILS + T3_FAILS + T4_FAILS + T_WEEKLY_FAILS ))
 
 echo ""
 echo -e "${BOLD}${BLUE}━━━ SUMMARY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -381,14 +462,15 @@ else
   [[ $T2_FAILS -gt 0 ]] && echo -e "  ${RED}✗  Tier 2 (Code):       $T2_FAILS failure(s)${NC}"
   [[ $T3_FAILS -gt 0 ]] && echo -e "  ${RED}✗  Tier 3 (Security):   $T3_FAILS failure(s)${NC}"
   [[ $T4_FAILS -gt 0 ]] && echo -e "  ${RED}✗  Tier 4 (Smoke):      $T4_FAILS failure(s)${NC}"
+  [[ $T_WEEKLY_FAILS -gt 0 ]] && echo -e "  ${RED}✗  Weekly:             $T_WEEKLY_FAILS failure(s)${NC}"
 fi
 
 echo ""
-echo -e "${DIM}Weekly add-ons (not daily — too noisy):${NC}"
-echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
-echo -e "${DIM}  npx playwright test --reporter=line       # all 6 suites${NC}"
-echo -e "${DIM}  fly volumes list -a $APP_NAME             # disk usage${NC}"
-echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+if [[ -z "$WEEKLY" ]]; then
+  echo -e "${DIM}Weekly add-ons (run with --weekly or npm run check:weekly):${NC}"
+  echo -e "${DIM}  npm outdated + server outdated · full Playwright · fly volumes${NC}"
+  echo -e "${DIM}  auth_events/audit_logs 7-day review · known gap priority review${NC}"
+fi
 echo ""
 
 [[ $TOTAL_FAILS -eq 0 ]]  # exit 0 on success, 1 on any failures
