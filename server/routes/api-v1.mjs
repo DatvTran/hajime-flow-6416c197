@@ -4,19 +4,66 @@
  * With full RBAC protection
  */
 import { Router } from 'express';
-import { db } from '../config/database.mjs';
+import { getDb, platformDb } from '../config/request-db.mjs';
 import {
   authenticateToken,
   requireAnyPermission,
   requirePermission,
   requireTenantAccess,
 } from '../middleware/auth.mjs';
+import {
+  attachDistributorDatabase,
+  attachDatabaseFromInviteToken,
+} from '../middleware/distributor-database.mjs';
+import {
+  createDistributorOrganization,
+  registerInviteTokenRoute,
+} from '../lib/distributor-organization.mjs';
 import { Permission, Role, hasPermission } from '../rbac/permissions.mjs';
 import {
   createCrmUserInvite,
   sendCrmInviteEmail,
+  sendStoreSetupInviteEmail,
   CRM_TEAM_ROLE_LABELS,
 } from '../services/crm-invite.mjs';
+import {
+  normalizeIncentiveManagerState,
+  incentiveStateJsonByteLength,
+  MAX_STATE_JSON,
+} from '../lib/incentive-manager-state.mjs';
+import { buildMyIncentiveProgress } from '../lib/incentive-progress-self.mjs';
+import {
+  assertCanManageRetailPortalUsers,
+  findTeamMemberByEmail,
+  listRetailPortalUsersForAccount,
+  loadAccountForPortal,
+  loadRetailPortalSettings,
+  linkAccountToDistributorDepot,
+  isOnPremiseAccountType,
+  normalizeNotificationPrefs,
+  serializePortalUser,
+} from '../lib/retail-portal.mjs';
+import {
+  normalizeRepLabel,
+  resolveSalesRepLabelForUser,
+} from '../lib/sales-rep-label.mjs';
+import {
+  distributorCanAccessPendingRetail,
+  distributorOwnsTeamMemberRow,
+  linkedAccountIdsForDistributor,
+  resolveDistributorUserIdForSalesRep,
+  resolveDistributorAssignedSalesRep,
+  salesRepUserIdsForDistributor,
+} from '../lib/distributor-scope.mjs';
+import {
+  loadLicenseeApplicationContext,
+  submitLicenseeApplication,
+  LICENSEE_STEPS,
+} from '../lib/licensee-application.mjs';
+import {
+  hqFetchFromAllSources,
+  paginateMergedRows,
+} from '../lib/hq-global-view.mjs';
 
 const router = Router();
 const isDev = process.env.NODE_ENV === 'development';
@@ -41,7 +88,7 @@ function parseProductMetadata(raw) {
  * don't wipe fields omitted from the request body.
  */
 async function updateProductForTenant(tenantId, whereClause, body) {
-  const existing = await db('products')
+  const existing = await getDb('products')
     .where(whereClause)
     .where({ tenant_id: tenantId })
     .whereNull('deleted_at')
@@ -65,7 +112,7 @@ async function updateProductForTenant(tenantId, whereClause, body) {
 
   updates.updated_at = new Date();
 
-  const [product] = await db('products')
+  const [product] = await getDb('products')
     .where({ id: existing.id, tenant_id: tenantId })
     .whereNull('deleted_at')
     .update(updates)
@@ -97,15 +144,19 @@ async function buildCrmContactInvitePayload(req, tenantId, member, { email, name
     };
   }
 
+  if (inviteResult.token && req.distributorOrg?.id) {
+    await registerInviteTokenRoute(inviteResult.token, req.distributorOrg.id);
+  }
+
   try {
-    const tenantRow = await db('tenants').where({ id: tenantId }).first();
+    const tenantRow = await getDb('tenants').where({ id: tenantId }).first();
     const sendResult = await sendCrmInviteEmail({
       to: email,
       inviteUrl: inviteResult.inviteUrl,
       recipientName: name,
       roleLabel: CRM_TEAM_ROLE_LABELS[role] || role,
       inviterDisplayName: req.user?.displayName,
-      tenantName: tenantRow?.name,
+      tenantName: req.distributorOrg?.name || tenantRow?.name,
     });
 
     const exposeInviteUrl = isDev || !sendResult.sent;
@@ -180,8 +231,44 @@ function parseOptionalPrimaryWarehouseId(body) {
   return String(v).trim();
 }
 
+// ——— Public: New Licensee Application (invite token) ———
+router.get('/licensee-application/context', attachDatabaseFromInviteToken, async (req, res) => {
+  try {
+    const token = req.query.token;
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'token is required' });
+    }
+    const result = await loadLicenseeApplicationContext(token);
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+    res.json({ data: { ...result.context, steps: LICENSEE_STEPS } });
+  } catch (err) {
+    console.error('[API v1] licensee-application context:', err);
+    res.status(500).json({ error: 'Failed to load application' });
+  }
+});
+
+router.post('/licensee-application', attachDatabaseFromInviteToken, async (req, res) => {
+  try {
+    const token = req.body?.token ?? req.query?.token;
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'token is required' });
+    }
+    const result = await submitLicenseeApplication(token, req.body?.formData ?? req.body);
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+    res.status(201).json({ data: result.data });
+  } catch (err) {
+    console.error('[API v1] licensee-application submit:', err);
+    res.status(500).json({ error: 'Failed to submit application' });
+  }
+});
+
 // Apply auth to all routes
 router.use(authenticateToken);
+router.use(attachDistributorDatabase);
 router.use(requireTenantAccess);
 
 // Helper to get tenantId from authenticated user — throws 403 if missing to prevent cross-tenant leakage
@@ -192,6 +279,12 @@ function getTenantId(req, res) {
     return null;
   }
   return tenantId;
+}
+
+/** Brand HQ: merge list rows from platform + every distributor database. */
+async function respondHqPaginatedList(req, res, { page, limit, sortKey, fetchRows }) {
+  const merged = await hqFetchFromAllSources(req.user?.tenantId, fetchRows);
+  res.json(paginateMergedRows(merged, { page, limit, sortKey }));
 }
 
 /** Normalize multi-line / duplicate spaces for fuzzy CRM ↔ account matching. */
@@ -321,12 +414,31 @@ router.get('/products', requirePermission(Permission.INVENTORY_READ), async (req
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { page = 1, limit = 50, category, search } = req.query;
+
+    if (req.hqGlobalView) {
+      return respondHqPaginatedList(req, res, {
+        page,
+        limit,
+        sortKey: 'created_at',
+        fetchRows: async (db, tid) => {
+          if (!tid) return [];
+          let q = db('products').where({ tenant_id: tid }).whereNull('deleted_at');
+          if (category) q = q.where('category', category);
+          if (search) {
+            q = q.where(function () {
+              this.where('name', 'ilike', `%${search}%`).orWhere('sku', 'ilike', `%${search}%`);
+            });
+          }
+          return q.orderBy('created_at', 'desc');
+        },
+      });
+    }
     
     if (isDev) {
       console.log(`[API v1] GET /products - tenantId: ${tenantId}`);
     }
     
-    let baseQuery = db('products')
+    let baseQuery = getDb('products')
       .where({ tenant_id: tenantId })
       .whereNull('deleted_at');
     
@@ -379,7 +491,7 @@ router.get('/products/:id', requirePermission(Permission.INVENTORY_READ), async 
     if (!tenantId) return;
     const { id } = req.params;
     
-    const product = await db('products')
+    const product = await getDb('products')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .first();
@@ -406,7 +518,7 @@ router.post('/products', requirePermission(Permission.INVENTORY_WRITE), async (r
       return res.status(400).json({ error: 'SKU and name are required' });
     }
     
-    const [product] = await db('products')
+    const [product] = await getDb('products')
       .insert({
         tenant_id: tenantId,
         sku,
@@ -437,7 +549,7 @@ router.delete('/products/by-sku/:sku', requirePermission(Permission.INVENTORY_WR
       return res.status(400).json({ error: 'SKU is required' });
     }
 
-    const [product] = await db('products')
+    const [product] = await getDb('products')
       .where({ tenant_id: tenantId, sku })
       .whereNull('deleted_at')
       .update({ deleted_at: new Date(), updated_at: new Date() })
@@ -502,7 +614,7 @@ router.delete('/products/:id', requirePermission(Permission.INVENTORY_WRITE), as
     if (!tenantId) return;
     const { id } = req.params;
     
-    const [product] = await db('products')
+    const [product] = await getDb('products')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update({ deleted_at: new Date(), updated_at: new Date() })
@@ -519,6 +631,59 @@ router.delete('/products/:id', requirePermission(Permission.INVENTORY_WRITE), as
   }
 });
 
+// ===== DISTRIBUTOR ORGANIZATIONS (isolated databases) =====
+
+// POST /api/v1/distributor-organizations — Brand HQ provisions a new wholesaler database
+router.post('/distributor-organizations', async (req, res) => {
+  try {
+    if (!hasPermission(req.user.role, Permission.SETTINGS_WRITE)) {
+      return res.status(403).json({ error: 'Only Brand HQ can provision distributor organizations.' });
+    }
+
+    const name = String(req.body?.name || '').trim();
+    const slug = String(req.body?.slug || '').trim();
+    const ownerUserId = req.body?.ownerUserId ?? req.body?.owner_user_id ?? null;
+
+    if (!name) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+
+    const org = await createDistributorOrganization({
+      name,
+      slug: slug || name,
+      ownerUserId: ownerUserId != null ? Number(ownerUserId) : null,
+      platformTenantId: req.user.tenantId,
+    });
+
+    res.status(201).json({
+      data: org,
+      message: `Distributor database ${org.database_name} provisioned.`,
+    });
+  } catch (err) {
+    if (err.status === 409) {
+      return res.status(409).json({ error: err.message });
+    }
+    console.error('[API v1] Error provisioning distributor organization:', err);
+    res.status(500).json({ error: 'Failed to provision distributor organization' });
+  }
+});
+
+// GET /api/v1/distributor-organizations — HQ lists registry
+router.get('/distributor-organizations', async (req, res) => {
+  try {
+    if (!hasPermission(req.user.role, Permission.SETTINGS_WRITE)) {
+      return res.status(403).json({ error: 'Insufficient permissions.' });
+    }
+    const rows = await platformDb('distributor_organizations')
+      .where({ is_active: true })
+      .orderBy('created_at', 'desc');
+    res.json({ data: rows });
+  } catch (err) {
+    console.error('[API v1] Error listing distributor organizations:', err);
+    res.status(500).json({ error: 'Failed to list distributor organizations' });
+  }
+});
+
 // ===== ACCOUNTS =====
 
 // GET /api/v1/accounts - List all accounts
@@ -526,9 +691,26 @@ router.get('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req,
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
-    const { page = 1, limit = 50, type, market, status = 'active', sales_owner } = req.query;
+    const { page = 1, limit = 50, type, market, status, sales_owner } = req.query;
+
+    if (req.hqGlobalView) {
+      return respondHqPaginatedList(req, res, {
+        page,
+        limit,
+        sortKey: 'created_at',
+        fetchRows: async (db, tid) => {
+          if (!tid) return [];
+          let q = db('accounts').where({ tenant_id: tid }).whereNull('deleted_at');
+          if (type) q = q.where('type', type);
+          if (market) q = q.where('market', market);
+          if (status) q = q.where('status', status);
+          if (sales_owner) q = q.where('sales_owner', sales_owner);
+          return q.orderBy('created_at', 'desc');
+        },
+      });
+    }
     
-    let baseQuery = db('accounts')
+    let baseQuery = getDb('accounts')
       .where({ tenant_id: tenantId })
       .whereNull('deleted_at');
     
@@ -536,6 +718,35 @@ router.get('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req,
     if (market) baseQuery = baseQuery.where('market', market);
     if (status) baseQuery = baseQuery.where('status', status);
     if (sales_owner) baseQuery = baseQuery.where('sales_owner', sales_owner);
+
+    const isSalesRep =
+      req.user?.role === 'sales_rep' || req.user?.role === 'sales';
+    const isDistributor = req.user?.role === 'distributor';
+
+    if (isSalesRep && req.user?.userId) {
+      const repLabel = resolveSalesRepLabelForUser(req.user);
+      const repNorm = normalizeRepLabel(repLabel);
+      const crmAccountIds = await getDb('team_members')
+        .where({ tenant_id: tenantId, crm_requested_by_user_id: req.user.userId })
+        .whereNotNull('linked_account_id')
+        .pluck('linked_account_id');
+
+      baseQuery = baseQuery.where(function scopeSalesRepAccounts() {
+        this.whereRaw('LOWER(TRIM(COALESCE(sales_owner, ?))) = ?', ['', repNorm]);
+        if (crmAccountIds.length > 0) {
+          this.orWhereIn('id', crmAccountIds);
+        }
+      });
+    } else if (isDistributor && req.user?.userId) {
+      const distId = Number(req.user.userId);
+      const linkedIds = await linkedAccountIdsForDistributor(getDb(), tenantId, distId);
+      baseQuery = baseQuery.where(function scopeDistributorAccounts() {
+        this.where('managed_by_distributor_user_id', distId);
+        if (linkedIds.length > 0) {
+          this.orWhereIn('id', linkedIds);
+        }
+      });
+    }
     
     const offset = (Number(page) - 1) * Number(limit);
     
@@ -571,7 +782,7 @@ router.get('/accounts/:id', requirePermission(Permission.ACCOUNTS_READ), async (
     if (!tenantId) return;
     const { id } = req.params;
     
-    const account = await db('accounts')
+    const account = await getDb('accounts')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .first();
@@ -587,25 +798,550 @@ router.get('/accounts/:id', requirePermission(Permission.ACCOUNTS_READ), async (
   }
 });
 
-// POST /api/v1/accounts - Create account
-router.post('/accounts', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
+// ===== RETAIL PORTAL USERS (per on-premise account) =====
+
+// GET /api/v1/accounts/:accountId/portal-users
+router.get(
+  '/accounts/:accountId/portal-users',
+  requirePermission(Permission.ACCOUNTS_READ),
+  async (req, res) => {
+    try {
+      const tenantId = getTenantId(req, res);
+      if (!tenantId) return;
+      const { accountId } = req.params;
+
+      const account = await loadAccountForPortal(db, tenantId, accountId);
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found' });
+      }
+
+      const role = req.user.role;
+      if (hasPermission(role, Permission.SETTINGS_WRITE)) {
+        // HQ — full access
+      } else if (role === 'distributor') {
+        const gate = await assertCanManageRetailPortalUsers(
+          db,
+          req.user,
+          tenantId,
+          accountId,
+          distributorsMatchedViaWarehouseAccountBridge,
+        );
+        if (!gate.ok) {
+          return res.status(gate.status).json({ error: gate.error });
+        }
+      } else if (role === 'retail' || role === 'retail_account') {
+        const tm = await findTeamMemberByEmail(db, tenantId, req.user.email);
+        if (!tm || tm.role !== 'retail' || String(tm.linked_account_id || '') !== String(accountId)) {
+          return res.status(403).json({ error: 'You can only view portal users for your store.' });
+        }
+      } else {
+        return res.status(403).json({ error: 'Insufficient permissions to list retail portal users.' });
+      }
+
+      const rows = await listRetailPortalUsersForAccount(db, tenantId, accountId);
+      res.json({ data: rows.map(serializePortalUser) });
+    } catch (err) {
+      console.error('[API v1] Error listing retail portal users:', err);
+      res.status(500).json({ error: 'Failed to list retail portal users' });
+    }
+  },
+);
+
+// POST /api/v1/accounts/:accountId/portal-users — distributor (managing account) or HQ
+router.post('/accounts/:accountId/portal-users', async (req, res) => {
+    try {
+      const tenantId = getTenantId(req, res);
+      if (!tenantId) return;
+      const { accountId } = req.params;
+      const { name, email, phone } = req.body || {};
+
+      const canCreate =
+        hasPermission(req.user.role, Permission.ACCOUNTS_WRITE) ||
+        req.user.role === 'distributor';
+      if (!canCreate) {
+        return res.status(403).json({
+          error: 'Only Brand HQ or the managing distributor can add retail portal users.',
+        });
+      }
+
+      if (!name || !email) {
+        return res.status(400).json({ error: 'name and email are required' });
+      }
+
+      const gate = await assertCanManageRetailPortalUsers(
+        db,
+        req.user,
+        tenantId,
+        accountId,
+        distributorsMatchedViaWarehouseAccountBridge,
+      );
+      if (!gate.ok) {
+        return res.status(gate.status).json({ error: gate.error });
+      }
+
+      const account = gate.account;
+      const normalizedEmail = String(email).trim().toLowerCase();
+      const tradingName =
+        account.trading_name != null && String(account.trading_name).trim() !== ''
+          ? String(account.trading_name).trim()
+          : String(account.name || '').trim();
+
+      const existing = await getDb('team_members')
+        .where({ tenant_id: tenantId, email: normalizedEmail })
+        .first();
+      if (existing && existing.is_active !== false) {
+        return res.status(409).json({ error: 'A portal user with this email already exists.' });
+      }
+
+      const managedBy =
+        req.user.role === 'distributor' ? req.user.userId : req.user?.userId ?? null;
+
+      const payload = {
+        name: String(name).trim(),
+        email: normalizedEmail,
+        role: 'retail',
+        phone: phone != null ? String(phone).trim() : null,
+        linked_account_id: accountId,
+        retail_trading_name: tradingName,
+        managed_by_user_id: managedBy,
+        is_active: true,
+        pending_distributor_approval: false,
+        crm_requested_by_user_id: null,
+        updated_at: new Date(),
+      };
+
+      let member;
+      if (existing) {
+        [member] = await getDb('team_members')
+          .where({ tenant_id: tenantId, email: normalizedEmail })
+          .update(payload)
+          .returning('*');
+      } else {
+        const id = `tm-${Date.now()}`;
+        [member] = await getDb('team_members')
+          .insert({
+            id,
+            tenant_id: tenantId,
+            ...payload,
+            created_by: req.user?.userId,
+            created_at: new Date(),
+          })
+          .returning('*');
+      }
+
+      const invitePayload = await buildCrmContactInvitePayload(req, tenantId, member, {
+        email: normalizedEmail,
+        name: payload.name,
+        role: 'retail',
+      });
+      res.status(existing ? 200 : 201).json({
+        data: serializePortalUser(member),
+        ...invitePayload,
+      });
+    } catch (err) {
+      console.error('[API v1] Error creating retail portal user:', err);
+      res.status(500).json({ error: 'Failed to create retail portal user' });
+    }
+});
+
+// DELETE /api/v1/accounts/:accountId/portal-users/:memberId
+router.delete('/accounts/:accountId/portal-users/:memberId', async (req, res) => {
+    try {
+      const tenantId = getTenantId(req, res);
+      if (!tenantId) return;
+      const { accountId, memberId } = req.params;
+
+      const canRemove =
+        hasPermission(req.user.role, Permission.ACCOUNTS_WRITE) ||
+        req.user.role === 'distributor';
+      if (!canRemove) {
+        return res.status(403).json({
+          error: 'Only Brand HQ or the managing distributor can remove retail portal users.',
+        });
+      }
+
+      const member = await getDb('team_members')
+        .where({ id: memberId, tenant_id: tenantId, role: 'retail' })
+        .first();
+      if (!member) {
+        return res.status(404).json({ error: 'Retail portal user not found' });
+      }
+      if (String(member.linked_account_id || '') !== String(accountId)) {
+        return res.status(400).json({ error: 'Portal user does not belong to this account.' });
+      }
+
+      const gate = await canMutateTeamMember(db, tenantId, req, member, {});
+      if (!gate.ok) {
+        return res.status(gate.status).json({ error: gate.error });
+      }
+
+      const [updated] = await getDb('team_members')
+        .where({ id: memberId, tenant_id: tenantId })
+        .update({ is_active: false, updated_at: new Date() })
+        .returning('*');
+
+      res.json({ data: serializePortalUser(updated), message: 'Retail portal user removed' });
+    } catch (err) {
+      console.error('[API v1] Error removing retail portal user:', err);
+      res.status(500).json({ error: 'Failed to remove retail portal user' });
+    }
+});
+
+// POST /api/v1/accounts/send-store-invitation — distributor / sales rep onboarding invite
+router.post('/accounts/send-store-invitation', requirePermission(Permission.ACCOUNTS_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
-    const accountData = req.body;
-    
-    if (!accountData.name) {
+
+    const body = req.body || {};
+    const storeName = String(body.storeName || body.tradingName || '').trim();
+    const legalName = String(body.legalName || body.name || storeName).trim();
+    const contactName = String(body.contactName || body.name || '').trim();
+    const contactTitle = body.contactTitle != null ? String(body.contactTitle).trim() : '';
+    const email = String(body.email || '').trim().toLowerCase();
+    const phone = body.phone != null ? String(body.phone).trim() : '';
+    const message = body.message != null ? String(body.message).trim() : '';
+    const accountType = String(body.type || 'retail').trim();
+    const city = body.city != null ? String(body.city).trim() : '';
+    const country = body.country != null ? String(body.country).trim() : 'Canada';
+
+    if (!storeName || !email) {
+      return res.status(400).json({ error: 'storeName and email are required' });
+    }
+
+    const normalizedEmail = email;
+    const resolvedContactName =
+      contactName !== '' ? contactName : storeName;
+
+    const hasWrite = hasPermission(req.user.role, Permission.ACCOUNTS_WRITE);
+    const isDistributor = req.user.role === 'distributor';
+    const isSalesRep = req.user.role === 'sales_rep' || req.user.role === 'sales';
+    if (!hasWrite && !isDistributor && !isSalesRep) {
+      return res.status(403).json({ error: 'Insufficient permissions to send store invitations.' });
+    }
+    if ((isDistributor || isSalesRep) && !isOnPremiseAccountType(accountType)) {
+      return res.status(403).json({
+        error: 'Store invitations are only available for on-premise retail accounts.',
+      });
+    }
+
+    const market = [city, country].filter(Boolean).join(', ') || '—';
+
+    let distributorUserId = null;
+    if (req.distributorOrg?.owner_user_id) {
+      distributorUserId = Number(req.distributorOrg.owner_user_id);
+    } else if (isDistributor) {
+      distributorUserId = Number(req.user.userId);
+    } else if (isSalesRep) {
+      distributorUserId = await resolveDistributorUserIdForSalesRep(
+        platformDb,
+        tenantId,
+        req.user,
+      );
+    }
+
+    if (isSalesRep && !distributorUserId) {
+      return res.status(400).json({
+        error:
+          'Your sales rep profile is not linked to a wholesaler yet. Ask your distributor to add you under CRM → Sales reps, then try again.',
+      });
+    }
+
+    let assignedRepUserId = isSalesRep ? Number(req.user.userId) : null;
+    let salesOwner =
+      body.salesOwner != null && String(body.salesOwner).trim() !== ''
+        ? String(body.salesOwner).trim()
+        : resolveSalesRepLabelForUser(req.user);
+
+    if (isDistributor) {
+      const repPick = await resolveDistributorAssignedSalesRep({
+        tenantId,
+        distributorUserId,
+        assignedSalesRepUserId: body.assignedSalesRepUserId ?? body.assigned_sales_rep_id,
+        assignedSalesRepEmail: body.assignedSalesRepEmail ?? body.assigned_sales_rep_email,
+      });
+      if (repPick.error) {
+        return res.status(400).json({ error: repPick.error });
+      }
+      if (repPick.repUserId) {
+        assignedRepUserId = repPick.repUserId;
+        salesOwner = repPick.salesOwnerLabel;
+      } else {
+        assignedRepUserId = null;
+        salesOwner = resolveSalesRepLabelForUser(req.user);
+      }
+    } else if (isSalesRep) {
+      salesOwner = resolveSalesRepLabelForUser(req.user);
+    }
+
+    const existingAccount = await getDb('accounts')
+      .where({ tenant_id: tenantId })
+      .whereRaw('LOWER(trading_name) = ?', [storeName.toLowerCase()])
+      .first();
+
+    let account;
+    let invitationResent = false;
+
+    if (existingAccount) {
+      const accStatus = String(existingAccount.status || 'prospect').toLowerCase();
+      const sameEmail =
+        existingAccount.email != null &&
+        String(existingAccount.email).trim().toLowerCase() === normalizedEmail;
+      const isProspect = accStatus === 'prospect' || accStatus === 'inactive';
+      const existingOnPremise = isOnPremiseAccountType(existingAccount.type);
+
+      if (!existingOnPremise) {
+        return res.status(409).json({
+          error:
+            'An account with this store name already exists (different account type). Use another name or contact Brand HQ.',
+        });
+      }
+
+      if (!isProspect && !sameEmail) {
+        return res.status(409).json({
+          error:
+            'This store is already an active account with a different contact email. Open it from your account list to manage portal users.',
+        });
+      }
+
+      if (isSalesRep && isProspect) {
+        const owner = String(existingAccount.sales_owner || '').trim();
+        if (owner && owner !== salesOwner && !sameEmail) {
+          return res.status(409).json({
+            error: `This store is already a prospect assigned to ${owner}. Use the same invitation email or ask them to transfer the account.`,
+          });
+        }
+      }
+
+      const accountPatch = {
+        name: legalName,
+        trading_name: storeName,
+        type: accountType,
+        market: market !== '—' ? market : existingAccount.market,
+        status: 'prospect',
+        email: normalizedEmail,
+        phone: phone || existingAccount.phone,
+        sales_owner: salesOwner,
+        notes: message || existingAccount.notes,
+        managed_by_distributor_user_id: distributorUserId,
+        assigned_sales_rep_id:
+          assignedRepUserId ?? existingAccount.assigned_sales_rep_id ?? null,
+        updated_at: new Date(),
+      };
+
+      [account] = await getDb('accounts')
+        .where({ id: existingAccount.id, tenant_id: tenantId })
+        .update(accountPatch)
+        .returning('*');
+      invitationResent = true;
+    } else {
+      [account] = await getDb('accounts')
+        .insert({
+          tenant_id: tenantId,
+          name: legalName,
+          trading_name: storeName,
+          type: accountType,
+          market,
+          status: 'prospect',
+          email: normalizedEmail,
+          phone: phone || null,
+          sales_owner: salesOwner,
+          payment_terms: 'Net 30',
+          notes: message || null,
+          managed_by_distributor_user_id: distributorUserId,
+          assigned_sales_rep_id: assignedRepUserId,
+        })
+        .returning('*');
+    }
+
+    let depotLink = null;
+    if (distributorUserId && account?.id) {
+      const distUser = await platformDb('users').where({ id: distributorUserId }).first();
+      if (distUser?.email) {
+        depotLink = await linkAccountToDistributorDepot(
+          getDb(),
+          tenantId,
+          distUser.email,
+          String(account.id),
+        );
+      }
+    }
+
+    const pendingApproval = isSalesRep;
+
+    const tradingName =
+      account.trading_name != null && String(account.trading_name).trim() !== ''
+        ? String(account.trading_name).trim()
+        : storeName;
+
+    const existingTm = await getDb('team_members')
+      .where({ tenant_id: tenantId, email: normalizedEmail })
+      .first();
+
+    const memberPayload = {
+      name: resolvedContactName,
+      email: normalizedEmail,
+      role: 'retail',
+      phone: phone || null,
+      linked_account_id: String(account.id),
+      retail_trading_name: tradingName,
+      managed_by_user_id: distributorUserId,
+      is_active: pendingApproval ? false : true,
+      pending_distributor_approval: pendingApproval,
+      crm_requested_by_user_id: pendingApproval
+        ? req.user.userId
+        : assignedRepUserId && isDistributor
+          ? assignedRepUserId
+          : null,
+      updated_at: new Date(),
+    };
+
+    let member;
+    if (existingTm) {
+      [member] = await getDb('team_members')
+        .where({ tenant_id: tenantId, email: normalizedEmail })
+        .update(memberPayload)
+        .returning('*');
+    } else {
+      const tmId = `tm-${Date.now()}`;
+      [member] = await getDb('team_members')
+        .insert({
+          id: tmId,
+          tenant_id: tenantId,
+          ...memberPayload,
+          created_by: req.user?.userId,
+          created_at: new Date(),
+        })
+        .returning('*');
+    }
+
+    const tenantRow = await getDb('tenants').where({ id: tenantId }).first();
+    const wholesalerName =
+      req.distributorOrg?.name || tenantRow?.name || req.user?.displayName || 'Hajime';
+
+    let invite = { status: 'pending_distributor_approval' };
+    let expiresAt = null;
+
+    const inviteResult = await createCrmUserInvite({
+      tenantId,
+      email: normalizedEmail,
+      teamMemberRole: 'retail',
+      invitedByUserId: req.user.userId,
+    });
+
+    if (!inviteResult.ok) {
+      invite = { status: 'skipped', reason: inviteResult.reason };
+    } else {
+      expiresAt = inviteResult.expiresAt;
+      if (inviteResult.token && req.distributorOrg?.id) {
+        await registerInviteTokenRoute(inviteResult.token, req.distributorOrg.id);
+      }
+      let emailInviter = req.user;
+      if (isDistributor && assignedRepUserId) {
+        const repUser = await platformDb('users').where({ id: assignedRepUserId }).first();
+        if (repUser) {
+          emailInviter = {
+            ...req.user,
+            email: repUser.email,
+            displayName: repUser.display_name,
+            display_name: repUser.display_name,
+          };
+        }
+      }
+      const repDisplayName = resolveSalesRepLabelForUser(emailInviter) || salesOwner;
+      try {
+        const sendResult = await sendStoreSetupInviteEmail({
+          to: normalizedEmail,
+          inviteUrl: inviteResult.inviteUrl,
+          recipientName: resolvedContactName,
+          storeName: tradingName,
+          personalNote: message,
+          inviterDisplayName: repDisplayName,
+          wholesalerName,
+          pendingWholesalerApproval: pendingApproval,
+        });
+        const exposeInviteUrl = isDev || !sendResult.sent;
+        const emailStatus = sendResult.sent ? 'sent' : 'logged';
+        invite = {
+          status: pendingApproval ? 'pending_distributor_approval' : emailStatus,
+          emailDispatched: sendResult.sent,
+          ...(pendingApproval && {
+            reason:
+              'Application link sent — wholesaler must approve before ordering is enabled.',
+          }),
+          ...(exposeInviteUrl && { inviteUrl: inviteResult.inviteUrl }),
+          expiresAt: inviteResult.expiresAt?.toISOString?.() ?? inviteResult.expiresAt,
+        };
+      } catch (emailErr) {
+        console.error('[API v1] Store invitation email failed:', emailErr);
+        invite = {
+          status: 'delivery_failed',
+          inviteUrl: inviteResult.inviteUrl,
+          expiresAt: inviteResult.expiresAt?.toISOString?.() ?? inviteResult.expiresAt,
+        };
+      }
+    }
+
+    res.status(invitationResent ? 200 : 201).json({
+      data: {
+        account,
+        portalUser: serializePortalUser(member),
+      },
+      invite,
+      depotLink,
+      pendingApproval,
+      assignedSalesRepId: assignedRepUserId,
+      salesOwner,
+      invitationResent,
+      message: invitationResent
+        ? 'Invitation resent for existing prospect account.'
+        : 'Store account created and invitation sent.',
+    });
+  } catch (err) {
+    console.error('[API v1] Error sending store invitation:', err);
+    res.status(500).json({ error: 'Failed to send store invitation' });
+  }
+});
+
+// POST /api/v1/accounts - Create account (HQ) or on-premise retail by managing distributor
+router.post('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const accountData = req.body || {};
+
+    const legalName = String(accountData.name || accountData.legalName || '').trim();
+    const tradingName = String(accountData.tradingName || accountData.name || legalName).trim();
+    const accountType = String(accountData.type || 'retail').trim();
+
+    if (!legalName) {
       return res.status(400).json({ error: 'Account name is required' });
     }
-    
-    const [account] = await db('accounts')
+
+    const hasWrite = hasPermission(req.user.role, Permission.ACCOUNTS_WRITE);
+    const isDistributor = req.user.role === 'distributor';
+    if (!hasWrite && !isDistributor) {
+      return res.status(403).json({ error: 'Insufficient permissions to create accounts.' });
+    }
+    if (isDistributor && !hasWrite && !isOnPremiseAccountType(accountType)) {
+      return res.status(403).json({
+        error: 'Distributors may only create on-premise retail accounts (retail, bar, restaurant, hotel).',
+      });
+    }
+
+    const market =
+      accountData.market != null && String(accountData.market).trim() !== ''
+        ? String(accountData.market).trim()
+        : [accountData.city, accountData.country].filter(Boolean).join(', ') || '—';
+
+    const [account] = await getDb('accounts')
       .insert({
         tenant_id: tenantId,
         account_number: accountData.accountNumber,
-        name: accountData.name,
-        trading_name: accountData.tradingName,
-        type: accountData.type,
-        market: accountData.market,
+        name: legalName,
+        trading_name: tradingName,
+        type: accountType,
+        market,
         status: accountData.status || 'active',
         email: accountData.email,
         phone: accountData.phone,
@@ -614,11 +1350,24 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_WRITE), async (re
         payment_terms: accountData.paymentTerms,
         credit_limit: accountData.creditLimit,
         sales_owner: accountData.salesOwner,
-        notes: accountData.notes
+        notes: accountData.notes,
       })
       .returning('*');
-    
-    res.status(201).json({ data: account });
+
+    let depotLink = null;
+    if (isDistributor && account?.id) {
+      depotLink = await linkAccountToDistributorDepot(
+        db,
+        tenantId,
+        req.user.email,
+        String(account.id),
+      );
+    }
+
+    res.status(201).json({
+      data: account,
+      depotLink,
+    });
   } catch (err) {
     console.error('[API v1] Error creating account:', err);
     res.status(500).json({ error: 'Failed to create account' });
@@ -646,7 +1395,7 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
     
     updates.updated_at = new Date();
     
-    const [account] = await db('accounts')
+    const [account] = await getDb('accounts')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update(updates)
@@ -670,7 +1419,7 @@ router.delete('/accounts/:id', requirePermission(Permission.ACCOUNTS_DELETE), as
     if (!tenantId) return;
     const { id } = req.params;
     
-    const [account] = await db('accounts')
+    const [account] = await getDb('accounts')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update({ deleted_at: new Date(), updated_at: new Date() })
@@ -704,8 +1453,45 @@ router.get('/orders', requirePermission(Permission.ORDERS_READ), async (req, res
       date_to,
       sales_rep
     } = req.query;
+
+    if (req.hqGlobalView) {
+      return respondHqPaginatedList(req, res, {
+        page,
+        limit,
+        sortKey: 'created_at',
+        fetchRows: async (db, tid) => {
+          if (!tid) return [];
+          let q = db('sales_orders')
+            .where('sales_orders.tenant_id', tid)
+            .whereNull('sales_orders.deleted_at');
+          if (status) q = q.where('sales_orders.status', status);
+          if (account_id) q = q.where('sales_orders.account_id', account_id);
+          if (date_from) q = q.where('sales_orders.order_date', '>=', date_from);
+          if (date_to) q = q.where('sales_orders.order_date', '<=', date_to);
+          if (sales_rep) q = q.where('sales_orders.sales_rep', sales_rep);
+          q = q
+            .leftJoin('accounts', 'sales_orders.account_id', 'accounts.id')
+            .select(
+              'sales_orders.*',
+              'accounts.name as account_name',
+              'accounts.account_number',
+              'accounts.trading_name as account_trading_name',
+            );
+          if (account_name) {
+            q = q.where(function () {
+              this.where('accounts.name', 'ilike', `%${account_name}%`).orWhere(
+                'accounts.trading_name',
+                'ilike',
+                `%${account_name}%`,
+              );
+            });
+          }
+          return q.orderBy('sales_orders.created_at', 'desc');
+        },
+      });
+    }
     
-    let baseQuery = db('sales_orders')
+    let baseQuery = getDb('sales_orders')
       .where('sales_orders.tenant_id', tenantId)
       .whereNull('sales_orders.deleted_at');
     
@@ -764,7 +1550,7 @@ router.get('/orders/:id', requirePermission(Permission.ORDERS_READ), async (req,
     if (!tenantId) return;
     const { id } = req.params;
     
-    const order = await db('sales_orders')
+    const order = await getDb('sales_orders')
       .where({ 'sales_orders.id': id, 'sales_orders.tenant_id': tenantId })
       .whereNull('sales_orders.deleted_at')
       .leftJoin('accounts', 'sales_orders.account_id', 'accounts.id')
@@ -781,7 +1567,7 @@ router.get('/orders/:id', requirePermission(Permission.ORDERS_READ), async (req,
       return res.status(404).json({ error: 'Order not found' });
     }
     
-    const items = await db('sales_order_items')
+    const items = await getDb('sales_order_items')
       .where({ sales_order_id: id, tenant_id: tenantId })
       .leftJoin('products', 'sales_order_items.product_id', 'products.id')
       .select(
@@ -811,7 +1597,7 @@ router.get(
       if (!tenantId) return;
       const { id } = req.params;
 
-      const order = await db('sales_orders')
+      const order = await getDb('sales_orders')
         .where({ 'sales_orders.id': id, 'sales_orders.tenant_id': tenantId })
         .whereNull('sales_orders.deleted_at')
         .leftJoin('accounts', 'sales_orders.account_id', 'accounts.id')
@@ -849,8 +1635,8 @@ router.get(
       };
 
       const [warehouseRows, distributorRows] = await Promise.all([
-        db('warehouses').where({ tenant_id: tenantId }).orderBy('sort_order', 'asc'),
-        db('team_members')
+        getDb('warehouses').where({ tenant_id: tenantId }).orderBy('sort_order', 'asc'),
+        getDb('team_members')
           .where({ tenant_id: tenantId, role: 'distributor' })
           .select('*'),
       ]);
@@ -932,7 +1718,7 @@ router.get(
         ];
         const accountsForLabels =
           accIds.length > 0
-            ? await db('accounts').where({ tenant_id: tenantId }).whereIn('id', accIds)
+            ? await getDb('accounts').where({ tenant_id: tenantId }).whereIn('id', accIds)
             : [];
         const accById = new Map(accountsForLabels.map((a) => [String(a.id), a]));
 
@@ -946,7 +1732,7 @@ router.get(
         ];
         const tmRowsFromWh =
           tmIdsFromWh.length > 0
-            ? await db('team_members').where({ tenant_id: tenantId }).whereIn('id', tmIdsFromWh)
+            ? await getDb('team_members').where({ tenant_id: tenantId }).whereIn('id', tmIdsFromWh)
             : [];
         const tmById = new Map(tmRowsFromWh.map((tm) => [String(tm.id), tm]));
 
@@ -1210,7 +1996,7 @@ router.patch('/orders/:id/status', requirePermission(Permission.ORDERS_WRITE), a
       updates.cancelled_at = new Date();
     }
     
-    const [order] = await db('sales_orders')
+    const [order] = await getDb('sales_orders')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update(updates)
@@ -1234,7 +2020,7 @@ router.delete('/orders/:id', requirePermission(Permission.ORDERS_DELETE), async 
     if (!tenantId) return;
     const { id } = req.params;
     
-    const [order] = await db('sales_orders')
+    const [order] = await getDb('sales_orders')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update({ deleted_at: new Date(), updated_at: new Date() })
@@ -1259,8 +2045,35 @@ router.get('/inventory', requirePermission(Permission.INVENTORY_READ), async (re
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { page = 1, limit = 50, location, low_stock, product_id } = req.query;
+
+    if (req.hqGlobalView) {
+      return respondHqPaginatedList(req, res, {
+        page,
+        limit,
+        sortKey: 'updated_at',
+        fetchRows: async (db, tid) => {
+          if (!tid) return [];
+          let q = db('inventory')
+            .where('inventory.tenant_id', tid)
+            .join('products', 'inventory.product_id', 'products.id')
+            .whereNull('products.deleted_at')
+            .select(
+              'inventory.*',
+              'products.sku',
+              'products.name as product_name',
+              'products.category',
+            );
+          if (location) q = q.where('inventory.location', location);
+          if (product_id) q = q.where('inventory.product_id', product_id);
+          if (low_stock === 'true') {
+            q = q.whereRaw('inventory.available_quantity <= inventory.reorder_point');
+          }
+          return q.orderBy('products.name');
+        },
+      });
+    }
     
-    let countQuery = db('inventory')
+    let countQuery = getDb('inventory')
       .where('inventory.tenant_id', tenantId)
       .join('products', 'inventory.product_id', 'products.id')
       .whereNull('products.deleted_at');
@@ -1273,7 +2086,7 @@ router.get('/inventory', requirePermission(Permission.INVENTORY_READ), async (re
     
     const countResultPromise = countQuery.clone().count('inventory.id as count').first();
     
-    let dataQuery = db('inventory')
+    let dataQuery = getDb('inventory')
       .where('inventory.tenant_id', tenantId)
       .join('products', 'inventory.product_id', 'products.id')
       .whereNull('products.deleted_at')
@@ -1398,9 +2211,9 @@ router.get('/dashboard/stats', requirePermission(Permission.REPORTS_READ), async
       ordersStats,
       inventoryStats
     ] = await Promise.all([
-      db('products').where({ tenant_id: tenantId }).whereNull('deleted_at').count('id as count').first(),
-      db('accounts').where({ tenant_id: tenantId }).whereNull('deleted_at').count('id as count').first(),
-      db('sales_orders')
+      getDb('products').where({ tenant_id: tenantId }).whereNull('deleted_at').count('id as count').first(),
+      getDb('accounts').where({ tenant_id: tenantId }).whereNull('deleted_at').count('id as count').first(),
+      getDb('sales_orders')
         .where({ tenant_id: tenantId })
         .whereNull('deleted_at')
         .select(
@@ -1409,7 +2222,7 @@ router.get('/dashboard/stats', requirePermission(Permission.REPORTS_READ), async
           db.raw('SUM(total_amount) as total_revenue')
         )
         .first(),
-      db('inventory')
+      getDb('inventory')
         .where('inventory.tenant_id', tenantId)
         .join('products', 'inventory.product_id', 'products.id')
         .whereNull('products.deleted_at')
@@ -1452,7 +2265,7 @@ router.get('/visit-notes', requirePermission(Permission.ACCOUNTS_READ), async (r
     if (!tenantId) return;
     const { account_id, sales_rep, page = 1, limit = 50 } = req.query;
     
-    let query = db('visit_notes')
+    let query = getDb('visit_notes')
       .where({ tenant_id: tenantId })
       .orderBy('created_at', 'desc');
     
@@ -1492,7 +2305,7 @@ router.post('/visit-notes', requirePermission(Permission.ACCOUNTS_WRITE), async 
       return res.status(400).json({ error: 'account_id and note are required' });
     }
     
-    const [visitNote] = await db('visit_notes')
+    const [visitNote] = await getDb('visit_notes')
       .insert({
         tenant_id: tenantId,
         account_id,
@@ -1519,7 +2332,7 @@ router.get('/sales-targets', requirePermission(Permission.REPORTS_READ), async (
     if (!tenantId) return;
     const { sales_rep, quarter, year } = req.query;
     
-    let query = db('sales_targets')
+    let query = getDb('sales_targets')
       .where({ tenant_id: tenantId })
       .orderBy('created_at', 'desc');
     
@@ -1547,7 +2360,7 @@ router.post('/sales-targets', requirePermission(Permission.SETTINGS_WRITE), asyn
       return res.status(400).json({ error: 'sales_rep, quarter, year, and target_amount are required' });
     }
     
-    const [target] = await db('sales_targets')
+    const [target] = await getDb('sales_targets')
       .insert({
         tenant_id: tenantId,
         sales_rep,
@@ -1576,8 +2389,35 @@ router.get('/depletion-reports', requirePermission(Permission.REPORTS_READ), asy
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { page = 1, limit = 50, account_id, sku, flagged, start_date, end_date } = req.query;
+
+    if (req.hqGlobalView) {
+      return respondHqPaginatedList(req, res, {
+        page,
+        limit,
+        sortKey: 'reported_at',
+        fetchRows: async (db, tid) => {
+          if (!tid) return [];
+          let q = db('depletion_reports')
+            .where('depletion_reports.tenant_id', tid)
+            .whereNull('depletion_reports.deleted_at');
+          if (account_id) q = q.where('depletion_reports.account_id', account_id);
+          if (sku) q = q.where('depletion_reports.sku', sku);
+          if (flagged === 'true') q = q.where('depletion_reports.flagged_for_replenishment', true);
+          if (start_date) q = q.where('depletion_reports.period_end', '>=', start_date);
+          if (end_date) q = q.where('depletion_reports.period_start', '<=', end_date);
+          return q
+            .select(
+              'depletion_reports.*',
+              'accounts.name as account_name',
+              'accounts.trading_name as account_trading_name',
+            )
+            .leftJoin('accounts', 'depletion_reports.account_id', 'accounts.id')
+            .orderBy('depletion_reports.reported_at', 'desc');
+        },
+      });
+    }
     
-    let query = db('depletion_reports')
+    let query = getDb('depletion_reports')
       .where('depletion_reports.tenant_id', tenantId)
       .whereNull('depletion_reports.deleted_at');
     
@@ -1626,7 +2466,7 @@ router.get('/depletion-reports/:id', requirePermission(Permission.REPORTS_READ),
     if (!tenantId) return;
     const { id } = req.params;
     
-    const report = await db('depletion_reports')
+    const report = await getDb('depletion_reports')
       .where({ 'depletion_reports.id': id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .select(
@@ -1671,12 +2511,12 @@ router.post('/depletion-reports', requirePermission(Permission.ORDERS_WRITE), as
     }
     
     // Find product_id from SKU
-    const product = await db('products')
+    const product = await getDb('products')
       .where({ tenant_id: tenantId, sku })
       .whereNull('deleted_at')
       .first();
     
-    const [report] = await db('depletion_reports')
+    const [report] = await getDb('depletion_reports')
       .insert({
         tenant_id: tenantId,
         account_id,
@@ -1726,14 +2566,14 @@ router.put('/depletion-reports/:id', requirePermission(Permission.ORDERS_WRITE),
     
     // Update product_id if SKU changed
     if (updates.sku) {
-      const product = await db('products')
+      const product = await getDb('products')
         .where({ tenant_id: tenantId, sku: updates.sku })
         .whereNull('deleted_at')
         .first();
       updates.product_id = product?.id || null;
     }
     
-    const [report] = await db('depletion_reports')
+    const [report] = await getDb('depletion_reports')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update(updates)
@@ -1757,7 +2597,7 @@ router.delete('/depletion-reports/:id', requirePermission(Permission.ORDERS_WRIT
     if (!tenantId) return;
     const { id } = req.params;
     
-    const [report] = await db('depletion_reports')
+    const [report] = await getDb('depletion_reports')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update({ deleted_at: new Date(), updated_at: new Date() })
@@ -1784,7 +2624,7 @@ router.get('/depletion-reports/sellthrough/velocity', requirePermission(Permissi
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - Number(days));
     
-    let query = db('depletion_reports')
+    let query = getDb('depletion_reports')
       .where({ tenant_id: tenantId })
       .whereNull('deleted_at')
       .where('period_end', '>=', startDate.toISOString().split('T')[0]);
@@ -1807,7 +2647,7 @@ router.get('/depletion-reports/sellthrough/velocity', requirePermission(Permissi
     
     // Get account names
     const accountIds = [...new Set(velocity.map(v => v.account_id))];
-    const accounts = await db('accounts')
+    const accounts = await getDb('accounts')
       .whereIn('id', accountIds)
       .where({ tenant_id: tenantId })
       .select('id', 'name', 'trading_name');
@@ -1844,7 +2684,7 @@ router.get('/depletion-reports/sellthrough/summary', requirePermission(Permissio
     startDate.setDate(startDate.getDate() - days);
     
     // Get total depletions
-    const depletionsResult = await db('depletion_reports')
+    const depletionsResult = await getDb('depletion_reports')
       .where({ tenant_id: tenantId })
       .whereNull('deleted_at')
       .where('period_end', '>=', startDate.toISOString().split('T')[0])
@@ -1857,7 +2697,7 @@ router.get('/depletion-reports/sellthrough/summary', requirePermission(Permissio
       .first();
     
     // Get flagged for replenishment
-    const flaggedResult = await db('depletion_reports')
+    const flaggedResult = await getDb('depletion_reports')
       .where({ tenant_id: tenantId, flagged_for_replenishment: true })
       .whereNull('deleted_at')
       .where('period_end', '>=', startDate.toISOString().split('T')[0])
@@ -1865,7 +2705,7 @@ router.get('/depletion-reports/sellthrough/summary', requirePermission(Permissio
       .first();
     
     // Get top SKUs by velocity
-    const topSkus = await db('depletion_reports')
+    const topSkus = await getDb('depletion_reports')
       .where({ tenant_id: tenantId })
       .whereNull('deleted_at')
       .where('period_end', '>=', startDate.toISOString().split('T')[0])
@@ -1903,7 +2743,7 @@ router.get('/inventory-adjustment-requests', requirePermission(Permission.REPORT
     if (!tenantId) return;
     const { page = 1, limit = 50, account_id, status } = req.query;
     
-    let query = db('inventory_adjustment_requests')
+    let query = getDb('inventory_adjustment_requests')
       .where({ tenant_id: tenantId })
       .orderBy('requested_at', 'desc');
     
@@ -1966,12 +2806,12 @@ router.post('/inventory-adjustment-requests', requirePermission(Permission.ORDER
     const adjustment = actual - expected;
     
     // Find product_id from SKU
-    const product = await db('products')
+    const product = await getDb('products')
       .where({ tenant_id: tenantId, sku })
       .whereNull('deleted_at')
       .first();
     
-    const [request] = await db('inventory_adjustment_requests')
+    const [request] = await getDb('inventory_adjustment_requests')
       .insert({
         tenant_id: tenantId,
         account_id,
@@ -2003,7 +2843,7 @@ router.patch('/inventory-adjustment-requests/:id/approve', requirePermission(Per
     const { id } = req.params;
     const { approved, rejection_reason } = req.body;
     
-    const [request] = await db('inventory_adjustment_requests')
+    const [request] = await getDb('inventory_adjustment_requests')
       .where({ id, tenant_id: tenantId, status: 'pending' })
       .first();
     
@@ -2019,7 +2859,7 @@ router.patch('/inventory-adjustment-requests/:id/approve', requirePermission(Per
       updated_at: new Date()
     };
     
-    const [updated] = await db('inventory_adjustment_requests')
+    const [updated] = await getDb('inventory_adjustment_requests')
       .where({ id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
@@ -2027,7 +2867,7 @@ router.patch('/inventory-adjustment-requests/:id/approve', requirePermission(Per
     // If approved, also adjust inventory
     if (approved) {
       // Find inventory record
-      const inventory = await db('inventory')
+      const inventory = await getDb('inventory')
         .where({ 
           tenant_id: tenantId, 
           product_id: request.product_id 
@@ -2038,7 +2878,7 @@ router.patch('/inventory-adjustment-requests/:id/approve', requirePermission(Per
         const quantityBefore = inventory.quantity_on_hand;
         const quantityAfter = quantityBefore + request.quantity_adjustment;
         
-        await db('inventory')
+        await getDb('inventory')
           .where({ id: inventory.id })
           .update({ 
             quantity_on_hand: quantityAfter,
@@ -2046,7 +2886,7 @@ router.patch('/inventory-adjustment-requests/:id/approve', requirePermission(Per
           });
         
         // Log the adjustment
-        await db('inventory_adjustments').insert({
+        await getDb('inventory_adjustments').insert({
           tenant_id: tenantId,
           inventory_id: inventory.id,
           product_id: request.product_id,
@@ -2079,8 +2919,29 @@ router.get('/new-product-requests', requirePermission(Permission.PRODUCTION_READ
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { status, assigned_manufacturer, limit = 50, offset = 0 } = req.query;
+
+    if (req.hqGlobalView) {
+      const merged = await hqFetchFromAllSources(req.user?.tenantId, async (db, tid) => {
+        if (!tid) return [];
+        let q = db('new_product_requests').where({ tenant_id: tid });
+        if (status) q = q.where('status', status);
+        if (assigned_manufacturer) q = q.where('assigned_manufacturer', assigned_manufacturer);
+        const data = await q.orderBy('requested_at', 'desc');
+        return data.map((row) => ({
+          ...row,
+          specs: row.specs || {},
+          manufacturer_proposal: row.manufacturer_proposal || null,
+          brand_decision: row.brand_decision || null,
+          attachments: row.attachments || [],
+        }));
+      });
+      const page = Math.floor(Number(offset) / Number(limit)) + 1;
+      return res.json(
+        paginateMergedRows(merged, { page, limit, sortKey: 'requested_at' }),
+      );
+    }
     
-    let query = db('new_product_requests')
+    let query = getDb('new_product_requests')
       .where({ tenant_id: tenantId })
       .orderBy('requested_at', 'desc');
     
@@ -2131,7 +2992,7 @@ router.get('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_
     if (!tenantId) return;
     const { id } = req.params;
     
-    const request = await db('new_product_requests')
+    const request = await getDb('new_product_requests')
       .where({ id, tenant_id: tenantId })
       .first();
     
@@ -2174,7 +3035,7 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
       return res.status(400).json({ error: 'title and specs are required' });
     }
     
-    const [request] = await db('new_product_requests')
+    const [request] = await getDb('new_product_requests')
       .insert({
         tenant_id: tenantId,
         request_id: request_id || `NPR-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`,
@@ -2221,7 +3082,7 @@ router.put('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_
     updates.updated_at = new Date();
     updates.updated_by = req.user?.userId;
     
-    const [updated] = await db('new_product_requests')
+    const [updated] = await getDb('new_product_requests')
       .where({ id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
@@ -2252,7 +3113,7 @@ router.delete('/new-product-requests/:id', requirePermission(Permission.PRODUCTI
     if (!tenantId) return;
     const { id } = req.params;
     
-    const deleted = await db('new_product_requests')
+    const deleted = await getDb('new_product_requests')
       .where({ id, tenant_id: tenantId })
       .del();
     
@@ -2300,8 +3161,39 @@ router.get('/purchase-orders', requirePermission(Permission.PRODUCTION_READ), as
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { page = 1, limit = 50, status, manufacturer_id } = req.query;
+
+    if (req.hqGlobalView) {
+      return respondHqPaginatedList(req, res, {
+        page,
+        limit,
+        sortKey: 'created_at',
+        fetchRows: async (db, tid) => {
+          if (!tid) return [];
+          let baseQuery = db('purchase_orders')
+            .where({ tenant_id: tid })
+            .whereNull('deleted_at');
+          if (status) baseQuery = baseQuery.where('status', status);
+          if (manufacturer_id) baseQuery = baseQuery.where('manufacturer_id', manufacturer_id);
+          const orders = await baseQuery.orderBy('created_at', 'desc');
+          const ids = orders.map((o) => o.id).filter(Boolean);
+          const itemsByPo = new Map();
+          if (ids.length > 0) {
+            const rows = await db('purchase_order_items')
+              .where({ tenant_id: tid })
+              .whereIn('purchase_order_id', ids)
+              .orderBy('id', 'asc');
+            for (const row of rows) {
+              const pid = row.purchase_order_id;
+              if (!itemsByPo.has(pid)) itemsByPo.set(pid, []);
+              itemsByPo.get(pid).push(row);
+            }
+          }
+          return orders.map((o) => ({ ...o, items: itemsByPo.get(o.id) || [] }));
+        },
+      });
+    }
     
-    let baseQuery = db('purchase_orders')
+    let baseQuery = getDb('purchase_orders')
       .where({ tenant_id: tenantId })
       .whereNull('deleted_at');
     
@@ -2323,7 +3215,7 @@ router.get('/purchase-orders', requirePermission(Permission.PRODUCTION_READ), as
     const ids = (orders || []).map((o) => o.id).filter(Boolean);
     const itemsByPo = new Map();
     if (ids.length > 0) {
-      const rows = await db('purchase_order_items')
+      const rows = await getDb('purchase_order_items')
         .where({ tenant_id: tenantId })
         .whereIn('purchase_order_id', ids)
         .orderBy('id', 'asc');
@@ -2367,7 +3259,7 @@ router.get('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_READ)
       return res.status(404).json({ error: 'Purchase order not found' });
     }
     
-    const items = await db('purchase_order_items')
+    const items = await getDb('purchase_order_items')
       .where({ purchase_order_id: order.id, tenant_id: tenantId });
     
     res.json({ data: { ...order, items } });
@@ -2652,7 +3544,7 @@ router.patch('/purchase-orders/:id/status', requirePermission(Permission.PRODUCT
       updates.delivered_at = new Date();
     }
     
-    const [order] = await db('purchase_orders')
+    const [order] = await getDb('purchase_orders')
       .where({ id: row.id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update(updates)
@@ -2681,7 +3573,7 @@ router.delete('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WR
       return res.status(404).json({ error: 'Purchase order not found' });
     }
     
-    const [order] = await db('purchase_orders')
+    const [order] = await getDb('purchase_orders')
       .where({ id: row.id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update({ deleted_at: new Date(), updated_at: new Date() })
@@ -2707,7 +3599,7 @@ router.get('/transfer-orders', requirePermission(Permission.INVENTORY_READ), asy
     if (!tenantId) return;
     const { page = 1, limit = 50, status, from_location, to_location } = req.query;
     
-    let baseQuery = db('transfer_orders')
+    let baseQuery = getDb('transfer_orders')
       .where({ tenant_id: tenantId })
       .whereNull('deleted_at');
     
@@ -2749,7 +3641,7 @@ router.get('/transfer-orders/:id', requirePermission(Permission.INVENTORY_READ),
     if (!tenantId) return;
     const { id } = req.params;
     
-    const order = await db('transfer_orders')
+    const order = await getDb('transfer_orders')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .first();
@@ -2758,7 +3650,7 @@ router.get('/transfer-orders/:id', requirePermission(Permission.INVENTORY_READ),
       return res.status(404).json({ error: 'Transfer order not found' });
     }
     
-    const items = await db('transfer_order_items')
+    const items = await getDb('transfer_order_items')
       .where({ transfer_order_id: id, tenant_id: tenantId });
     
     res.json({ data: { ...order, items } });
@@ -2910,7 +3802,7 @@ router.patch('/transfer-orders/:id/status', requirePermission(Permission.INVENTO
       updates.shipped_at = new Date();
     }
     
-    const [order] = await db('transfer_orders')
+    const [order] = await getDb('transfer_orders')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update(updates)
@@ -2934,7 +3826,7 @@ router.delete('/transfer-orders/:id', requirePermission(Permission.INVENTORY_WRI
     if (!tenantId) return;
     const { id } = req.params;
     
-    const [order] = await db('transfer_orders')
+    const [order] = await getDb('transfer_orders')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update({ deleted_at: new Date(), updated_at: new Date() })
@@ -2972,7 +3864,7 @@ function bottlesPerCaseFromProductMetadata(metadata) {
 async function skuToBottlesPerCaseMap(tenantId, skus) {
   const clean = [...new Set((skus || []).map((s) => String(s || '').trim()).filter(Boolean))];
   if (clean.length === 0) return new Map();
-  const products = await db('products').where({ tenant_id: tenantId }).whereIn('sku', clean).select('sku', 'metadata');
+  const products = await getDb('products').where({ tenant_id: tenantId }).whereIn('sku', clean).select('sku', 'metadata');
   return new Map(products.map((p) => [String(p.sku), bottlesPerCaseFromProductMetadata(p.metadata)]));
 }
 
@@ -2999,7 +3891,7 @@ async function hydrateShipmentDestinationWarehouseNames(tenantId, rows) {
   if (!rows?.length) return rows;
   const ids = [...new Set(rows.map((r) => r.destination_warehouse_id).filter(Boolean).map(String))];
   if (ids.length === 0) return rows.map((r) => ({ ...r, destination_warehouse_name: null }));
-  const wh = await db('warehouses').where({ tenant_id: tenantId }).whereIn('id', ids);
+  const wh = await getDb('warehouses').where({ tenant_id: tenantId }).whereIn('id', ids);
   const nameById = new Map(wh.map((w) => [String(w.id), String(w.name || '')]));
   return rows.map((r) => ({
     ...r,
@@ -3015,7 +3907,7 @@ async function hydrateShipmentLineItems(tenantId, rows) {
   const ids = rows.map((r) => r.id).filter(Boolean);
   if (ids.length === 0) return rows.map((r) => ({ ...r, line_items: [] }));
 
-  const items = await db('shipment_items').where({ tenant_id: tenantId }).whereIn('shipment_id', ids);
+  const items = await getDb('shipment_items').where({ tenant_id: tenantId }).whereIn('shipment_id', ids);
   const bppcBySku = await skuToBottlesPerCaseMap(
     tenantId,
     items.map((i) => i.sku),
@@ -3042,14 +3934,14 @@ async function distributorReceivingWarehouseIdsForUser(tenantId, email) {
     .trim();
   if (!em) return [];
 
-  const member = await db('team_members').where({ tenant_id: tenantId, email: em, is_active: true }).first();
+  const member = await getDb('team_members').where({ tenant_id: tenantId, email: em, is_active: true }).first();
   if (!member) return [];
 
   const ids = new Set();
   if (member.primary_warehouse_id != null && String(member.primary_warehouse_id).trim() !== '') {
     ids.add(String(member.primary_warehouse_id).trim());
   }
-  const linked = await db('warehouses')
+  const linked = await getDb('warehouses')
     .where({ tenant_id: tenantId, linked_team_member_id: member.id })
     .select('id');
   for (const w of linked) {
@@ -3079,7 +3971,7 @@ async function resolveShipmentWarehouseFields(tenantId, body) {
         : '';
   let destinationWarehouseId = wid;
   if (destinationWarehouseId) {
-    const wh = await db('warehouses').where({ id: destinationWarehouseId, tenant_id: tenantId }).first();
+    const wh = await getDb('warehouses').where({ id: destinationWarehouseId, tenant_id: tenantId }).first();
     if (!wh) {
       const e = new Error('destination_warehouse_id does not match a warehouse in this tenant');
       e.status = 400;
@@ -3110,7 +4002,24 @@ router.get('/shipments', requirePermission(Permission.INVENTORY_READ), async (re
     if (!tenantId) return;
     const { page = 1, limit = 50, status, carrier, order_id, order_type } = req.query;
 
-    let baseQuery = db('shipments')
+    if (req.hqGlobalView) {
+      return respondHqPaginatedList(req, res, {
+        page,
+        limit,
+        sortKey: 'created_at',
+        fetchRows: async (db, tid) => {
+          if (!tid) return [];
+          let baseQuery = db('shipments').where({ tenant_id: tid }).whereNull('deleted_at');
+          if (status) baseQuery = baseQuery.where('status', status);
+          if (carrier) baseQuery = baseQuery.where('carrier', carrier);
+          if (order_id) baseQuery = baseQuery.where('order_id', order_id);
+          if (order_type) baseQuery = baseQuery.where('order_type', order_type);
+          return baseQuery.orderBy('created_at', 'desc');
+        },
+      });
+    }
+
+    let baseQuery = getDb('shipments')
       .where({ tenant_id: tenantId })
       .whereNull('deleted_at');
 
@@ -3169,7 +4078,7 @@ router.get('/shipments/:id', requirePermission(Permission.INVENTORY_READ), async
     if (!tenantId) return;
     const { id } = req.params;
 
-    const shipmentRow = await db('shipments')
+    const shipmentRow = await getDb('shipments')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .first();
@@ -3191,7 +4100,7 @@ router.get('/shipments/:id', requirePermission(Permission.INVENTORY_READ), async
     }
 
     const [shipmentHydrated] = await hydrateShipmentDestinationWarehouseNames(tenantId, [shipmentRow]);
-    const itemsRaw = await db('shipment_items').where({ shipment_id: id, tenant_id: tenantId });
+    const itemsRaw = await getDb('shipment_items').where({ shipment_id: id, tenant_id: tenantId });
     const bppcBySku = await skuToBottlesPerCaseMap(
       tenantId,
       itemsRaw.map((i) => i.sku),
@@ -3250,7 +4159,7 @@ router.post('/shipments', shipmentWriteMiddleware, async (req, res) => {
 
     let order_id = orderIdIn != null && orderIdIn !== '' ? Number(orderIdIn) : NaN;
     if (!Number.isFinite(order_id) && po_number != null && String(po_number).trim() !== '') {
-      const po = await db('purchase_orders')
+      const po = await getDb('purchase_orders')
         .where({ tenant_id: tenantId, po_number: String(po_number).trim() })
         .first();
       if (po) order_id = Number(po.id);
@@ -3592,7 +4501,7 @@ router.patch('/shipments/:id/status', shipmentWriteMiddleware, async (req, res) 
     const { id } = req.params;
     const { status } = req.body;
 
-    const existing = await db('shipments')
+    const existing = await getDb('shipments')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .first();
@@ -3633,7 +4542,7 @@ router.patch('/shipments/:id/status', shipmentWriteMiddleware, async (req, res) 
       updates.delivered_at = new Date();
     }
 
-    const [shipment] = await db('shipments')
+    const [shipment] = await getDb('shipments')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update(updates)
@@ -3658,7 +4567,7 @@ router.delete('/shipments/:id', shipmentWriteMiddleware, async (req, res) => {
     if (!tenantId) return;
     const { id } = req.params;
 
-    const existing = await db('shipments')
+    const existing = await getDb('shipments')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .first();
@@ -3677,7 +4586,7 @@ router.delete('/shipments/:id', shipmentWriteMiddleware, async (req, res) => {
       }
     }
 
-    const [shipment] = await db('shipments')
+    const [shipment] = await getDb('shipments')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update({ deleted_at: new Date(), updated_at: new Date() })
@@ -3703,7 +4612,7 @@ router.get('/incentives', requirePermission(Permission.REPORTS_READ), async (req
     if (!tenantId) return;
     const { page = 1, limit = 50, type, status, account_id } = req.query;
     
-    let baseQuery = db('incentives')
+    let baseQuery = getDb('incentives')
       .where({ tenant_id: tenantId })
       .whereNull('deleted_at');
     
@@ -3745,7 +4654,7 @@ router.get('/incentives/:id', requirePermission(Permission.REPORTS_READ), async 
     if (!tenantId) return;
     const { id } = req.params;
     
-    const incentive = await db('incentives')
+    const incentive = await getDb('incentives')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .first();
@@ -3783,7 +4692,7 @@ router.post('/incentives', requirePermission(Permission.SETTINGS_WRITE), async (
       return res.status(400).json({ error: 'name, type, and reward_type are required' });
     }
     
-    const [incentive] = await db('incentives')
+    const [incentive] = await getDb('incentives')
       .insert({
         tenant_id: tenantId,
         name,
@@ -3824,7 +4733,7 @@ router.put('/incentives/:id', requirePermission(Permission.SETTINGS_WRITE), asyn
     updates.updated_at = new Date();
     updates.updated_by = req.user?.userId;
     
-    const [incentive] = await db('incentives')
+    const [incentive] = await getDb('incentives')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update(updates)
@@ -3854,7 +4763,7 @@ router.patch('/incentives/:id/status', requirePermission(Permission.SETTINGS_WRI
       return res.status(400).json({ error: 'Invalid status' });
     }
     
-    const [incentive] = await db('incentives')
+    const [incentive] = await getDb('incentives')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update({ 
@@ -3882,7 +4791,7 @@ router.delete('/incentives/:id', requirePermission(Permission.SETTINGS_WRITE), a
     if (!tenantId) return;
     const { id } = req.params;
     
-    const [incentive] = await db('incentives')
+    const [incentive] = await getDb('incentives')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update({ deleted_at: new Date(), updated_at: new Date() })
@@ -3923,10 +4832,39 @@ router.get('/team-members', async (req, res) => {
       req.query.include_inactive === 'true' ||
       req.query.include_inactive === '1';
 
-    let query = db('team_members').where({ tenant_id: tenantId });
+    if (req.hqGlobalView) {
+      const merged = await hqFetchFromAllSources(req.user?.tenantId, async (db, tid) => {
+        if (!tid) return [];
+        let query = db('team_members').where({ tenant_id: tid });
+        if (!includeInactive) {
+          query = query.where(function activeOrPending() {
+            this.where('is_active', true).orWhere(function pendingRetailRow() {
+              this.where('pending_distributor_approval', true);
+            });
+          });
+        }
+        return query.orderBy('created_at', 'desc');
+      });
+      return res.json({ data: merged });
+    }
 
-    if (isDistributor) {
-      query = query.whereIn('role', ['sales_rep', 'retail']);
+    let query = getDb('team_members').where({ tenant_id: tenantId });
+
+    if (isDistributor && req.user?.userId) {
+      const distId = Number(req.user.userId);
+      const repUserIds = await salesRepUserIdsForDistributor(getDb(), tenantId, distId);
+      query = query
+        .whereIn('role', ['sales_rep', 'retail'])
+        .andWhere(function scopeDistributorCrm() {
+          this.where('managed_by_user_id', distId);
+          if (repUserIds.length > 0) {
+            this.orWhere(function pendingFromMyReps() {
+              this.where('role', 'retail')
+                .where('pending_distributor_approval', true)
+                .whereIn('crm_requested_by_user_id', repUserIds);
+            });
+          }
+        });
     } else if (isSalesRep) {
       query = query.where('role', 'retail').andWhere(function scopeRetailVisibility() {
         this.where(function notPendingOrLegacy() {
@@ -3962,12 +4900,12 @@ router.get('/purchase-order-manufacturer-options', requirePermission(Permission.
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
 
-    const members = await db('team_members')
+    const members = await getDb('team_members')
       .where({ tenant_id: tenantId, role: 'manufacturer' })
       .where('is_active', true)
       .orderBy('name', 'asc');
 
-    const profiles = await db('manufacturer_profiles').where({ tenant_id: tenantId });
+    const profiles = await getDb('manufacturer_profiles').where({ tenant_id: tenantId });
 
     const profileByEmail = new Map();
     for (const p of profiles) {
@@ -4035,7 +4973,38 @@ function salesRepOwnsRetailRow(member, userId) {
 /**
  * Wholesaler/distributor may edit, deactivate, resend invites only for `sales_rep` CRM rows.
  */
-function assertDistributorManagesSalesRepOnly(current, body) {
+async function distributorCanMutateRetailPortalUser(db, tenantId, req, current, body) {
+  if (current.role !== 'retail') {
+    return {
+      ok: false,
+      error: 'Distributors may only manage retail portal users they added for on-premise accounts.',
+    };
+  }
+  const uid = req.user?.userId != null && req.user.userId !== '' ? Number(req.user.userId) : null;
+  if (uid && distributorOwnsTeamMemberRow(uid, current)) {
+    // owned retail row
+  } else if (
+    uid &&
+    (await distributorCanAccessPendingRetail(db, tenantId, uid, current))
+  ) {
+    // sales-rep-submitted retail awaiting approval
+  } else {
+    return {
+      ok: false,
+      error: 'You can only manage retail stores assigned to your wholesaler book.',
+    };
+  }
+  const nextRole = body?.role != null ? String(body.role).trim() : null;
+  if (nextRole != null && nextRole !== 'retail') {
+    return {
+      ok: false,
+      error: 'Cannot change a retail portal user into another CRM role.',
+    };
+  }
+  return { ok: true };
+}
+
+function assertDistributorManagesSalesRepOnly(req, current, body) {
   if (current.role !== 'sales_rep') {
     return {
       ok: false,
@@ -4047,6 +5016,13 @@ function assertDistributorManagesSalesRepOnly(current, body) {
     return {
       ok: false,
       error: 'Distributors cannot change a Sales rep into another CRM role.',
+    };
+  }
+  const uid = req.user?.userId != null ? Number(req.user.userId) : null;
+  if (uid && !distributorOwnsTeamMemberRow(uid, current)) {
+    return {
+      ok: false,
+      error: 'You can only manage sales reps assigned to your wholesaler.',
     };
   }
   return { ok: true };
@@ -4072,15 +5048,33 @@ function assertSalesRepOwnRetailOnly(current, body) {
 /**
  * Brand HQ: full access. Distributor: `sales_rep` rows only. Sales rep: own `retail` rows only (by crm_requested_by_user_id).
  */
-function canMutateTeamMember(req, current, body) {
+async function canMutateTeamMember(db, tenantId, req, current, body) {
   if (hasPermission(req.user.role, Permission.SETTINGS_WRITE)) {
     return { ok: true };
   }
   const actor = req.user.role;
   if (actor === 'distributor') {
-    const d = assertDistributorManagesSalesRepOnly(current, body || {});
-    if (!d.ok) return { ok: false, status: 403, error: d.error };
-    return { ok: true };
+    if (current.role === 'sales_rep') {
+      const d = assertDistributorManagesSalesRepOnly(req, current, body || {});
+      if (!d.ok) return { ok: false, status: 403, error: d.error };
+      return { ok: true };
+    }
+    if (current.role === 'retail') {
+      const r = await distributorCanMutateRetailPortalUser(
+        db,
+        tenantId,
+        req,
+        current,
+        body || {},
+      );
+      if (!r.ok) return { ok: false, status: 403, error: r.error };
+      return { ok: true };
+    }
+    return {
+      ok: false,
+      status: 403,
+      error: 'Distributors may only manage Sales rep CRM contacts and retail portal users they added.',
+    };
   }
   if (actor === 'sales_rep') {
     const s = assertSalesRepOwnRetailOnly(current, body || {});
@@ -4136,7 +5130,7 @@ router.post('/team-members', async (req, res) => {
     const pendingRetail = !hasSettingsWrite && actor === 'sales_rep' && roleToCreate === 'retail';
 
     // If this email already exists for the tenant, return a clear 409 (or reactivate).
-    const existing = await db('team_members')
+    const existing = await getDb('team_members')
       .where({ tenant_id: tenantId, email: normalizedEmail })
       .first();
     if (existing) {
@@ -4152,7 +5146,7 @@ router.post('/team-members', async (req, res) => {
               error: 'Only Brand HQ can reactivate archived CRM contacts you do not own.',
             });
           }
-          const [reactivated] = await db('team_members')
+          const [reactivated] = await getDb('team_members')
             .where({ tenant_id: tenantId, email: normalizedEmail })
             .update({
               name,
@@ -4164,7 +5158,7 @@ router.post('/team-members', async (req, res) => {
             })
             .returning('*');
           let member = reactivated;
-          member = await db('team_members').where({ id: member.id, tenant_id: tenantId }).first();
+          member = await getDb('team_members').where({ id: member.id, tenant_id: tenantId }).first();
           if (member.pending_distributor_approval) {
             return res.status(200).json({
               data: member,
@@ -4182,7 +5176,7 @@ router.post('/team-members', async (req, res) => {
           });
           return res.status(200).json({ ...payload, message: 'Retail CRM contact reactivated' });
         }
-        const [reactivated] = await db('team_members')
+        const [reactivated] = await getDb('team_members')
           .where({ tenant_id: tenantId, email: normalizedEmail })
           .update({
             name,
@@ -4200,7 +5194,7 @@ router.post('/team-members', async (req, res) => {
             await db.transaction(async (trx) => {
               await setDistributorReceivingWarehouse(trx, tenantId, member.id, pwOpt);
             });
-            member = await db('team_members').where({ id: member.id, tenant_id: tenantId }).first();
+            member = await getDb('team_members').where({ id: member.id, tenant_id: tenantId }).first();
           } catch (e) {
             const st = e.status || 500;
             if (st === 404 || st === 400) {
@@ -4219,8 +5213,19 @@ router.post('/team-members', async (req, res) => {
       return res.status(409).json({ error: 'A CRM contact with this email already exists.' });
     }
 
+    let distributorUserIdForRow = null;
+    if (actor === 'distributor') {
+      distributorUserIdForRow = req.user.userId;
+    } else if (actor === 'sales_rep') {
+      distributorUserIdForRow = await resolveDistributorUserIdForSalesRep(
+        db,
+        tenantId,
+        req.user,
+      );
+    }
+
     const id = `tm-${Date.now()}`;
-    let [member] = await db('team_members')
+    let [member] = await getDb('team_members')
       .insert({
         id,
         tenant_id: tenantId,
@@ -4232,6 +5237,7 @@ router.post('/team-members', async (req, res) => {
         is_active: pendingRetail ? false : true,
         pending_distributor_approval: pendingRetail,
         crm_requested_by_user_id: pendingRetail ? req.user.userId : null,
+        managed_by_user_id: distributorUserIdForRow,
         created_by: req.user?.userId,
         created_at: new Date(),
         updated_at: new Date(),
@@ -4239,7 +5245,7 @@ router.post('/team-members', async (req, res) => {
       .returning('*');
 
     if (pendingRetail) {
-      member = await db('team_members').where({ id: member.id, tenant_id: tenantId }).first();
+      member = await getDb('team_members').where({ id: member.id, tenant_id: tenantId }).first();
       return res.status(201).json({
         data: member,
         invite: {
@@ -4255,7 +5261,7 @@ router.post('/team-members', async (req, res) => {
         await db.transaction(async (trx) => {
           await setDistributorReceivingWarehouse(trx, tenantId, member.id, pwOpt);
         });
-        member = await db('team_members').where({ id: member.id, tenant_id: tenantId }).first();
+        member = await getDb('team_members').where({ id: member.id, tenant_id: tenantId }).first();
       } catch (e) {
         const st = e.status || 500;
         if (st === 404 || st === 400) {
@@ -4293,7 +5299,7 @@ router.post('/team-members/:id/approve-retail', async (req, res) => {
       });
     }
 
-    const row = await db('team_members').where({ id, tenant_id: tenantId }).first();
+    const row = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
     if (!row) {
       return res.status(404).json({ error: 'Team member not found' });
     }
@@ -4301,13 +5307,38 @@ router.post('/team-members/:id/approve-retail', async (req, res) => {
       return res.status(400).json({ error: 'Not a pending retail CRM request.' });
     }
 
-    await db('team_members').where({ id, tenant_id: tenantId }).update({
-      pending_distributor_approval: false,
-      is_active: true,
-      updated_at: new Date(),
-    });
+    const distId =
+      actor === 'distributor' && req.user?.userId ? Number(req.user.userId) : null;
 
-    const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
+    if (
+      distId &&
+      !hasPermission(actor, Permission.SETTINGS_WRITE) &&
+      !(await distributorCanAccessPendingRetail(db, tenantId, distId, row))
+    ) {
+      return res.status(403).json({
+        error: 'This retail request belongs to another wholesaler’s sales team.',
+      });
+    }
+
+    await getDb('team_members')
+      .where({ id, tenant_id: tenantId })
+      .update({
+        pending_distributor_approval: false,
+        is_active: true,
+        ...(distId && !row.managed_by_user_id ? { managed_by_user_id: distId } : {}),
+        updated_at: new Date(),
+      });
+
+    const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
+
+    if (distId && member?.linked_account_id) {
+      await getDb('accounts')
+        .where({ id: member.linked_account_id, tenant_id: tenantId })
+        .update({
+          managed_by_distributor_user_id: distId,
+          updated_at: new Date(),
+        });
+    }
     const payload = await buildCrmContactInvitePayload(req, tenantId, member, {
       email: member.email,
       name: member.name,
@@ -4327,7 +5358,7 @@ router.post('/team-members/:id/resend-invite', async (req, res) => {
     if (!tenantId) return;
     const { id } = req.params;
 
-    const member = await db('team_members')
+    const member = await getDb('team_members')
       .where({ id, tenant_id: tenantId })
       .first();
 
@@ -4335,7 +5366,7 @@ router.post('/team-members/:id/resend-invite', async (req, res) => {
       return res.status(404).json({ error: 'Team member not found' });
     }
 
-    const gate = canMutateTeamMember(req, member, {});
+    const gate = await canMutateTeamMember(db, tenantId, req, member, {});
     if (!gate.ok) {
       return res.status(gate.status).json({ error: gate.error });
     }
@@ -4374,14 +5405,14 @@ router.patch('/team-members/:id', async (req, res) => {
     const { name, email, role, phone, department, is_active } = req.body || {};
     const pwOpt = parseOptionalPrimaryWarehouseId(req.body);
 
-    const current = await db('team_members')
+    const current = await getDb('team_members')
       .where({ id, tenant_id: tenantId })
       .first();
     if (!current) {
       return res.status(404).json({ error: 'Team member not found' });
     }
 
-    const gate = canMutateTeamMember(req, current, req.body || {});
+    const gate = await canMutateTeamMember(db, tenantId, req, current, req.body || {});
     if (!gate.ok) {
       return res.status(gate.status).json({ error: gate.error });
     }
@@ -4399,7 +5430,7 @@ router.patch('/team-members/:id', async (req, res) => {
         return res.status(400).json({ error: 'email must be non-empty' });
       }
       // Ensure uniqueness within tenant (excluding current record).
-      const conflict = await db('team_members')
+      const conflict = await getDb('team_members')
         .where({ tenant_id: tenantId, email: normalizedEmail })
         .whereNot({ id })
         .first();
@@ -4435,7 +5466,7 @@ router.patch('/team-members/:id', async (req, res) => {
         }
         throw e;
       }
-      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
+      const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
       return res.json({ data: member });
     }
 
@@ -4445,7 +5476,7 @@ router.patch('/team-members/:id', async (req, res) => {
         await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
         await setDistributorReceivingWarehouse(trx, tenantId, id, null);
       });
-      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
+      const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
       return res.json({ data: member });
     }
 
@@ -4455,7 +5486,7 @@ router.patch('/team-members/:id', async (req, res) => {
 
     updates.updated_at = new Date();
 
-    const [member] = await db('team_members')
+    const [member] = await getDb('team_members')
       .where({ id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
@@ -4475,14 +5506,14 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
     const emailParam = String(req.params.email || '').trim().toLowerCase();
     if (!emailParam) return res.status(400).json({ error: 'email is required' });
 
-    const current = await db('team_members')
+    const current = await getDb('team_members')
       .where({ tenant_id: tenantId, email: emailParam })
       .first();
     if (!current) {
       return res.status(404).json({ error: 'Team member not found' });
     }
 
-    const gate = canMutateTeamMember(req, current, req.body || {});
+    const gate = await canMutateTeamMember(db, tenantId, req, current, req.body || {});
     if (!gate.ok) {
       return res.status(gate.status).json({ error: gate.error });
     }
@@ -4503,7 +5534,7 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
       if (!normalizedEmail) {
         return res.status(400).json({ error: 'email must be non-empty' });
       }
-      const conflict = await db('team_members')
+      const conflict = await getDb('team_members')
         .where({ tenant_id: tenantId, email: normalizedEmail })
         .whereNot({ id: current.id })
         .first();
@@ -4539,7 +5570,7 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
         }
         throw e;
       }
-      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
+      const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
       return res.json({ data: member });
     }
 
@@ -4549,7 +5580,7 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
         await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
         await setDistributorReceivingWarehouse(trx, tenantId, id, null);
       });
-      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
+      const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
       return res.json({ data: member });
     }
 
@@ -4559,7 +5590,7 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
 
     updates.updated_at = new Date();
 
-    const [member] = await db('team_members')
+    const [member] = await getDb('team_members')
       .where({ id: current.id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
@@ -4579,14 +5610,14 @@ router.post('/team-members/by-email/:email/resend-invite', async (req, res) => {
     const emailParam = String(req.params.email || '').trim().toLowerCase();
     if (!emailParam) return res.status(400).json({ error: 'email is required' });
 
-    const member = await db('team_members')
+    const member = await getDb('team_members')
       .where({ tenant_id: tenantId, email: emailParam })
       .first();
     if (!member) {
       return res.status(404).json({ error: 'Team member not found' });
     }
 
-    const gate = canMutateTeamMember(req, member, {});
+    const gate = await canMutateTeamMember(db, tenantId, req, member, {});
     if (!gate.ok) {
       return res.status(gate.status).json({ error: gate.error });
     }
@@ -4621,17 +5652,17 @@ router.delete('/team-members/:id', async (req, res) => {
     if (!tenantId) return;
     const { id } = req.params;
 
-    const existing = await db('team_members').where({ id, tenant_id: tenantId }).first();
+    const existing = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
     if (!existing) {
       return res.status(404).json({ error: 'Team member not found' });
     }
 
-    const gate = canMutateTeamMember(req, existing, {});
+    const gate = await canMutateTeamMember(db, tenantId, req, existing, {});
     if (!gate.ok) {
       return res.status(gate.status).json({ error: gate.error });
     }
 
-    const [member] = await db('team_members')
+    const [member] = await getDb('team_members')
       .where({ id, tenant_id: tenantId })
       .update({ is_active: false, updated_at: new Date() })
       .returning('*');
@@ -4651,19 +5682,19 @@ router.delete('/team-members/by-email/:email', async (req, res) => {
     const emailParam = String(req.params.email || '').trim().toLowerCase();
     if (!emailParam) return res.status(400).json({ error: 'email is required' });
 
-    const existing = await db('team_members')
+    const existing = await getDb('team_members')
       .where({ tenant_id: tenantId, email: emailParam })
       .first();
     if (!existing) {
       return res.status(404).json({ error: 'Team member not found' });
     }
 
-    const gate = canMutateTeamMember(req, existing, {});
+    const gate = await canMutateTeamMember(db, tenantId, req, existing, {});
     if (!gate.ok) {
       return res.status(gate.status).json({ error: gate.error });
     }
 
-    const [member] = await db('team_members')
+    const [member] = await getDb('team_members')
       .where({ tenant_id: tenantId, email: emailParam })
       .update({ is_active: false, updated_at: new Date() })
       .returning('*');
@@ -4675,6 +5706,148 @@ router.delete('/team-members/by-email/:email', async (req, res) => {
   }
 });
 
+// ===== SUPPLY CHAIN INCENTIVE MANAGER (singleton JSON per tenant) =====
+
+// GET /api/v1/supply-chain-incentives — { data: null } if never saved
+router.get(
+  '/supply-chain-incentives',
+  requirePermission(Permission.INCENTIVES_READ),
+  async (req, res) => {
+    try {
+      const tenantId = getTenantId(req, res);
+      if (!tenantId) return;
+
+      const row = await getDb('supply_chain_incentive_state').where({ tenant_id: tenantId }).first();
+      if (!row) {
+        return res.json({ data: null });
+      }
+
+      let state = row.state;
+      if (typeof state === 'string') {
+        try {
+          state = JSON.parse(state);
+        } catch {
+          state = {};
+        }
+      }
+      if (!state || typeof state !== 'object') {
+        state = {};
+      }
+
+      const normalized = normalizeIncentiveManagerState(state);
+      res.json({
+        data: normalized,
+        updatedAt: row.updated_at,
+        updatedBy: row.updated_by,
+      });
+    } catch (err) {
+      console.error('[API v1] Error fetching supply-chain incentives:', err);
+      res.status(500).json({ error: 'Failed to fetch supply chain incentives' });
+    }
+  },
+);
+
+// PUT /api/v1/supply-chain-incentives — full document replace
+router.put(
+  '/supply-chain-incentives',
+  requirePermission(Permission.INCENTIVES_WRITE),
+  async (req, res) => {
+    try {
+      const tenantId = getTenantId(req, res);
+      if (!tenantId) return;
+
+      const normalized = normalizeIncentiveManagerState(req.body);
+      const bytes = incentiveStateJsonByteLength(normalized);
+      if (bytes > MAX_STATE_JSON) {
+        return res.status(400).json({ error: 'Incentive data payload is too large' });
+      }
+
+      const payload = {
+        state: JSON.stringify(normalized),
+        updated_at: new Date(),
+        updated_by: req.user?.userId ?? null,
+      };
+
+      const existing = await getDb('supply_chain_incentive_state').where({ tenant_id: tenantId }).first();
+      if (!existing) {
+        await getDb('supply_chain_incentive_state').insert({
+          tenant_id: tenantId,
+          ...payload,
+        });
+      } else {
+        await getDb('supply_chain_incentive_state').where({ tenant_id: tenantId }).update(payload);
+      }
+
+      const row = await getDb('supply_chain_incentive_state').where({ tenant_id: tenantId }).first();
+      res.json({
+        data: normalized,
+        updatedAt: row?.updated_at,
+        updatedBy: row?.updated_by,
+      });
+    } catch (err) {
+      console.error('[API v1] Error saving supply-chain incentives:', err);
+      res.status(500).json({ error: 'Failed to save supply chain incentives' });
+    }
+  },
+);
+
+// GET /api/v1/supply-chain-incentives/me — role-scoped SPIF / partner progress (distributor, sales_rep, retail)
+router.get(
+  '/supply-chain-incentives/me',
+  requirePermission(Permission.INCENTIVES_SELF_READ),
+  async (req, res) => {
+    try {
+      const tenantId = getTenantId(req, res);
+      if (!tenantId) return;
+
+      const row = await getDb('supply_chain_incentive_state').where({ tenant_id: tenantId }).first();
+      let state = row?.state;
+      if (typeof state === 'string') {
+        try {
+          state = JSON.parse(state);
+        } catch {
+          state = {};
+        }
+      }
+      if (!state || typeof state !== 'object') state = {};
+
+      const normalized = normalizeIncentiveManagerState(state);
+
+      const emailLower = String(req.user.email || '')
+        .trim()
+        .toLowerCase();
+      const tm = await getDb('team_members')
+        .where({ tenant_id: tenantId, email: emailLower })
+        .where('is_active', true)
+        .first();
+
+      const tradingNameQ =
+        typeof req.query.tradingName === 'string' ? req.query.tradingName.trim().slice(0, 200) : '';
+
+      const payload = buildMyIncentiveProgress({
+        role: req.user.role,
+        user: { displayName: req.user.displayName, email: req.user.email },
+        teamMember: tm ? { name: tm.name } : null,
+        state: normalized,
+        retailTradingName:
+          req.user.role === 'retail' || req.user.role === 'retail_account' ? tradingNameQ : undefined,
+      });
+
+      if (payload.scope === 'unsupported') {
+        return res.status(403).json({ error: 'Incentive progress is not available for this role' });
+      }
+
+      res.json({
+        data: payload,
+        updatedAt: row?.updated_at ?? null,
+      });
+    } catch (err) {
+      console.error('[API v1] supply-chain-incentives/me:', err);
+      res.status(500).json({ error: 'Failed to load incentive progress' });
+    }
+  },
+);
+
 // ===== OPERATIONAL SETTINGS (singleton per tenant) =====
 
 // GET /api/v1/operational-settings
@@ -4682,14 +5855,27 @@ router.get('/operational-settings', requirePermission(Permission.SETTINGS_READ),
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+
+    if (req.hqGlobalView) {
+      let settings = await platformDb('operational_settings')
+        .where({ tenant_id: tenantId })
+        .first();
+      if (!settings) {
+        const [created] = await platformDb('operational_settings')
+          .insert({ tenant_id: tenantId, updated_at: new Date() })
+          .returning('*');
+        settings = created;
+      }
+      return res.json({ data: settings });
+    }
     
-    let settings = await db('operational_settings')
+    let settings = await getDb('operational_settings')
       .where({ tenant_id: tenantId })
       .first();
     
     if (!settings) {
       // Auto-create defaults
-      const [created] = await db('operational_settings')
+      const [created] = await getDb('operational_settings')
         .insert({ tenant_id: tenantId, updated_at: new Date() })
         .returning('*');
       settings = created;
@@ -4713,14 +5899,14 @@ router.put('/operational-settings', requirePermission(Permission.SETTINGS_WRITE)
     delete updates.created_at;
     updates.updated_at = new Date();
     
-    const [settings] = await db('operational_settings')
+    const [settings] = await getDb('operational_settings')
       .where({ tenant_id: tenantId })
       .update(updates)
       .returning('*');
     
     if (!settings) {
       // Create if missing
-      const [created] = await db('operational_settings')
+      const [created] = await getDb('operational_settings')
         .insert({ ...updates, tenant_id: tenantId })
         .returning('*');
       return res.json({ data: created });
@@ -4742,7 +5928,7 @@ router.get('/support-tickets', requirePermission(Permission.ORDERS_READ), async 
     if (!tenantId) return;
     const { status, priority, account_id } = req.query;
     
-    let query = db('support_tickets')
+    let query = getDb('support_tickets')
       .where({ tenant_id: tenantId })
       .orderBy('created_at', 'desc');
     
@@ -4765,7 +5951,7 @@ router.get('/support-tickets/:id', requirePermission(Permission.ORDERS_READ), as
     if (!tenantId) return;
     const { id } = req.params;
     
-    const ticket = await db('support_tickets')
+    const ticket = await getDb('support_tickets')
       .where({ id, tenant_id: tenantId })
       .first();
     
@@ -4773,7 +5959,7 @@ router.get('/support-tickets/:id', requirePermission(Permission.ORDERS_READ), as
       return res.status(404).json({ error: 'Support ticket not found' });
     }
     
-    const replies = await db('support_ticket_replies')
+    const replies = await getDb('support_ticket_replies')
       .where({ ticket_id: id, tenant_id: tenantId })
       .orderBy('created_at', 'asc');
     
@@ -4796,7 +5982,7 @@ router.post('/support-tickets', requirePermission(Permission.ORDERS_WRITE), asyn
     }
     
     const id = `st-${Date.now()}`;
-    const [ticket] = await db('support_tickets')
+    const [ticket] = await getDb('support_tickets')
       .insert({
         id,
         tenant_id: tenantId,
@@ -4831,7 +6017,7 @@ router.post('/support-tickets/:id/replies', requirePermission(Permission.ORDERS_
       return res.status(400).json({ error: 'message is required' });
     }
     
-    const [reply] = await db('support_ticket_replies')
+    const [reply] = await getDb('support_ticket_replies')
       .insert({
         tenant_id: tenantId,
         ticket_id: id,
@@ -4842,7 +6028,7 @@ router.post('/support-tickets/:id/replies', requirePermission(Permission.ORDERS_
       .returning('*');
     
     // Update ticket status to in_progress if it was open
-    await db('support_tickets')
+    await getDb('support_tickets')
       .where({ id, tenant_id: tenantId, status: 'open' })
       .update({ status: 'in_progress', updated_at: new Date() });
     
@@ -4869,7 +6055,7 @@ router.patch('/support-tickets/:id/status', requirePermission(Permission.ORDERS_
     const updates = { status, updated_at: new Date() };
     if (status === 'resolved') updates.resolved_at = new Date();
     
-    const [ticket] = await db('support_tickets')
+    const [ticket] = await getDb('support_tickets')
       .where({ id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
@@ -4893,7 +6079,7 @@ router.get('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_REA
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     
-    const profiles = await db('manufacturer_profiles')
+    const profiles = await getDb('manufacturer_profiles')
       .where({ tenant_id: tenantId })
       .orderBy('created_at', 'desc');
     
@@ -4911,7 +6097,7 @@ router.get('/manufacturer-profiles/:id', requirePermission(Permission.PRODUCTION
     if (!tenantId) return;
     const { id } = req.params;
     
-    const profile = await db('manufacturer_profiles')
+    const profile = await getDb('manufacturer_profiles')
       .where({ id, tenant_id: tenantId })
       .first();
     
@@ -4937,7 +6123,7 @@ router.post('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_WR
       return res.status(400).json({ error: 'manufacturer_id is required' });
     }
 
-    const existing = await db('manufacturer_profiles')
+    const existing = await getDb('manufacturer_profiles')
       .where({ tenant_id: tenantId, manufacturer_id: String(data.manufacturer_id) })
       .first();
     if (existing) {
@@ -4946,7 +6132,7 @@ router.post('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_WR
       delete updates.tenant_id;
       delete updates.created_at;
       updates.updated_at = new Date();
-      const [profile] = await db('manufacturer_profiles')
+      const [profile] = await getDb('manufacturer_profiles')
         .where({ id: existing.id, tenant_id: tenantId })
         .update(updates)
         .returning('*');
@@ -4954,7 +6140,7 @@ router.post('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_WR
     }
     
     const id = `mp-${Date.now()}`;
-    const [profile] = await db('manufacturer_profiles')
+    const [profile] = await getDb('manufacturer_profiles')
       .insert({
         id,
         tenant_id: tenantId,
@@ -5006,7 +6192,7 @@ router.put('/manufacturer-profiles/:id', requirePermission(Permission.PRODUCTION
     delete updates.created_at;
     updates.updated_at = new Date();
     
-    const [profile] = await db('manufacturer_profiles')
+    const [profile] = await getDb('manufacturer_profiles')
       .where({ id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
@@ -5031,7 +6217,7 @@ router.get('/tasks', requirePermission(Permission.ACCOUNTS_READ), async (req, re
     if (!tenantId) return;
     const { status, assigned_to, account_id } = req.query;
     
-    let query = db('tasks')
+    let query = getDb('tasks')
       .where({ tenant_id: tenantId })
       .orderBy('created_at', 'desc');
     
@@ -5059,7 +6245,7 @@ router.post('/tasks', requirePermission(Permission.ACCOUNTS_WRITE), async (req, 
     }
     
     const id = `tk-${Date.now()}`;
-    const [task] = await db('tasks')
+    const [task] = await getDb('tasks')
       .insert({
         id,
         tenant_id: tenantId,
@@ -5099,7 +6285,7 @@ router.patch('/tasks/:id/status', requirePermission(Permission.ACCOUNTS_WRITE), 
     const updates = { status, updated_at: new Date() };
     if (status === 'done') updates.completed_at = new Date();
     
-    const [task] = await db('tasks')
+    const [task] = await getDb('tasks')
       .where({ id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
@@ -5128,7 +6314,7 @@ router.put('/tasks/:id', requirePermission(Permission.ACCOUNTS_WRITE), async (re
     delete updates.created_at;
     updates.updated_at = new Date();
     
-    const [task] = await db('tasks')
+    const [task] = await getDb('tasks')
       .where({ id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
@@ -5153,7 +6339,7 @@ router.get('/opportunities', requirePermission(Permission.ACCOUNTS_READ), async 
     if (!tenantId) return;
     const { status, assigned_to, account_id } = req.query;
     
-    let query = db('opportunities')
+    let query = getDb('opportunities')
       .where({ tenant_id: tenantId })
       .orderBy('created_at', 'desc');
     
@@ -5181,7 +6367,7 @@ router.post('/opportunities', requirePermission(Permission.ACCOUNTS_WRITE), asyn
     }
     
     const id = `op-${Date.now()}`;
-    const [opportunity] = await db('opportunities')
+    const [opportunity] = await getDb('opportunities')
       .insert({
         id,
         tenant_id: tenantId,
@@ -5219,7 +6405,7 @@ router.put('/opportunities/:id', requirePermission(Permission.ACCOUNTS_WRITE), a
     delete updates.created_at;
     updates.updated_at = new Date();
     
-    const [opportunity] = await db('opportunities')
+    const [opportunity] = await getDb('opportunities')
       .where({ id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
@@ -5248,7 +6434,7 @@ router.patch('/opportunities/:id/status', requirePermission(Permission.ACCOUNTS_
       return res.status(400).json({ error: 'Invalid status' });
     }
     
-    const [opportunity] = await db('opportunities')
+    const [opportunity] = await getDb('opportunities')
       .where({ id, tenant_id: tenantId })
       .update({ status, updated_at: new Date() })
       .returning('*');
@@ -5267,12 +6453,12 @@ router.patch('/opportunities/:id/status', requirePermission(Permission.ACCOUNTS_
 // ===== WAREHOUSES (Settings — inventory locations) =====
 
 async function ensureDefaultWarehouses(tenantId) {
-  const row = await db('warehouses').where({ tenant_id: tenantId }).count('* as c').first();
+  const row = await getDb('warehouses').where({ tenant_id: tenantId }).count('* as c').first();
   const n = Number(row?.c ?? 0);
   if (n > 0) return;
   const now = new Date();
   const ts = Date.now();
-  await db('warehouses').insert([
+  await getDb('warehouses').insert([
     {
       id: `wh-${ts}-toronto`,
       tenant_id: tenantId,
@@ -5300,12 +6486,22 @@ router.get('/warehouses', requirePermission(Permission.SETTINGS_READ), async (re
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
 
-    await ensureDefaultWarehouses(tenantId);
-
     const includeInactive =
       req.query.include_inactive === 'true' || req.query.include_inactive === '1';
 
-    let q = db('warehouses').where({ tenant_id: tenantId });
+    if (req.hqGlobalView) {
+      const merged = await hqFetchFromAllSources(req.user?.tenantId, async (db, tid) => {
+        if (!tid) return [];
+        let q = db('warehouses').where({ tenant_id: tid });
+        if (!includeInactive) q = q.where('is_active', true);
+        return q.orderBy('sort_order', 'asc').orderBy('name', 'asc');
+      });
+      return res.json({ data: merged });
+    }
+
+    await ensureDefaultWarehouses(tenantId);
+
+    let q = getDb('warehouses').where({ tenant_id: tenantId });
     if (!includeInactive) {
       q = q.where('is_active', true);
     }
@@ -5331,7 +6527,7 @@ router.post('/warehouses', requirePermission(Permission.SETTINGS_WRITE), async (
       return res.status(400).json({ error: 'name is required' });
     }
 
-    const existing = await db('warehouses')
+    const existing = await getDb('warehouses')
       .where({ tenant_id: tenantId })
       .whereRaw('lower(trim(name)) = ?', [name.toLowerCase()])
       .first();
@@ -5339,12 +6535,12 @@ router.post('/warehouses', requirePermission(Permission.SETTINGS_WRITE), async (
       return res.status(409).json({ error: 'A warehouse with this name already exists.' });
     }
 
-    const maxSort = await db('warehouses').where({ tenant_id: tenantId }).max('sort_order as m').first();
+    const maxSort = await getDb('warehouses').where({ tenant_id: tenantId }).max('sort_order as m').first();
     const sortOrder = Number(maxSort?.m ?? -1) + 1;
 
     const id = `wh-${Date.now()}`;
     const now = new Date();
-    const [created] = await db('warehouses')
+    const [created] = await getDb('warehouses')
       .insert({
         id,
         tenant_id: tenantId,
@@ -5451,7 +6647,7 @@ router.patch('/warehouses/:id', requirePermission(Permission.SETTINGS_WRITE), as
         row = upd;
       });
     } else {
-      [row] = await db('warehouses')
+      [row] = await getDb('warehouses')
         .where({ id, tenant_id: tenantId })
         .update(snake)
         .returning('*');
@@ -5486,7 +6682,7 @@ router.get('/me/warehouse-options', requirePermission(Permission.INVENTORY_READ)
 
     await ensureDefaultWarehouses(tenantId);
 
-    const rows = await db('warehouses')
+    const rows = await getDb('warehouses')
       .where({ tenant_id: tenantId, is_active: true })
       .orderBy('sort_order', 'asc')
       .orderBy('name', 'asc')
@@ -5502,6 +6698,132 @@ router.get('/me/warehouse-options', requirePermission(Permission.INVENTORY_READ)
  * PATCH /api/v1/me/primary-warehouse
  * Distributor sets which depot they operate from; syncs warehouses.linked_team_member_id.
  */
+// GET /api/v1/me/retail-account-settings — profile + notifications for retail portal
+router.get('/me/retail-account-settings', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+
+    const role = req.user.role;
+    if (role !== 'retail' && role !== 'retail_account') {
+      return res.status(403).json({ error: 'Retail portal settings are only available to retail users.' });
+    }
+
+    const tm = await findTeamMemberByEmail(db, tenantId, req.user.email);
+    const settings = await loadRetailPortalSettings(db, tenantId, req.user.userId);
+
+    const displayName = req.user.displayName || tm?.name || '';
+    const parts = String(displayName).trim().split(/\s+/).filter(Boolean);
+
+    res.json({
+      data: {
+        firstName: settings?.first_name ?? parts[0] ?? '',
+        lastName: settings?.last_name ?? parts.slice(1).join(' ') ?? '',
+        email: req.user.email,
+        phone: settings?.phone ?? tm?.phone ?? '',
+        linkedAccountId: tm?.linked_account_id ?? null,
+        retailTradingName: tm?.retail_trading_name ?? null,
+        notificationPrefs: normalizeNotificationPrefs(
+          settings?.notification_prefs
+            ? typeof settings.notification_prefs === 'string'
+              ? JSON.parse(settings.notification_prefs)
+              : settings.notification_prefs
+            : null,
+        ),
+        updatedAt: settings?.updated_at ?? null,
+      },
+    });
+  } catch (err) {
+    console.error('[API v1] Error loading retail account settings:', err);
+    res.status(500).json({ error: 'Failed to load retail account settings' });
+  }
+});
+
+// PATCH /api/v1/me/retail-account-settings
+router.patch('/me/retail-account-settings', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+
+    const role = req.user.role;
+    if (role !== 'retail' && role !== 'retail_account') {
+      return res.status(403).json({ error: 'Retail portal settings are only available to retail users.' });
+    }
+
+    const body = req.body || {};
+    const tm = await findTeamMemberByEmail(db, tenantId, req.user.email);
+    const existing = await loadRetailPortalSettings(db, tenantId, req.user.userId);
+
+    const firstName =
+      body.firstName != null ? String(body.firstName).trim().slice(0, 120) : existing?.first_name ?? '';
+    const lastName =
+      body.lastName != null ? String(body.lastName).trim().slice(0, 120) : existing?.last_name ?? '';
+    const phone =
+      body.phone != null ? String(body.phone).trim().slice(0, 50) : existing?.phone ?? '';
+    const notificationPrefs =
+      body.notificationPrefs != null
+        ? normalizeNotificationPrefs(body.notificationPrefs)
+        : normalizeNotificationPrefs(
+            existing?.notification_prefs
+              ? typeof existing.notification_prefs === 'string'
+                ? JSON.parse(existing.notification_prefs)
+                : existing.notification_prefs
+              : null,
+          );
+
+    const row = {
+      tenant_id: tenantId,
+      user_id: req.user.userId,
+      linked_account_id: tm?.linked_account_id ?? existing?.linked_account_id ?? null,
+      first_name: firstName,
+      last_name: lastName,
+      phone,
+      notification_prefs: JSON.stringify(notificationPrefs),
+      updated_at: new Date(),
+    };
+
+    if (existing) {
+      await getDb('retail_portal_settings').where({ user_id: req.user.userId, tenant_id: tenantId }).update(row);
+    } else {
+      await getDb('retail_portal_settings').insert(row);
+    }
+
+    if (tm && (phone || firstName || lastName)) {
+      const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+      await getDb('team_members')
+        .where({ id: tm.id, tenant_id: tenantId })
+        .update({
+          ...(fullName ? { name: fullName } : {}),
+          ...(phone ? { phone } : {}),
+          updated_at: new Date(),
+        });
+    }
+
+    await platformDb('users')
+      .where({ id: req.user.userId, tenant_id: tenantId })
+      .update({
+        display_name: [firstName, lastName].filter(Boolean).join(' ').trim() || req.user.displayName,
+        updated_at: new Date(),
+      });
+
+    res.json({
+      data: {
+        firstName,
+        lastName,
+        email: req.user.email,
+        phone,
+        linkedAccountId: row.linked_account_id,
+        retailTradingName: tm?.retail_trading_name ?? null,
+        notificationPrefs,
+        updatedAt: row.updated_at,
+      },
+    });
+  } catch (err) {
+    console.error('[API v1] Error saving retail account settings:', err);
+    res.status(500).json({ error: 'Failed to save retail account settings' });
+  }
+});
+
 router.patch('/me/primary-warehouse', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
@@ -5521,7 +6843,7 @@ router.patch('/me/primary-warehouse', requirePermission(Permission.INVENTORY_REA
         ? null
         : String(warehouseIdRaw).trim();
 
-    const member = await db('team_members').where({ tenant_id: tenantId, email }).first();
+    const member = await getDb('team_members').where({ tenant_id: tenantId, email }).first();
     if (!member || member.role !== 'distributor') {
       return res.status(404).json({
         error: 'No distributor CRM contact matches this login email.',
@@ -5540,8 +6862,8 @@ router.patch('/me/primary-warehouse', requirePermission(Permission.INVENTORY_REA
       throw e;
     }
 
-    const updated = await db('team_members').where({ id: member.id, tenant_id: tenantId }).first();
-    const warehouseRows = await db('warehouses').where({ tenant_id: tenantId }).orderBy('sort_order', 'asc').orderBy('name', 'asc');
+    const updated = await getDb('team_members').where({ id: member.id, tenant_id: tenantId }).first();
+    const warehouseRows = await getDb('warehouses').where({ tenant_id: tenantId }).orderBy('sort_order', 'asc').orderBy('name', 'asc');
 
     res.json({
       data: {

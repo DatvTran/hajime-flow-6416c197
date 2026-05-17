@@ -87,7 +87,7 @@
     /* ── Surfaces ── */
     --surface-elevated: 40 20% 100%;
     --surface-sunken: 37 14% 94%;
-    --glass-bg: 40 20% 99% / 0.8;
+    --glass-bg: 40 20% 99% / 0.82;
     --glass-border: 35 12% 89% / 0.6;
 
     /* ── Transition timing ── */

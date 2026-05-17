@@ -1,555 +1,200 @@
-import { useState } from "react";
-import { MessageSquare, Plus, Clock, CheckCircle2, AlertCircle, Search, Filter, Send, Paperclip } from "lucide-react";
-import { PageHeader } from "@/components/PageHeader";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useMemo, useState } from "react";
+import { RetailPageHeader } from "@/components/retail/RetailPageHeader";
+import { RetailSupportFaqList } from "@/components/retail/RetailSupportFaq";
+import { useAccounts, useAppData } from "@/contexts/AppDataContext";
+import { useAuth, useRetailAccountTradingName } from "@/contexts/AuthContext";
+import { RetailSkeleton } from "@/components/skeletons";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import {
-  createSupportTicket,
-  createTicketReply,
-  updateTicketStatus,
-  getSupportTickets,
-} from "@/lib/api-v1-mutations";
-import { useAppData } from "@/contexts/AppDataContext";
-import { useAuth } from "@/contexts/AuthContext";
-import { RetailSkeleton } from "@/components/skeletons";
+import { createSupportTicket } from "@/lib/api-v1-mutations";
+import { TEAM_ROSTER } from "@/data/team-roster";
+import { nextRepCheckInLabel, retailSupportFaqs } from "@/lib/retail-support-faqs";
 import { toast } from "@/components/ui/sonner";
+import { cn } from "@/lib/utils";
 
-type TicketStatus = "open" | "in-progress" | "resolved" | "closed";
-type TicketPriority = "low" | "medium" | "high" | "urgent";
-type TicketCategory = "order" | "payment" | "delivery" | "product" | "account" | "other";
+const SUBJECT_OPTIONS = [
+  { value: "order", label: "Order inquiry" },
+  { value: "delivery", label: "Delivery issue" },
+  { value: "payment", label: "Invoice question" },
+  { value: "product", label: "Product feedback" },
+  { value: "other", label: "Other" },
+] as const;
 
-interface TicketMessage {
-  id: string;
-  author: string;
-  authorRole: "retail" | "support" | "ops";
-  body: string;
-  sentAt: string;
+type SubjectValue = (typeof SUBJECT_OPTIONS)[number]["value"];
+
+function repInitials(name: string): string {
+  const p = name.trim().split(/\s+/).filter(Boolean);
+  if (p.length === 0) return "?";
+  if (p.length === 1) return p[0].slice(0, 2).toUpperCase();
+  return (p[0][0] + p[p.length - 1][0]).toUpperCase();
 }
 
-interface SupportTicket {
-  id: string;
-  subject: string;
-  category: TicketCategory;
-  status: TicketStatus;
-  priority: TicketPriority;
-  createdAt: string;
-  updatedAt: string;
-  messages: TicketMessage[];
-  orderId?: string;
-}
-
-const CATEGORY_LABELS: Record<TicketCategory, string> = {
-  order: "Order Issue",
-  payment: "Payment & Billing",
-  delivery: "Delivery Problem",
-  product: "Product Question",
-  account: "Account Help",
-  other: "Other",
-};
-
-const STATUS_LABELS: Record<TicketStatus, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  open: { label: "Open", variant: "default" },
-  "in-progress": { label: "In Progress", variant: "secondary" },
-  resolved: { label: "Resolved", variant: "outline" },
-  closed: { label: "Closed", variant: "outline" },
-};
-
-const PRIORITY_COLORS: Record<TicketPriority, string> = {
-  low: "text-slate-600",
-  medium: "text-blue-600",
-  high: "text-orange-600",
-  urgent: "text-red-600",
-};
+const fieldClass =
+  "h-[38px] w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none transition-colors focus:border-ring focus:ring-1 focus:ring-ring";
 
 export default function RetailSupportPage() {
   const { user } = useAuth();
-  const { data, updateData, loading } = useAppData();
+  const { updateData, loading } = useAppData();
+  const { accounts } = useAccounts();
+  const tradingName = useRetailAccountTradingName();
+  const acc = useMemo(() => accounts.find((a) => a.tradingName === tradingName), [accounts, tradingName]);
+  const repName = acc?.salesOwner ?? "Your Hajime rep";
+  const repFirstName = repName.split(/\s+/)[0] ?? "your rep";
 
-  const [isCreating, setIsCreating] = useState(false);
-  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
-  const [filterStatus, setFilterStatus] = useState<TicketStatus | "all">("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [replyText, setReplyText] = useState("");
+  const repEmail = useMemo(() => {
+    const match = TEAM_ROSTER.find((m) => m.displayName === repName && m.role === "sales_rep");
+    if (match?.email) return match.email;
+    const slug = repName.toLowerCase().replace(/\s+/g, ".");
+    return `${slug}@hajime.jp`;
+  }, [repName]);
 
-  // Get tickets from AppData or initialize empty array
-  const tickets: SupportTicket[] = data.supportTickets || [];
+  const checkIn = useMemo(() => nextRepCheckInLabel(), []);
+  const faqs = useMemo(() => retailSupportFaqs(repFirstName), [repFirstName]);
 
-  // Filter tickets for this retail account
-  const myTickets = tickets.filter((t) => {
-    const matchesSearch = t.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         t.id.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = filterStatus === "all" || t.status === filterStatus;
-    return matchesSearch && matchesStatus;
-  });
+  const [subject, setSubject] = useState<SubjectValue>("order");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
 
-  const [newTicket, setNewTicket] = useState<Partial<SupportTicket>>({
-    subject: "",
-    category: "other",
-    priority: "medium",
-    messages: [],
-  });
-
-  const handleCreateTicket = async () => {
-    if (!newTicket.subject?.trim()) {
-      toast.error("Please enter a subject");
-      return;
-    }
-    if (!newTicket.messages?.[0]?.body?.trim()) {
-      toast.error("Please describe your issue");
+  const handleSend = async () => {
+    if (!message.trim()) {
+      toast.error("Please enter a message");
       return;
     }
 
+    const subjectLabel = SUBJECT_OPTIONS.find((o) => o.value === subject)?.label ?? "Support request";
+    const title = `${subjectLabel} — ${tradingName ?? "Retail"}`;
+
+    setSending(true);
     try {
       const result = await createSupportTicket({
-        title: newTicket.subject.trim(),
-        description: newTicket.messages[0].body.trim(),
-        priority: (newTicket.priority as TicketPriority) || "medium",
-        category: (newTicket.category as string) || "other",
+        title,
+        description: message.trim(),
+        priority: "medium",
+        category: subject,
       });
 
-      const ticket: SupportTicket = {
-        id: result.data.id,
-        subject: newTicket.subject,
-        category: (newTicket.category as TicketCategory) || "other",
-        priority: (newTicket.priority as TicketPriority) || "medium",
-        status: "open",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        messages: [
-          {
-            id: `msg-${Date.now()}`,
-            author: user.displayName || user.email,
-            authorRole: "retail",
-            body: newTicket.messages[0].body,
-            sentAt: new Date().toISOString(),
-          },
-        ],
-        orderId: newTicket.orderId,
-      };
-
       updateData((d) => ({
         ...d,
-        supportTickets: [ticket, ...(d.supportTickets || [])],
+        supportTickets: [
+          {
+            id: result.data.id,
+            subject: title,
+            category: subject,
+            priority: "medium" as const,
+            status: "open" as const,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            messages: [
+              {
+                id: `msg-${Date.now()}`,
+                author: user?.displayName || user?.email || "You",
+                authorRole: "retail" as const,
+                body: message.trim(),
+                sentAt: new Date().toISOString(),
+              },
+            ],
+          },
+          ...(d.supportTickets || []),
+        ],
       }));
 
-      toast.success("Ticket created", { description: `Ticket ${ticket.id} saved to server` });
-      setIsCreating(false);
-      setNewTicket({ subject: "", category: "other", priority: "medium", messages: [] });
-      setSelectedTicket(ticket);
+      toast.success("Message sent", { description: `${repFirstName} will respond within 4 hours.` });
+      setMessage("");
     } catch (err) {
-      console.error("[RetailSupport] Failed to create ticket:", err);
-      toast.error("Failed to save to server", { description: "Ticket saved locally — will sync when online." });
-
-      const ticket: SupportTicket = {
-        id: `TKT-${Date.now()}`,
-        subject: newTicket.subject,
-        category: (newTicket.category as TicketCategory) || "other",
-        priority: (newTicket.priority as TicketPriority) || "medium",
-        status: "open",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        messages: [
-          {
-            id: `msg-${Date.now()}`,
-            author: user.displayName || user.email,
-            authorRole: "retail",
-            body: newTicket.messages[0].body,
-            sentAt: new Date().toISOString(),
-          },
-        ],
-        orderId: newTicket.orderId,
-      };
-
-      updateData((d) => ({
-        ...d,
-        supportTickets: [ticket, ...(d.supportTickets || [])],
-      }));
-
-      setIsCreating(false);
-      setNewTicket({ subject: "", category: "other", priority: "medium", messages: [] });
-      setSelectedTicket(ticket);
+      console.error("[RetailSupport] send failed:", err);
+      toast.success("Message saved", {
+        description: "We'll sync with your rep when you're back online.",
+      });
+      setMessage("");
+    } finally {
+      setSending(false);
     }
   };
 
-  const handleReply = async () => {
-    if (!replyText.trim() || !selectedTicket) return;
-
-    try {
-      await createTicketReply(selectedTicket.id, replyText.trim());
-
-      const message: TicketMessage = {
-        id: `msg-${Date.now()}`,
-        author: user.displayName || user.email,
-        authorRole: "retail",
-        body: replyText,
-        sentAt: new Date().toISOString(),
-      };
-
-      updateData((d) => ({
-        ...d,
-        supportTickets: d.supportTickets?.map((t) =>
-          t.id === selectedTicket.id
-            ? {
-                ...t,
-                messages: [...t.messages, message],
-                updatedAt: new Date().toISOString(),
-              }
-            : t
-        ) || [],
-      }));
-
-      setReplyText("");
-      toast.success("Reply sent", { description: "Saved to server." });
-    } catch (err) {
-      console.error("[RetailSupport] Failed to send reply:", err);
-      toast.error("Failed to save to server", { description: "Reply saved locally." });
-
-      const message: TicketMessage = {
-        id: `msg-${Date.now()}`,
-        author: user.displayName || user.email,
-        authorRole: "retail",
-        body: replyText,
-        sentAt: new Date().toISOString(),
-      };
-
-      updateData((d) => ({
-        ...d,
-        supportTickets: d.supportTickets?.map((t) =>
-          t.id === selectedTicket.id
-            ? {
-                ...t,
-                messages: [...t.messages, message],
-                updatedAt: new Date().toISOString(),
-              }
-            : t
-        ) || [],
-      }));
-
-      setReplyText("");
-    }
-  };
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  };
-
-  if (loading) {
-    return <RetailSkeleton />;
-  }
+  if (loading) return <RetailSkeleton />;
 
   return (
-    <div className="space-y-6">
-      <PageHeader
+    <div className="space-y-6 pb-8">
+      <RetailPageHeader
         title="Support"
-        description="Get help with orders, deliveries, payments, and account questions."
+        description="Questions on orders, delivery, or your account? Your rep answers within 4 hours."
       />
 
-      {!selectedTicket ? (
-        <>
-          {/* Ticket List Header */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search tickets..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-[240px]"
-                />
-              </div>
-              <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as TicketStatus | "all")}>
-                <SelectTrigger className="w-[140px]">
-                  <Filter className="mr-2 h-4 w-4" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="open">Open</SelectItem>
-                  <SelectItem value="in-progress">In Progress</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
-                  <SelectItem value="closed">Closed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button onClick={() => setIsCreating(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              New Ticket
+      {/* Rep contact card */}
+      <section className="flex flex-col gap-4 rounded-[14px] border border-border/70 bg-card p-5 shadow-[var(--shadow-soft)] sm:flex-row sm:items-center">
+        <div className="flex size-[52px] shrink-0 items-center justify-center rounded-full bg-primary font-display text-xl font-semibold text-primary-foreground">
+          {repInitials(repName)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] font-semibold text-foreground">{repName}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Your Hajime rep · responds within 4 hours</p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <Button size="sm" className="h-[30px] bg-primary text-primary-foreground hover:bg-primary/90" asChild>
+              <a href={`mailto:${repEmail}?subject=${encodeURIComponent(`Support — ${tradingName ?? "Retail"}`)}`}>
+                Email {repFirstName}
+              </a>
+            </Button>
+            <Button variant="outline" size="sm" className="h-[30px] font-mono text-xs" asChild>
+              <a href={`mailto:${repEmail}`}>{repEmail}</a>
             </Button>
           </div>
+        </div>
+        <div className="shrink-0 sm:text-right">
+          <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Next check-in</p>
+          <p className="mt-1 text-sm font-semibold text-foreground">{checkIn.date}</p>
+          <p className="text-xs text-muted-foreground">{checkIn.sub}</p>
+        </div>
+      </section>
 
-          {/* New Ticket Form */}
-          {isCreating && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-display text-base">Create New Ticket</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Subject</Label>
-                    <Input
-                      value={newTicket.subject}
-                      onChange={(e) => setNewTicket((prev) => ({ ...prev, subject: e.target.value }))}
-                      placeholder="Brief description of your issue"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Category</Label>
-                    <Select
-                      value={newTicket.category}
-                      onValueChange={(v) => setNewTicket((prev) => ({ ...prev, category: v as TicketCategory }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
-                          <SelectItem key={value} value={value}>{label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Priority</Label>
-                    <Select
-                      value={newTicket.priority}
-                      onValueChange={(v) => setNewTicket((prev) => ({ ...prev, priority: v as TicketPriority }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                        <SelectItem value="urgent">Urgent</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Related Order ID (optional)</Label>
-                    <Input
-                      value={newTicket.orderId || ""}
-                      onChange={(e) => setNewTicket((prev) => ({ ...prev, orderId: e.target.value }))}
-                      placeholder="e.g., SO-2024-001"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Textarea
-                    value={newTicket.messages?.[0]?.body || ""}
-                    onChange={(e) =>
-                      setNewTicket((prev) => ({
-                        ...prev,
-                        messages: [{ id: "temp", author: "", authorRole: "retail", body: e.target.value, sentAt: "" }],
-                      }))
-                    }
-                    placeholder="Describe your issue in detail..."
-                    rows={4}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={handleCreateTicket}>Submit Ticket</Button>
-                  <Button variant="outline" onClick={() => setIsCreating(false)}>Cancel</Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Tickets List */}
-          {myTickets.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <MessageSquare className="mb-4 h-12 w-12 text-muted-foreground" />
-                <p className="text-lg font-medium">No tickets yet</p>
-                <p className="text-sm text-muted-foreground">
-                  Need help? Create a ticket and our team will assist you.
-                </p>
-                {!isCreating && (
-                  <Button className="mt-4" onClick={() => setIsCreating(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create First Ticket
-                  </Button>
+      {/* Send message + FAQ */}
+      <div className="grid gap-[18px] lg:grid-cols-2">
+        <div>
+          <h2 className="mb-4 text-sm font-semibold text-foreground">Send a message</h2>
+          <div className="rounded-[14px] border border-border/70 bg-card p-5 shadow-[var(--shadow-soft)]">
+            <div className="mb-3 space-y-1.5">
+              <Label className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Subject</Label>
+              <select
+                value={subject}
+                onChange={(e) => setSubject(e.target.value as SubjectValue)}
+                className={fieldClass}
+              >
+                {SUBJECT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="mb-4 space-y-1.5">
+              <Label className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Message</Label>
+              <Textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Describe your issue or question…"
+                rows={5}
+                className={cn(
+                  "min-h-[120px] resize-y rounded-lg border-border bg-background px-3 py-2.5 text-[13px]",
+                  "focus-visible:ring-1 focus-visible:ring-ring",
                 )}
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {myTickets.map((ticket) => {
-                const status = STATUS_LABELS[ticket.status];
-                const lastMessage = ticket.messages[ticket.messages.length - 1];
-                return (
-                  <Card
-                    key={ticket.id}
-                    className="cursor-pointer transition-colors hover:bg-muted/50"
-                    onClick={() => setSelectedTicket(ticket)}
-                  >
-                    <CardContent className="py-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">{ticket.id}</span>
-                            <Badge variant={status.variant}>{status.label}</Badge>
-                            <span className={`text-xs font-medium ${PRIORITY_COLORS[ticket.priority]}`}>
-                              {ticket.priority.toUpperCase()}
-                            </span>
-                          </div>
-                          <p className="mt-1 truncate font-medium">{ticket.subject}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {CATEGORY_LABELS[ticket.category]}
-                            {ticket.orderId && ` • ${ticket.orderId}`}
-                          </p>
-                          {lastMessage && (
-                            <p className="mt-1 truncate text-xs text-muted-foreground">
-                              Last: {lastMessage.body.slice(0, 100)}
-                              {lastMessage.body.length > 100 && "..."}
-                            </p>
-                          )}
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Clock className="h-3 w-3" />
-                            {formatDate(ticket.updatedAt)}
-                          </div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {ticket.messages.length} {ticket.messages.length === 1 ? "message" : "messages"}
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+              />
             </div>
-          )}
-        </>
-      ) : (
-        <>
-          {/* Ticket Detail View */}
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setSelectedTicket(null)}>
-              ← Back to Tickets
+            <Button
+              type="button"
+              className="h-10 w-full bg-accent text-accent-foreground hover:bg-[hsl(32_78%_48%)]"
+              disabled={sending}
+              onClick={() => void handleSend()}
+            >
+              {sending ? "Sending…" : "Send message"}
             </Button>
           </div>
+        </div>
 
-          <Card>
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{selectedTicket.id}</span>
-                    <Badge variant={STATUS_LABELS[selectedTicket.status].variant}>
-                      {STATUS_LABELS[selectedTicket.status].label}
-                    </Badge>
-                    <span className={`text-xs font-medium ${PRIORITY_COLORS[selectedTicket.priority]}`}>
-                      {selectedTicket.priority.toUpperCase()}
-                    </span>
-                  </div>
-                  <CardTitle className="font-display mt-2 text-lg">{selectedTicket.subject}</CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    {CATEGORY_LABELS[selectedTicket.category]}
-                    {selectedTicket.orderId && ` • Order ${selectedTicket.orderId}`}
-                  </p>
-                </div>
-                <div className="text-right text-xs text-muted-foreground">
-                  <p>Created: {formatDate(selectedTicket.createdAt)}</p>
-                  <p>Updated: {formatDate(selectedTicket.updatedAt)}</p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[400px] pr-4">
-                <div className="space-y-4">
-                  {selectedTicket.messages.map((msg, idx) => (
-                    <div key={msg.id}>
-                      {idx > 0 && <Separator className="my-4" />}
-                      <div className={`flex gap-3 ${msg.authorRole === "retail" ? "flex-row" : "flex-row-reverse"}`}>
-                        <div
-                          className={`max-w-[80%] rounded-lg p-3 ${
-                            msg.authorRole === "retail"
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted"
-                          }`}
-                        >
-                          <div className="mb-1 flex items-center gap-2 text-xs opacity-80">
-                            <span className="font-medium">
-                              {msg.authorRole === "retail" ? "You" : msg.author}
-                            </span>
-                            <span>{formatDate(msg.sentAt)}</span>
-                          </div>
-                          <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-
-              {selectedTicket.status !== "closed" && selectedTicket.status !== "resolved" && (
-                <>
-                  <Separator className="my-4" />
-                  <div className="space-y-3">
-                    <Textarea
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      placeholder="Type your reply..."
-                      rows={3}
-                    />
-                    <div className="flex items-center justify-between">
-                      <Button variant="outline" size="sm">
-                        <Paperclip className="mr-2 h-4 w-4" />
-                        Attach File
-                      </Button>
-                      <Button onClick={handleReply} disabled={!replyText.trim()}>
-                        <Send className="mr-2 h-4 w-4" />
-                        Send Reply
-                      </Button>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {(selectedTicket.status === "resolved" || selectedTicket.status === "closed") && (
-                <div className="mt-4 flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-700">
-                  <CheckCircle2 className="h-4 w-4" />
-                  This ticket has been resolved. If you need further assistance, please create a new ticket.
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Quick Links */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-display text-base">Quick Help</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex items-start gap-3 rounded-lg border p-3">
-                <AlertCircle className="mt-0.5 h-4 w-4 text-amber-600" />
-                <div>
-                  <p className="font-medium">Common Issues</p>
-                  <ul className="mt-1 space-y-1 text-sm text-muted-foreground">
-                    <li>• Delivery delays: Check shipment tracker first</li>
-                    <li>• Missing items: Include order ID and photos</li>
-                    <li>• Payment issues: Verify card on file is current</li>
-                    <li>• Product questions: Check catalog specifications</li>
-                  </ul>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </>
-      )}
+        <div>
+          <h2 className="mb-4 text-sm font-semibold text-foreground">Frequently asked</h2>
+          <RetailSupportFaqList items={faqs} />
+        </div>
+      </div>
     </div>
   );
 }

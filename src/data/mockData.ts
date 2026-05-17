@@ -326,6 +326,10 @@ export type Account = {
   applicationSubmittedAt?: string;
   /** Portal login email communicated on approval (demo). */
   portalLoginEmail?: string;
+  /** Owning distributor portal user id (`users.id`). */
+  managedByDistributorUserId?: string;
+  /** Assigned field sales rep portal user id. */
+  assignedSalesRepUserId?: string;
 };
 
 export const accounts: Account[] = accountsJson as Account[];
@@ -501,6 +505,7 @@ export const shipments: Shipment[] = [
     type: "outbound",
     status: "in-transit",
     notes: "",
+    waybillNumber: "ML-8842910",
   },
   {
     id: "SH-1047",

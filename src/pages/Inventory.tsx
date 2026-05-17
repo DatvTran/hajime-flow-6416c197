@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/PageHeader";
+import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
 import { ReceiveStockDialog } from "@/components/ReceiveStockDialog";
 import { StatCard } from "@/components/StatCard";
 import type { InventoryItem } from "@/data/mockData";
@@ -206,6 +207,7 @@ export default function Inventory() {
 
       <PageHeader
         title="Inventory"
+        variant={pageHeaderVariantForRole(user.role)}
         description="SKU-level positions by market hub — available, allocated, reserved, and incoming pipeline with health vs safety stock."
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">

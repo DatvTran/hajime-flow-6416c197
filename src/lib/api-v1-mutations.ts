@@ -103,11 +103,50 @@ export async function deleteProductBySku(sku: string) {
 
 // ===== ACCOUNTS =====
 
+export type SendStoreInvitationBody = {
+  storeName: string;
+  email: string;
+  message?: string;
+  type?: string;
+  salesOwner?: string;
+  /** Distributor invite: assign territory rep by CRM email (resolved to users.id on server). */
+  assignedSalesRepEmail?: string;
+  assignedSalesRepUserId?: string | number;
+  contactName?: string;
+  legalName?: string;
+  phone?: string;
+  city?: string;
+  country?: string;
+};
+
+export async function sendStoreInvitation(body: SendStoreInvitationBody): Promise<{
+  data: { account: Record<string, unknown>; portalUser: Record<string, unknown> };
+  invite?: {
+    status: string;
+    reason?: string;
+    emailDispatched?: boolean;
+    inviteUrl?: string;
+    expiresAt?: string;
+  };
+  pendingApproval?: boolean;
+  depotLink?: { linked?: boolean };
+  invitationResent?: boolean;
+  message?: string;
+}> {
+  return apiFetch("/api/v1/accounts/send-store-invitation", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function createAccount(accountData: {
   name: string;
   tradingName?: string;
+  legalName?: string;
   type: string;
-  market: string;
+  market?: string;
+  city?: string;
+  country?: string;
   email?: string;
   phone?: string;
   billingAddress?: string;
@@ -116,6 +155,7 @@ export async function createAccount(accountData: {
   creditLimit?: number;
   salesOwner?: string;
   notes?: string;
+  status?: string;
 }) {
   return apiFetch("/api/v1/accounts", {
     method: "POST",
@@ -1390,6 +1430,91 @@ export async function deleteIncentive(id: string) {
   });
 }
 
+// ===== SUPPLY CHAIN INCENTIVE MANAGER (/incentives) — tenant JSON snapshot =====
+
+export type SupplyChainIncentiveStatePayload = {
+  partners: unknown[];
+  spifs: unknown[];
+  supplyChainPricing: {
+    landed: number;
+    wholesale: number;
+    retail: number;
+    shelf: number;
+  };
+  spifRates: {
+    new_on_premise: number;
+    new_off_premise: number;
+    reorder: number;
+    tasting: number;
+  };
+  volumeBonusesUsd: { gold: number; silver: number };
+};
+
+export async function getSupplyChainIncentivesState(): Promise<{
+  data: SupplyChainIncentiveStatePayload | null;
+  updatedAt?: string;
+  updatedBy?: string | number | null;
+}> {
+  return apiFetch("/api/v1/supply-chain-incentives");
+}
+
+export async function putSupplyChainIncentivesState(
+  body: SupplyChainIncentiveStatePayload,
+): Promise<{
+  data: SupplyChainIncentiveStatePayload;
+  updatedAt?: string;
+  updatedBy?: string | number | null;
+}> {
+  return apiFetch("/api/v1/supply-chain-incentives", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export type MyIncentiveProgressData = {
+  scope: "distributor" | "sales_rep" | "retail" | "unsupported";
+  matched: boolean;
+  retailTradingName?: string | null;
+  partner: {
+    id: string;
+    name: string;
+    market: string;
+    tier: string;
+    quarterlyPerformanceTier: string | null;
+    quarterlyCasesSold: number;
+    accountsOpened: number;
+    reorders: number;
+    tastingsCompleted: number;
+    adfSpend: number;
+  } | null;
+  spifs: Array<{
+    id: string;
+    type: string;
+    date: string;
+    quantity: number;
+    payout: number;
+    repName?: string;
+    partnerName?: string;
+    notes?: string;
+  }>;
+  totals: { payoutTotal: number; spifCount: number };
+  program: {
+    spifRates: Record<string, number>;
+    volumeBonusesUsd: { gold: number; silver: number };
+  };
+};
+
+export async function getMySupplyChainIncentiveProgress(tradingName?: string | null): Promise<{
+  data: MyIncentiveProgressData;
+  updatedAt?: string | null;
+}> {
+  const q =
+    tradingName && String(tradingName).trim()
+      ? `?tradingName=${encodeURIComponent(String(tradingName).trim().slice(0, 200))}`
+      : "";
+  return apiFetch(`/api/v1/supply-chain-incentives/me${q}`);
+}
+
 // ===== PRODUCTION STATUSES =====
 
 export async function getProductionStatuses(params?: {
@@ -1436,5 +1561,71 @@ export async function updateProductionStatus(
 export async function deleteProductionStatus(id: string) {
   return apiFetch(`/api/v1/production-statuses/${id}`, {
     method: "DELETE",
+  });
+}
+
+// ===== RETAIL PORTAL USERS & ACCOUNT SETTINGS =====
+
+export type RetailPortalUser = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  isActive: boolean;
+  pendingDistributorApproval: boolean;
+  linkedAccountId: string | null;
+  retailTradingName: string | null;
+  managedByUserId: string | null;
+  createdAt: string;
+};
+
+export type RetailAccountSettings = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  linkedAccountId: string | null;
+  retailTradingName: string | null;
+  notificationPrefs: Record<string, boolean>;
+  updatedAt: string | null;
+};
+
+export async function getRetailPortalUsers(accountId: string): Promise<{ data: RetailPortalUser[] }> {
+  return apiFetch(`/api/v1/accounts/${encodeURIComponent(accountId)}/portal-users`);
+}
+
+export async function createRetailPortalUser(
+  accountId: string,
+  body: { name: string; email: string; phone?: string },
+): Promise<{
+  data: RetailPortalUser;
+  invite?: { status: string; reason?: string; emailDispatched?: boolean; inviteUrl?: string };
+}> {
+  return apiFetch(`/api/v1/accounts/${encodeURIComponent(accountId)}/portal-users`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteRetailPortalUser(accountId: string, memberId: string) {
+  return apiFetch(
+    `/api/v1/accounts/${encodeURIComponent(accountId)}/portal-users/${encodeURIComponent(memberId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function getRetailAccountSettings(): Promise<{ data: RetailAccountSettings }> {
+  return apiFetch("/api/v1/me/retail-account-settings");
+}
+
+export async function patchRetailAccountSettings(body: {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  notificationPrefs?: Record<string, boolean>;
+}): Promise<{ data: RetailAccountSettings }> {
+  return apiFetch("/api/v1/me/retail-account-settings", {
+    method: "PATCH",
+    body: JSON.stringify(body),
   });
 }

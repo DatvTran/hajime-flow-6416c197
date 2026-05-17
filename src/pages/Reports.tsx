@@ -1,6 +1,7 @@
 import { useMemo, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
+import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +46,7 @@ import {
   reorderIntervalDaysByAccount,
   topRegionsByRevenue,
 } from "@/lib/analytics-display";
+import RetailSellThroughPage from "@/pages/RetailSellThroughPage";
 
 const ANALYTICS_TAGLINE = "Market and account trends, reorder cadence, regional performance, and sell-in volume over time";
 
@@ -213,6 +215,10 @@ export default function Reports() {
     return <ReportsSkeleton />;
   }
 
+  if (user.role === "retail") {
+    return <RetailSellThroughPage />;
+  }
+
   return (
     <div>
       <Alert className="mb-4 border-dashed border-border bg-muted/25 py-3 sm:mb-6">
@@ -231,6 +237,7 @@ export default function Reports() {
       <PageHeader
         title="Analytics"
         description={pageDescription}
+        variant={pageHeaderVariantForRole(user.role)}
         titleAddon={
           <Badge variant="secondary" className="font-normal">
             Demo

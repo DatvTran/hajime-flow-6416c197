@@ -6,7 +6,7 @@ Premium B2B operations platform for Hajime: inventory, sales orders, account CRM
 
 The live app persists state via `GET/PUT /api/app` (with optional `operationalSettings` and `auditLogs`). The PRD describes a target REST API and full auth service for later phases.
 
-**Sign-in:** open [`/login`](http://localhost:8080/login) — demo auth (password optional). Roles: **Brand Operator (Hajime HQ)** = full access including Settings; **Manufacturer** = portal only; **Distributor** & **Sales Rep** = no Settings / no mfg portal; **Retail** = Dashboard, Orders, Shipments.
+**Sign-in:** [`/login`](http://localhost:8080/login) uses **`POST /api/auth/login`** when `FEATURE_FLAG_AUTH_ENABLED=true` (requires **`npm run dev:api`** or equivalent so `/api` reaches Postgres auth). **Retail demo:** `retail@hajime.jp` / `retail123!`, or roster personas (`jeff@thedrake.ca`, etc.) with the same password after DB seed — pick **Ordering as** to select which storefront filters orders. Other roles use seeded HQ/manufacturer/distributor accounts from `server/seeds/001_initial_data.mjs`.
 
 ## Scripts
 

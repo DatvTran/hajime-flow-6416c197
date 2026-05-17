@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/PageHeader";
+import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
 import { StatusBadge } from "@/components/StatusBadge";
 import { NewSalesOrderDialog } from "@/components/NewSalesOrderDialog";
 import { SalesOrderDetailDialog } from "@/components/SalesOrderDetailDialog";
@@ -291,6 +292,7 @@ export default function Orders() {
     <div>
       <PageHeader
         title="Orders"
+        variant={pageHeaderVariantForRole(user.role)}
         description={
           user.role === "brand_operator"
             ? "Brand HQ — monitor every pathway (manufacturer, wholesaler, rep, retail) and all payment states in one list."
@@ -298,7 +300,7 @@ export default function Orders() {
               ? "Wholesaler — after retail pays, create delivery and process shipping (confirmed + paid orders)."
               : user.role === "manufacturer"
                 ? "Sell-in visibility — mirror lines for planning alongside Production orders."
-                : user.role === "sales_rep"
+                : user.role === "sales_rep" || user.role === "sales"
                   ? "Approve retail drafts, then payment releases the order to the wholesaler for delivery."
                   : "Order lifecycle and fulfillment."
         }

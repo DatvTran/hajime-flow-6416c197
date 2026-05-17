@@ -70,5 +70,8 @@ const config = {
 };
 
 const environment = process.env.NODE_ENV || 'development';
-export const db = knex(config[environment]);
+/** Platform / control database (auth, users, distributor registry). */
+export const platformDb = knex(config[environment]);
+/** @deprecated Use platformDb or getDb() from request-db.mjs */
+export const db = platformDb;
 export default config;

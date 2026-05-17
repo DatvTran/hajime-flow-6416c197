@@ -2,8 +2,10 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AccountDetailDialog } from "@/components/AccountDetailDialog";
 import { NewAccountDialog } from "@/components/NewAccountDialog";
-import { RetailerApplicationDialog } from "@/components/RetailerApplicationDialog";
+import { AccountSetupInviteDialog } from "@/components/AccountSetupInviteDialog";
 import { useAccounts, useSalesOrders, useAppData } from "@/contexts/AppDataContext";
+import { filterAccountsForDistributor } from "@/lib/distributor-scope";
+import { filterAccountsForSalesRep } from "@/lib/sales-rep-scope";
 import { AccountsSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -11,12 +13,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Account } from "@/data/mockData";
-import { Plus, Search, MapPin, Mail, Phone, Users } from "lucide-react";
+import { Plus, Search, MapPin, Mail, Phone, Send, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CSVImportButton } from "@/components/CSVImportButton";
 import { toast } from "@/components/ui/sonner";
-import { resolveSalesRepLabelForSession } from "@/data/team-roster";
+import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
 
 function channelLabel(type: Account["type"]): string {
   if (type === "distributor") return "Distributor";
@@ -33,7 +35,9 @@ export default function Accounts() {
   const { user } = useAuth();
   const { accounts, updateAccount, addAccount } = useAccounts();
   const { salesOrders } = useSalesOrders();
-  const { loading } = useAppData();
+  const { loading, updateData, data } = useAppData();
+  const teamMembers = data.teamMembers ?? [];
+  const wholesalerLabel = data.operationalSettings?.companyName?.trim();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const activeOnly = searchParams.get("status") === "active";
@@ -42,7 +46,7 @@ export default function Accounts() {
   const [view, setView] = useState<"table" | "cards">("cards");
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [newAccountOpen, setNewAccountOpen] = useState(false);
-  const [applicationOpen, setApplicationOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const detailAccount = useMemo(
     () => (selectedAccountId ? accounts.find((a) => a.id === selectedAccountId) ?? null : null),
@@ -64,15 +68,13 @@ export default function Accounts() {
     // Role-based scoping — tightened permissions
     let scopedAccounts = accounts;
 
-    if (user.role === "sales_rep") {
-      // Sales reps: assigned accounts only
-      const rep = resolveSalesRepLabelForSession(user.email, user.displayName ?? "");
-      scopedAccounts = accounts.filter((a) => a.salesOwner === rep);
+    if (user.role === "sales_rep" || user.role === "sales") {
+      scopedAccounts = filterAccountsForSalesRep(accounts, user, teamMembers);
     } else if (user.role === "distributor") {
-      // Distributors: on-premise accounts they fulfill (retail, bar, restaurant, hotel)
-      scopedAccounts = accounts.filter((a) =>
-        ["retail", "bar", "restaurant", "hotel"].includes(a.type),
+      const onPremise = accounts.filter((a) =>
+        ["retail", "bar", "restaurant", "hotel"].includes(String(a.type).toLowerCase()),
       );
+      scopedAccounts = filterAccountsForDistributor(onPremise, user.id, teamMembers);
     } else if (user.role === "manufacturer") {
       // Manufacturers: distributor accounts + direct retail chains (sell-in planning)
       scopedAccounts = accounts.filter(
@@ -102,7 +104,18 @@ export default function Accounts() {
         (a.tradingName?.toLowerCase() || "").includes(q) || (a.city?.toLowerCase() || "").includes(q)
       );
     });
-  }, [search, activeOnly, accounts, pipelineOnboarding, user.role, user.email, user.displayName]);
+  }, [
+    search,
+    activeOnly,
+    accounts,
+    pipelineOnboarding,
+    user.role,
+    user.id,
+    user.email,
+    user.displayName,
+    teamMembers,
+    user.role,
+  ]);
 
   const clearStatusFilter = () => {
     const next = new URLSearchParams(searchParams);
@@ -144,8 +157,9 @@ export default function Accounts() {
     <div>
       <PageHeader
         title="Accounts"
+        variant={pageHeaderVariantForRole(user.role)}
         description={
-          user.role === "sales_rep"
+          user.role === "sales_rep" || user.role === "sales"
             ? "Your assigned accounts — submit new retailer applications, track onboarding pipeline, and manage relationships."
             : user.role === "distributor"
               ? "On-premise accounts you fulfill — retail, bars, restaurants, and hotels in your territory."
@@ -163,19 +177,20 @@ export default function Accounts() {
               size="sm"
               onSuccess={() => toast.success("Accounts imported", { description: "Refresh to see changes" })}
             />
-            {/* Sales reps submit applications; direct account creation is hidden for this role. */}
-            {user.role === "sales_rep" ? (
+            {user.role === "sales_rep" || user.role === "sales" || user.role === "distributor" ? (
               <Button
                 type="button"
                 size="sm"
-                variant="secondary"
                 className="w-full justify-center touch-manipulation sm:w-auto"
-                onClick={() => setApplicationOpen(true)}
+                onClick={() => setInviteOpen(true)}
               >
-                Submit retailer application
+                <Send className="mr-2 h-4 w-4" />
+                Send invitation
               </Button>
             ) : null}
-            {user.role !== "sales_rep" ? (
+            {user.role !== "sales_rep" &&
+            user.role !== "sales" &&
+            user.role !== "distributor" ? (
               <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setNewAccountOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 New Account
@@ -185,14 +200,31 @@ export default function Accounts() {
         }
       />
 
-      <RetailerApplicationDialog
-        open={applicationOpen}
-        onOpenChange={setApplicationOpen}
-        accounts={accounts}
-        onCreate={addAccount}
-      />
+      {user.role === "sales_rep" || user.role === "sales" || user.role === "distributor" ? (
+        <AccountSetupInviteDialog
+          open={inviteOpen}
+          onOpenChange={setInviteOpen}
+          variant={user.role === "distributor" ? "distributor" : "sales_rep"}
+          wholesalerLabel={wholesalerLabel}
+          onAccountCreated={(account) => {
+            updateData((d) => {
+              const idx = d.accounts.findIndex(
+                (a) =>
+                  a.id === account.id ||
+                  (a.tradingName?.toLowerCase() || "") === (account.tradingName?.toLowerCase() || ""),
+              );
+              if (idx >= 0) {
+                const next = [...d.accounts];
+                next[idx] = { ...next[idx], ...account };
+                return { ...d, accounts: next };
+              }
+              return { ...d, accounts: [...d.accounts, account] };
+            });
+          }}
+        />
+      ) : null}
 
-      {user.role !== "sales_rep" ? (
+      {user.role !== "sales_rep" && user.role !== "sales" && user.role !== "distributor" ? (
         <NewAccountDialog
           open={newAccountOpen}
           onOpenChange={setNewAccountOpen}
@@ -227,7 +259,10 @@ export default function Accounts() {
         </div>
       )}
 
-      {(user.role === "brand_operator" || user.role === "distributor" || user.role === "sales_rep") && (
+      {(user.role === "brand_operator" ||
+        user.role === "distributor" ||
+        user.role === "sales_rep" ||
+        user.role === "sales") && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -278,7 +313,7 @@ export default function Accounts() {
         <div className="card-elevated flex flex-col items-center gap-3 py-16 text-center">
           <Users className="h-10 w-10 text-muted-foreground/20" strokeWidth={1} />
           <p className="text-muted-foreground">
-            {user.role === "sales_rep"
+            {user.role === "sales_rep" || user.role === "sales"
               ? "No accounts assigned to you yet. Contact your manager to get accounts assigned."
               : user.role === "distributor"
                 ? "No on-premise accounts in your territory yet."

@@ -72,6 +72,28 @@ const ROLE_BADGE: Record<HajimeRole, string> = {
   finance: "Finance",
 };
 
+/** Design system shell — contextual eyebrow under the wordmark (sentence case label lives in footer). */
+function sidebarEyebrowForRole(role: HajimeRole): string {
+  switch (role) {
+    case "founder_admin":
+    case "brand_operator":
+      return "Hajime HQ";
+    case "manufacturer":
+      return "Production partner";
+    case "distributor":
+      return "Warehouse & fulfillment";
+    case "sales_rep":
+    case "sales":
+      return "Field sales";
+    case "operations":
+      return "Operations";
+    case "finance":
+      return "Finance";
+    default:
+      return "Supply chain OS";
+  }
+}
+
 /** Spec §4 — focused sidebar per role; URLs map to shared AppData routes. */
 function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
   switch (role) {
@@ -295,7 +317,7 @@ function NavSection({
   return (
     <SidebarGroup className={cn(collapsed && "px-0")}>
       {!collapsed && (
-        <p className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-sidebar-foreground/40">{t(label)}</p>
+        <p className="px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-sidebar-foreground/40">{t(label)}</p>
       )}
       <SidebarGroupContent>
         <SidebarMenu className={cn(collapsed && "items-center")}>
@@ -310,11 +332,11 @@ function NavSection({
                     onClick={() => onNavigate?.()}
                     className={cn(
                       "flex items-center rounded-md text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground w-full text-left",
-                      collapsed ? "size-8 shrink-0 justify-center gap-0 p-0" : "min-h-10 gap-3 px-3 py-2",
+                      collapsed ? "size-8 shrink-0 justify-center gap-0 p-0" : "min-h-10 gap-2.5 px-2.5 py-2 text-[13px]",
                       isActive && "bg-sidebar-accent text-sidebar-primary font-medium",
                     )}
                   >
-                    <item.icon className="h-4 w-4 shrink-0" />
+                    <item.icon className="size-[15px] shrink-0 opacity-90" strokeWidth={1.75} />
                     {!collapsed && <span className="leading-snug">{t(item.title)}</span>}
                   </Link>
                 </SidebarMenuButton>
@@ -348,21 +370,23 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className={cn("p-4", collapsed && "items-center gap-0 px-0 py-2")}>
-        <div className={cn("flex items-center gap-2", collapsed && "w-full justify-center")}>
+      <SidebarHeader className={cn("px-3 pb-3 pt-[18px]", collapsed && "items-center gap-0 px-0 py-2")}>
+        <div className={cn("flex items-center gap-2.5 px-2 py-1", collapsed && "w-full justify-center px-0")}>
           <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-sidebar-accent/60">
-            <HajimeLogo variant="dark" className="h-7 w-7 object-contain" alt="" />
+            <HajimeLogo variant="dark" className="h-[26px] w-[26px] object-contain" alt="" />
           </div>
           {!collapsed && (
-            <div>
-              <h1 className="font-display text-base font-semibold text-sidebar-foreground">Hajime</h1>
-              <p className="text-[10px] uppercase tracking-widest text-sidebar-foreground/40">Supply chain OS</p>
+            <div className="min-w-0">
+              <h1 className="font-display text-base font-semibold leading-none text-[hsl(35_14%_90%)]">Hajime</h1>
+              <p className="mt-[3px] text-[9px] font-medium uppercase tracking-[0.18em] text-[hsl(35_12%_55%)]">
+                {sidebarEyebrowForRole(user.role)}
+              </p>
             </div>
           )}
         </div>
       </SidebarHeader>
 
-      <SidebarContent className={cn("px-2", collapsed && "px-0")}>
+      <SidebarContent className={cn("gap-0 px-3 pb-2", collapsed && "px-0")}>
         {groups.map((g) => (
           <NavSection
             key={g.label}
@@ -375,7 +399,7 @@ export function AppSidebar() {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className={cn("gap-2 p-4", collapsed && "items-center gap-0 px-0 py-2")}>
+      <SidebarFooter className={cn("gap-2 border-t border-sidebar-border px-3 pb-[18px] pt-3", collapsed && "items-center gap-0 px-0 py-2")}>
         <div className={cn("flex items-center gap-2", collapsed && "hidden")}>
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-medium text-sidebar-accent-foreground">
             {initials}
