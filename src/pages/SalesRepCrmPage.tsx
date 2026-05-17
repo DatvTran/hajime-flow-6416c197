@@ -271,6 +271,7 @@ export default function SalesRepCrmPage() {
     <div className="space-y-6">
       <PageHeader
         title="Retail CRM requests"
+        variant="sales_rep"
         description="Submit retail stores you cover. Your distributor approves new requests before the first portal invite. You can manage stores you submitted: edit, resend invites, remove, or re-add an archived store."
       />
 

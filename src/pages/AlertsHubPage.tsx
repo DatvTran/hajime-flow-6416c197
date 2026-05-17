@@ -1,6 +1,8 @@
 import { useEffect, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
+import { RetailPageHeader } from "@/components/retail/RetailPageHeader";
+import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAppData } from "@/contexts/AppDataContext";
@@ -41,14 +43,24 @@ export default function AlertsHubPage() {
     return <AlertsHubSkeleton />;
   }
 
-  return (
-    <div>
-      <PageHeader
-        title="Alerts"
-        description="Unified signals from inventory, demand, shipments, and payments — same derived rules for every role; visibility is permission-scoped (spec §5–6)."
-      />
+  const isRetail = user.role === "retail";
 
-      <Card>
+  return (
+    <div className={isRetail ? "space-y-6 pb-8" : undefined}>
+      {isRetail ? (
+        <RetailPageHeader
+          title="Alerts"
+          description="Shelf stock, shipments, and demand signals for your venue."
+        />
+      ) : (
+        <PageHeader
+          title="Alerts"
+          description="Unified signals from inventory, demand, shipments, and payments — same derived rules for every role; visibility is permission-scoped (spec §5–6)."
+          variant={pageHeaderVariantForRole(user.role)}
+        />
+      )}
+
+      <Card className={isRetail ? "rounded-[14px] border-border/70 shadow-[var(--shadow-soft)]" : undefined}>
         <CardHeader>
           <CardTitle className="font-display text-lg">
             <Link

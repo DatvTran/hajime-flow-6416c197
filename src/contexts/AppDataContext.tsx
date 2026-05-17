@@ -3,11 +3,13 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import type {
   Account,
   DepletionReport,
@@ -317,71 +319,93 @@ type AppDataContextValue = {
 
 const AppDataStateContext = createContext<AppDataContextValue | null>(null);
 
+function AppDataLoadingScreen({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  return (
+    <div className="flex min-h-svh items-center justify-center bg-background p-4">
+      <div className="w-full max-w-md space-y-4">
+        <Skeleton className="h-8 w-3/4" />
+        <Skeleton className="h-4 w-1/2" />
+        <div className="space-y-2">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+        <p className="text-center text-sm text-muted-foreground">Loading your store data…</p>
+        {error ? <p className="text-center text-xs text-destructive">{error}</p> : null}
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/60"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [data, setData] = useState<AppData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const skipSaveRef = useRef(true);
-  const hasAttemptedFetch = useRef(false);
+  const [fetchEpoch, setFetchEpoch] = useState(0);
 
-  useEffect(() => {
-    const withTimeout = async <T,>(p: Promise<T>, ms: number): Promise<T> => {
-      let t: ReturnType<typeof setTimeout> | undefined;
-      const timeout = new Promise<never>((_, reject) => {
-        t = setTimeout(() => reject(new Error(`App data fetch timed out after ${ms}ms`)), ms);
-      });
-      try {
-        return await Promise.race([p, timeout]);
-      } finally {
-        if (t) clearTimeout(t);
-      }
-    };
+  const withTimeout = useCallback(async <T,>(p: Promise<T>, ms: number): Promise<T> => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      t = setTimeout(() => reject(new Error(`App data fetch timed out after ${ms}ms`)), ms);
+    });
+    try {
+      return await Promise.race([p, timeout]);
+    } finally {
+      if (t) clearTimeout(t);
+    }
+  }, []);
 
-    // Only fetch when user is authenticated
+  // Hydrate from localStorage or seed synchronously so retail/HQ never sit on a blank gate (React Strict Mode safe).
+  useLayoutEffect(() => {
     if (!user) {
-      // Allow a fresh fetch when a user logs in again.
-      hasAttemptedFetch.current = false;
       setData(null);
       setError(null);
       setLoading(false);
       return;
     }
 
-    // Prevent duplicate fetches
-    if (hasAttemptedFetch.current) return;
-    hasAttemptedFetch.current = true;
+    const local = loadLocalAppData();
+    if (local) {
+      setData(normalizeAppData(local));
+    } else {
+      setData(FALLBACK_SEED);
+    }
+    setLoading(true);
+    setError(null);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user) return;
 
     let cancelled = false;
-    
-    // STEP 1: Load from localStorage FIRST for instant UI (prevents data loss on refresh)
-    const local = loadLocalAppData();
-    if (local && !cancelled) {
-      setData(normalizeAppData(local));
-      setLoading(false); // Show UI immediately with local data
-    }
-    
-    // STEP 2: Try to fetch from API in background
+    const hadLocalOnStart = Boolean(loadLocalAppData());
+
     (async () => {
       try {
-        // Protect against hanging network requests (keeps users from being stuck on "Loading…").
         const serverData = await withTimeout(fetchAppData(), 15_000);
         if (!cancelled) {
-          // Merge server data with local data - local changes take precedence
           const merged = mergeServerWithLocal(serverData as AppData, loadLocalAppData());
           setData(normalizeAppData(merged));
           setError(null);
-          // Save merged data back to localStorage
           saveLocalAppData(merged);
         }
       } catch (e) {
         console.error("[AppDataContext] Fetch error:", e);
         if (!cancelled) {
-          setError(String(e));
-          // If we already loaded local data, just show the API error toast
-          // If no local data was loaded, fall back to seed
-          if (!local) {
-            setData(FALLBACK_SEED);
+          const message = e instanceof Error ? e.message : String(e);
+          setError(message);
+          if (!hadLocalOnStart) {
+            setData((prev) => prev ?? FALLBACK_SEED);
             toast.info("API unavailable — using local seed data", {
               description: "Start the server (npm run dev:api) to load and save persisted data. Edits save in-browser until then.",
             });
@@ -392,17 +416,16 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           }
         }
       } finally {
-        // Without this, first-time visitors (no localStorage) never leave loading: true after a successful fetch.
         if (!cancelled) {
           setLoading(false);
         }
       }
     })();
-    
+
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user?.id, fetchEpoch, withTimeout]);
 
   const updateData = useCallback((fn: (prev: AppData) => AppData) => {
     setData((prev) => {
@@ -443,43 +466,19 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     return { data, loading, error, updateData, refreshTeamMembers, refreshShipments };
   }, [data, loading, error, updateData, refreshTeamMembers, refreshShipments]);
 
+  if (!user) {
+    return <>{children}</>;
+  }
+
   if (!data || !value) {
     return (
-      <div style={{ 
-        position: 'fixed', 
-        top: 0, 
-        left: 0, 
-        right: 0, 
-        bottom: 0, 
-        background: '#1a1a2e', 
-        color: '#fff', 
-        display: 'flex', 
-        flexDirection: 'column',
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        zIndex: 99999,
-        fontFamily: 'system-ui, sans-serif',
-        padding: '20px'
-      }}>
-        <div style={{ fontSize: '24px', marginBottom: '20px' }}>⏳ Hajime Loading...</div>
-        <div style={{ fontSize: '16px', opacity: 0.8, marginBottom: '10px' }}>
-          {loading ? "Loading data…" : error ? "Error loading data" : "Waiting for data..."}
-        </div>
-        {error && (
-          <div style={{ fontSize: '12px', opacity: 0.7, maxWidth: '500px', wordBreak: 'break-word', textAlign: 'center', marginBottom: '10px' }}>
-            {error}
-          </div>
-        )}
-        <div style={{ fontSize: '12px', opacity: 0.6, marginTop: '10px' }}>
-          user: {user?.email ?? 'none'} | role: {user?.role ?? 'none'} | loading: {String(loading)}
-        </div>
-        <button 
-          onClick={() => window.location.reload()} 
-          style={{ marginTop: '20px', padding: '8px 16px', background: '#333', border: '1px solid #555', color: '#fff', borderRadius: '4px', cursor: 'pointer' }}
-        >
-          Reload Page
-        </button>
-      </div>
+      <AppDataLoadingScreen
+        error={error}
+        onRetry={() => {
+          setFetchEpoch((n) => n + 1);
+          setLoading(true);
+        }}
+      />
     );
   }
 
@@ -660,30 +659,44 @@ export function useAccounts() {
   
   const addAccount = useCallback(async (a: Account) => {
     try {
-      // Call granular API
+      const market =
+        a.city && a.country ? `${a.city}, ${a.country}` : a.city || a.country || "—";
       const result = await apiCreateAccount({
-        name: a.name,
+        name: a.legalName || a.tradingName,
         tradingName: a.tradingName,
+        legalName: a.legalName,
         type: a.type,
-        market: a.market,
+        market,
+        city: a.city,
+        country: a.country,
         email: a.email,
         phone: a.phone,
         billingAddress: a.billingAddress,
-        shippingAddress: a.shippingAddress,
+        shippingAddress: a.deliveryAddress || a.shippingAddress,
         paymentTerms: a.paymentTerms,
-        creditLimit: a.creditLimit,
+        creditLimit: a.creditLimitCad ?? a.creditLimit,
         salesOwner: a.salesOwner,
-        notes: a.notes,
+        notes: a.internalNotes ?? a.notes,
+        status: a.status,
       });
-      
-      // Update local state with server response
+
+      const serverId = String(result.data?.id ?? a.id);
+      const saved: Account = { ...a, id: serverId };
+
       updateData((d) => ({
         ...d,
-        accounts: [...d.accounts, { ...a, id: result.data.id }],
+        accounts: [...d.accounts, saved],
       }));
-      
-      toast.success("Account created", { description: a.name });
-      return { success: true, data: result.data };
+
+      const depot = (result as { depotLink?: { linked?: boolean } }).depotLink;
+      if (depot?.linked === false) {
+        toast.success("Account created", {
+          description: `${saved.tradingName} — link this account to your depot in Settings → Warehouses to manage portal users.`,
+        });
+      } else {
+        toast.success("Account created", { description: `${saved.id} · ${saved.tradingName}` });
+      }
+      return { success: true, data: { ...result.data, id: serverId } };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create account";
       toast.error("Failed to create account", { description: message });

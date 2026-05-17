@@ -1,63 +1,81 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { Search } from "lucide-react";
 import { useAppData, useAccounts, useSalesOrders } from "@/contexts/AppDataContext";
 import { RetailSkeleton } from "@/components/skeletons";
 import { useRetailAccountTradingName } from "@/contexts/AuthContext";
 import { useRetailCart } from "@/contexts/RetailCartContext";
+import { RetailPageHeader } from "@/components/retail/RetailPageHeader";
 import { RetailProductCard } from "@/components/retail/RetailProductCard";
+import { RetailOrderCartPanel } from "@/components/retail/RetailOrderCartPanel";
+import { RetailBottleThumb } from "@/components/retail/RetailBottleThumb";
+import { retailOrderDisplayId } from "@/lib/order-lines";
+import { buildRetailCheckoutOrder, addDaysISO, marketForRetailAccount } from "@/lib/sales-order-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { buildRetailCheckoutOrder, addDaysISO, todayISO, marketForRetailAccount } from "@/lib/sales-order-utils";
-import { retailOrderDisplayId } from "@/lib/order-lines";
-import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, ChevronRight, Store, Trash2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
+import { cn } from "@/lib/utils";
+
+const CATEGORY_FILTERS = ["All SKUs", "Junmai Daiginjo", "Junmai", "Genshu", "Limited"] as const;
+
+function matchesCategory(name: string, filter: string): boolean {
+  if (filter === "All SKUs") return true;
+  const n = name.toLowerCase();
+  if (filter === "Junmai Daiginjo") return n.includes("daiginjo");
+  if (filter === "Junmai") return n.includes("junmai") && !n.includes("daiginjo");
+  if (filter === "Genshu") return n.includes("genshu");
+  if (filter === "Limited") return n.includes("limited") || n.includes("reserve");
+  return true;
+}
+
+type ViewMode = "cards" | "list";
 
 export default function RetailNewOrderPage() {
   const { data, loading } = useAppData();
-
   const { accounts } = useAccounts();
   const { salesOrders, addSalesOrder } = useSalesOrders();
   const accountName = useRetailAccountTradingName();
   const cart = useRetailCart();
   const [searchParams, setSearchParams] = useSearchParams();
-
   const [deliveryDate, setDeliveryDate] = useState(() => addDaysISO(10));
   const [poRef, setPoRef] = useState("");
   const [notes, setNotes] = useState("");
   const [successId, setSuccessId] = useState<string | null>(null);
+  const [category, setCategory] = useState<(typeof CATEGORY_FILTERS)[number]>("All SKUs");
+  const [q, setQ] = useState("");
+  const [view, setView] = useState<ViewMode>("cards");
 
   const accountRecord = useMemo(() => accounts.find((a) => a.tradingName === accountName), [accounts, accountName]);
-
   const shelfForAccount = accountRecord ? data.retailerShelfStock?.[accountRecord.id] : undefined;
   const shelfThreshold = data.operationalSettings?.retailerStockThresholdBottles ?? 48;
+  const { products } = data;
 
   useEffect(() => {
     const sku = searchParams.get("sku");
     const casesRaw = searchParams.get("cases");
     if (!sku || !casesRaw) return;
     const cases = parseInt(casesRaw, 10);
-    const p = data.products.find((x) => x.sku === sku);
+    const p = products.find((x) => x.sku === sku);
     if (p && !Number.isNaN(cases) && cases > 0) {
       const min = p.minOrderCases ?? 1;
       cart.setCasesForSku(sku, Math.max(min, cases), min);
+      toast.success("Added to cart", { description: `${p.name} · ${cases} case${cases !== 1 ? "s" : ""}` });
     }
     const next = new URLSearchParams(searchParams);
     next.delete("sku");
     next.delete("cases");
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, data.products, cart]);
+  }, [searchParams, setSearchParams, products, cart]);
 
-  const catalog = useMemo(
-    () => [...data.products].sort((a, b) => (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1)),
-    [data.products],
-  );
-
-  // Destructured so useCallback dep array is precise (avoids whole-data-object dep)
-  const { products } = data;
+  const catalog = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return [...products]
+      .filter((p) => p.status === "active")
+      .filter((p) => matchesCategory(`${p.name} ${p.style ?? ""}`, category))
+      .filter((p) => !needle || p.name.toLowerCase().includes(needle) || p.sku.toLowerCase().includes(needle))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [products, category, q]);
 
   const cartDetail = useMemo(() => {
     let subtotal = 0;
@@ -104,35 +122,22 @@ export default function RetailNewOrderPage() {
     } catch (e) {
       toast.error(String(e));
     }
-  }, [
-    cart,
-    products,
-    salesOrders,
-    accountName,
-    accounts,
-    accountRecord,
-    deliveryDate,
-    poRef,
-    notes,
-    addSalesOrder,
-  ]);
+  }, [cart, products, salesOrders, accountName, accounts, accountRecord, deliveryDate, poRef, notes, addSalesOrder]);
 
   if (successId) {
     return (
-      <div className="mx-auto max-w-lg py-12 text-center">
-        <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-600" aria-hidden />
-        <h1 className="mt-6 font-display text-2xl font-semibold">Request received</h1>
-        <p className="mt-2 text-muted-foreground">
-          Order {retailOrderDisplayId(successId)} is <strong>pending your field rep&apos;s approval</strong>. After they approve and your card is charged, your wholesaler will arrange delivery and shipping.
+      <div className="mx-auto max-w-lg py-16 text-center">
+        <CheckCircle2 className="mx-auto size-14 text-[hsl(158_56%_36%)]" aria-hidden />
+        <h1 className="mt-6 font-display text-[26px] font-semibold tracking-[-0.02em]">Request received</h1>
+        <p className="mt-2 text-[13px] text-muted-foreground">
+          Order <span className="font-mono font-medium">{retailOrderDisplayId(successId)}</span> is pending your field
+          rep&apos;s approval.
         </p>
-        <p className="mt-4 text-sm text-muted-foreground">
-          You&apos;ll see status updates under <strong>My orders</strong> as the request moves through rep approval → payment → fulfillment.
-        </p>
-        <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:justify-center">
-          <Button asChild variant="secondary">
+        <div className="mt-8 flex flex-col justify-center gap-2 sm:flex-row">
+          <Button variant="outline" className="h-9" asChild>
             <Link to="/retail/orders">View my orders</Link>
           </Button>
-          <Button asChild>
+          <Button className="h-9 bg-accent text-accent-foreground hover:bg-[hsl(32_78%_48%)]" asChild>
             <Link to="/retail/new-order">Place another order</Link>
           </Button>
         </div>
@@ -140,151 +145,182 @@ export default function RetailNewOrderPage() {
     );
   }
 
-  if (loading) {
-    return <RetailSkeleton />;
-  }
+  if (loading) return <RetailSkeleton />;
 
   return (
-    <div>
-      <nav className="mb-4 flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
-        <Link to="/" className="hover:text-foreground">
-          Home
-        </Link>
-        <ChevronRight className="h-4 w-4" />
-        <span className="text-foreground">New order</span>
-      </nav>
+    <div className="space-y-6 pb-28 lg:pb-10">
+      <RetailPageHeader
+        title="New order"
+        description="Select quantities — your rep will confirm allocation before HQ approves."
+      />
 
-      <div className="rounded-xl border border-violet-500/25 bg-gradient-to-br from-violet-500/5 to-transparent p-4 sm:p-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary" className="gap-1 font-normal">
-            <Store className="h-3 w-3" aria-hidden />
-            Retail store
-          </Badge>
-        </div>
-        <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight sm:text-3xl">Place order</h1>
-        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Submit a request from the catalog (retail stores don&apos;t pick manufacturer vs wholesaler). Your assigned sales rep approves the
-          order, then payment is collected; after that, the wholesaler handles delivery and shipping. Brand operators can monitor the full
-          pipeline in Orders.
-        </p>
-      </div>
-
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_340px]">
-        <section>
-          <h2 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-muted-foreground">Catalog & cases</h2>
-          <div className="grid gap-6 sm:grid-cols-2">
-            {catalog.map((p) => (
-              <RetailProductCard
-                key={p.sku}
-                product={p}
-                inventory={data.inventory}
-                inCartCases={cart.casesBySku[p.sku] ?? 0}
-                disabled={p.status !== "active"}
-                shelfBottles={shelfForAccount?.[p.sku]}
-                shelfThresholdBottles={shelfThreshold}
-                onAddToCart={(cases) => {
-                  const min = p.minOrderCases ?? 1;
-                  cart.setCasesForSku(p.sku, cases, min);
-                  toast.success("Added to cart", { description: `${p.name} · ${cases} case${cases !== 1 ? "s" : ""}` });
-                }}
-              />
-            ))}
-          </div>
-        </section>
-
-        <div className="lg:sticky lg:top-24 lg:self-start">
-          <div id="retail-cart" className="rounded-2xl border border-border/80 bg-card p-5 shadow-sm">
-            <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-muted-foreground">Cart summary</h2>
-            {cartDetail.rows.length === 0 ? (
-              <p className="mt-4 text-sm text-muted-foreground">Your cart is empty.</p>
-            ) : (
-              <ul className="mt-4 space-y-3">
-                {cartDetail.rows.map((r) => (
-                  <li key={r.sku} className="flex gap-3 border-b border-border/50 pb-3 last:border-0">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{r.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {r.cases} case{r.cases !== 1 ? "s" : ""} · est. ${r.line.toLocaleString()}
-                      </p>
-                    </div>
-                    <Button type="button" variant="ghost" size="icon" className="shrink-0 touch-manipulation" onClick={() => cart.removeSku(r.sku)} aria-label="Remove">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </li>
-                ))}
-              </ul>
+      {/* Filters — same kit as Catalog */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {CATEGORY_FILTERS.map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setCategory(f)}
+            className={cn(
+              "rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors touch-manipulation",
+              category === f
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
-            {cartDetail.rows.length > 0 ? (
-              <>
-                <div className="mt-4 flex justify-between border-t border-border pt-3 text-sm">
-                  <span className="text-muted-foreground">Estimated subtotal</span>
-                  <span className="font-semibold tabular-nums">${cartDetail.subtotal.toLocaleString()} CAD</span>
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">Shipping route and final invoice from your distributor — subject to approval.</p>
-              </>
-            ) : null}
-
-            <div className="mt-6 space-y-4 border-t border-border pt-6">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Delivery details</h3>
-              <div className="space-y-2">
-                <Label htmlFor="req-del">Preferred delivery date</Label>
-                <Input
-                  id="req-del"
-                  type="date"
-                  className="touch-manipulation"
-                  min={todayISO()}
-                  value={deliveryDate}
-                  onChange={(e) => setDeliveryDate(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="po-ref">PO / reference (optional)</Label>
-                <Input id="po-ref" value={poRef} onChange={(e) => setPoRef(e.target.value)} placeholder="Your internal PO" className="touch-manipulation" />
-              </div>
-            </div>
-
-            <div className="mt-6 space-y-2">
-              <Label htmlFor="ord-notes">Order notes</Label>
-              <Textarea
-                id="ord-notes"
-                rows={3}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Special instructions, receiving hours…"
-                className="touch-manipulation resize-none"
-              />
-            </div>
-
-            <Button
+          >
+            {f}
+          </button>
+        ))}
+        <div className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-[15px] -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search SKUs…"
+              className="h-9 pl-9 text-[13px]"
+            />
+          </div>
+          <div className="flex rounded-lg border border-border p-0.5">
+            <button
               type="button"
-              size="lg"
-              className="mt-6 h-14 w-full touch-manipulation text-base font-semibold"
-              disabled={cart.lines.length === 0}
-              onClick={submit}
+              onClick={() => setView("cards")}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-xs font-medium",
+                view === "cards" ? "bg-muted text-foreground" : "text-muted-foreground",
+              )}
             >
-              Submit order request
-            </Button>
-            <p className="mt-2 text-center text-xs text-muted-foreground">
-              Rep approval → card charge → wholesaler ships. Not final until your rep approves and payment succeeds.
-            </p>
+              Cards
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("list")}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-xs font-medium",
+                view === "list" ? "bg-muted text-foreground" : "text-muted-foreground",
+              )}
+            >
+              List
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile sticky cart */}
+      {/* order-split — retail-store-app */}
+      <div className="grid gap-5 lg:grid-cols-[1fr_300px] lg:items-start">
+        <div className="min-w-0">
+          {view === "cards" ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {catalog.map((p) => (
+                <RetailProductCard
+                  key={p.sku}
+                  presentation="catalog"
+                  product={p}
+                  inventory={data.inventory}
+                  inCartCases={cart.casesBySku[p.sku] ?? 0}
+                  shelfBottles={shelfForAccount?.[p.sku]}
+                  shelfThresholdBottles={shelfThreshold}
+                  onAddToCart={(cases) => {
+                    const min = p.minOrderCases ?? 1;
+                    cart.setCasesForSku(p.sku, cases, min);
+                    toast.success("Added to cart", { description: `${p.name} · ${cases} case${cases !== 1 ? "s" : ""}` });
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-[14px] border border-border/70 bg-card shadow-[var(--shadow-soft)]">
+              <div className="border-b border-border/50 px-5 py-4">
+                <div className="text-sm font-semibold">Choose products</div>
+                <p className="mt-0.5 text-xs text-muted-foreground">Case sizes and partner pricing</p>
+              </div>
+              <div className="px-5">
+                {catalog.map((p) => {
+                  const min = p.minOrderCases ?? 1;
+                  const cases = cart.casesBySku[p.sku] ?? 0;
+                  const casePrice = p.wholesaleCasePrice ?? 0;
+                  const perBottle = p.caseSize > 0 ? casePrice / p.caseSize : 0;
+                  return (
+                    <div
+                      key={p.sku}
+                      className="sku-row flex items-center gap-3.5 border-b border-border/50 py-3.5 last:border-0"
+                    >
+                      <RetailBottleThumb sku={p.sku} size="row" />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-medium">{p.name}</div>
+                        <div className="font-mono text-[11px] text-muted-foreground">
+                          {p.sku} · ${perBottle.toFixed(2)}/bottle
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="qty-btn flex size-7 items-center justify-center rounded-md border border-border bg-background text-sm hover:bg-muted"
+                          onClick={() => cart.bumpCases(p.sku, -1, min)}
+                          aria-label="Decrease"
+                        >
+                          −
+                        </button>
+                        <span className="qty-val min-w-[26px] text-center font-mono text-[13px] font-medium tabular-nums">
+                          {cases}
+                        </span>
+                        <button
+                          type="button"
+                          className="qty-btn flex size-7 items-center justify-center rounded-md border border-border bg-background text-sm hover:bg-muted"
+                          onClick={() => cart.bumpCases(p.sku, 1, min)}
+                          aria-label="Increase"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div className="w-[60px] text-right font-mono text-xs text-muted-foreground">
+                        {cases > 0 ? `$${(cases * casePrice).toLocaleString()}` : "—"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {catalog.length === 0 ? (
+            <p className="mt-4 text-[13px] text-muted-foreground">No SKUs match your filters.</p>
+          ) : null}
+        </div>
+
+        <RetailOrderCartPanel
+          lines={cartDetail.rows}
+          subtotal={cartDetail.subtotal}
+          notes={notes}
+          onNotesChange={setNotes}
+          deliveryDate={deliveryDate}
+          onDeliveryDateChange={setDeliveryDate}
+          poRef={poRef}
+          onPoRefChange={setPoRef}
+          onRemoveSku={cart.removeSku}
+          onSubmit={submit}
+        />
+      </div>
+
+      {/* Mobile cart bar */}
       <div
         className={cn(
-          "fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden",
+          "fixed inset-x-0 bottom-0 z-30 border-t border-border/80 bg-card/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden",
           cart.lines.length === 0 && "hidden",
         )}
       >
         <div className="mx-auto flex max-w-lg items-center justify-between gap-3">
           <div>
-            <p className="text-xs text-muted-foreground">Cart</p>
-            <p className="font-display font-semibold tabular-nums">${cartDetail.subtotal.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">
+              {cart.totalCases} case{cart.totalCases !== 1 ? "s" : ""} in cart
+            </p>
+            <p className="font-display text-lg font-semibold tabular-nums">${cartDetail.subtotal.toLocaleString()}</p>
           </div>
-          <Button type="button" className="h-12 min-w-[160px] touch-manipulation" onClick={() => document.getElementById("retail-cart")?.scrollIntoView({ behavior: "smooth" })}>
-            Review &amp; send
+          <Button
+            type="button"
+            className="h-11 bg-accent px-5 text-accent-foreground hover:bg-[hsl(32_78%_48%)]"
+            onClick={() => document.getElementById("retail-cart")?.scrollIntoView({ behavior: "smooth" })}
+          >
+            Review order
           </Button>
         </div>
       </div>

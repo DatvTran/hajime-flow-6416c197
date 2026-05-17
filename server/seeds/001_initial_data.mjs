@@ -3,6 +3,7 @@
  * Creates a default tenant, admin user, and sample products
  */
 import { authService } from '../services/auth.mjs';
+import { normalizeIncentiveManagerState } from '../lib/incentive-manager-state.mjs';
 
 export async function seed(knex) {
   console.log('[seed] Starting database seed...');
@@ -23,6 +24,9 @@ export async function seed(knex) {
   await knex('refresh_tokens').del();
   await knex('password_resets').del();
   await knex('users').del();
+  if (await knex.schema.hasTable('supply_chain_incentive_state')) {
+    await knex('supply_chain_incentive_state').del();
+  }
   await knex('tenants').del();
 
   // Create default tenant
@@ -72,6 +76,44 @@ export async function seed(knex) {
     .returning('id');
 
   console.log(`[seed] Created retail user: ${retailUser.id}`);
+
+  const salesRepPasswordHash = await authService.hashPassword('admin123!');
+  const salesRepUsers = [
+    { email: 'marcus.chen@hajime.jp', display_name: 'Marcus Chen' },
+    { email: 'sarah.kim@hajime.jp', display_name: 'Sarah Kim' },
+    { email: 'luca.moretti@hajime.jp', display_name: 'Luca Moretti' },
+    { email: 'jordan.lee@hajime.jp', display_name: 'Jordan Lee' },
+  ];
+  for (const r of salesRepUsers) {
+    await knex('users').insert({
+      tenant_id: tenantId,
+      email: r.email,
+      password_hash: salesRepPasswordHash,
+      role: 'sales_rep',
+      display_name: r.display_name,
+      is_active: true,
+      email_verified: true,
+    });
+    console.log(`[seed] Created sales rep user: ${r.email}`);
+  }
+
+  const rosterRetailUsers = [
+    { email: 'jeff@thedrake.ca', display_name: 'Jeff Guignard' },
+    { email: 'mrossi@eataly.com', display_name: 'Maria Rossi' },
+    { email: 'jpark@lcbo.com', display_name: 'James Park' },
+  ];
+  for (const r of rosterRetailUsers) {
+    await knex('users').insert({
+      tenant_id: tenantId,
+      email: r.email,
+      password_hash: retailPasswordHash,
+      role: 'retail',
+      display_name: r.display_name,
+      is_active: true,
+      email_verified: true,
+    });
+    console.log(`[seed] Created retail user: ${r.email}`);
+  }
 
   // Create sample products (Hajime Coffee Rhum)
   const products = await knex('products')
@@ -163,6 +205,7 @@ export async function seed(knex) {
         type: 'Hotel',
         market: 'Toronto',
         status: 'active',
+        sales_owner: 'Marcus Chen',
         email: 'orders@drakehotel.ca',
         phone: '416-531-5042',
         billing_address: JSON.stringify({
@@ -173,6 +216,7 @@ export async function seed(knex) {
         }),
         payment_terms: 'Net 30',
         credit_limit: 10000.00,
+        sales_owner: 'Marcus Chen',
       },
       {
         tenant_id: tenantId,
@@ -181,6 +225,7 @@ export async function seed(knex) {
         type: 'Restaurant',
         market: 'Toronto',
         status: 'active',
+        sales_owner: 'Marcus Chen',
         email: 'orders@barisabel.com',
         phone: '416-532-2222',
         billing_address: JSON.stringify({
@@ -191,6 +236,7 @@ export async function seed(knex) {
         }),
         payment_terms: 'Net 15',
         credit_limit: 5000.00,
+        sales_owner: 'Sarah Kim',
       },
       {
         tenant_id: tenantId,
@@ -199,6 +245,7 @@ export async function seed(knex) {
         type: 'Retail',
         market: 'Toronto',
         status: 'active',
+        sales_owner: 'Jordan Lee',
         email: 'orders@paradisegrapevine.com',
         phone: '416-519-6842',
         billing_address: JSON.stringify({
@@ -268,8 +315,71 @@ export async function seed(knex) {
 
   console.log('[seed] Created sample purchase order');
 
+  if (await knex.schema.hasTable('supply_chain_incentive_state')) {
+    const incentiveState = normalizeIncentiveManagerState({
+      partners: [
+        {
+          id: '1',
+          name: 'Convoy Supply Ontario',
+          market: 'Ontario',
+          tier: 'Growth',
+          quarterlyCasesSold: 420,
+          accountsOpened: 12,
+          reorders: 85,
+          tastingsCompleted: 18,
+          adfSpend: 2500,
+          quarterlyPerformanceTier: 'Silver',
+        },
+        {
+          id: '2',
+          name: 'Liberty Wine Merchants',
+          market: 'British Columbia',
+          tier: 'Premier',
+          quarterlyCasesSold: 680,
+          accountsOpened: 22,
+          reorders: 145,
+          tastingsCompleted: 28,
+          adfSpend: 4200,
+          quarterlyPerformanceTier: 'Gold',
+        },
+        {
+          id: '3',
+          name: 'Saq Distributions',
+          market: 'Quebec',
+          tier: 'Foundation',
+          quarterlyCasesSold: 180,
+          accountsOpened: 6,
+          reorders: 32,
+          tastingsCompleted: 8,
+          adfSpend: 1200,
+          quarterlyPerformanceTier: 'Bronze',
+        },
+      ],
+      spifs: [
+        {
+          id: 's1',
+          partnerId: '1',
+          partnerName: 'Convoy Supply Ontario',
+          repName: 'Sarah Mitchell',
+          type: 'new_on_premise',
+          date: '2026-04-05',
+          quantity: 2,
+          payout: 300,
+          notes: 'The Drake Hotel - new cocktail menu',
+        },
+      ],
+    });
+    await knex('supply_chain_incentive_state').insert({
+      tenant_id: tenantId,
+      state: JSON.stringify(incentiveState),
+      updated_at: new Date(),
+      updated_by: adminUser.id,
+    });
+    console.log('[seed] Created supply chain incentive state');
+  }
+
   console.log('[seed] Database seed completed successfully!');
   console.log('[seed] Login credentials:');
   console.log('  Admin:    admin@hajime.jp / admin123!');
-  console.log('  Retail:   retail@hajime.jp / retail123!');
+  console.log('  Retail:   retail@hajime.jp / retail123! (plus roster emails Jeff · Maria · James)');
 }

@@ -345,6 +345,22 @@ router.post('/login', async (req, res) => {
       userAgent: req.headers['user-agent'],
     });
 
+    let retailAccountTradingName = null;
+    const normalizedRole = user.role;
+    if (normalizedRole === 'retail' || normalizedRole === 'retail_account') {
+      const tm = await db('team_members')
+        .where({
+          tenant_id: user.tenant_id,
+          email: String(user.email || '').trim().toLowerCase(),
+          role: 'retail',
+        })
+        .where('is_active', true)
+        .first();
+      if (tm?.retail_trading_name) {
+        retailAccountTradingName = String(tm.retail_trading_name).trim();
+      }
+    }
+
     res.json({
       user: {
         id: user.id,
@@ -352,6 +368,7 @@ router.post('/login', async (req, res) => {
         role: user.role,
         displayName: user.display_name,
         tenantId: user.tenant_id,
+        ...(retailAccountTradingName ? { retailAccountTradingName } : {}),
       },
       accessToken,
       refreshToken,

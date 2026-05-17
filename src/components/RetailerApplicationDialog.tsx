@@ -23,7 +23,7 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   accounts: Account[];
-  onCreate: (account: Account) => void;
+  onCreate: (account: Account) => Promise<{ success: boolean; error?: string }>;
 };
 
 function todayISO(): string {
@@ -58,7 +58,7 @@ export function RetailerApplicationDialog({ open, onOpenChange, accounts, onCrea
     }
   }, [open]);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tradingName.trim() || !legalName.trim() || !city.trim() || !contactName.trim() || !email.trim()) {
       toast.error("Trading name, legal name, city, contact, and email are required.");
@@ -91,7 +91,11 @@ export function RetailerApplicationDialog({ open, onOpenChange, accounts, onCrea
       applicationBusinessSummary: summary.trim() || undefined,
       applicationSubmittedAt: new Date().toISOString(),
     };
-    onCreate(row);
+    const result = await onCreate(row);
+    if (!result.success) {
+      toast.error("Could not submit application", { description: result.error });
+      return;
+    }
     toast.success("Application submitted", { description: `${tradingName.trim()} — wholesaler review is next.` });
     onOpenChange(false);
   };
@@ -105,7 +109,7 @@ export function RetailerApplicationDialog({ open, onOpenChange, accounts, onCrea
             Submit business details for wholesaler verification and brand approval. You are listed as sales owner ({user.displayName}).
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="space-y-3">
+        <form onSubmit={(e) => void submit(e)} className="space-y-3">
           <div className="space-y-2">
             <Label htmlFor="ra-trade">Trading name *</Label>
             <Input id="ra-trade" value={tradingName} onChange={(e) => setTradingName(e.target.value)} className="touch-manipulation" />

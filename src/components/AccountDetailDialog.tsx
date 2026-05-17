@@ -20,6 +20,8 @@ import { CreditCard, ExternalLink, MapPin, Pencil, Calendar, MessageSquare } fro
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAppData } from "@/contexts/AppDataContext";
+import { AccountPortalUsersSection } from "@/components/retail/AccountPortalUsersSection";
+import { ON_PREMISE_ACCOUNT_TYPES } from "@/lib/retail-portal-constants";
 
 function onboardingPipelineLabel(p: Account["onboardingPipeline"] | undefined): string {
   switch (p) {
@@ -612,6 +614,15 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
                       <p className="mt-2 text-xs text-muted-foreground">
                         <span className="font-medium text-foreground">Wholesaler notes:</span> {draft.wholesalerReviewNotes}
                       </p>
+                    ) : null}
+
+                    {user.role === "distributor" && ON_PREMISE_ACCOUNT_TYPES.has(draft.type) ? (
+                      <div className="mt-4">
+                        <AccountPortalUsersSection
+                          account={draft}
+                          canManage={user.role === "distributor"}
+                        />
+                      </div>
                     ) : null}
 
                     {user.role === "distributor" && draft.onboardingPipeline === "sales_intake" ? (

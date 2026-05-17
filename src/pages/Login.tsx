@@ -31,6 +31,17 @@ const RETAIL_ACCOUNT_OPTIONS = seedAccounts
   .filter((a) => ["retail", "restaurant", "bar", "hotel"].includes(a.type) && a.status === "active")
   .map((a) => a.tradingName);
 
+const RETAIL_VENUE_OPTIONS =
+  RETAIL_ACCOUNT_OPTIONS.length > 0 ? RETAIL_ACCOUNT_OPTIONS : ["The Drake Hotel"];
+
+/** Seeded DB password for all demo retail personas (`server/seeds/001_initial_data.mjs`). */
+const DEMO_RETAIL_PASSWORD = "retail123!";
+
+/** Demo sales rep personas — migration `026_demo_sales_rep_users` + seed. */
+const DEMO_SALES_REP_PASSWORD = "admin123!";
+
+const DEFAULT_SALES_REP_PERSONA_ID = "tm-seed-2";
+
 function authRoleToTeamRole(r: HajimeRole): TeamMemberPortalRole | null {
   if (r === "sales_rep" || r === "retail" || r === "distributor" || r === "manufacturer") return r;
   return null;
@@ -46,12 +57,13 @@ export default function Login() {
   const [role, setRole] = useState<HajimeRole>("brand_operator");
   const [retailAccount, setRetailAccount] = useState(
     () =>
-      RETAIL_ACCOUNT_OPTIONS.includes("The Drake Hotel")
+      RETAIL_VENUE_OPTIONS.includes("The Drake Hotel")
         ? "The Drake Hotel"
-        : RETAIL_ACCOUNT_OPTIONS[0] ?? "The Drake Hotel",
+        : RETAIL_VENUE_OPTIONS[0] ?? "The Drake Hotel",
   );
   const [personaId, setPersonaId] = useState<string>("");
   const [step, setStep] = useState<"role" | "credentials">("role");
+  const [localError, setLocalError] = useState<string | null>(null);
 
   const rosterForRole = useMemo(() => {
     const tr = authRoleToTeamRole(role);
@@ -67,9 +79,31 @@ export default function Login() {
     setRole(r);
     setPersonaId("");
     clearError();
+    setLocalError(null);
     if (r === "brand_operator") {
       setEmail("admin@hajime.jp");
       setDisplayName("Admin");
+      setPassword("");
+    }
+    if (r === "retail") {
+      setEmail("retail@hajime.jp");
+      setDisplayName("Demo Retailer");
+      setPassword(DEMO_RETAIL_PASSWORD);
+      setRetailAccount(
+        RETAIL_VENUE_OPTIONS.includes("The Drake Hotel") ? "The Drake Hotel" : RETAIL_VENUE_OPTIONS[0] ?? "The Drake Hotel",
+      );
+    }
+    if (r === "sales_rep") {
+      const m = TEAM_ROSTER.find((x) => x.id === DEFAULT_SALES_REP_PERSONA_ID);
+      if (m) {
+        setPersonaId(m.id);
+        setEmail(m.email);
+        setDisplayName(m.displayName);
+      } else {
+        setEmail("marcus.chen@hajime.jp");
+        setDisplayName("Marcus Chen");
+      }
+      setPassword(DEMO_SALES_REP_PASSWORD);
     }
     setStep("credentials");
   };
@@ -77,9 +111,13 @@ export default function Login() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
-    if (!email.trim() || !password.trim()) return;
+    setLocalError(null);
+    if (!email.trim() || !password.trim()) {
+      setLocalError("Enter both email and password.");
+      return;
+    }
     try {
-      const signedIn = await signIn(email.trim(), password.trim());
+      const signedIn = await signIn(email.trim(), password.trim(), role === "retail" ? { retailTradingName: retailAccount } : undefined);
       navigate(homePathForRole(signedIn.role), { replace: true });
     } catch {
       // handled by AuthContext
@@ -211,11 +249,11 @@ export default function Login() {
                   </div>
                 </div>
 
-                {error && (
+                {error || localError ? (
                   <Alert variant="destructive" className="mb-4 border-destructive/40">
-                    <AlertDescription className="text-sm">{error}</AlertDescription>
+                    <AlertDescription className="text-sm">{error ?? localError}</AlertDescription>
                   </Alert>
-                )}
+                ) : null}
 
                 <form onSubmit={submit} className="space-y-4">
                   {rosterForRole.length > 0 && (
@@ -236,8 +274,12 @@ export default function Login() {
                           setEmail(m.email);
                           setDisplayName(m.displayName);
                           if (m.role === "retail") {
+                            setPassword(DEMO_RETAIL_PASSWORD);
                             const acct = RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL[m.email?.toLowerCase() || ""];
                             if (acct) setRetailAccount(acct);
+                          }
+                          if (m.role === "sales_rep") {
+                            setPassword(DEMO_SALES_REP_PASSWORD);
                           }
                         }}
                       >
@@ -280,7 +322,7 @@ export default function Login() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {RETAIL_ACCOUNT_OPTIONS.map((name) => (
+                          {RETAIL_VENUE_OPTIONS.map((name) => (
                             <SelectItem key={name} value={name}>
                               {name}
                             </SelectItem>
@@ -318,6 +360,20 @@ export default function Login() {
                       required
                       className="h-10 touch-manipulation"
                     />
+                    {role === "retail" ? (
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        Demo retail accounts use password <span className="font-mono text-foreground">{DEMO_RETAIL_PASSWORD}</span> after{" "}
+                        <code className="rounded bg-muted px-1 py-px font-mono text-[10px]">npm run dev:api</code> and seed. Personas (
+                        Jeff, Maria, James) share this password once seeded.
+                      </p>
+                    ) : null}
+                    {role === "sales_rep" ? (
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        Use the persona email (e.g. <span className="font-mono text-foreground">marcus.chen@hajime.jp</span>), not{" "}
+                        <span className="font-mono text-foreground">admin@hajime.jp</span>. Password:{" "}
+                        <span className="font-mono text-foreground">{DEMO_SALES_REP_PASSWORD}</span> (created by DB seed or migration 026).
+                      </p>
+                    ) : null}
                     <div className="flex justify-end">
                       <Link
                         to="/forgot-password"

@@ -17,18 +17,10 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
-
-interface Opportunity {
-  id: string;
-  type: "dormant" | "velocity_drop" | "prospect" | "reorder";
-  account: string;
-  accountId: string;
-  priority: "high" | "medium" | "low";
-  value: number;
-  lastOrderDays: number;
-  reason: string;
-  suggestedAction: string;
-}
+import {
+  computeSalesRepOpportunities,
+  type SalesRepOpportunity,
+} from "@/lib/sales-rep-opportunities";
 
 export default function SalesOpportunitiesPage() {
   const { user } = useAuth();
@@ -40,101 +32,10 @@ export default function SalesOpportunitiesPage() {
     return resolveSalesRepLabelForSession(user?.email, user?.displayName);
   }, [user]);
 
-  const opportunities = useMemo((): Opportunity[] => {
-    const ops: Opportunity[] = [];
-    
-    // Get rep's accounts
-    const repAccounts = accounts.filter(a => 
-      a.salesOwner === repName && 
-      ["retail", "bar", "restaurant", "hotel"].includes(a.type)
-    );
-
-    for (const account of repAccounts) {
-      const accountOrders = salesOrders.filter(o => 
-        o.account === account.tradingName && 
-        o.status !== "cancelled"
-      ).sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
-
-      const lastOrder = accountOrders[0];
-      const lastOrderDate = lastOrder ? new Date(lastOrder.orderDate) : null;
-      const daysSinceOrder = lastOrderDate 
-        ? Math.floor((Date.now() - lastOrderDate.getTime()) / (1000 * 60 * 60 * 24))
-        : 999;
-
-      const totalRevenue = accountOrders.reduce((sum, o) => sum + (o.totalValue || 0), 0);
-
-      // Dormant account (no orders in 60+ days)
-      if (daysSinceOrder > 60 && accountOrders.length > 0) {
-        ops.push({
-          id: `dormant-${account.id}`,
-          type: "dormant",
-          account: account.tradingName || account.name,
-          accountId: account.id,
-          priority: totalRevenue > 5000 ? "high" : "medium",
-          value: totalRevenue,
-          lastOrderDays: daysSinceOrder,
-          reason: `No orders in ${daysSinceOrder} days`,
-          suggestedAction: "Call to check stock levels and reorder",
-        });
-      }
-
-      // Velocity drop (orders used to be frequent, now sparse)
-      if (accountOrders.length >= 3 && daysSinceOrder > 40) {
-        const avgGap = daysSinceOrder / accountOrders.length;
-        if (daysSinceOrder > avgGap * 1.5) {
-          ops.push({
-            id: `velocity-${account.id}`,
-            type: "velocity_drop",
-            account: account.tradingName || account.name,
-            accountId: account.id,
-            priority: "medium",
-            value: totalRevenue,
-            lastOrderDays: daysSinceOrder,
-            reason: `Ordering pattern slowed (was every ~${Math.floor(avgGap)} days)`,
-            suggestedAction: "Visit to discuss menu/promotions",
-          });
-        }
-      }
-
-      // Reorder opportunity (based on estimated sell-through)
-      if (lastOrder && daysSinceOrder > 30 && daysSinceOrder < 60) {
-        const estimatedConsumption = (lastOrder.totalBottles || 0) / 30 * daysSinceOrder;
-        if (estimatedConsumption >= (lastOrder.totalBottles || 0) * 0.8) {
-          ops.push({
-            id: `reorder-${account.id}`,
-            type: "reorder",
-            account: account.tradingName || account.name,
-            accountId: account.id,
-            priority: "high",
-            value: lastOrder.totalValue || 0,
-            lastOrderDays: daysSinceOrder,
-            reason: "Estimated stock running low",
-            suggestedAction: "Proactive reorder call",
-          });
-        }
-      }
-
-      // New prospect (no orders yet)
-      if (accountOrders.length === 0 && account.status === "active") {
-        ops.push({
-          id: `prospect-${account.id}`,
-          type: "prospect",
-          account: account.tradingName || account.name,
-          accountId: account.id,
-          priority: "medium",
-          value: 0,
-          lastOrderDays: 999,
-          reason: "New account - no orders yet",
-          suggestedAction: "Schedule tasting/setup visit",
-        });
-      }
-    }
-
-    return ops.sort((a, b) => {
-      const priorityWeight = { high: 3, medium: 2, low: 1 };
-      return priorityWeight[b.priority] - priorityWeight[a.priority];
-    });
-  }, [accounts, salesOrders, repName]);
+  const opportunities = useMemo(
+    (): SalesRepOpportunity[] => computeSalesRepOpportunities(accounts, salesOrders, repName),
+    [accounts, salesOrders, repName],
+  );
 
   const filteredOpportunities = useMemo(() => {
     if (filter === "all") return opportunities;
@@ -183,6 +84,7 @@ export default function SalesOpportunitiesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Opportunities"
+        variant="sales_rep"
         description="Prioritized accounts needing attention — dormant, velocity drops, and reorder signals."
       />
 

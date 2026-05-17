@@ -13,6 +13,7 @@ import { RecordDistributorOutboundShipmentDialog } from "@/components/RecordDist
 import { Truck, Package, Search, ArrowRight, Clock, CheckCircle2, AlertTriangle, Navigation } from "lucide-react";
 import type { Shipment } from "@/data/mockData";
 import { shipmentLineContentsLabel } from "@/lib/order-lines";
+import RetailDeliveriesPage from "@/pages/RetailDeliveriesPage";
 
 function formatDepartureTimestamp(s: Shipment): string {
   if (s.shippedAt) {
@@ -86,6 +87,10 @@ export default function Shipments() {
     return <ShipmentsSkeleton />;
   }
 
+  if (user?.role === "retail") {
+    return <RetailDeliveriesPage />;
+  }
+
   const shipmentKindLabel = (s: Shipment) => {
     if (s.type === "inbound") return "Inbound (production / PO)";
     if (s.orderType === "sales_order") return "Outbound (to distributor)";
@@ -97,6 +102,7 @@ export default function Shipments() {
       <PageHeader
         title="Shipments"
         description="Inbound production freight and outbound deliveries in one view. HQ can ship from a Hajime depot to a distributor DC (sales-order linked); inbound PO legs can be filed by HQ or manufacturers. Lists refresh periodically while this page is visible."
+        variant={user.role === "retail" ? "retail" : "default"}
         actions={
           canRecordInbound || canRecordOutboundToDistributor ? (
             <div className="flex flex-wrap gap-2">

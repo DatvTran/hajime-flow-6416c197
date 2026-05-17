@@ -151,6 +151,7 @@ export default function SalesTargetsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Sales Targets"
+        variant="sales_rep"
         description="Track your quarterly goals vs actual sell-in performance."
       />
 

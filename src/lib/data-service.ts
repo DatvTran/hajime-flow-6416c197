@@ -79,6 +79,18 @@ function mapRowToTeamMember(row: Record<string, unknown>): TeamMember {
     crmReqRaw != null && String(crmReqRaw).trim() !== ""
       ? String(crmReqRaw).trim()
       : undefined;
+  const linkedAccountId =
+    row.linked_account_id != null && String(row.linked_account_id).trim() !== ""
+      ? String(row.linked_account_id).trim()
+      : undefined;
+  const retailTradingName =
+    row.retail_trading_name != null && String(row.retail_trading_name).trim() !== ""
+      ? String(row.retail_trading_name).trim()
+      : undefined;
+  const managedByUserId =
+    row.managed_by_user_id != null && String(row.managed_by_user_id).trim() !== ""
+      ? String(row.managed_by_user_id).trim()
+      : undefined;
   return {
     id: String(row.id ?? ""),
     displayName: String(row.name ?? row.display_name ?? ""),
@@ -89,6 +101,9 @@ function mapRowToTeamMember(row: Record<string, unknown>): TeamMember {
     ...(primaryWarehouseId ? { primaryWarehouseId } : {}),
     ...(pendingDistributorApproval === true ? { pendingDistributorApproval: true } : {}),
     ...(crmRequestedByUserId ? { crmRequestedByUserId } : {}),
+    ...(linkedAccountId ? { linkedAccountId } : {}),
+    ...(retailTradingName ? { retailTradingName } : {}),
+    ...(managedByUserId ? { managedByUserId } : {}),
   };
 }
 
@@ -475,6 +490,12 @@ function transformToAppData(
           creditLimit: a.credit_limit,
           notes: a.notes,
           salesOwner: a.sales_owner || "Unassigned",
+          ...(a.managed_by_distributor_user_id != null
+            ? { managedByDistributorUserId: String(a.managed_by_distributor_user_id) }
+            : {}),
+          ...(a.assigned_sales_rep_id != null
+            ? { assignedSalesRepUserId: String(a.assigned_sales_rep_id) }
+            : {}),
           tags: a.tags || [],
           avgOrderSize: a.avg_order_size || 0,
           firstOrderDate: a.first_order_date || new Date().toISOString(),
@@ -569,7 +590,7 @@ function transformToAppData(
 export async function fetchAppDataGranular(): Promise<AppData> {
   const results = await Promise.allSettled([
     getProducts({ limit: 500 }),
-    getAccounts({ limit: 100 }),
+    getAccounts({ limit: 500 }),
     getOrders({ limit: 100 }),
     getInventory({ limit: 100 }),
     getDepletionReports({ limit: 200 }),

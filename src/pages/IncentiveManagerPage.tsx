@@ -29,6 +29,11 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import {
+  dismissIncentivesLoadFallbackNotice,
+  isIncentivesLoadFallbackNoticeDismissed,
+} from "@/lib/incentives-notice";
+import RetailPartnerProgramPage from "@/pages/RetailPartnerProgramPage";
+import {
   TrendingUp,
   Users,
   Package,
@@ -484,9 +489,16 @@ export default function IncentiveManagerPage() {
           setSpifRates(c.spifRates);
           setVolumeBonusesUsd(c.volumeBonusesUsd);
           setRemoteSaveError(e instanceof Error ? e.message : "Load failed");
-          toast.error("Could not load incentives from server", {
-            description: "Using this browser’s cached copy until the API is available.",
-          });
+          if (!isIncentivesLoadFallbackNoticeDismissed()) {
+            toast.error("Could not load incentives from server", {
+              id: "incentives-load-fallback",
+              description: "Using this browser’s cached copy until the API is available.",
+              action: {
+                label: "Don't show again",
+                onClick: () => dismissIncentivesLoadFallbackNotice(),
+              },
+            });
+          }
         }
       } finally {
         if (!cancelled) {
@@ -845,11 +857,16 @@ export default function IncentiveManagerPage() {
 
   const showRemoteLoading = isLoading || (!!user && !bootstrapped);
 
+  if (user?.role === "retail") {
+    return <RetailPartnerProgramPage />;
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Supply Chain Incentive Manager"
         description="Track partner performance, SPIF payouts, and margin optimization. When you are signed in, partners, SPIFs, supply chain prices, SPIF rates, and quarterly bonuses are saved to the server for your organization (with automatic sync a moment after you stop editing)."
+        variant={user.role === "retail" ? "retail" : "default"}
         titleAddon={
           <span className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs font-normal tabular-nums text-muted-foreground">
             {user
