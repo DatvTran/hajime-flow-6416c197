@@ -148,8 +148,20 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
-    | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
+  LOG_FILE="/tmp/hajime_logs_$$.txt"
+  fly logs -a "$APP_NAME" --since 24h 2>/dev/null > "$LOG_FILE" || true
+
+  # RouteErrorBoundary is a STOP — means a render crash reached a real user
+  REB_HITS=$(grep -ci "RouteErrorBoundary\|routeErrorBoundary\|route-error-boundary" "$LOG_FILE" || true)
+  if [[ "$REB_HITS" -gt 0 ]]; then
+    fail "$REB_HITS RouteErrorBoundary hit(s) in last 24h — render crash reached users"
+    rm -f "$LOG_FILE"
+    stop "RouteErrorBoundary triggered $REB_HITS time(s) in the last 24h. A render crash is reaching real users — fix before writing any new code."
+  fi
+
+  LOG_ERRORS=$(grep -ciE "error|unhandled|ECONN|5[0-9]{2}" "$LOG_FILE" || true)
+  rm -f "$LOG_FILE"
+
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
   elif [[ "$LOG_ERRORS" -le 5 ]]; then
@@ -331,6 +343,14 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  # Cross-tenant 403 — requires a real token; print the command to run manually
+  echo ""
+  info "Cross-tenant smoke (manual — needs a valid tenant-A access token):"
+  info "  TOKEN=<tenant-A-access-token>"
+  info "  curl -si -H \"Authorization: Bearer \$TOKEN\" \\"
+  info "    \"${BASE_URL}/api/products?tenantId=<tenant-B-uuid>\" | head -1"
+  info "  Expected: HTTP/2 403"
 fi
 fi  # end START_TIER <= 3
 
