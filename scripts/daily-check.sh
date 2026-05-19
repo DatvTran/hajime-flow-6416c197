@@ -14,6 +14,7 @@
 #  Environment overrides:
 #    HAJIME_FLY_APP      fly.io app name       (default: hajime-app)
 #    HAJIME_BASE_URL     prod base URL         (default: https://hajime-app.fly.dev)
+#    HAJIME_PG_URL       PostgreSQL URL for auth_events check  (optional; enables step 3g)
 # =============================================================================
 set -uo pipefail
 
@@ -143,13 +144,14 @@ fi
 
 # ── 1d. Error scan in logs (last 24h) ─────────────────────────────────────────
 step "1d. Error scan in last-24h logs"
+LOG_CACHE=""
 if [[ -n "$SKIP_FLY" ]]; then
   warn "SKIP_FLY set — skipping log scan"
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
-    | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
+  LOG_CACHE=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+  LOG_ERRORS=$(echo "$LOG_CACHE" | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
   elif [[ "$LOG_ERRORS" -le 5 ]]; then
@@ -160,6 +162,22 @@ else
     fail "$LOG_ERRORS error-class lines in last 24h — likely a real issue"
     info "fly logs -a $APP_NAME --since 24h | grep -iE 'error|unhandled|ECONN|5[0-9][0-9]'"
     (( T1_FAILS++ )) || true
+  fi
+fi
+
+# ── 1e. RouteErrorBoundary — render crash stop condition ─────────────────────
+step "1e. RouteErrorBoundary — render crash (stop condition)"
+if [[ -n "$SKIP_FLY" ]] || ! has_cmd fly; then
+  warn "Skipped (no fly access) — check logs manually: grep RouteErrorBoundary"
+elif [[ -z "$LOG_CACHE" ]]; then
+  warn "Log cache empty — RouteErrorBoundary check skipped"
+else
+  REB_COUNT=$(echo "$LOG_CACHE" | grep -ci "RouteErrorBoundary" || true)
+  if [[ "$REB_COUNT" -eq 0 ]]; then
+    pass "No RouteErrorBoundary hits in last 24h"
+  else
+    fail "$REB_COUNT RouteErrorBoundary hit(s) — render crash reached users"
+    stop "RouteErrorBoundary appeared in production logs ($REB_COUNT time(s)). A render crash reached end users — investigate before continuing."
   fi
 fi
 
@@ -331,6 +349,34 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+fi
+
+# ── 3g. auth_events — privileged self-registration (stop condition) ───────────
+step "3g. auth_events — privileged role registration (last 24h)"
+if [[ -n "${HAJIME_PG_URL:-}" ]] && has_cmd psql; then
+  REG_COUNT=$(psql "$HAJIME_PG_URL" -At \
+    -c "SELECT COUNT(*) FROM auth_events \
+        WHERE event_type = 'register' \
+        AND role IN ('founder_admin','brand_operator') \
+        AND created_at > NOW() - INTERVAL '24 hours';" 2>/dev/null \
+    || echo "")
+  if [[ "$REG_COUNT" == "0" ]]; then
+    pass "auth_events: no privileged self-registration in last 24h"
+  elif [[ -z "$REG_COUNT" ]]; then
+    warn "auth_events: query failed — check HAJIME_PG_URL and psql connectivity"
+    (( T3_FAILS++ )) || true
+  else
+    fail "auth_events: $REG_COUNT privileged registration event(s) in last 24h"
+    stop "auth_events shows successful registration with a privileged role. Investigate immediately."
+  fi
+else
+  warn "HAJIME_PG_URL / psql not available — manual DB check required:"
+  info "SELECT COUNT(*) FROM auth_events"
+  info "  WHERE event_type = 'register'"
+  info "  AND role IN ('founder_admin','brand_operator')"
+  info "  AND created_at > NOW() - INTERVAL '24 hours';"
+  info "Expected: 0 rows. Any result > 0 is a STOP condition."
+  info "Set HAJIME_PG_URL=<connection-string> to automate this check."
 fi
 fi  # end START_TIER <= 3
 
