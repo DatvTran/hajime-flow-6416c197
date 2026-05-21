@@ -148,7 +148,19 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
+  RECENT_LOGS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+
+  # RouteErrorBoundary = a render crash reached a real user — hard stop.
+  REB_HITS=$(echo "$RECENT_LOGS" | grep -c "RouteErrorBoundary" || true)
+  if [[ "$REB_HITS" -gt 0 ]]; then
+    fail "$REB_HITS RouteErrorBoundary hit(s) in last 24h"
+    echo "$RECENT_LOGS" | grep "RouteErrorBoundary" | tail -5 | sed 's/^/       /'
+    stop "RouteErrorBoundary detected in logs — a render crash reached a user. Fix the crash before anything else."
+  else
+    pass "No RouteErrorBoundary hits in last 24h"
+  fi
+
+  LOG_ERRORS=$(echo "$RECENT_LOGS" \
     | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
@@ -331,7 +343,33 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  # Cross-tenant fence: tenant-A token must NOT read tenant-B data.
+  # Set TENANT_A_TOKEN and TENANT_B_UUID in your env to enable this check.
+  if [[ -n "${TENANT_A_TOKEN:-}" && -n "${TENANT_B_UUID:-}" ]]; then
+    CROSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: Bearer ${TENANT_A_TOKEN}" \
+      "${BASE_URL}/api/products?tenantId=${TENANT_B_UUID}" 2>/dev/null || echo "000")
+    if [[ "$CROSS_CODE" == "403" ]]; then
+      pass "Cross-tenant fence: tenant-A token on tenant-B → 403  ✓"
+    else
+      fail "Cross-tenant fence: expected 403, got $CROSS_CODE — scope leak?"
+      stop "Cross-tenant request returned $CROSS_CODE instead of 403. Tenant isolation may be broken."
+    fi
+  else
+    warn "Cross-tenant check skipped — set TENANT_A_TOKEN + TENANT_B_UUID to enable"
+  fi
 fi
+
+# ── 3g. Auth events — privileged self-registration ───────────────────────────
+step "3g. Auth events — privileged self-registration check"
+info "Requires DB access. Run manually when you have a psql/admin session:"
+info "  SELECT * FROM auth_events"
+info "    WHERE event_type = 'register'"
+info "      AND metadata->>'role' IN ('founder_admin','brand_operator')"
+info "      AND created_at > NOW() - INTERVAL '24 hours';"
+info "  → Zero rows expected. Any row here is a stop condition."
+warn "Automated check skipped (no DB creds in env) — run the query above manually today"
 fi  # end START_TIER <= 3
 
 # =============================================================================
@@ -383,6 +421,10 @@ else
   [[ $T4_FAILS -gt 0 ]] && echo -e "  ${RED}✗  Tier 4 (Smoke):      $T4_FAILS failure(s)${NC}"
 fi
 
+echo ""
+echo -e "${DIM}Stop conditions (auto-detected above):${NC}"
+echo -e "${DIM}  tsc errors · npm audit high/critical · health ≠ 200+connected${NC}"
+echo -e "${DIM}  RouteErrorBoundary in logs · cross-tenant ≠ 403 · privileged self-register${NC}"
 echo ""
 echo -e "${DIM}Weekly add-ons (not daily — too noisy):${NC}"
 echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
