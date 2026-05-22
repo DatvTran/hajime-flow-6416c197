@@ -148,7 +148,17 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
+  RECENT_LOGS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+
+  # RouteErrorBoundary hits = render crash reached a user — stop condition
+  REB_COUNT=$(echo "$RECENT_LOGS" | grep -ciE "RouteErrorBoundary" || true)
+  if [[ "$REB_COUNT" -gt 0 ]]; then
+    fail "$REB_COUNT RouteErrorBoundary hit(s) in last 24h — a render crash reached users"
+    info "fly logs -a $APP_NAME --since 24h | grep -i RouteErrorBoundary"
+    stop "RouteErrorBoundary logged $REB_COUNT time(s) in the last 24h. A render crash reached users — fix before any other work."
+  fi
+
+  LOG_ERRORS=$(echo "$RECENT_LOGS" \
     | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
@@ -331,6 +341,23 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  # Cross-tenant isolation — requires a live token; prompt if TOKEN_A and TENANT_B_UUID are set
+  if [[ -n "${TOKEN_A:-}" && -n "${TENANT_B_UUID:-}" ]]; then
+    step "3g. Cross-tenant isolation smoke"
+    CROSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: Bearer $TOKEN_A" \
+      "${BASE_URL}/api/products?tenantId=${TENANT_B_UUID}" 2>/dev/null || echo "000")
+    if [[ "$CROSS_CODE" == "403" ]]; then
+      pass "Cross-tenant request → 403  ✓"
+    else
+      fail "Cross-tenant request → $CROSS_CODE (expected 403)"
+      stop "Cross-tenant isolation broken — tenant A token returned $CROSS_CODE for tenant B data."
+    fi
+  else
+    warn "Cross-tenant smoke skipped — set TOKEN_A and TENANT_B_UUID to enable:"
+    info "  TOKEN_A=<tenantA-access-token> TENANT_B_UUID=<tenant-B-uuid> bash scripts/daily-check.sh"
+  fi
 fi
 fi  # end START_TIER <= 3
 
@@ -386,9 +413,17 @@ fi
 echo ""
 echo -e "${DIM}Weekly add-ons (not daily — too noisy):${NC}"
 echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
-echo -e "${DIM}  npx playwright test --reporter=line       # all 6 suites${NC}"
-echo -e "${DIM}  fly volumes list -a $APP_NAME             # disk usage${NC}"
-echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+echo -e "${DIM}  npx playwright test --reporter=line         # all 6 suites${NC}"
+echo -e "${DIM}  fly volumes list -a $APP_NAME               # disk usage${NC}"
+echo -e "${DIM}  Review auth_events for past 7 days:${NC}"
+echo -e "${DIM}    • permission_denied spikes${NC}"
+echo -e "${DIM}    • repeated account_locked events${NC}"
+echo -e "${DIM}    • unexpected register events (especially with privileged roles)${NC}"
+echo -e "${DIM}  Review audit_logs for past 7 days (anomalous bulk ops, cross-tenant reads)${NC}"
+echo -e "${DIM}  Review known open gaps — has upstream priority shifted?${NC}"
+echo -e "${DIM}    • Depletion reporting (no sell-through data flowing to Manufacturer)${NC}"
+echo -e "${DIM}    • Sales Rep inventory visibility (widget not yet shipped)${NC}"
+echo -e "${DIM}    • Production PO inventory gate (POs created without stock check)${NC}"
 echo ""
 
 [[ $TOTAL_FAILS -eq 0 ]]  # exit 0 on success, 1 on any failures
