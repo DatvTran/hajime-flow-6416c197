@@ -12,8 +12,10 @@
 #    bash scripts/daily-check.sh --tier 2      # start from tier N
 #
 #  Environment overrides:
-#    HAJIME_FLY_APP      fly.io app name       (default: hajime-app)
-#    HAJIME_BASE_URL     prod base URL         (default: https://hajime-app.fly.dev)
+#    HAJIME_FLY_APP           fly.io app name       (default: hajime-app)
+#    HAJIME_BASE_URL          prod base URL         (default: https://hajime-app.fly.dev)
+#    TEST_TOKEN_TENANT_A      access token for tenant A (enables cross-tenant 403 check)
+#    TEST_TENANT_B_UUID       UUID of a different tenant (paired with above)
 # =============================================================================
 set -uo pipefail
 
@@ -148,7 +150,16 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
+  RAW_LOGS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+
+  # RouteErrorBoundary = a render crash reached a real user — stop immediately
+  REB_COUNT=$(echo "$RAW_LOGS" | grep -c "RouteErrorBoundary" || true)
+  if [[ "$REB_COUNT" -gt 0 ]]; then
+    fail "$REB_COUNT RouteErrorBoundary event(s) in last 24h"
+    stop "RouteErrorBoundary appeared in prod logs — a render crash reached users. Fix before proceeding."
+  fi
+
+  LOG_ERRORS=$(echo "$RAW_LOGS" \
     | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
@@ -331,6 +342,23 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  # Cross-tenant isolation check: tenant A token must not read tenant B data
+  # Set TEST_TOKEN_TENANT_A and TEST_TENANT_B_UUID in env to enable.
+  if [[ -n "${TEST_TOKEN_TENANT_A:-}" && -n "${TEST_TENANT_B_UUID:-}" ]]; then
+    CROSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: Bearer $TEST_TOKEN_TENANT_A" \
+      "${BASE_URL}/api/products?tenantId=${TEST_TENANT_B_UUID}" \
+      2>/dev/null || echo "000")
+    if [[ "$CROSS_CODE" == "403" ]]; then
+      pass "Cross-tenant request → 403  ✓"
+    else
+      fail "Cross-tenant request → $CROSS_CODE (expected 403)"
+      stop "Cross-tenant isolation broken: tenant A token accessed tenant B data."
+    fi
+  else
+    warn "Cross-tenant 403 check skipped — set TEST_TOKEN_TENANT_A + TEST_TENANT_B_UUID to enable"
+  fi
 fi
 fi  # end START_TIER <= 3
 
@@ -386,9 +414,13 @@ fi
 echo ""
 echo -e "${DIM}Weekly add-ons (not daily — too noisy):${NC}"
 echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
-echo -e "${DIM}  npx playwright test --reporter=line       # all 6 suites${NC}"
-echo -e "${DIM}  fly volumes list -a $APP_NAME             # disk usage${NC}"
-echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+echo -e "${DIM}  npx playwright test --reporter=line                  # all 6 suites${NC}"
+echo -e "${DIM}  fly volumes list -a $APP_NAME                        # disk / volume usage${NC}"
+echo -e "${DIM}  Review auth_events + audit_logs for past 7 days      # privilege spikes, repeated lockouts${NC}"
+echo -e "${DIM}  Review known gaps vs. upcoming work:${NC}"
+echo -e "${DIM}    · Depletion reporting (no automated low-stock alerts)${NC}"
+echo -e "${DIM}    · Sales Rep inventory visibility (blind when creating draft orders)${NC}"
+echo -e "${DIM}    · Production PO inventory gate (no block on oversell at PO creation)${NC}"
 echo ""
 
 [[ $TOTAL_FAILS -eq 0 ]]  # exit 0 on success, 1 on any failures
