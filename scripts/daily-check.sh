@@ -148,7 +148,16 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
+  RECENT_LOGS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+
+  # RouteErrorBoundary hits = render crash reached a real user — hard stop
+  REB_COUNT=$(echo "$RECENT_LOGS" | grep -ci "RouteErrorBoundary" || true)
+  if [[ "$REB_COUNT" -gt 0 ]]; then
+    fail "$REB_COUNT RouteErrorBoundary hit(s) in last 24h"
+    stop "$REB_COUNT RouteErrorBoundary hit(s) in last 24h — render crash(es) reached users. Fix before proceeding."
+  fi
+
+  LOG_ERRORS=$(echo "$RECENT_LOGS" \
     | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
@@ -267,6 +276,16 @@ else
   fi
 fi
 
+# ── 3a-2. JWT startup guard still in server code ─────────────────────────────
+step "3a-2. JWT startup guard — server/index.mjs exits on missing secret"
+if grep -q "ACCESS_TOKEN_SECRET" server/index.mjs \
+    && grep -q "process.exit" server/index.mjs; then
+  pass "server/index.mjs: startup validation for ACCESS_TOKEN_SECRET is present"
+else
+  fail "server/index.mjs: startup exit guard for ACCESS_TOKEN_SECRET not found"
+  stop "server/index.mjs no longer exits on missing ACCESS_TOKEN_SECRET — the server will start with a broken auth config."
+fi
+
 # ── 3b. Dependency vulnerabilities ───────────────────────────────────────────
 step "3b. npm audit — root (runtime deps)"
 if npm audit --omit=dev --audit-level=high 2>&1; then
@@ -331,7 +350,27 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  info "Cross-tenant check (manual — requires a valid Tenant A token):"
+  info "  TOKEN=<tenant-A-access-token>"
+  info "  curl -i -H \"Authorization: Bearer \$TOKEN\" \\"
+  info "    \"${BASE_URL}/api/products?tenantId=<tenant-B-uuid>\""
+  info "  Expected: 403"
 fi
+
+# ── 3g. auth_events DB hint ───────────────────────────────────────────────────
+step "3g. auth_events — manual DB check hint"
+echo ""
+echo -e "  ${DIM}If you have admin DB access, run against the primary DB:${NC}"
+echo -e "  ${DIM}  SELECT role, event_type, COUNT(*) FROM auth_events${NC}"
+echo -e "  ${DIM}  WHERE created_at > NOW() - INTERVAL '24 hours'${NC}"
+echo -e "  ${DIM}  AND (event_type = 'register'${NC}"
+echo -e "  ${DIM}       OR role IN ('founder_admin','brand_operator'))${NC}"
+echo -e "  ${DIM}  GROUP BY 1,2 ORDER BY 3 DESC;${NC}"
+echo ""
+echo -e "  ${DIM}Red flags: unexpected register events, privilege escalations,${NC}"
+echo -e "  ${DIM}permission_denied spikes, or repeated account_locked rows.${NC}"
+pass "auth_events hint printed (manual verification)"
 fi  # end START_TIER <= 3
 
 # =============================================================================
