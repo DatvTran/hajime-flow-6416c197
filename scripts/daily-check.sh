@@ -149,7 +149,7 @@ elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
   LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
-    | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
+    | grep -ciE "error|unhandled|ECONN|5[0-9]{2}|RouteErrorBoundary" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
   elif [[ "$LOG_ERRORS" -le 5 ]]; then
@@ -331,6 +331,21 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  # Cross-tenant isolation — requires TENANT_A_TOKEN + TENANT_B_UUID in env
+  if [[ -n "${TENANT_A_TOKEN:-}" && -n "${TENANT_B_UUID:-}" ]]; then
+    CROSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: Bearer ${TENANT_A_TOKEN}" \
+      "${BASE_URL}/api/products?tenantId=${TENANT_B_UUID}" 2>/dev/null || echo "000")
+    if [[ "$CROSS_CODE" == "403" ]]; then
+      pass "Cross-tenant isolation: tenant-A token → tenant-B products → 403  ✓"
+    else
+      fail "Cross-tenant isolation → $CROSS_CODE (expected 403) — tenant isolation may be broken"
+      stop "Cross-tenant request returned $CROSS_CODE instead of 403 — data isolation is broken."
+    fi
+  else
+    info "Cross-tenant check skipped — set TENANT_A_TOKEN + TENANT_B_UUID to enable"
+  fi
 fi
 fi  # end START_TIER <= 3
 
@@ -389,6 +404,7 @@ echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
 echo -e "${DIM}  npx playwright test --reporter=line       # all 6 suites${NC}"
 echo -e "${DIM}  fly volumes list -a $APP_NAME             # disk usage${NC}"
 echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+echo -e "${DIM}  Review 3 known gaps: depletion reporting · sales-rep inventory visibility · production PO inventory gate${NC}"
 echo ""
 
 [[ $TOTAL_FAILS -eq 0 ]]  # exit 0 on success, 1 on any failures
