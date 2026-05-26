@@ -6,7 +6,8 @@
 #  STOP CONDITIONS exit immediately and must be resolved before anything else.
 #
 #  Usage:
-#    bash scripts/daily-check.sh               # full run
+#    bash scripts/daily-check.sh               # full run (Tiers 1-4)
+#    bash scripts/daily-check.sh --weekly      # Tiers 1-4 + weekly add-ons
 #    bash scripts/daily-check.sh --skip-fly    # skip fly CLI checks (offline)
 #    bash scripts/daily-check.sh --skip-prod   # skip prod HTTP calls
 #    bash scripts/daily-check.sh --tier 2      # start from tier N
@@ -14,6 +15,8 @@
 #  Environment overrides:
 #    HAJIME_FLY_APP      fly.io app name       (default: hajime-app)
 #    HAJIME_BASE_URL     prod base URL         (default: https://hajime-app.fly.dev)
+#    TENANT_A_TOKEN      access token for cross-tenant smoke test (optional)
+#    TENANT_B_UUID       target tenant UUID for cross-tenant smoke test (optional)
 # =============================================================================
 set -uo pipefail
 
@@ -24,12 +27,14 @@ HEALTH_URL="${BASE_URL}/api/health"
 SKIP_FLY=""
 SKIP_PROD=""
 START_TIER=1
+WEEKLY=""
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-fly)   SKIP_FLY=1 ;;
     --skip-prod)  SKIP_PROD=1 ;;
+    --weekly)     WEEKLY=1 ;;
     --tier)       START_TIER="${2:?'--tier requires a number'}"; shift ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
@@ -148,7 +153,16 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
+  RAW_LOGS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+
+  # Stop condition: RouteErrorBoundary in logs means a render crash reached users.
+  REB_HITS=$(echo "$RAW_LOGS" | grep -c "RouteErrorBoundary" || true)
+  if [[ "$REB_HITS" -gt 0 ]]; then
+    fail "$REB_HITS RouteErrorBoundary hit(s) in last 24h — render crash(es) reached users"
+    stop "RouteErrorBoundary found in production logs ($REB_HITS hit(s)). A component crash made it to a user — fix before proceeding."
+  fi
+
+  LOG_ERRORS=$(echo "$RAW_LOGS" \
     | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
@@ -331,6 +345,25 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  # Cross-tenant isolation: tenant A token must not read tenant B data (→ 403)
+  # Set TENANT_A_TOKEN and TENANT_B_UUID to enable this check.
+  if [[ -n "${TENANT_A_TOKEN:-}" && -n "${TENANT_B_UUID:-}" ]]; then
+    step "3g. Cross-tenant isolation smoke"
+    CROSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: Bearer ${TENANT_A_TOKEN}" \
+      "${BASE_URL}/api/products?tenantId=${TENANT_B_UUID}" 2>/dev/null || echo "000")
+    if [[ "$CROSS_CODE" == "403" ]]; then
+      pass "Cross-tenant GET /api/products?tenantId=<B> → 403  ✓"
+    elif [[ "$CROSS_CODE" == "401" ]]; then
+      warn "Cross-tenant check → 401 (token may be expired — re-export TENANT_A_TOKEN)"
+    else
+      fail "Cross-tenant GET → $CROSS_CODE (expected 403) — possible tenant isolation breach"
+      stop "Cross-tenant isolation check returned $CROSS_CODE instead of 403. Investigate before deploying."
+    fi
+  else
+    info "Cross-tenant smoke skipped — set TENANT_A_TOKEN + TENANT_B_UUID to enable"
+  fi
 fi
 fi  # end START_TIER <= 3
 
@@ -365,9 +398,66 @@ fi
 fi  # end START_TIER <= 4
 
 # =============================================================================
+#  WEEKLY ADD-ONS  (run with --weekly; too noisy for every day)
+# =============================================================================
+if [[ -n "$WEEKLY" ]]; then
+hdr "WEEKLY — Maintenance add-ons"
+W_FAILS=0
+
+step "W1. Root outdated packages"
+npx --yes npm-check-updates --format group 2>/dev/null \
+  || npm outdated 2>&1 || true
+pass "Root package report done (review above for minor/patch bumps)"
+
+step "W2. Server outdated packages"
+(cd server && npm outdated 2>&1 || true)
+pass "Server package report done"
+
+step "W3. Full Playwright suite (all 6 suites)"
+if [[ -f "playwright.config.ts" ]] && has_cmd npx; then
+  if npx playwright test --project=chromium --reporter=line 2>&1; then
+    pass "Full Playwright: all suites green"
+  else
+    fail "Full Playwright: failures detected"
+    (( W_FAILS++ )) || true
+  fi
+else
+  warn "Playwright not configured — run manually: npx playwright test --reporter=line"
+fi
+
+step "W4. Fly volumes (disk usage)"
+if [[ -n "$SKIP_FLY" ]]; then
+  warn "SKIP_FLY set — skipping volumes check"
+elif ! has_cmd fly; then
+  warn "fly CLI not found — skipping volumes check"
+else
+  fly volumes list -a "$APP_NAME" 2>&1 || true
+  pass "Volume list above — confirm server/data is not ballooning (Stage 1 expected)"
+fi
+
+step "W5. Known gaps review (manual)"
+echo ""
+echo "  Review the three known feature gaps and check if upstream changes affect priority:"
+echo "    1. Depletion reporting — no automated report; must be done manually"
+echo "    2. Sales Rep inventory visibility — widget not shipped yet"
+echo "    3. Production PO inventory gate — gate logic not enforced yet"
+echo ""
+echo "  Also review auth_events + audit_logs for the past 7 days:"
+echo "    • permission_denied spikes?"
+echo "    • repeated account_locked events?"
+echo "    • unexpected register events (especially founder_admin / brand_operator)?"
+echo ""
+
+if [[ $W_FAILS -gt 0 ]]; then
+  echo -e "${YELLOW}Weekly: $W_FAILS check(s) need attention${NC}"
+fi
+fi  # end WEEKLY
+
+# =============================================================================
 #  SUMMARY
 # =============================================================================
-TOTAL_FAILS=$(( T1_FAILS + T2_FAILS + T3_FAILS + T4_FAILS ))
+W_FAILS="${W_FAILS:-0}"
+TOTAL_FAILS=$(( T1_FAILS + T2_FAILS + T3_FAILS + T4_FAILS + W_FAILS ))
 
 echo ""
 echo -e "${BOLD}${BLUE}━━━ SUMMARY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -381,14 +471,14 @@ else
   [[ $T2_FAILS -gt 0 ]] && echo -e "  ${RED}✗  Tier 2 (Code):       $T2_FAILS failure(s)${NC}"
   [[ $T3_FAILS -gt 0 ]] && echo -e "  ${RED}✗  Tier 3 (Security):   $T3_FAILS failure(s)${NC}"
   [[ $T4_FAILS -gt 0 ]] && echo -e "  ${RED}✗  Tier 4 (Smoke):      $T4_FAILS failure(s)${NC}"
+  [[ $W_FAILS  -gt 0 ]] && echo -e "  ${RED}✗  Weekly:              $W_FAILS failure(s)${NC}"
 fi
 
-echo ""
-echo -e "${DIM}Weekly add-ons (not daily — too noisy):${NC}"
-echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
-echo -e "${DIM}  npx playwright test --reporter=line       # all 6 suites${NC}"
-echo -e "${DIM}  fly volumes list -a $APP_NAME             # disk usage${NC}"
-echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+if [[ -z "$WEEKLY" ]]; then
+  echo ""
+  echo -e "${DIM}Run with --weekly once a week for: npm outdated, full Playwright suite, volumes, gap review${NC}"
+  echo -e "${DIM}Set TENANT_A_TOKEN + TENANT_B_UUID to enable cross-tenant isolation smoke (3g)${NC}"
+fi
 echo ""
 
 [[ $TOTAL_FAILS -eq 0 ]]  # exit 0 on success, 1 on any failures
