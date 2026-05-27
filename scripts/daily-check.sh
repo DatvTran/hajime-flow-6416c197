@@ -14,6 +14,8 @@
 #  Environment overrides:
 #    HAJIME_FLY_APP      fly.io app name       (default: hajime-app)
 #    HAJIME_BASE_URL     prod base URL         (default: https://hajime-app.fly.dev)
+#    TENANT_A_TOKEN      JWT for tenant A      (enables cross-tenant 403 test in 3g)
+#    TENANT_B_ID         UUID of tenant B      (enables cross-tenant 403 test in 3g)
 # =============================================================================
 set -uo pipefail
 
@@ -332,6 +334,39 @@ else
     (( T3_FAILS++ )) || true
   fi
 fi
+
+# ── 3g. Cross-tenant isolation smoke ─────────────────────────────────────────
+step "3g. Cross-tenant isolation (requires TENANT_A_TOKEN + TENANT_B_ID)"
+# Set these env vars to enable:  TENANT_A_TOKEN=<jwt>  TENANT_B_ID=<uuid>
+if [[ -n "$SKIP_PROD" ]]; then
+  warn "SKIP_PROD set — skipping cross-tenant test"
+elif [[ -z "${TENANT_A_TOKEN:-}" || -z "${TENANT_B_ID:-}" ]]; then
+  warn "TENANT_A_TOKEN / TENANT_B_ID not set — skipping cross-tenant 403 test"
+  info "To enable: export TENANT_A_TOKEN=<jwt> TENANT_B_ID=<other-tenant-uuid>"
+elif ! has_cmd curl; then
+  warn "curl not found — skipping cross-tenant test"
+else
+  CROSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+    -H "Authorization: Bearer ${TENANT_A_TOKEN}" \
+    "${BASE_URL}/api/products?tenantId=${TENANT_B_ID}" 2>/dev/null || echo "000")
+  if [[ "$CROSS_CODE" == "403" ]]; then
+    pass "Cross-tenant request → 403  ✓"
+  elif [[ "$CROSS_CODE" == "401" ]]; then
+    warn "Cross-tenant request → 401 (token rejected — may be expired)"
+    (( T3_FAILS++ )) || true
+  else
+    fail "Cross-tenant request → $CROSS_CODE (expected 403)"
+    stop "Cross-tenant isolation broken: tenant A token could access tenant B data (HTTP $CROSS_CODE)."
+  fi
+fi
+
+# ── 3h. auth_events reminder ──────────────────────────────────────────────────
+step "3h. auth_events table (manual — requires DB admin access)"
+info "Run this if you have psql access:"
+info "  SELECT event_type, count(*) FROM auth_events"
+info "    WHERE created_at > now() - interval '24 hours'"
+info "    GROUP BY event_type ORDER BY count DESC;"
+info "Watch for: permission_denied spikes, repeated account_locked, unexpected 'register' events."
 fi  # end START_TIER <= 3
 
 # =============================================================================
@@ -388,7 +423,8 @@ echo -e "${DIM}Weekly add-ons (not daily — too noisy):${NC}"
 echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
 echo -e "${DIM}  npx playwright test --reporter=line       # all 6 suites${NC}"
 echo -e "${DIM}  fly volumes list -a $APP_NAME             # disk usage${NC}"
-echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+echo -e "${DIM}  Review auth_events + audit_logs for past 7 days end-to-end${NC}"
+echo -e "${DIM}  Review known gaps: depletion reporting · sales rep inventory visibility · production PO inventory gate${NC}"
 echo ""
 
 [[ $TOTAL_FAILS -eq 0 ]]  # exit 0 on success, 1 on any failures
