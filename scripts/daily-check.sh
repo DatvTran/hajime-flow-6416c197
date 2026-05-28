@@ -148,8 +148,8 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
-    | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
+  RECENT_LOGS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+  LOG_ERRORS=$(echo "$RECENT_LOGS" | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
   elif [[ "$LOG_ERRORS" -le 5 ]]; then
@@ -161,6 +161,14 @@ else
     info "fly logs -a $APP_NAME --since 24h | grep -iE 'error|unhandled|ECONN|5[0-9][0-9]'"
     (( T1_FAILS++ )) || true
   fi
+
+  # RouteErrorBoundary = render crash reached a user — STOP CONDITION
+  RBE_COUNT=$(echo "$RECENT_LOGS" | grep -c "RouteErrorBoundary" || true)
+  if [[ "$RBE_COUNT" -gt 0 ]]; then
+    fail "RouteErrorBoundary: $RBE_COUNT hit(s) in last 24h — render crash reached user(s)"
+    stop "RouteErrorBoundary found in logs — a render crash made it to a user. Fix before continuing."
+  fi
+  pass "No RouteErrorBoundary hits in last 24h"
 fi
 
 if [[ $T1_FAILS -gt 0 ]]; then
@@ -315,6 +323,17 @@ else
   stop "founder_admin or brand_operator is in SELF_REGISTERABLE_ROLES — anyone can self-register as admin."
 fi
 
+# Cross-check: register route handler must not directly reference a privileged role
+ROUTE_PRIV=$(grep -A 5 "router.post.*register\|\.post.*register" \
+  server/routes/auth.mjs 2>/dev/null \
+  | grep -iE "founder_admin|brand_operator" || true)
+if [[ -z "$ROUTE_PRIV" ]]; then
+  pass "Register handler: no privileged role names in handler body"
+else
+  warn "Register handler references a privileged role — verify it is for exclusion, not assignment:"
+  echo "$ROUTE_PRIV" | sed 's/^/       /'
+fi
+
 # ── 3f. Auth smoke tests against prod ────────────────────────────────────────
 step "3f. Auth smoke — production"
 if [[ -n "$SKIP_PROD" ]]; then
@@ -331,6 +350,18 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  echo ""
+  info "Cross-tenant smoke (manual — requires a valid tenant-A access token):"
+  info "  TOKEN=<tenant-A-access-token>"
+  info "  curl -i -H \"Authorization: Bearer \$TOKEN\" \\"
+  info "    \"${BASE_URL}/api/products?tenantId=<tenant-B-uuid>\""
+  info "  Expected: 403 Forbidden"
+  echo ""
+  info "auth_events check (manual — requires DB access):"
+  info "  SELECT * FROM auth_events WHERE created_at > NOW() - INTERVAL '24 hours'"
+  info "    AND event_type = 'register' ORDER BY created_at DESC;"
+  info "  Flag any row where role IN ('founder_admin','brand_operator')."
 fi
 fi  # end START_TIER <= 3
 
@@ -389,6 +420,7 @@ echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
 echo -e "${DIM}  npx playwright test --reporter=line       # all 6 suites${NC}"
 echo -e "${DIM}  fly volumes list -a $APP_NAME             # disk usage${NC}"
 echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+echo -e "${DIM}  Review 3 known gaps: depletion reporting · sales rep inventory visibility · production PO inventory gate${NC}"
 echo ""
 
 [[ $TOTAL_FAILS -eq 0 ]]  # exit 0 on success, 1 on any failures
