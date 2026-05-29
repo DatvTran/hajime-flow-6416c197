@@ -148,6 +148,16 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
+  # RouteErrorBoundary hits mean a render crash reached a real user — stop immediately.
+  REB_HITS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
+    | grep -c "RouteErrorBoundary" || true)
+  if [[ "$REB_HITS" -gt 0 ]]; then
+    fail "$REB_HITS RouteErrorBoundary hit(s) in last 24h — a render crash reached users"
+    stop "RouteErrorBoundary appeared $REB_HITS time(s) in the last 24h. A page crashed for real users. Fix before anything else."
+  else
+    pass "No RouteErrorBoundary hits in last 24h"
+  fi
+
   LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
     | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
@@ -331,6 +341,14 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  # Cross-tenant isolation cannot be automated without a live token.
+  # Manual step (run when you have a Tenant A access token):
+  #   TOKEN=<tenant-A-access-token>
+  #   curl -i -H "Authorization: Bearer $TOKEN" \
+  #     "${BASE_URL}/api/products?tenantId=<tenant-B-uuid>"
+  #   Expected: 403 — not 200, not 404.
+  warn "Manual: cross-tenant 403 check requires a live Bearer token — see comment above for curl command"
 fi
 fi  # end START_TIER <= 3
 
@@ -389,6 +407,10 @@ echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
 echo -e "${DIM}  npx playwright test --reporter=line       # all 6 suites${NC}"
 echo -e "${DIM}  fly volumes list -a $APP_NAME             # disk usage${NC}"
 echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+echo -e "${DIM}  Review three known gaps — has upstream priority changed?${NC}"
+echo -e "${DIM}    • Depletion reporting (Sales Rep can't see inventory levels)${NC}"
+echo -e "${DIM}    • Sales Rep inventory visibility widget (not yet shipped)${NC}"
+echo -e "${DIM}    • Production PO inventory gate (not yet enforced)${NC}"
 echo ""
 
 [[ $TOTAL_FAILS -eq 0 ]]  # exit 0 on success, 1 on any failures
