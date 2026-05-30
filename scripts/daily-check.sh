@@ -148,7 +148,17 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
+  RAW_LOGS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+
+  # RouteErrorBoundary hits mean a render crash reached a real user — stop immediately
+  REB_COUNT=$(echo "$RAW_LOGS" | grep -c "RouteErrorBoundary" || true)
+  if [[ "$REB_COUNT" -gt 0 ]]; then
+    fail "$REB_COUNT RouteErrorBoundary hit(s) in last 24h"
+    echo "$RAW_LOGS" | grep "RouteErrorBoundary" | tail -5 | sed 's/^/       /'
+    stop "RouteErrorBoundary appeared in production logs — a render crash reached users. Fix before deploying."
+  fi
+
+  LOG_ERRORS=$(echo "$RAW_LOGS" \
     | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
