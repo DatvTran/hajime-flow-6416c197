@@ -6,7 +6,8 @@
 #  STOP CONDITIONS exit immediately and must be resolved before anything else.
 #
 #  Usage:
-#    bash scripts/daily-check.sh               # full run
+#    bash scripts/daily-check.sh               # full run (Tiers 1–4)
+#    bash scripts/daily-check.sh --weekly      # full run + weekly add-ons
 #    bash scripts/daily-check.sh --skip-fly    # skip fly CLI checks (offline)
 #    bash scripts/daily-check.sh --skip-prod   # skip prod HTTP calls
 #    bash scripts/daily-check.sh --tier 2      # start from tier N
@@ -24,6 +25,7 @@ HEALTH_URL="${BASE_URL}/api/health"
 SKIP_FLY=""
 SKIP_PROD=""
 START_TIER=1
+WEEKLY=""
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -31,6 +33,7 @@ while [[ $# -gt 0 ]]; do
     --skip-fly)   SKIP_FLY=1 ;;
     --skip-prod)  SKIP_PROD=1 ;;
     --tier)       START_TIER="${2:?'--tier requires a number'}"; shift ;;
+    --weekly)     WEEKLY=1 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
   shift
@@ -148,7 +151,17 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
+  RAW_LOGS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+
+  # RouteErrorBoundary hits mean a render crash reached a real user — stop immediately.
+  REB_COUNT=$(echo "$RAW_LOGS" | grep -ci "RouteErrorBoundary" || true)
+  if [[ "$REB_COUNT" -gt 0 ]]; then
+    fail "$REB_COUNT RouteErrorBoundary hit(s) in last 24h — render crash reached users"
+    echo "$RAW_LOGS" | grep -i "RouteErrorBoundary" | tail -5 | sed 's/^/       /'
+    stop "RouteErrorBoundary in production logs. A render crash made it to a user — fix before anything else."
+  fi
+
+  LOG_ERRORS=$(echo "$RAW_LOGS" \
     | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
@@ -332,6 +345,51 @@ else
     (( T3_FAILS++ )) || true
   fi
 fi
+
+# ── 3g. auth_events spot-check (requires DATABASE_URL) ───────────────────────
+step "3g. auth_events — last-24h spot-check"
+DB_URL="${DATABASE_URL:-${DB_URL:-}}"
+if [[ -z "$DB_URL" ]]; then
+  warn "DATABASE_URL not set — skipping auth_events check (set it to enable)"
+  info "export DATABASE_URL=<connection-string>  then re-run"
+elif ! has_cmd psql; then
+  warn "psql not found — skipping auth_events check"
+else
+  # permission_denied spikes, account_locked repeats, or privileged self-registration
+  PRIV_REG=$(psql "$DB_URL" -At -c "
+    SELECT COUNT(*) FROM auth_events
+    WHERE event_type = 'register'
+      AND role IN ('founder_admin','brand_operator')
+      AND created_at > NOW() - INTERVAL '24 hours'
+  " 2>/dev/null || echo "err")
+  if [[ "$PRIV_REG" == "err" ]]; then
+    warn "auth_events query failed — check DATABASE_URL"
+  elif [[ "$PRIV_REG" -gt 0 ]]; then
+    fail "auth_events: $PRIV_REG privileged self-registration event(s) in last 24h"
+    stop "auth_events shows a successful register with founder_admin or brand_operator role."
+  else
+    pass "auth_events: no privileged self-registrations in last 24h"
+  fi
+
+  PD_COUNT=$(psql "$DB_URL" -At -c "
+    SELECT COUNT(*) FROM auth_events
+    WHERE event_type = 'permission_denied'
+      AND created_at > NOW() - INTERVAL '24 hours'
+  " 2>/dev/null || echo "err")
+  LOCK_COUNT=$(psql "$DB_URL" -At -c "
+    SELECT COUNT(*) FROM auth_events
+    WHERE event_type = 'account_locked'
+      AND created_at > NOW() - INTERVAL '24 hours'
+  " 2>/dev/null || echo "err")
+  if [[ "$PD_COUNT" != "err" && "$LOCK_COUNT" != "err" ]]; then
+    if [[ "$PD_COUNT" -gt 20 || "$LOCK_COUNT" -gt 5 ]]; then
+      warn "auth_events: $PD_COUNT permission_denied + $LOCK_COUNT account_locked in last 24h — investigate"
+      (( T3_FAILS++ )) || true
+    else
+      pass "auth_events: $PD_COUNT permission_denied, $LOCK_COUNT account_locked — within normal range"
+    fi
+  fi
+fi
 fi  # end START_TIER <= 3
 
 # =============================================================================
@@ -365,6 +423,71 @@ fi
 fi  # end START_TIER <= 4
 
 # =============================================================================
+#  WEEKLY add-ons  (--weekly flag only)
+# =============================================================================
+if [[ -n "$WEEKLY" ]]; then
+hdr "WEEKLY add-ons"
+
+step "W1. Outdated packages — root"
+npm outdated || true   # non-zero exit is normal when outdated packages exist
+
+step "W2. Outdated packages — server/"
+(cd server && npm outdated) || true
+
+step "W3. Full Playwright run (all 6 suites, Chromium)"
+if [[ -f "playwright.config.ts" ]] && has_cmd npx; then
+  if npx playwright test --project=chromium --reporter=line 2>&1; then
+    pass "Playwright full run: all suites pass"
+  else
+    fail "Playwright full run: failures detected — check output above"
+    (( T4_FAILS++ )) || true
+  fi
+else
+  warn "playwright.config.ts not found or npx unavailable"
+fi
+
+step "W4. Fly volumes — disk usage"
+if [[ -n "$SKIP_FLY" ]]; then
+  warn "SKIP_FLY set — skipping volumes check"
+elif ! has_cmd fly; then
+  warn "fly CLI not found — skipping volumes check"
+else
+  fly volumes list -a "$APP_NAME" 2>&1 || true
+fi
+
+step "W5. auth_events + audit_logs — 7-day review"
+DB_URL="${DATABASE_URL:-${DB_URL:-}}"
+if [[ -z "$DB_URL" ]]; then
+  warn "DATABASE_URL not set — print the query to run manually:"
+  echo ""
+  echo "    SELECT event_type, COUNT(*), MIN(created_at), MAX(created_at)"
+  echo "    FROM auth_events"
+  echo "    WHERE created_at > NOW() - INTERVAL '7 days'"
+  echo "    GROUP BY event_type ORDER BY COUNT(*) DESC;"
+  echo ""
+elif has_cmd psql; then
+  psql "$DB_URL" -c "
+    SELECT event_type, COUNT(*) AS n,
+           MIN(created_at)::date AS first_seen,
+           MAX(created_at)::date AS last_seen
+    FROM auth_events
+    WHERE created_at > NOW() - INTERVAL '7 days'
+    GROUP BY event_type ORDER BY n DESC
+  " 2>/dev/null || warn "auth_events query failed — check DATABASE_URL"
+fi
+
+step "W6. Known open gaps — status reminder"
+echo ""
+echo "  These three gaps were deferred. Review if anything upstream changed:"
+echo ""
+echo "    1. Depletion reporting      — Sales Rep has no inventory visibility"
+echo "    2. Sales Rep inventory view — widget not yet shipped"
+echo "    3. Production PO gate       — inventory check before PO approval missing"
+echo ""
+echo "  If any of these is now higher priority, update the backlog before coding."
+fi  # end WEEKLY
+
+# =============================================================================
 #  SUMMARY
 # =============================================================================
 TOTAL_FAILS=$(( T1_FAILS + T2_FAILS + T3_FAILS + T4_FAILS ))
@@ -384,11 +507,10 @@ else
 fi
 
 echo ""
-echo -e "${DIM}Weekly add-ons (not daily — too noisy):${NC}"
-echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
-echo -e "${DIM}  npx playwright test --reporter=line       # all 6 suites${NC}"
-echo -e "${DIM}  fly volumes list -a $APP_NAME             # disk usage${NC}"
-echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+if [[ -z "$WEEKLY" ]]; then
+echo -e "${DIM}Weekly add-ons (run once a week):${NC}"
+echo -e "${DIM}  bash scripts/daily-check.sh --weekly${NC}"
 echo ""
+fi
 
 [[ $TOTAL_FAILS -eq 0 ]]  # exit 0 on success, 1 on any failures
