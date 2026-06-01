@@ -148,7 +148,16 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
+  RECENT_LOGS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+
+  # RouteErrorBoundary = render crash reached a user — hard stop per stop conditions
+  RBE_COUNT=$(echo "$RECENT_LOGS" | grep -ci "RouteErrorBoundary" || true)
+  if [[ "$RBE_COUNT" -gt 0 ]]; then
+    fail "RouteErrorBoundary in logs ($RBE_COUNT occurrence(s))"
+    stop "RouteErrorBoundary hit in prod logs — a render crash reached a user. Fix before anything else."
+  fi
+
+  LOG_ERRORS=$(echo "$RECENT_LOGS" \
     | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
@@ -384,11 +393,16 @@ else
 fi
 
 echo ""
+echo -e "${DIM}Stop conditions (block everything else):${NC}"
+echo -e "${DIM}  tsc --noEmit errors · high/critical npm audit · health ≠ 200+connected${NC}"
+echo -e "${DIM}  privileged role in SELF_REGISTERABLE_ROLES · RouteErrorBoundary in logs${NC}"
+echo ""
 echo -e "${DIM}Weekly add-ons (not daily — too noisy):${NC}"
 echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
 echo -e "${DIM}  npx playwright test --reporter=line       # all 6 suites${NC}"
 echo -e "${DIM}  fly volumes list -a $APP_NAME             # disk usage${NC}"
 echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+echo -e "${DIM}  Review depletion reporting / sales-rep inventory / PO inventory gate gaps${NC}"
 echo ""
 
 [[ $TOTAL_FAILS -eq 0 ]]  # exit 0 on success, 1 on any failures
