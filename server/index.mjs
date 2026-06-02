@@ -148,14 +148,24 @@ app.get('/api/health', async (_req, res) => {
     const dbNow = row?.now != null ? String(row.now) : undefined;
     res.json({
       ok: true,
-      database: 'up',
+      database: 'connected',
       dbNow,
+      stripe: Boolean(stripe),
+      features: {
+        auth: FEATURE_FLAG_AUTH_ENABLED,
+        csv: FEATURE_FLAG_CSV_ENABLED,
+      },
+      migration: {
+        activeStage: dataMigrationService.stage,
+        dbPrimaryModeEnabled: dataMigrationService.stage >= 3,
+      },
+      migrationStage: dataMigrationService.stage,
     });
   } catch (e) {
     console.error('[hajime-api] /api/health DB check failed:', e);
     res.status(503).json({
       ok: false,
-      database: 'down',
+      database: 'disconnected',
       error: e instanceof Error ? e.message : 'Database unavailable',
     });
   }
@@ -270,31 +280,6 @@ app.put('/api/app', authenticateToken, async (req, res) => {
   }
 });
 
-// ===== HEALTH CHECK =====
-app.get('/api/health', async (_req, res) => {
-  let dbStatus = 'unknown';
-  try {
-    await db.raw('SELECT 1');
-    dbStatus = 'connected';
-  } catch (err) {
-    dbStatus = 'disconnected';
-  }
-
-  res.json({
-    ok: true,
-    stripe: Boolean(stripe),
-    database: dbStatus,
-    features: {
-      auth: FEATURE_FLAG_AUTH_ENABLED,
-      csv: FEATURE_FLAG_CSV_ENABLED,
-    },
-    migration: {
-      activeStage: dataMigrationService.stage,
-      dbPrimaryModeEnabled: dataMigrationService.stage >= 3,
-    },
-    migrationStage: dataMigrationService.stage,
-  });
-});
 
 // ===== STRIPE ROUTES (existing) =====
 app.post('/api/stripe/customer', requireStripe, async (req, res) => {
