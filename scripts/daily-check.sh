@@ -148,8 +148,17 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
-    | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
+  RAW_LOGS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+
+  # RouteErrorBoundary hits are a render crash that reached a real user — stop immediately.
+  REB_COUNT=$(echo "$RAW_LOGS" | grep -c "\[RouteErrorBoundary\]" || true)
+  if [[ "$REB_COUNT" -gt 0 ]]; then
+    fail "$REB_COUNT RouteErrorBoundary hit(s) in last 24h"
+    echo "$RAW_LOGS" | grep "\[RouteErrorBoundary\]" | tail -5 | sed 's/^/       /'
+    stop "RouteErrorBoundary triggered $REB_COUNT time(s) — a render crash reached real users. Fix before continuing."
+  fi
+
+  LOG_ERRORS=$(echo "$RAW_LOGS" | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
   elif [[ "$LOG_ERRORS" -le 5 ]]; then
@@ -330,6 +339,29 @@ else
   else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
+  fi
+
+  # Cross-tenant isolation smoke — only runs when test tokens are available.
+  # Set HAJIME_TEST_TOKEN_A (tenant A access token) and HAJIME_TEST_TENANT_B_ID
+  # (a tenant B UUID) to enable this check.
+  if [[ -n "${HAJIME_TEST_TOKEN_A:-}" && -n "${HAJIME_TEST_TENANT_B_ID:-}" ]]; then
+    step "3g. Cross-tenant isolation smoke"
+    CROSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: Bearer $HAJIME_TEST_TOKEN_A" \
+      "${BASE_URL}/api/v1/products?tenantId=${HAJIME_TEST_TENANT_B_ID}" \
+      2>/dev/null || echo "000")
+    if [[ "$CROSS_CODE" == "403" || "$CROSS_CODE" == "401" ]]; then
+      pass "Cross-tenant GET /api/v1/products → $CROSS_CODE (access denied as expected)"
+    elif [[ "$CROSS_CODE" == "200" ]]; then
+      fail "Cross-tenant GET /api/v1/products → 200 — potential cross-tenant data exposure!"
+      stop "Token A returned tenant B product data (HTTP 200). Cross-tenant isolation is broken."
+    else
+      warn "Cross-tenant GET /api/v1/products → $CROSS_CODE (expected 403; may indicate missing route)"
+      (( T3_FAILS++ )) || true
+    fi
+  else
+    info "HAJIME_TEST_TOKEN_A / HAJIME_TEST_TENANT_B_ID not set — cross-tenant smoke skipped"
+    info "Export those vars to enable automated cross-tenant isolation check"
   fi
 fi
 fi  # end START_TIER <= 3
