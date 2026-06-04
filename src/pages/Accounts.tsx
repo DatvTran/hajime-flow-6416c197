@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import type { Account } from "@/data/mockData";
 import { Plus, Search, MapPin, Mail, Phone, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { CSVImportButton } from "@/components/CSVImportButton";
 import { toast } from "@/components/ui/sonner";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
@@ -34,6 +34,7 @@ export default function Accounts() {
   const { accounts, updateAccount, addAccount } = useAccounts();
   const { salesOrders } = useSalesOrders();
   const { loading } = useAppData();
+  const navigate = useNavigate();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const activeOnly = searchParams.get("status") === "active";
@@ -296,11 +297,11 @@ export default function Accounts() {
               key={account.id}
               role="button"
               tabIndex={0}
-              onClick={() => setSelectedAccountId(account.id)}
+              onClick={() => navigate(`/accounts/${account.id}`)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setSelectedAccountId(account.id);
+                  navigate(`/accounts/${account.id}`);
                 }
               }}
               className="card-interactive cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -395,11 +396,11 @@ export default function Accounts() {
                       key={acc.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => setSelectedAccountId(acc.id)}
+                      onClick={() => navigate(`/accounts/${acc.id}`)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          setSelectedAccountId(acc.id);
+                          navigate(`/accounts/${acc.id}`);
                         }
                       }}
                       className="border-b last:border-0 transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer"

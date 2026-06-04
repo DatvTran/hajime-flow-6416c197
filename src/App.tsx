@@ -55,6 +55,10 @@ const DistributorSellThroughPage = lazyWithChunkReload(() => import("./pages/Dis
 const DistributorCrmPage = lazyWithChunkReload(() => import("./pages/DistributorCrmPage"));
 const SalesRepCrmPage = lazyWithChunkReload(() => import("./pages/SalesRepCrmPage"));
 
+// Account detail + sales inventory
+const AccountDetailPage = lazyWithChunkReload(() => import("./pages/AccountDetailPage"));
+const SalesRepInventoryPage = lazyWithChunkReload(() => import("./pages/SalesRepInventoryPage"));
+
 // Sales routes
 const SalesRepHomePage = lazyWithChunkReload(() => import("./pages/SalesRepHomePage"));
 // SalesSectionPage removed — functionality covered by SalesOpportunitiesPage + SalesVisitNotesPage
@@ -136,6 +140,7 @@ const App = () => {
                   <Route path="/inventory" element={<Inventory />} />
                   <Route path="/orders" element={<Orders />} />
                   <Route path="/accounts" element={<Accounts />} />
+                  <Route path="/accounts/:accountId" element={<AccountDetailPage />} />
                   <Route path="/markets" element={<MarketsPage />} />
                   <Route path="/global-markets" element={<GlobalMarketsPage />} />
                   <Route path="/shipments" element={<Shipments />} />
@@ -178,6 +183,7 @@ const App = () => {
                   <Route path="/sales/orders" element={<Orders />} />
                   <Route path="/sales/opportunities" element={<SalesOpportunitiesPage />} />
                   <Route path="/sales/visits" element={<SalesVisitNotesPage />} />
+                  <Route path="/sales/inventory" element={<SalesRepInventoryPage />} />
                   <Route path="/sales/targets" element={<SalesTargetsPage />} />
                   <Route path="/sales/reports" element={<Reports />} />
                   <Route path="/sales/alerts" element={<AlertsHubPage />} />
