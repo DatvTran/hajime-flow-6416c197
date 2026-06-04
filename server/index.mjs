@@ -148,7 +148,7 @@ app.get('/api/health', async (_req, res) => {
     const dbNow = row?.now != null ? String(row.now) : undefined;
     res.json({
       ok: true,
-      database: 'up',
+      database: 'connected',
       dbNow,
     });
   } catch (e) {
