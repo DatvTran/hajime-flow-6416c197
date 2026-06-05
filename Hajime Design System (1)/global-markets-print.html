@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hajime — Global markets</title>
+<link rel="stylesheet" href="colors_and_type.css">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#f0eee9;color:hsl(var(--foreground));font-family:var(--font-body);-webkit-font-smoothing:antialiased;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+
+  /* Each page is a 1440×920 artboard — slightly larger than 16:9.
+     We print at landscape A3 so the artboard fits without scaling artifacts.
+     If user picks A4 landscape the browser will fit-to-page automatically. */
+  @page { size: 1500px 1000px; margin: 0; }
+
+  .page {
+    width: 1440px; height: 920px;
+    margin: 24px auto;
+    background: hsl(var(--background));
+    box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
+    overflow: hidden;
+    position: relative;
+    break-after: page;
+    page-break-after: always;
+  }
+  .page:last-child { break-after: auto; page-break-after: auto; }
+
+  .cover {
+    width: 1440px; height: 920px;
+    margin: 24px auto;
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
+    padding: 96px 80px;
+    display: flex; flex-direction: column;
+    break-after: page; page-break-after: always;
+    position: relative;
+  }
+
+  /* slide caption strip below each artboard, screen-only */
+  .caption {
+    width: 1440px; margin: 0 auto 32px;
+    font-family: var(--font-body);
+    font-size: 13px; color: hsl(var(--muted-foreground));
+    display: flex; gap: 16px; align-items: baseline;
+  }
+  .caption .num {
+    font-family: var(--font-mono); font-size: 11px;
+    color: hsl(var(--muted-foreground));
+    background: hsl(var(--muted)); padding: 3px 8px; border-radius: 999px;
+  }
+  .caption .lab {
+    font-family: var(--font-display); font-size: 17px; font-weight: 500;
+    color: hsl(var(--foreground)); letter-spacing: -.01em;
+  }
+
+  @media print {
+    body { background: white; }
+    .page, .cover { margin: 0 auto; box-shadow: none; border: 0; }
+    .caption { display: none; }
+  }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="markets/shared.jsx"></script>
+<script type="text/babel" src="markets/v1-classic.jsx"></script>
+<script type="text/babel" src="markets/v2-cartographic.jsx"></script>
+<script type="text/babel" src="markets/v3-timeline.jsx"></script>
+<script type="text/babel">
+function Cover() {
+  return (
+    <div className="cover">
+      {/* eyebrow */}
+      <div style={{
+        fontSize:11, textTransform:'uppercase', letterSpacing:'.18em',
+        color:'hsl(var(--muted-foreground))', fontWeight:500
+      }}>
+        Hajime · Supply Chain OS · Design exploration
+      </div>
+
+      {/* logo */}
+      <div style={{display:'flex', alignItems:'center', gap:14, marginTop:32}}>
+        <img src="assets/hajime-logo.png" alt="" style={{height:64, width:64, objectFit:'contain'}}/>
+        <div style={{fontFamily:'var(--font-display)', fontSize:34, fontWeight:600, letterSpacing:'-.02em'}}>Hajime</div>
+      </div>
+
+      <div style={{flex:1}}/>
+
+      <h1 style={{
+        fontFamily:'var(--font-display)', fontSize:84, fontWeight:600,
+        letterSpacing:'-.025em', lineHeight:1.05, margin:0, color:'hsl(var(--foreground))',
+        maxWidth:'18ch'
+      }}>
+        Global markets — three explorations
+      </h1>
+      <p style={{
+        fontSize:18, lineHeight:1.55, color:'hsl(var(--muted-foreground))',
+        maxWidth:'62ch', marginTop:24
+      }}>
+        HQ-level dashboard for the Brand Operator. Twelve markets across APAC, EMEA and the Americas, all reading from the same shared dataset that powers the Manufacturer, Distributor, Sales Rep and Retail portals.
+      </p>
+
+      <div style={{display:'flex', gap:48, marginTop:64, paddingTop:32,
+                   borderTop:'1px solid hsl(var(--border))'}}>
+        <Stat n="01" lab="Classic KPI board" sub="Familiar — heads-down ops view"/>
+        <Stat n="02" lab="Cartographic atlas" sub="Map as the primary lens"/>
+        <Stat n="03" lab="Ops timeline" sub="Time spine of shipments &amp; rhythm"/>
+      </div>
+
+      <div style={{
+        position:'absolute', bottom:48, left:80, right:80,
+        display:'flex', justifyContent:'space-between',
+        fontSize:11, fontFamily:'var(--font-mono)', color:'hsl(var(--muted-foreground))',
+        letterSpacing:'.05em'
+      }}>
+        <span>はじめ · supply chain os</span>
+        <span>3 variations · 1440 × 920</span>
+      </div>
+    </div>
+  );
+}
+
+function Stat({n, lab, sub}) {
+  return (
+    <div style={{flex:1}}>
+      <div style={{fontFamily:'var(--font-mono)', fontSize:11,
+                   color:'hsl(var(--accent))', letterSpacing:'.1em'}}>{n}</div>
+      <div style={{fontFamily:'var(--font-display)', fontSize:22, fontWeight:500,
+                   letterSpacing:'-.01em', marginTop:6}}>{lab}</div>
+      <div style={{fontSize:13, color:'hsl(var(--muted-foreground))', marginTop:4}}>{sub}</div>
+    </div>
+  );
+}
+
+function Print() {
+  return (
+    <>
+      <Cover/>
+
+      <div className="caption">
+        <span className="num">01 / 03</span>
+        <span className="lab">Classic KPI board</span>
+        <span>Familiar. Tabular. Heads-down ops view.</span>
+      </div>
+      <div className="page"><V1Classic/></div>
+
+      <div className="caption">
+        <span className="num">02 / 03</span>
+        <span className="lab">Cartographic atlas</span>
+        <span>World map as primary lens. Each market glyph tells its story at a glance.</span>
+      </div>
+      <div className="page"><V2Cartographic/></div>
+
+      <div className="caption">
+        <span className="num">03 / 03</span>
+        <span className="lab">Ops timeline</span>
+        <span>Horizontal time spine. Foregrounds the motion of shipments.</span>
+      </div>
+      <div className="page"><V3Timeline/></div>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Print/>);
+
+// ─── Auto-print after fonts + JSX have settled ──────────────
+(async () => {
+  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(e){}
+  // give Babel-transformed scripts a tick to mount, then a small safety delay
+  await new Promise(r => requestAnimationFrame(r));
+  await new Promise(r => requestAnimationFrame(r));
+  await new Promise(r => setTimeout(r, 600));
+  window.print();
+})();
+</script>
+</body>
+</html>

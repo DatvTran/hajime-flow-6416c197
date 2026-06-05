@@ -32,6 +32,7 @@ import {
   MAX_STATE_JSON,
 } from '../lib/incentive-manager-state.mjs';
 import { buildMyIncentiveProgress } from '../lib/incentive-progress-self.mjs';
+import { loadIncentiveMeContext } from '../lib/incentive-me-context.mjs';
 import {
   assertCanManageRetailPortalUsers,
   findTeamMemberByEmail,
@@ -60,10 +61,21 @@ import {
   submitLicenseeApplication,
   LICENSEE_STEPS,
 } from '../lib/licensee-application.mjs';
+import { syncCatalogFromApprovedRequest } from '../lib/product-catalog-sync.mjs';
+import { ensurePlatformUserInTenantDb } from '../lib/tenant-user-mirror.mjs';
 import {
+  hqFetchForScope,
   hqFetchFromAllSources,
   paginateMergedRows,
 } from '../lib/hq-global-view.mjs';
+import { buildAppBootstrapPayload } from '../lib/app-bootstrap.mjs';
+import {
+  applyPortalOrdersScope,
+  applyPortalShipmentsScope,
+  assertCanAccessSalesOrder,
+  hydrateShipmentsWithOrderNumbers,
+  resolveSalesOrderPk,
+} from '../lib/portal-data-scope.mjs';
 
 const router = Router();
 const isDev = process.env.NODE_ENV === 'development';
@@ -130,12 +142,21 @@ async function buildCrmContactInvitePayload(req, tenantId, member, { email, name
     };
   }
 
-  const inviteResult = await createCrmUserInvite({
-    tenantId,
-    email,
-    teamMemberRole: role,
-    invitedByUserId,
-  });
+  let inviteResult;
+  try {
+    inviteResult = await createCrmUserInvite({
+      tenantId,
+      email,
+      teamMemberRole: role,
+      invitedByUserId,
+    });
+  } catch (inviteErr) {
+    console.error('[API v1] CRM invite creation failed:', inviteErr);
+    return {
+      data: member,
+      invite: { status: 'skipped', reason: 'invite_creation_failed' },
+    };
+  }
 
   if (!inviteResult.ok) {
     return {
@@ -283,7 +304,8 @@ function getTenantId(req, res) {
 
 /** Brand HQ: merge list rows from platform + every distributor database. */
 async function respondHqPaginatedList(req, res, { page, limit, sortKey, fetchRows }) {
-  const merged = await hqFetchFromAllSources(req.user?.tenantId, fetchRows);
+  const scope = req.query.scope === 'full' ? 'full' : 'platform';
+  const merged = await hqFetchForScope(req.user?.tenantId, fetchRows, scope);
   res.json(paginateMergedRows(merged, { page, limit, sortKey }));
 }
 
@@ -405,6 +427,19 @@ function distributorsForSalesOrderReceivingDepots(
     match_basis: byBridge.length > 0 ? 'depot_account_bridge' : 'none',
   };
 }
+
+// ===== APP BOOTSTRAP (single parallel load — replaces 11 HTTP round-trips) =====
+
+router.get('/app-bootstrap', async (req, res) => {
+  try {
+    const scope = req.query.scope === 'full' ? 'full' : 'platform';
+    const payload = await buildAppBootstrapPayload(req, { scope });
+    res.json({ data: payload });
+  } catch (err) {
+    console.error('[API v1] app-bootstrap failed:', err);
+    res.status(500).json({ error: 'Failed to load app bootstrap data' });
+  }
+});
 
 // ===== PRODUCTS =====
 
@@ -1449,6 +1484,7 @@ router.get('/orders', requirePermission(Permission.ORDERS_READ), async (req, res
       status, 
       account_id,
       account_name,
+      order_number,
       date_from,
       date_to,
       sales_rep
@@ -1494,9 +1530,14 @@ router.get('/orders', requirePermission(Permission.ORDERS_READ), async (req, res
     let baseQuery = getDb('sales_orders')
       .where('sales_orders.tenant_id', tenantId)
       .whereNull('sales_orders.deleted_at');
+
+    baseQuery = await applyPortalOrdersScope(baseQuery, getDb(), tenantId, req.user);
     
     if (status) baseQuery = baseQuery.where('sales_orders.status', status);
     if (account_id) baseQuery = baseQuery.where('sales_orders.account_id', account_id);
+    if (order_number != null && String(order_number).trim() !== '') {
+      baseQuery = baseQuery.where('sales_orders.order_number', String(order_number).trim());
+    }
     if (date_from) baseQuery = baseQuery.where('sales_orders.order_date', '>=', date_from);
     if (date_to) baseQuery = baseQuery.where('sales_orders.order_date', '<=', date_to);
     if (sales_rep) baseQuery = baseQuery.where('sales_orders.sales_rep', sales_rep);
@@ -1548,10 +1589,13 @@ router.get('/orders/:id', requirePermission(Permission.ORDERS_READ), async (req,
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
-    const { id } = req.params;
+    const orderPk = await resolveSalesOrderPk(getDb(), tenantId, req.params.id);
+    if (orderPk == null) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
     
     const order = await getDb('sales_orders')
-      .where({ 'sales_orders.id': id, 'sales_orders.tenant_id': tenantId })
+      .where({ 'sales_orders.id': orderPk, 'sales_orders.tenant_id': tenantId })
       .whereNull('sales_orders.deleted_at')
       .leftJoin('accounts', 'sales_orders.account_id', 'accounts.id')
       .select(
@@ -1566,9 +1610,14 @@ router.get('/orders/:id', requirePermission(Permission.ORDERS_READ), async (req,
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
     }
+
+    const access = await assertCanAccessSalesOrder(getDb(), tenantId, req.user, order);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
     
     const items = await getDb('sales_order_items')
-      .where({ sales_order_id: id, tenant_id: tenantId })
+      .where({ sales_order_id: orderPk, tenant_id: tenantId })
       .leftJoin('products', 'sales_order_items.product_id', 'products.id')
       .select(
         'sales_order_items.*',
@@ -1977,12 +2026,28 @@ router.patch('/orders/:id/status', requirePermission(Permission.ORDERS_WRITE), a
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
-    const { id } = req.params;
+    const orderPk = await resolveSalesOrderPk(getDb(), tenantId, req.params.id);
+    if (orderPk == null) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
     const { status } = req.body;
     
     const validStatuses = ['draft', 'confirmed', 'packed', 'shipped', 'delivered', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const existing = await getDb('sales_orders')
+      .where({ id: orderPk, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .first();
+    if (!existing) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const access = await assertCanAccessSalesOrder(getDb(), tenantId, req.user, existing);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
     
     const updates = { 
@@ -1994,10 +2059,12 @@ router.patch('/orders/:id/status', requirePermission(Permission.ORDERS_WRITE), a
       updates.delivered_at = new Date();
     } else if (status === 'cancelled') {
       updates.cancelled_at = new Date();
+    } else if (status === 'shipped') {
+      updates.fulfilled_at = new Date();
     }
     
     const [order] = await getDb('sales_orders')
-      .where({ id, tenant_id: tenantId })
+      .where({ id: orderPk, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update(updates)
       .returning('*');
@@ -2913,6 +2980,44 @@ router.patch('/inventory-adjustment-requests/:id/approve', requirePermission(Per
 
 // ===== NEW PRODUCT REQUESTS =====
 
+async function resolveNewProductRequestRow(dbConn, tenantId, idParam) {
+  const raw = String(idParam ?? '').trim();
+  if (!raw) return null;
+  if (/^[0-9a-f-]{36}$/i.test(raw)) {
+    const byUuid = await dbConn('new_product_requests')
+      .where({ id: raw, tenant_id: tenantId })
+      .first();
+    if (byUuid) return byUuid;
+  }
+  return dbConn('new_product_requests')
+    .where({ request_id: raw, tenant_id: tenantId })
+    .first();
+}
+
+function normalizeNewProductRequestUpdates(body) {
+  const updates = { ...body };
+  const aliases = [
+    ['requestedBy', 'requested_by'],
+    ['assignedManufacturer', 'assigned_manufacturer'],
+    ['manufacturerProposal', 'manufacturer_proposal'],
+    ['brandDecision', 'brand_decision'],
+    ['productionPoId', 'production_po_id'],
+    ['resultingSku', 'resulting_sku'],
+    ['submittedAt', 'submitted_at'],
+    ['reviewStartedAt', 'review_started_at'],
+    ['proposalReceivedAt', 'proposal_received_at'],
+    ['decidedAt', 'decided_at'],
+    ['sampleShipmentId', 'sample_shipment_id'],
+  ];
+  for (const [camel, snake] of aliases) {
+    if (updates[camel] !== undefined && updates[snake] === undefined) {
+      updates[snake] = updates[camel];
+      delete updates[camel];
+    }
+  }
+  return updates;
+}
+
 // GET /api/v1/new-product-requests - List new product requests
 router.get('/new-product-requests', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
   try {
@@ -2992,9 +3097,7 @@ router.get('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_
     if (!tenantId) return;
     const { id } = req.params;
     
-    const request = await getDb('new_product_requests')
-      .where({ id, tenant_id: tenantId })
-      .first();
+    const request = await resolveNewProductRequestRow(getDb(), tenantId, id);
     
     if (!request) {
       return res.status(404).json({ error: 'New product request not found' });
@@ -3071,7 +3174,12 @@ router.put('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { id } = req.params;
-    const updates = req.body;
+    const existing = await resolveNewProductRequestRow(getDb(), tenantId, id);
+    if (!existing) {
+      return res.status(404).json({ error: 'New product request not found' });
+    }
+
+    const updates = normalizeNewProductRequestUpdates(req.body);
     
     // JSONB fields need stringification
     if (updates.specs) updates.specs = JSON.stringify(updates.specs);
@@ -3082,14 +3190,16 @@ router.put('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_
     updates.updated_at = new Date();
     updates.updated_by = req.user?.userId;
     
-    const [updated] = await getDb('new_product_requests')
-      .where({ id, tenant_id: tenantId })
+    let [updated] = await getDb('new_product_requests')
+      .where({ id: existing.id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
     
     if (!updated) {
       return res.status(404).json({ error: 'New product request not found' });
     }
+
+    updated = await syncCatalogFromApprovedRequest(getDb(), tenantId, updated);
     
     res.json({ 
       data: {
@@ -3113,8 +3223,13 @@ router.delete('/new-product-requests/:id', requirePermission(Permission.PRODUCTI
     if (!tenantId) return;
     const { id } = req.params;
     
+    const existing = await resolveNewProductRequestRow(getDb(), tenantId, id);
+    if (!existing) {
+      return res.status(404).json({ error: 'New product request not found' });
+    }
+
     const deleted = await getDb('new_product_requests')
-      .where({ id, tenant_id: tenantId })
+      .where({ id: existing.id, tenant_id: tenantId })
       .del();
     
     if (!deleted) {
@@ -3950,11 +4065,45 @@ async function distributorReceivingWarehouseIdsForUser(tenantId, email) {
   return [...ids];
 }
 
-function distributorHasShipmentAccess(shipmentRow, allowedWarehouseIds) {
-  if (!shipmentRow || !allowedWarehouseIds?.length) return false;
+function distributorHasShipmentAccess(shipmentRow, allowedWarehouseIds, userId) {
+  if (!shipmentRow) return false;
   const dest = shipmentRow.destination_warehouse_id;
-  if (dest == null || String(dest).trim() === '') return false;
-  return allowedWarehouseIds.includes(String(dest).trim());
+  if (dest != null && String(dest).trim() !== '' && allowedWarehouseIds?.length) {
+    if (allowedWarehouseIds.includes(String(dest).trim())) return true;
+  }
+  if (
+    shipmentRow.order_type === 'sales_order' &&
+    userId &&
+    shipmentRow.created_by != null &&
+    String(shipmentRow.created_by) === String(userId)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function applyDistributorShipmentListScope(query, whIds, userId) {
+  return query.where(function () {
+    let scoped = false;
+    if (whIds.length > 0) {
+      this.whereIn('destination_warehouse_id', whIds);
+      scoped = true;
+    }
+    if (userId) {
+      const outboundRetail = function () {
+        this.where('order_type', 'sales_order').where('created_by', userId);
+      };
+      if (scoped) {
+        this.orWhere(outboundRetail);
+      } else {
+        outboundRetail.call(this);
+        scoped = true;
+      }
+    }
+    if (!scoped) {
+      this.whereRaw('1 = 0');
+    }
+  });
 }
 
 /**
@@ -4029,11 +4178,9 @@ router.get('/shipments', requirePermission(Permission.INVENTORY_READ), async (re
 
     if (req.user.role === Role.DISTRIBUTOR) {
       const whIds = await distributorReceivingWarehouseIdsForUser(tenantId, req.user.email);
-      if (whIds.length === 0) {
-        baseQuery = baseQuery.whereRaw('1 = 0');
-      } else {
-        baseQuery = baseQuery.whereIn('destination_warehouse_id', whIds);
-      }
+      baseQuery = applyDistributorShipmentListScope(baseQuery, whIds, req.user?.userId);
+    } else {
+      baseQuery = await applyPortalShipmentsScope(baseQuery, getDb(), tenantId, req.user);
     }
 
     if (status) baseQuery = baseQuery.where('status', status);
@@ -4053,7 +4200,8 @@ router.get('/shipments', requirePermission(Permission.INVENTORY_READ), async (re
 
     const [countResult, shipmentsRaw] = await Promise.all([countQuery, dataQuery]);
 
-    const named = await hydrateShipmentDestinationWarehouseNames(tenantId, shipmentsRaw);
+    const withOrderNums = await hydrateShipmentsWithOrderNumbers(getDb(), tenantId, shipmentsRaw);
+    const named = await hydrateShipmentDestinationWarehouseNames(tenantId, withOrderNums);
     const shipments = await hydrateShipmentLineItems(tenantId, named);
 
     res.json({
@@ -4094,7 +4242,7 @@ router.get('/shipments/:id', requirePermission(Permission.INVENTORY_READ), async
 
     if (req.user.role === Role.DISTRIBUTOR) {
       const whIds = await distributorReceivingWarehouseIdsForUser(tenantId, req.user.email);
-      if (!distributorHasShipmentAccess(shipmentRow, whIds)) {
+      if (!distributorHasShipmentAccess(shipmentRow, whIds, req.user?.userId)) {
         return res.status(403).json({ error: 'You can only view shipments routed to your receiving warehouse.' });
       }
     }
@@ -4164,11 +4312,20 @@ router.post('/shipments', shipmentWriteMiddleware, async (req, res) => {
         .first();
       if (po) order_id = Number(po.id);
     }
+    const orderNumberIn = req.body.order_number ?? req.body.orderNumber;
+    if (!Number.isFinite(order_id) && orderNumberIn != null && String(orderNumberIn).trim() !== '') {
+      const soByNum = await trx('sales_orders')
+        .where({ tenant_id: tenantId, order_number: String(orderNumberIn).trim() })
+        .whereNull('deleted_at')
+        .first();
+      if (soByNum) order_id = Number(soByNum.id);
+    }
 
     if (!Number.isFinite(order_id) || !order_type) {
       await trx.rollback();
       return res.status(400).json({
-        error: 'order_type is required and order_id must be set or resolvable from po_number',
+        error:
+          'order_type is required and order_id must be set or resolvable from po_number (purchase orders) or order_number (sales orders)',
       });
     }
 
@@ -4203,6 +4360,8 @@ router.post('/shipments', shipmentWriteMiddleware, async (req, res) => {
       });
     }
 
+    let markSalesOrderShippedOnCommit = false;
+
     if (ot === 'sales_order') {
       const so = await trx('sales_orders')
         .where({ id: order_id, tenant_id: tenantId })
@@ -4217,22 +4376,40 @@ router.post('/shipments', shipmentWriteMiddleware, async (req, res) => {
           ? await trx('accounts').where({ id: so.account_id, tenant_id: tenantId }).first()
           : null;
       const at = String(acc?.type ?? '').toLowerCase();
-      if (at !== 'distributor' && at !== 'wholesaler') {
+      const isRetailOutbound = isOnPremiseAccountType(at);
+      const isWholesaleInbound = at === 'distributor' || at === 'wholesaler';
+
+      if (isRetailOutbound) {
+        markSalesOrderShippedOnCommit = true;
+        const flCheck =
+          from_location != null
+            ? String(from_location).trim()
+            : req.body.fromLocation != null
+              ? String(req.body.fromLocation).trim()
+              : '';
+        if (!flCheck) {
+          await trx.rollback();
+          return res.status(400).json({
+            error: 'Retail outbound shipments require from_location (your distribution center / depot name).',
+          });
+        }
+      } else if (isWholesaleInbound) {
+        if (destWhIdFinal) {
+          const whRow = await trx('warehouses').where({ id: destWhIdFinal, tenant_id: tenantId }).first();
+          if (whRow?.linked_account_id && String(whRow.linked_account_id).trim() !== String(so.account_id).trim()) {
+            await trx.rollback();
+            return res.status(400).json({
+              error:
+                'Receiving warehouse must be the distributor depot linked to this order account (Settings → Warehouses → linked distributor account).',
+            });
+          }
+        }
+      } else {
         await trx.rollback();
         return res.status(400).json({
           error:
-            'Warehouse-to-distributor shipments require the sales order account type to be distributor or wholesaler.',
+            'Sales order shipments require an on-premise retail account (outbound delivery) or a distributor/wholesaler account (warehouse to DC).',
         });
-      }
-      if (destWhIdFinal) {
-        const whRow = await trx('warehouses').where({ id: destWhIdFinal, tenant_id: tenantId }).first();
-        if (whRow?.linked_account_id && String(whRow.linked_account_id).trim() !== String(so.account_id).trim()) {
-          await trx.rollback();
-          return res.status(400).json({
-            error:
-              'Receiving warehouse must be the distributor depot linked to this order account (Settings → Warehouses → linked distributor account).',
-          });
-        }
       }
     }
 
@@ -4316,7 +4493,10 @@ router.post('/shipments', shipmentWriteMiddleware, async (req, res) => {
         estimated_delivery,
         delivered_at: shipmentData.deliveredAt,
         total_bottles: Number.isFinite(totalBottlesPayload) ? totalBottlesPayload : 0,
-        notes: shipmentData.notes,
+        notes:
+          req.body.notes != null && String(req.body.notes).trim() !== ''
+            ? String(req.body.notes).trim()
+            : shipmentData.notes,
         created_by: req.user?.userId,
       })
       .returning('*');
@@ -4333,6 +4513,17 @@ router.post('/shipments', shipmentWriteMiddleware, async (req, res) => {
       }));
 
       await trx('shipment_items').insert(shipmentItems);
+    }
+
+    if (markSalesOrderShippedOnCommit) {
+      const soShipUpdates = {
+        status: 'shipped',
+        updated_at: new Date(),
+      };
+      if (shipDateForInsert && !Number.isNaN(shipDateForInsert.getTime())) {
+        soShipUpdates.fulfilled_at = shipDateForInsert;
+      }
+      await trx('sales_orders').where({ id: order_id, tenant_id: tenantId }).update(soShipUpdates);
     }
 
     await trx.commit();
@@ -4380,7 +4571,7 @@ router.put('/shipments/:id', shipmentWriteMiddleware, async (req, res) => {
 
     if (req.user.role === Role.DISTRIBUTOR) {
       const whIds = await distributorReceivingWarehouseIdsForUser(tenantId, req.user.email);
-      if (!distributorHasShipmentAccess(existing, whIds)) {
+      if (!distributorHasShipmentAccess(existing, whIds, req.user?.userId)) {
         await trx.rollback();
         return res.status(403).json({ error: 'You can only update shipments routed to your receiving warehouse.' });
       }
@@ -4515,7 +4706,7 @@ router.patch('/shipments/:id/status', shipmentWriteMiddleware, async (req, res) 
 
     if (req.user.role === Role.DISTRIBUTOR) {
       const whIds = await distributorReceivingWarehouseIdsForUser(tenantId, req.user.email);
-      if (!distributorHasShipmentAccess(existing, whIds)) {
+      if (!distributorHasShipmentAccess(existing, whIds, req.user?.userId)) {
         return res.status(403).json({ error: 'You can only update shipments routed to your receiving warehouse.' });
       }
     }
@@ -4581,7 +4772,7 @@ router.delete('/shipments/:id', shipmentWriteMiddleware, async (req, res) => {
 
     if (req.user.role === Role.DISTRIBUTOR) {
       const whIds = await distributorReceivingWarehouseIdsForUser(tenantId, req.user.email);
-      if (!distributorHasShipmentAccess(existing, whIds)) {
+      if (!distributorHasShipmentAccess(existing, whIds, req.user?.userId)) {
         return res.status(403).json({ error: 'You can only delete shipments routed to your receiving warehouse.' });
       }
     }
@@ -5224,6 +5415,15 @@ router.post('/team-members', async (req, res) => {
       );
     }
 
+    let createdBy = req.user?.userId ?? null;
+    if (req.distributorOrg && createdBy) {
+      const mirrored = await ensurePlatformUserInTenantDb(getDb(), tenantId, createdBy);
+      if (!mirrored) createdBy = null;
+    }
+    if (distributorUserIdForRow && req.distributorOrg) {
+      await ensurePlatformUserInTenantDb(getDb(), tenantId, distributorUserIdForRow);
+    }
+
     const id = `tm-${Date.now()}`;
     let [member] = await getDb('team_members')
       .insert({
@@ -5238,7 +5438,7 @@ router.post('/team-members', async (req, res) => {
         pending_distributor_approval: pendingRetail,
         crm_requested_by_user_id: pendingRetail ? req.user.userId : null,
         managed_by_user_id: distributorUserIdForRow,
-        created_by: req.user?.userId,
+        created_by: createdBy,
         created_at: new Date(),
         updated_at: new Date(),
       })
@@ -5279,7 +5479,8 @@ router.post('/team-members', async (req, res) => {
     res.status(201).json(payload);
   } catch (err) {
     console.error('[API v1] Error creating team member:', err);
-    res.status(500).json({ error: 'Failed to create team member' });
+    const detail = err?.message ? String(err.message) : 'Failed to create team member';
+    res.status(500).json({ error: detail });
   }
 });
 
@@ -5741,6 +5942,10 @@ router.get(
         updatedBy: row.updated_by,
       });
     } catch (err) {
+      const msg = err?.message || String(err);
+      if (/supply_chain_incentive_state|does not exist|relation/i.test(msg)) {
+        return res.json({ data: null });
+      }
       console.error('[API v1] Error fetching supply-chain incentives:', err);
       res.status(500).json({ error: 'Failed to fetch supply chain incentives' });
     }
@@ -5800,7 +6005,8 @@ router.get(
       const tenantId = getTenantId(req, res);
       if (!tenantId) return;
 
-      const row = await getDb('supply_chain_incentive_state').where({ tenant_id: tenantId }).first();
+      // HQ Incentive Manager state lives on the platform DB (source of truth for all portals).
+      const row = await platformDb('supply_chain_incentive_state').where({ tenant_id: tenantId }).first();
       let state = row?.state;
       if (typeof state === 'string') {
         try {
@@ -5813,24 +6019,21 @@ router.get(
 
       const normalized = normalizeIncentiveManagerState(state);
 
-      const emailLower = String(req.user.email || '')
-        .trim()
-        .toLowerCase();
-      const tm = await getDb('team_members')
-        .where({ tenant_id: tenantId, email: emailLower })
-        .where('is_active', true)
-        .first();
-
       const tradingNameQ =
         typeof req.query.tradingName === 'string' ? req.query.tradingName.trim().slice(0, 200) : '';
+
+      const ctx = await loadIncentiveMeContext(getDb(), tenantId, req.user, tradingNameQ);
+
+      const orgName =
+        typeof req.distributorOrg?.name === 'string' ? req.distributorOrg.name.trim() : null;
 
       const payload = buildMyIncentiveProgress({
         role: req.user.role,
         user: { displayName: req.user.displayName, email: req.user.email },
-        teamMember: tm ? { name: tm.name } : null,
+        teamMember: ctx.teamMember,
         state: normalized,
-        retailTradingName:
-          req.user.role === 'retail' || req.user.role === 'retail_account' ? tradingNameQ : undefined,
+        retailTradingName: ctx.retailTradingName,
+        linkedAccountTradingName: ctx.linkedAccountTradingName ?? orgName,
       });
 
       if (payload.scope === 'unsupported') {
@@ -5842,6 +6045,26 @@ router.get(
         updatedAt: row?.updated_at ?? null,
       });
     } catch (err) {
+      const msg = err?.message || String(err);
+      if (/supply_chain_incentive_state|does not exist|relation/i.test(msg)) {
+        const tradingNameQ =
+          typeof req.query.tradingName === 'string' ? req.query.tradingName.trim().slice(0, 200) : '';
+        const ctx = await loadIncentiveMeContext(getDb(), req.user?.tenantId, req.user, tradingNameQ).catch(
+          () => ({ teamMember: null, retailTradingName: null, linkedAccountTradingName: null }),
+        );
+        const payload = buildMyIncentiveProgress({
+          role: req.user.role,
+          user: { displayName: req.user.displayName, email: req.user.email },
+          teamMember: ctx.teamMember,
+          state: normalizeIncentiveManagerState({}),
+          retailTradingName: ctx.retailTradingName,
+          linkedAccountTradingName: ctx.linkedAccountTradingName,
+        });
+        if (payload.scope === 'unsupported') {
+          return res.status(403).json({ error: 'Incentive progress is not available for this role' });
+        }
+        return res.json({ data: payload, updatedAt: null });
+      }
       console.error('[API v1] supply-chain-incentives/me:', err);
       res.status(500).json({ error: 'Failed to load incentive progress' });
     }

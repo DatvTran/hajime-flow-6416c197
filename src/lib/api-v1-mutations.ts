@@ -399,6 +399,13 @@ export async function getAccounts(params?: {
   return apiFetch(`/api/v1/accounts?${queryParams.toString()}`);
 }
 
+export async function getAppBootstrap(params?: { scope?: "platform" | "full" }) {
+  const queryParams = new URLSearchParams();
+  if (params?.scope) queryParams.set("scope", params.scope);
+  const q = queryParams.toString();
+  return apiFetch(`/api/v1/app-bootstrap${q ? `?${q}` : ""}`);
+}
+
 export async function getProducts(params?: {
   category?: string;
   status?: string;
@@ -1224,6 +1231,8 @@ export async function createShipment(shipmentData: {
   shipment_number?: string;
   /** Purchase order PK in `purchase_orders`; optional if `po_number` sent. */
   order_id?: number;
+  /** Sales order human number (e.g. SO-2025-001) when `order_id` is not the DB PK. */
+  order_number?: string;
   po_number?: string;
   order_type: "purchase_order" | "sales_order" | "transfer_order";
   carrier?: string;
@@ -1474,8 +1483,20 @@ export async function putSupplyChainIncentivesState(
 export type MyIncentiveProgressData = {
   scope: "distributor" | "sales_rep" | "retail" | "unsupported";
   matched: boolean;
+  matchHint?: string | null;
+  hqSource?: "incentive_manager";
   retailTradingName?: string | null;
-  partner: {
+  servicingDistributor?: string | null;
+  assignedRep?: string | null;
+  network?: {
+    distributorCount: number;
+    repCount: number;
+    retailAccountCount: number;
+    distributors: string[];
+    reps: string[];
+    retailAccounts: string[];
+  };
+  partner?: {
     id: string;
     name: string;
     market: string;
@@ -1495,6 +1516,7 @@ export type MyIncentiveProgressData = {
     payout: number;
     repName?: string;
     partnerName?: string;
+    retailAccountName?: string;
     notes?: string;
   }>;
   totals: { payoutTotal: number; spifCount: number };

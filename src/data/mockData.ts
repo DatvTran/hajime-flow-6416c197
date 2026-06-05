@@ -462,6 +462,8 @@ export type Shipment = {
   eta: string;
   actualDelivery: string;
   linkedOrder: string;
+  /** Numeric API `sales_orders.id` when `linkedOrder` is an order number. */
+  linkedOrderDbId?: string;
   type: "inbound" | "outbound";
   status: "preparing" | "in-transit" | "delivered" | "delayed";
   notes: string;
@@ -699,6 +701,8 @@ export type NewProductRequest = {
   sampleShipmentId?: string;
   productionPoId?: string;
   resultingSku?: string;
+  /** Postgres uuid — use for API mutations when present. */
+  databaseId?: string;
 };
 
 export const newProductRequests: NewProductRequest[] = [

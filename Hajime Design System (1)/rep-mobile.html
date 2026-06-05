@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hajime — Sales Rep Mobile</title>
+<link rel="stylesheet" href="colors_and_type.css">
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:hsl(24 12% 8%);display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'DM Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+// ─── Tokens ──────────────────────────────────────────────────
+const T = {
+  bg:      'hsl(40 18% 97%)',
+  bg2:     'hsl(40 20% 99%)',
+  ink:     'hsl(24 10% 10%)',
+  muted:   'hsl(24 6% 50%)',
+  border:  'hsl(35 12% 89%)',
+  surface: 'hsl(37 14% 94%)',
+  gold:    'hsl(40 88% 42%)',
+  green:   'hsl(158 56% 36%)',
+  amber:   'hsl(38 90% 50%)',
+  red:     'hsl(0 68% 48%)',
+  blue:    'hsl(215 72% 50%)',
+  display: "'Cormorant Garamond', Georgia, serif",
+  body:    "'DM Sans', system-ui, sans-serif",
+  mono:    "'JetBrains Mono', Menlo, monospace",
+};
+
+// ─── Tiny SVG icon helper ────────────────────────────────────
+const Ic = ({d, s=20, w=1.65, c}) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c||'currentColor'}
+    strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>{d}</svg>
+);
+const IC = {
+  home:   <><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><polyline points="9 22 9 12 15 12 15 22"/></>,
+  users:  <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
+  box:    <><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></>,
+  cart:   <><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></>,
+  note:   <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></>,
+  back:   <><path d="m15 18-6-6 6-6"/></>,
+  right:  <><path d="m9 18 6-6-6-6"/></>,
+  check:  <><path d="m5 12 5 5L20 7"/></>,
+  plus:   <><path d="M5 12h14M12 5v14"/></>,
+  mic:    <><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></>,
+  send:   <><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></>,
+  pin:    <><path d="M12 22s-8-4.5-8-12a8 8 0 0 1 16 0c0 7.5-8 12-8 12z"/><circle cx="12" cy="10" r="3"/></>,
+  wifi:   <><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></>,
+  signal: <><path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16"/></>,
+  bat:    <><rect x="2" y="7" width="18" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/></>,
+  up:     <><path d="m18 15-6-6-6 6"/></>,
+  x:      <><path d="M18 6 6 18M6 6l12 12"/></>,
+  trendU: <><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></>,
+  target: <><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></>,
+  warehouse:<><path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35a2 2 0 0 1 1.26-1.86l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35z"/><path d="M6 18h12M6 14h12"/></>,
+};
+
+// ─── Products ────────────────────────────────────────────────
+const PRODS = [
+  {id:'HJM-FP-750', name:'Florin Peaks',    type:'Junmai D', size:'750ml', price:48, cs:12, distStock:142},
+  {id:'HJM-JN-720', name:'Junmai Shiro',    type:'Junmai',   size:'720ml', price:32, cs:12, distStock:46},
+  {id:'HJM-RY-500', name:'Ryusui Reserve',  type:'Genshu',   size:'500ml', price:82, cs:6,  distStock:8, low:true},
+  {id:'EU-FP-750',  name:'First Press',     type:'Coffee R', size:'750ml', price:52, cs:12, distStock:218},
+];
+
+const ACCOUNTS = [
+  {id:'a1', name:'Dante',         type:'restaurant', signal:'slipping', lastOrder:'22d', rev:3840, listed:['HJM-FP-750','HJM-JN-720']},
+  {id:'a2', name:'Katana Kitten', type:'bar',        signal:'on cadence',lastOrder:'17d', rev:2100, listed:['HJM-FP-750']},
+  {id:'a3', name:'Mace',          type:'bar',        signal:'opportunity',lastOrder:'30d', rev:1680, listed:['HJM-RY-500']},
+  {id:'a4', name:'Bar Suntory',   type:'bar',        signal:'slipping', lastOrder:'45d', rev:1440, listed:['HJM-FP-750']},
+  {id:'a5', name:'The Aviary',    type:'bar',        signal:'prospect', lastOrder:'—',   rev:0,    listed:[]},
+];
+
+// ─── Phone shell ─────────────────────────────────────────────
+const PHONE_W = 375;
+const PHONE_H = 812;
+
+function Phone({children, screen}) {
+  return (
+    <div style={{position:'relative', width:PHONE_W+16, height:PHONE_H+30}}>
+      {/* bezel */}
+      <div style={{
+        position:'absolute', inset:0, background:'#111', borderRadius:46,
+        boxShadow:'0 24px 80px hsl(24 10%10%/.55), 0 0 0 1px hsl(40 18%97%/.1)',
+      }}/>
+      {/* screen */}
+      <div style={{
+        position:'absolute', top:8, left:8, right:8, bottom:8,
+        background:T.bg, borderRadius:38, overflow:'hidden',
+        display:'flex', flexDirection:'column',
+      }}>
+        {/* status bar */}
+        <div style={{
+          display:'flex', justifyContent:'space-between', alignItems:'center',
+          padding:'10px 20px 4px', fontSize:11, fontWeight:600, color:T.ink,
+          flexShrink:0
+        }}>
+          <span>9:41</span>
+          <div style={{width:80, height:20, background:'#111', borderRadius:'0 0 14px 14px', position:'absolute', left:'50%', transform:'translateX(-50%)', top:0}}/>
+          <span style={{display:'flex', gap:5, alignItems:'center'}}>
+            <Ic d={IC.signal} s={13}/><Ic d={IC.wifi} s={13}/><Ic d={IC.bat} s={15}/>
+          </span>
+        </div>
+        {/* content */}
+        <div style={{flex:1, overflow:'hidden', display:'flex', flexDirection:'column'}}>
+          {children}
+        </div>
+        {/* home bar */}
+        <div style={{height:28, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+          <div style={{width:120, height:4, background:T.ink, borderRadius:999, opacity:.3}}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── App State ────────────────────────────────────────────────
+function App() {
+  const [screen, setScreen] = React.useState('login');
+  const [acct, setAcct] = React.useState(null);
+  const [cart, setCart] = React.useState({});
+  const [note, setNote] = React.useState('');
+  const [recordingNote, setRecordingNote] = React.useState(false);
+  const [submitted, setSubmitted] = React.useState(false);
+  const [visitSaved, setVisitSaved] = React.useState(false);
+  const [toasts, setToasts] = React.useState([]);
+
+  const toast = (msg) => {
+    const id = Date.now();
+    setToasts(t=>[...t,{id,msg}]);
+    setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)), 2600);
+  };
+
+  const cartTotal = Object.entries(cart).reduce((a,[sku,qty])=>{
+    const p=PRODS.find(x=>x.id===sku); return a+(p?.price||0)*qty;
+  },0);
+
+  const go = (s, account) => {
+    if (account) setAcct(account);
+    setScreen(s);
+  };
+
+  const props = {screen, go, acct, cart, setCart, note, setNote, recordingNote, setRecordingNote, submitted, setSubmitted, visitSaved, setVisitSaved, cartTotal, toast};
+
+  return (
+    <div style={{
+      display:'flex', flexDirection:'column', alignItems:'center',
+      gap:24, padding:'40px 24px', minHeight:'100vh',
+      background:'hsl(24 12% 8%)',
+      backgroundImage:'radial-gradient(circle, hsl(40 20%97%/.04) 1px, transparent 1px)',
+      backgroundSize:'24px 24px',
+    }}>
+      {/* Header */}
+      <div style={{display:'flex', alignItems:'center', gap:14, color:'hsl(40 18%97%)'}}>
+        <img src="assets/hajime-logo.png" alt="" style={{height:36, filter:'brightness(0) invert(1)'}}/>
+        <div>
+          <div style={{fontFamily:T.display, fontSize:22, fontWeight:600, letterSpacing:'-.02em'}}>Sales Rep · Mobile</div>
+          <div style={{fontSize:11, color:'hsl(35 12%50%)', fontFamily:T.mono, letterSpacing:'.06em'}}>MIKE TAN · NYC TERRITORY</div>
+        </div>
+      </div>
+
+      {/* Phone grid — multiple screens */}
+      <div style={{display:'flex', gap:36, alignItems:'flex-start', flexWrap:'wrap', justifyContent:'center'}}>
+
+        {/* 1. Login */}
+        <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:12}}>
+          <Phone screen="login"><LoginScreen {...props}/></Phone>
+          <Label n="01" t="Login" sub="Role picker on sumi"/>
+        </div>
+
+        {/* 2. Day overview */}
+        <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:12}}>
+          <Phone screen="home"><HomeScreen {...props}/></Phone>
+          <Label n="02" t="Day overview" sub="Today's accounts + target"/>
+        </div>
+
+        {/* 3. Account detail */}
+        <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:12}}>
+          <Phone screen="account"><AccountScreen {...props} acct={ACCOUNTS[0]}/></Phone>
+          <Label n="03" t="Account detail" sub="Walk-in · CRM snapshot"/>
+        </div>
+
+        {/* 4. Stock check (P1) */}
+        <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:12, position:'relative'}}>
+          <div style={{position:'absolute', top:-14, left:0, right:0, display:'flex', justifyContent:'center', zIndex:10}}>
+            <span style={{fontSize:10, fontFamily:T.mono, color:T.gold, letterSpacing:'.1em', background:'hsl(40 88%42%/.15)', padding:'3px 10px', borderRadius:999, border:'1px solid hsl(40 88%42%/.3)'}}>P1 · NEW SURFACE</span>
+          </div>
+          <Phone screen="stock"><StockScreen {...props}/></Phone>
+          <Label n="04" t="Stock check" sub="Distributor on-hand · live" highlight/>
+        </div>
+
+        {/* 5. Draft order */}
+        <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:12}}>
+          <Phone screen="draft"><DraftScreen {...props} acct={ACCOUNTS[0]}/></Phone>
+          <Label n="05" t="Draft order" sub="Pre-fill · offline-safe"/>
+        </div>
+
+        {/* 6. Submit + confirm */}
+        <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:12}}>
+          <Phone screen="confirm"><ConfirmScreen {...props}/></Phone>
+          <Label n="06" t="Submit" sub="2-step HQ handoff"/>
+        </div>
+
+        {/* 7. Visit note */}
+        <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:12}}>
+          <Phone screen="visit"><VisitScreen {...props} acct={ACCOUNTS[0]}/></Phone>
+          <Label n="07" t="Visit note" sub="Voice → transcript"/>
+        </div>
+
+      </div>
+
+      {/* Toast overlay (attached to first phone in dom, shown globally) */}
+      <div style={{position:'fixed', bottom:40, left:'50%', transform:'translateX(-50%)', zIndex:999, display:'flex', flexDirection:'column', gap:8}}>
+        {toasts.map(t=>(
+          <div key={t.id} style={{
+            padding:'10px 18px', background:'hsl(24 10%10%)', color:'hsl(40 18%97%)',
+            borderRadius:12, fontSize:13, fontFamily:T.body, boxShadow:'0 4px 24px hsl(24 10%10%/.4)',
+            display:'flex', alignItems:'center', gap:8
+          }}>
+            <div style={{width:6,height:6,borderRadius:999,background:T.green}}/>
+            {t.msg}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Label({n, t, sub, highlight}) {
+  return (
+    <div style={{textAlign:'center'}}>
+      <div style={{fontSize:10, fontFamily:T.mono, color:highlight?T.gold:'hsl(35 12%45%)', letterSpacing:'.08em', marginBottom:3}}>{n}</div>
+      <div style={{fontSize:14, fontWeight:600, color:'hsl(40 18%97%)'}}>{t}</div>
+      <div style={{fontSize:12, color:'hsl(35 12%50%)', marginTop:2}}>{sub}</div>
+    </div>
+  );
+}
+
+// ─── Screens ─────────────────────────────────────────────────
+
+function LoginScreen({go}) {
+  return (
+    <div style={{flex:1, background:'hsl(24 12% 8%)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:28, gap:24, position:'relative'}}>
+      <div style={{position:'absolute', inset:0, background:'radial-gradient(ellipse 80%50% at 50% -10%, hsl(40 88%42%/.12), transparent)', pointerEvents:'none'}}/>
+      <img src="assets/hajime-logo.png" alt="" style={{height:80, filter:'brightness(0) invert(1)', opacity:.95}}/>
+      <div style={{fontSize:10, color:'hsl(35 12%50%)', letterSpacing:'.2em', fontFamily:T.mono}}>B2B SUPPLY CHAIN OS</div>
+      <div style={{width:'100%', display:'flex', flexDirection:'column', gap:8}}>
+        {[{m:'◉',l:'Brand Operator',s:'Full HQ access'},{m:'◈',l:'Sales Rep',s:'Field accounts & drafts',active:true},{m:'◻',l:'Retail Store',s:'Order & track'}].map(r=>(
+          <div key={r.l} onClick={()=>r.active&&go('home')} style={{
+            display:'flex', alignItems:'center', gap:12, padding:'12px 14px',
+            borderRadius:12, border:`1px solid hsl(0 0%100%/${r.active?.18:.06})`,
+            background:`hsl(0 0%100%/${r.active?.06:.02})`, cursor:r.active?'pointer':'default',
+            boxShadow:r.active?`0 0 0 2px ${T.gold}40`:'none'
+          }}>
+            <span style={{fontSize:18, color:r.active?T.gold:'hsl(35 14%55%)'}}>{r.m}</span>
+            <div>
+              <div style={{fontSize:13, fontWeight:500, color:r.active?'hsl(35 14%90%)':'hsl(35 12%55%)'}}>{r.l}</div>
+              <div style={{fontSize:11, color:'hsl(35 12%45%)'}}>{r.s}</div>
+            </div>
+            {r.active && <Ic d={IC.right} s={14} style={{marginLeft:'auto', color:T.gold}}/>}
+          </div>
+        ))}
+      </div>
+      <div style={{fontSize:10, color:'hsl(35 12%35%)', fontFamily:T.mono}}>tap Sales Rep to continue</div>
+    </div>
+  );
+}
+
+function HomeScreen({go, acct}) {
+  const signalC = {'slipping':T.amber, 'on cadence':T.green, 'opportunity':T.blue, 'prospect':T.muted};
+  return (
+    <div style={{flex:1, overflow:'auto', background:T.bg, display:'flex', flexDirection:'column'}}>
+      {/* header */}
+      <div style={{padding:'14px 18px 10px', background:T.bg, borderBottom:`1px solid ${T.border}`}}>
+        <div style={{fontSize:10, color:T.muted, fontFamily:T.mono, letterSpacing:'.06em'}}>FRI · APR 30 · 09:41</div>
+        <div style={{fontFamily:T.display, fontSize:22, fontWeight:600, letterSpacing:'-.02em', marginTop:2}}>Morning, Mike</div>
+        <div style={{fontSize:12, color:T.muted}}>5 accounts today · $28K April target</div>
+      </div>
+
+      {/* target bar */}
+      <div style={{padding:'12px 18px', borderBottom:`1px solid ${T.border}`}}>
+        <div style={{display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:6}}>
+          <span style={{color:T.muted}}>April · attainment</span>
+          <span style={{fontFamily:T.mono, fontWeight:600}}>$14.8K / $28K</span>
+        </div>
+        <div style={{height:6, borderRadius:999, background:T.surface, overflow:'hidden'}}>
+          <div style={{width:'53%', height:'100%', background:T.gold}}/>
+        </div>
+        <div style={{fontSize:11, color:T.muted, marginTop:4}}>53% · 1 day remaining</div>
+      </div>
+
+      {/* nearby account spotlight */}
+      <div style={{padding:'12px 18px'}}>
+        <div style={{fontSize:10, color:T.muted, fontFamily:T.mono, letterSpacing:'.06em', marginBottom:8}}>NEARBY</div>
+        <div onClick={()=>go('account', ACCOUNTS[0])} style={{
+          padding:'14px 16px', background:T.gold, borderRadius:14, cursor:'pointer',
+          marginBottom:10, color:'white'
+        }}>
+          <div style={{fontSize:10, letterSpacing:'.1em', opacity:.7, marginBottom:2}}>400M AWAY</div>
+          <div style={{fontFamily:T.display, fontSize:22, fontWeight:600, letterSpacing:'-.01em'}}>{ACCOUNTS[0].name}</div>
+          <div style={{fontSize:11, opacity:.85, marginTop:4}}>Greenwich Village · slipping · last order {ACCOUNTS[0].lastOrder}</div>
+        </div>
+
+        <div style={{fontSize:10, color:T.muted, fontFamily:T.mono, letterSpacing:'.06em', marginBottom:8}}>TODAY'S LIST</div>
+        {ACCOUNTS.slice(1).map(a=>(
+          <div key={a.id} onClick={()=>go('account', a)} style={{
+            display:'flex', alignItems:'center', gap:12, padding:'10px 0',
+            borderBottom:`1px solid ${T.border}`, cursor:'pointer'
+          }}>
+            <div style={{width:6, height:6, borderRadius:999, background:signalC[a.signal]||T.muted, flexShrink:0}}/>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13, fontWeight:500}}>{a.name}</div>
+              <div style={{fontSize:11, color:T.muted}}>{a.type} · {a.signal} · {a.lastOrder} ago</div>
+            </div>
+            <Ic d={IC.right} s={14} style={{color:T.muted}}/>
+          </div>
+        ))}
+      </div>
+
+      {/* bottom nav */}
+      <BottomNav active="home" go={go}/>
+    </div>
+  );
+}
+
+function AccountScreen({go, acct}) {
+  const a = acct || ACCOUNTS[0];
+  const sigC = {slipping:T.amber, 'on cadence':T.green, opportunity:T.blue, prospect:T.muted};
+  return (
+    <div style={{flex:1, overflow:'auto', background:T.bg, display:'flex', flexDirection:'column'}}>
+      {/* nav bar */}
+      <div style={{display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderBottom:`1px solid ${T.border}`}}>
+        <div onClick={()=>go('home')} style={{cursor:'pointer', color:T.muted}}><Ic d={IC.back} s={18}/></div>
+        <div style={{fontFamily:T.display, fontSize:18, fontWeight:600, letterSpacing:'-.01em', flex:1}}>{a.name}</div>
+        <div style={{display:'flex', gap:6, alignItems:'center', padding:'3px 8px', borderRadius:999,
+                     background:sigC[a.signal]+'18', border:`1px solid ${sigC[a.signal]}30`}}>
+          <div style={{width:5, height:5, borderRadius:999, background:sigC[a.signal]}}/>
+          <span style={{fontSize:10, fontWeight:500, color:sigC[a.signal]}}>{a.signal}</span>
+        </div>
+      </div>
+
+      <div style={{padding:'16px 18px', display:'flex', flexDirection:'column', gap:14}}>
+        {/* stat strip */}
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8}}>
+          {[
+            {l:'30d revenue', v:a.rev?`$${(a.rev/1000).toFixed(1)}K`:'—'},
+            {l:'Listings',    v:a.listed.length},
+            {l:'Last order',  v:a.lastOrder},
+          ].map(s=>(
+            <div key={s.l} style={{padding:'10px 12px', background:T.surface, borderRadius:10}}>
+              <div style={{fontSize:10, color:T.muted, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3}}>{s.l}</div>
+              <div style={{fontFamily:T.display, fontSize:18, fontWeight:600, letterSpacing:'-.01em'}}>{s.v}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* current listings */}
+        <div>
+          <div style={{fontSize:11, color:T.muted, fontFamily:T.mono, letterSpacing:'.06em', marginBottom:8}}>CURRENT LISTINGS</div>
+          {a.listed.length > 0
+            ? a.listed.map(sku=>{
+                const p=PRODS.find(x=>x.id===sku);
+                return (
+                  <div key={sku} style={{display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:`1px solid ${T.border}`, fontSize:13}}>
+                    <span>{p?.name}</span>
+                    <span style={{fontFamily:T.mono, fontSize:11, color:T.muted}}>{sku}</span>
+                  </div>
+                );
+              })
+            : <div style={{fontSize:13, color:T.muted}}>No listings yet — this is a prospect.</div>
+          }
+        </div>
+
+        {/* actions */}
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+          <Mbutton icon={IC.box} label="Stock check" accent onClick={()=>go('stock')}/>
+          <Mbutton icon={IC.cart} label="Draft order" onClick={()=>go('draft', a)}/>
+          <Mbutton icon={IC.note} label="Log visit" onClick={()=>go('visit', a)}/>
+          <Mbutton icon={IC.target} label="Add opportunity"/>
+        </div>
+
+        {/* last visit */}
+        <div style={{padding:14, background:T.surface, borderRadius:12}}>
+          <div style={{fontSize:11, color:T.muted, fontFamily:T.mono, letterSpacing:'.06em', marginBottom:6}}>LAST VISIT</div>
+          <div style={{fontSize:13, color:T.ink, lineHeight:1.6}}>JP-2024 moving fast on the tasting menu. Chef interested in a dinner event in May.</div>
+          <div style={{fontSize:11, color:T.muted, fontFamily:T.mono, marginTop:6}}>APR 25</div>
+        </div>
+      </div>
+
+      <BottomNav active="accounts" go={go}/>
+    </div>
+  );
+}
+
+function StockScreen({go}) {
+  return (
+    <div style={{flex:1, overflow:'auto', background:T.bg, display:'flex', flexDirection:'column'}}>
+      <div style={{display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderBottom:`1px solid ${T.border}`}}>
+        <div onClick={()=>go('account')} style={{cursor:'pointer', color:T.muted}}><Ic d={IC.back} s={18}/></div>
+        <div style={{fontFamily:T.display, fontSize:18, fontWeight:600, letterSpacing:'-.01em', flex:1}}>Stock check</div>
+        <div style={{display:'flex', gap:4, alignItems:'center', padding:'3px 8px', borderRadius:999,
+                     background:'hsl(158 56%36%/.1)', border:'1px solid hsl(158 56%36%/.25)'}}>
+          <div style={{width:5, height:5, borderRadius:999, background:T.green}}/>
+          <span style={{fontSize:10, fontWeight:600, color:T.green}}>LIVE</span>
+        </div>
+      </div>
+
+      <div style={{padding:'14px 18px'}}>
+        <div style={{padding:12, background:'hsl(40 88%42%/.08)', border:`1px solid hsl(40 88%42%/.2)`, borderRadius:10, marginBottom:16}}>
+          <div style={{fontSize:11, color:T.gold, fontFamily:T.mono, letterSpacing:'.06em', marginBottom:2}}>EMPIRE WINES · BROOKLYN</div>
+          <div style={{fontSize:12, color:T.muted}}>As of {new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})} — updates with every fulfillment</div>
+        </div>
+
+        {PRODS.map(p=>(
+          <div key={p.id} style={{
+            padding:'14px 0', borderBottom:`1px solid ${T.border}`,
+            display:'flex', justifyContent:'space-between', alignItems:'center'
+          }}>
+            <div>
+              <div style={{fontSize:13, fontWeight:500}}>{p.name}</div>
+              <div style={{fontSize:11, color:T.muted, fontFamily:T.mono, marginTop:2}}>{p.id}</div>
+              {p.low && <div style={{marginTop:4, display:'inline-flex', alignItems:'center', gap:4, fontSize:10, color:T.amber, fontWeight:600}}>
+                ⚠ Running low
+              </div>}
+            </div>
+            <div style={{textAlign:'right'}}>
+              <div style={{fontFamily:T.display, fontSize:26, fontWeight:600, letterSpacing:'-.02em',
+                           color:p.low?T.amber:T.ink}}>{p.distStock}</div>
+              <div style={{fontSize:10, color:T.muted, fontFamily:T.mono}}>cases on-hand</div>
+            </div>
+          </div>
+        ))}
+
+        <div style={{marginTop:16, padding:14, background:T.surface, borderRadius:12, fontSize:12, color:T.muted, lineHeight:1.6}}>
+          Check this before committing product. If stock is low, note a split allocation in your draft.
+        </div>
+
+        <div style={{marginTop:14}}>
+          <Mbutton icon={IC.cart} label="Draft order from this screen" onClick={()=>go('draft')} accent full/>
+        </div>
+      </div>
+
+      <BottomNav active="stock" go={go}/>
+    </div>
+  );
+}
+
+function DraftScreen({go, acct, cart, setCart, cartTotal, toast}) {
+  const a = acct || ACCOUNTS[0];
+  const add = (sku, delta) => setCart(c=>{
+    const n=Math.max(0,(c[sku]||0)+delta);
+    return n===0?Object.fromEntries(Object.entries({...c,[sku]:n}).filter(([,v])=>v>0)):{...c,[sku]:n};
+  });
+  const hasSomething = Object.values(cart).some(v=>v>0);
+
+  return (
+    <div style={{flex:1, overflow:'auto', background:T.bg, display:'flex', flexDirection:'column'}}>
+      <div style={{display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderBottom:`1px solid ${T.border}`}}>
+        <div onClick={()=>go('account', a)} style={{cursor:'pointer', color:T.muted}}><Ic d={IC.back} s={18}/></div>
+        <div style={{fontFamily:T.display, fontSize:18, fontWeight:600, letterSpacing:'-.01em', flex:1}}>Draft · {a.name}</div>
+        <div style={{fontSize:10, fontFamily:T.mono, color:T.muted, background:T.surface, padding:'3px 8px', borderRadius:999}}>OFFLINE SAFE</div>
+      </div>
+
+      <div style={{fontSize:11, color:T.muted, padding:'8px 18px 4px', background:T.surface, borderBottom:`1px solid ${T.border}`}}>
+        Pre-filled from last order · 22 days ago
+      </div>
+
+      <div style={{padding:'14px 18px', flex:1, overflow:'auto'}}>
+        {PRODS.map(p=>{
+          const qty = cart[p.id]||0;
+          const inStock = p.distStock * p.cs;
+          const warn = qty > inStock * 0.8;
+          return (
+            <div key={p.id} style={{
+              padding:'12px 0', borderBottom:`1px solid ${T.border}`,
+              borderLeft:warn?`3px solid ${T.amber}`:undefined,
+              paddingLeft:warn?8:0
+            }}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13, fontWeight:500}}>{p.name}</div>
+                  <div style={{fontSize:11, color:T.muted, fontFamily:T.mono}}>{p.id} · ${p.price}/btl</div>
+                  {warn && <div style={{fontSize:10, color:T.amber, marginTop:3}}>Stock may be short — confirm with distributor</div>}
+                </div>
+                <div style={{display:'flex', alignItems:'center', gap:0}}>
+                  <div onClick={()=>add(p.id,-p.cs)} style={{
+                    width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center',
+                    background:qty>0?T.ink:T.surface, color:qty>0?'white':T.muted,
+                    borderRadius:'8px 0 0 8px', cursor:'pointer', fontSize:18, fontWeight:300
+                  }}>−</div>
+                  <div style={{
+                    width:40, height:30, display:'flex', alignItems:'center', justifyContent:'center',
+                    background:qty>0?T.gold:T.surface, color:qty>0?'white':T.muted,
+                    fontFamily:T.mono, fontWeight:600, fontSize:13
+                  }}>{qty}</div>
+                  <div onClick={()=>add(p.id,p.cs)} style={{
+                    width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center',
+                    background:T.ink, color:'white',
+                    borderRadius:'0 8px 8px 0', cursor:'pointer', fontSize:18, fontWeight:300
+                  }}>+</div>
+                </div>
+              </div>
+              {qty > 0 && (
+                <div style={{display:'flex', justifyContent:'space-between', marginTop:6, fontSize:11, color:T.muted}}>
+                  <span>{qty} btl = {Math.round(qty/p.cs)} cases</span>
+                  <span style={{fontFamily:T.mono, fontWeight:600, color:T.ink}}>${(qty*p.price).toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        <div style={{padding:'14px 0'}}>
+          <div style={{display:'flex', justifyContent:'space-between', fontSize:15, fontWeight:700, marginBottom:16}}>
+            <span>Total</span>
+            <span style={{fontFamily:T.mono}}>${cartTotal.toLocaleString()}</span>
+          </div>
+          <div onClick={()=>{if(hasSomething)go('confirm');}} style={{
+            padding:'14px', borderRadius:12, background:hasSomething?T.gold:T.surface,
+            color:hasSomething?'white':T.muted, textAlign:'center', fontWeight:600, fontSize:14,
+            cursor:hasSomething?'pointer':'default', marginBottom:8
+          }}>
+            {hasSomething?`Send to HQ · $${cartTotal.toLocaleString()}`:'Add items to draft'}
+          </div>
+          <div style={{textAlign:'center', fontSize:10, color:T.muted, fontFamily:T.mono}}>
+            OFFLINE SAFE · SYNCS WHEN ONLINE
+          </div>
+        </div>
+      </div>
+
+      <BottomNav active="cart" go={go}/>
+    </div>
+  );
+}
+
+function ConfirmScreen({go, acct, cart, cartTotal, setSubmitted, submitted, toast}) {
+  const a = acct || ACCOUNTS[0];
+  if (submitted) return (
+    <div style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:28, gap:20}}>
+      <div style={{width:72, height:72, borderRadius:'50%', background:T.green, display:'flex', alignItems:'center', justifyContent:'center'}}>
+        <Ic d={IC.check} s={36} w={2.5} c="white"/>
+      </div>
+      <div style={{fontFamily:T.display, fontSize:26, fontWeight:600, letterSpacing:'-.02em', textAlign:'center'}}>Draft sent</div>
+      <div style={{fontSize:14, color:T.muted, textAlign:'center', lineHeight:1.6, maxWidth:'30ch'}}>
+        Sora (HQ) will review this and approve or hold. You'll get a notification.
+      </div>
+      <div style={{padding:14, background:T.surface, borderRadius:12, width:'100%'}}>
+        <div style={{fontSize:11, color:T.muted, fontFamily:T.mono, marginBottom:6}}>WHAT HAPPENS NEXT</div>
+        <div style={{fontSize:13, lineHeight:1.7}}>
+          1. HQ approval queue<br/>
+          2. Empire Wines picks<br/>
+          3. Delivery to {a.name}
+        </div>
+      </div>
+      <div onClick={()=>{setSubmitted(false);go('home');}} style={{
+        width:'100%', padding:14, borderRadius:12, background:T.ink, color:'white',
+        textAlign:'center', fontWeight:600, cursor:'pointer'
+      }}>Back to overview</div>
+    </div>
+  );
+
+  return (
+    <div style={{flex:1, overflow:'auto', background:T.bg, display:'flex', flexDirection:'column'}}>
+      <div style={{display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderBottom:`1px solid ${T.border}`}}>
+        <div onClick={()=>go('draft', a)} style={{cursor:'pointer', color:T.muted}}><Ic d={IC.back} s={18}/></div>
+        <div style={{fontFamily:T.display, fontSize:18, fontWeight:600, letterSpacing:'-.01em'}}>Review & send</div>
+      </div>
+
+      <div style={{padding:'16px 18px', display:'flex', flexDirection:'column', gap:14}}>
+        <div style={{padding:14, background:'hsl(40 88%42%/.08)', border:`1px solid hsl(40 88%42%/.25)`, borderRadius:12}}>
+          <div style={{fontSize:11, color:T.gold, fontFamily:T.mono, letterSpacing:'.06em', marginBottom:6}}>SENDING TO HQ APPROVAL</div>
+          <div style={{fontSize:13, lineHeight:1.55, color:T.ink}}>
+            This draft will appear in Sora's queue. Empire Wines can't pick until she approves.
+          </div>
+        </div>
+
+        <div style={{padding:14, background:T.surface, borderRadius:12}}>
+          <div style={{fontFamily:T.display, fontSize:16, fontWeight:500, marginBottom:10}}>{a.name}</div>
+          {Object.entries(cart).map(([sku,qty])=>{
+            const p=PRODS.find(x=>x.id===sku);
+            return (
+              <div key={sku} style={{display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:`1px solid ${T.border}`, fontSize:13}}>
+                <span>{p?.name} · {qty} btl</span>
+                <span style={{fontFamily:T.mono, fontWeight:600}}>${(qty*(p?.price||0)).toLocaleString()}</span>
+              </div>
+            );
+          })}
+          <div style={{display:'flex', justifyContent:'space-between', padding:'10px 0', fontSize:15, fontWeight:700}}>
+            <span>Total</span><span style={{fontFamily:T.mono}}>${cartTotal.toLocaleString()}</span>
+          </div>
+        </div>
+
+        <div onClick={()=>{setSubmitted(true);toast('Draft sent to HQ · awaiting Sora\'s approval');}} style={{
+          padding:'14px', borderRadius:12, background:T.gold, color:'white',
+          textAlign:'center', fontWeight:600, fontSize:14, cursor:'pointer',
+          display:'flex', alignItems:'center', justifyContent:'center', gap:8
+        }}>
+          <Ic d={IC.send} s={16} c="white"/>
+          Confirm & send to HQ
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VisitScreen({go, acct, note, setNote, recordingNote, setRecordingNote, visitSaved, setVisitSaved, toast}) {
+  const a = acct || ACCOUNTS[0];
+  const TRANSCRIPT = "JP-2024 is flying on the tasting menu. They've run through their allocation faster than expected — chef wants to build a sake pairing dinner around it. Good time to propose a case of Ryusui Reserve for the high-end tasting.";
+
+  if (visitSaved) return (
+    <div style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:28, gap:18}}>
+      <div style={{width:64, height:64, borderRadius:'50%', background:T.green, display:'flex', alignItems:'center', justifyContent:'center'}}>
+        <Ic d={IC.check} s={30} w={2.5} c="white"/>
+      </div>
+      <div style={{fontFamily:T.display, fontSize:24, fontWeight:600, textAlign:'center'}}>Visit saved</div>
+      <div style={{fontSize:13, color:T.muted, textAlign:'center', lineHeight:1.6}}>Tagged to {a.name} · visible to HQ in the account timeline.</div>
+      <div onClick={()=>{setVisitSaved(false);go('home');}} style={{width:'100%',padding:14,borderRadius:12,background:T.ink,color:'white',textAlign:'center',fontWeight:600,cursor:'pointer'}}>Done</div>
+    </div>
+  );
+
+  return (
+    <div style={{flex:1, overflow:'auto', background:T.bg, display:'flex', flexDirection:'column'}}>
+      <div style={{display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderBottom:`1px solid ${T.border}`}}>
+        <div onClick={()=>go('account',a)} style={{cursor:'pointer', color:T.muted}}><Ic d={IC.back} s={18}/></div>
+        <div style={{fontFamily:T.display, fontSize:18, fontWeight:600, letterSpacing:'-.01em', flex:1}}>Visit · {a.name}</div>
+        <div style={{fontSize:11, fontFamily:T.mono, color:T.muted}}>APR 30</div>
+      </div>
+
+      <div style={{padding:'16px 18px', display:'flex', flexDirection:'column', gap:14}}>
+        {/* Voice record */}
+        <div style={{textAlign:'center', padding:'20px', background:T.surface, borderRadius:16}}>
+          <div onClick={()=>{
+            if(!recordingNote){setRecordingNote(true);setTimeout(()=>{setRecordingNote(false);setNote(TRANSCRIPT);},2000);}
+          }} style={{
+            width:72, height:72, borderRadius:'50%', margin:'0 auto 12px',
+            background:recordingNote?T.red:T.ink, display:'flex', alignItems:'center', justifyContent:'center',
+            cursor:'pointer', boxShadow:recordingNote?`0 0 0 8px hsl(0 68%48%/.2)`:'none',
+            transition:'all .3s'
+          }}>
+            <Ic d={IC.mic} s={28} c="white"/>
+          </div>
+          <div style={{fontSize:13, fontWeight:500}}>{recordingNote?'Recording…':'Hold to record note'}</div>
+          <div style={{fontSize:11, color:T.muted, marginTop:2}}>auto-transcribed · tagged to account</div>
+        </div>
+
+        {/* Transcript or manual */}
+        {note ? (
+          <div>
+            <div style={{fontSize:11, color:T.green, fontFamily:T.mono, letterSpacing:'.06em', marginBottom:6}}>TRANSCRIBED · tap to edit</div>
+            <textarea value={note} onChange={e=>setNote(e.target.value)} rows={5} style={{
+              width:'100%', padding:'10px 12px', borderRadius:10,
+              border:`1px solid ${T.border}`, background:T.bg, color:T.ink,
+              fontSize:13, fontFamily:T.body, outline:'none', resize:'none', lineHeight:1.6
+            }}/>
+          </div>
+        ) : (
+          <div>
+            <div style={{fontSize:11, color:T.muted, fontFamily:T.mono, letterSpacing:'.06em', marginBottom:6}}>OR TYPE A NOTE</div>
+            <textarea placeholder="What did you observe? Backbar levels, feedback, opportunities…" rows={4} onChange={e=>setNote(e.target.value)} style={{
+              width:'100%', padding:'10px 12px', borderRadius:10,
+              border:`1px solid ${T.border}`, background:T.bg, color:T.ink,
+              fontSize:13, fontFamily:T.body, outline:'none', resize:'none', lineHeight:1.6
+            }}/>
+          </div>
+        )}
+
+        <div onClick={()=>{if(note){setVisitSaved(true);toast(`Visit note saved · ${a.name}`);}}} style={{
+          padding:'14px', borderRadius:12, background:note?T.ink:T.surface,
+          color:note?'white':T.muted, textAlign:'center', fontWeight:600, cursor:note?'pointer':'default',
+          display:'flex', alignItems:'center', justifyContent:'center', gap:8
+        }}>
+          <Ic d={IC.check} s={16} c={note?'white':T.muted}/>
+          Save visit note
+        </div>
+      </div>
+
+      <BottomNav active="note" go={go}/>
+    </div>
+  );
+}
+
+// ─── Bottom nav ───────────────────────────────────────────────
+function BottomNav({active, go}) {
+  const items = [
+    {id:'home',     icon:IC.home,      label:'Home'},
+    {id:'accounts', icon:IC.users,     label:'Accounts'},
+    {id:'stock',    icon:IC.warehouse, label:'Stock'},
+    {id:'cart',     icon:IC.cart,      label:'Drafts'},
+    {id:'note',     icon:IC.note,      label:'Visits'},
+  ];
+  return (
+    <div style={{
+      display:'flex', borderTop:`1px solid ${T.border}`, background:T.bg2,
+      paddingBottom:0, flexShrink:0
+    }}>
+      {items.map(it=>(
+        <div key={it.id} onClick={()=>go(it.id==='stock'?'stock':it.id==='cart'?'draft':it.id==='note'?'visit':it.id)} style={{
+          flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3,
+          padding:'10px 0', cursor:'pointer',
+          color:active===it.id?T.gold:T.muted
+        }}>
+          <Ic d={it.icon} s={20} c={active===it.id?T.gold:T.muted}/>
+          <span style={{fontSize:9, fontWeight:active===it.id?600:400, letterSpacing:'.02em'}}>{it.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Utility ──────────────────────────────────────────────────
+function Mbutton({icon, label, accent, onClick, full}) {
+  return (
+    <div onClick={onClick} style={{
+      display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+      padding:'12px 14px', borderRadius:12, cursor:'pointer',
+      background:accent?T.gold:T.surface, color:accent?'white':T.ink,
+      fontWeight:500, fontSize:13, width:full?'100%':undefined
+    }}>
+      <Ic d={icon} s={16} c={accent?'white':T.ink}/>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

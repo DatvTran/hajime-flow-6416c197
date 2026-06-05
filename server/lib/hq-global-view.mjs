@@ -35,6 +35,26 @@ export function tagRowForHq(row, org) {
   return tagged;
 }
 
+/** Per-source timeout so one dead distributor DB cannot stall Brand Operator HQ for 30s+. */
+const HQ_SOURCE_TIMEOUT_MS = 5_000;
+
+async function withSourceTimeout(promise, label) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${label} timed out after ${HQ_SOURCE_TIMEOUT_MS}ms`)),
+          HQ_SOURCE_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * Run a fetcher against the platform DB (legacy tenant) and each active distributor DB.
  * @param {string | null | undefined} platformTenantId
@@ -44,7 +64,10 @@ export async function hqFetchFromAllSources(platformTenantId, fetchRows) {
   const merged = [];
 
   try {
-    const platformRows = await fetchRows(platformDb, platformTenantId ?? null, null);
+    const platformRows = await withSourceTimeout(
+      fetchRows(platformDb, platformTenantId ?? null, null),
+      'platform',
+    );
     for (const r of platformRows || []) {
       merged.push(tagRowForHq(r, null));
     }
@@ -58,7 +81,10 @@ export async function hqFetchFromAllSources(platformTenantId, fetchRows) {
       if (!org?.database_name) return;
       try {
         const knex = getDistributorKnex(org.database_name);
-        const rows = await fetchRows(knex, org.tenant_id, org);
+        const rows = await withSourceTimeout(
+          fetchRows(knex, org.tenant_id, org),
+          org.database_name,
+        );
         for (const r of rows || []) {
           merged.push(tagRowForHq(r, org));
         }
@@ -69,6 +95,28 @@ export async function hqFetchFromAllSources(platformTenantId, fetchRows) {
   );
 
   return merged;
+}
+
+/** Platform DB only — fast path for Brand Operator initial load (skip distributor fan-out). */
+export async function hqFetchPlatformOnly(platformTenantId, fetchRows) {
+  try {
+    const platformRows = await withSourceTimeout(
+      fetchRows(platformDb, platformTenantId ?? null, null),
+      'platform',
+    );
+    return (platformRows || []).map((r) => tagRowForHq(r, null));
+  } catch (err) {
+    console.error('[HQ] Platform-only fetch failed:', err?.message || err);
+    return [];
+  }
+}
+
+/** HQ: `scope=platform` (default) or `full` (all distributor DBs). */
+export async function hqFetchForScope(platformTenantId, fetchRows, scope = 'platform') {
+  if (scope === 'full') {
+    return hqFetchFromAllSources(platformTenantId, fetchRows);
+  }
+  return hqFetchPlatformOnly(platformTenantId, fetchRows);
 }
 
 /**

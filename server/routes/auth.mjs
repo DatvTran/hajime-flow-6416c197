@@ -14,6 +14,21 @@ import {
 
 const router = express.Router();
 
+function isDbConnectionError(err) {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return /connection terminated|ECONNREFUSED|ECONNRESET|database unavailable|timeout exceeded|connect ETIMEDOUT/i.test(
+    msg,
+  );
+}
+
+function respondDbUnavailable(res, err, label) {
+  console.error(`${label}:`, err);
+  return res.status(503).json({
+    error: 'Database temporarily unavailable. Please try again in a minute.',
+    code: 'DATABASE_UNAVAILABLE',
+  });
+}
+
 /**
  * GET /api/auth/invite-preview
  * Public: validate invite token and return safe fields for the accept-invite UI.
@@ -374,6 +389,9 @@ router.post('/login', async (req, res) => {
       refreshToken,
     });
   } catch (err) {
+    if (isDbConnectionError(err)) {
+      return respondDbUnavailable(res, err, 'Login error');
+    }
     console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed' });
   }

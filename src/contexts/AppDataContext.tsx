@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import type {
   Account,
@@ -36,8 +37,18 @@ import type { ProductionStatus } from "@/data/mockData";
 import seedJson from "@/data/seed-app.json";
 import { toast } from "@/components/ui/sonner";
 import { normalizeAppData } from "@/lib/normalize-app-data";
+import { applyCatalogToAppData, mapApiRowToProduct } from "@/lib/product-catalog-sync";
+import {
+  mapNewProductRequestApiResponse,
+  mapNewProductRequestPatchToApi,
+  newProductRequestApiId,
+} from "@/lib/new-product-request-api";
 import { loadLocalAppData, saveLocalAppData } from "@/lib/local-app-data";
-import { resolveAccountForSalesOrder } from "@/lib/sales-order-utils";
+import {
+  canSyncOrderStatusToApi,
+  isPersistedApiOrderId,
+  resolveAccountForSalesOrder,
+} from "@/lib/sales-order-utils";
 import { useAuth } from "./AuthContext";
 import {
   createProduct as apiCreateProduct,
@@ -73,12 +84,15 @@ import {
   getTeamMembers as apiGetTeamMembers,
   getShipments as apiGetShipments,
   getIncentives as apiGetIncentives,
+  getProducts as apiGetProducts,
   createProductionStatus as apiCreateProductionStatus,
   updateProductionStatus as apiUpdateProductionStatus,
   deleteProductionStatus as apiDeleteProductionStatus,
   getProductionStatuses as apiGetProductionStatuses,
 } from "@/lib/api-v1-mutations";
-import { mapRowToShipment } from "@/lib/data-service";
+import { mapApiOrdersToSalesOrders, mapRowToShipment, mergeSalesOrdersFromApi } from "@/lib/data-service";
+import { getOrders } from "@/lib/api-v1";
+import { resolveOrderIdForApiUpdate } from "@/lib/sales-order-api-id";
 import {
   getNewProductRequests,
   createNewProductRequest as apiCreateNewProductRequest,
@@ -120,7 +134,7 @@ function catalogProductApiPayload(merged: Product): {
  * Preserves new features (financing ledger, shelf stock, onboarding) when API doesn't have them yet.
  */
 function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
-  if (!local) return server;
+  if (!local) return applyCatalogToAppData(server);
   
   // Start with server data as base
   const merged: AppData = { ...server };
@@ -166,12 +180,9 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
     merged.accounts = [...merged.accounts, ...localOnlyAccounts];
   }
   
-  // For orders: preserve local-only orders (created while offline).
-  // Same rule: don't require server array length, just require the array to exist.
-  if (local.salesOrders?.length && Array.isArray(server.salesOrders)) {
-    const serverIds = new Set((server.salesOrders ?? []).map((o) => o.id));
-    const localOnlyOrders = local.salesOrders.filter((o) => !serverIds.has(o.id));
-    merged.salesOrders = [...(server.salesOrders ?? []), ...localOnlyOrders];
+  // Orders: server is source of truth; keep offline drafts only (see mergeSalesOrdersFromApi).
+  if (Array.isArray(server.salesOrders)) {
+    merged.salesOrders = mergeSalesOrdersFromApi(local.salesOrders ?? [], server.salesOrders);
   }
 
   // CRM contacts: always prefer the server's list when it has data so Settings → team members
@@ -181,16 +192,11 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
     merged.teamMembers = server.teamMembers;
   }
 
-  // Catalog: keep SKUs that exist only locally (e.g. created offline) while server data wins for shared SKUs.
-  if (Array.isArray(server.products) && server.products.length > 0 && local.products?.length) {
-    const serverSkuSet = new Set(
-      server.products.map((p) => (p.sku?.toLowerCase() ?? "").trim()),
-    );
-    const localOnly = local.products.filter((p) => {
-      const k = (p.sku?.toLowerCase() ?? "").trim();
-      return k && !serverSkuSet.has(k);
-    });
-    merged.products = [...server.products, ...localOnly];
+  // Catalog: server is the shared source of truth (Brand Operator → all roles on same tenant).
+  if (Array.isArray(server.products) && server.products.length > 0) {
+    merged.products = server.products;
+  } else if (local.products?.length && (!server.products || server.products.length === 0)) {
+    merged.products = local.products;
   }
 
   if (Array.isArray(server.purchaseOrders) && server.purchaseOrders.length > 0 && local.purchaseOrders?.length) {
@@ -199,7 +205,7 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
     merged.purchaseOrders = [...server.purchaseOrders, ...localOnlyPos];
   }
 
-  return merged;
+  return applyCatalogToAppData(merged);
 }
 
 const CRM_PORTAL_ROLES = new Set<TeamMemberPortalRole>([
@@ -234,6 +240,10 @@ function mapApiRowToTeamMember(row: Record<string, unknown>): TeamMember {
     crmReqRaw != null && String(crmReqRaw).trim() !== ""
       ? String(crmReqRaw).trim()
       : undefined;
+  const managedByUserId =
+    row.managed_by_user_id != null && String(row.managed_by_user_id).trim() !== ""
+      ? String(row.managed_by_user_id).trim()
+      : undefined;
 
   return {
     id: String(row.id ?? ""),
@@ -245,6 +255,7 @@ function mapApiRowToTeamMember(row: Record<string, unknown>): TeamMember {
     ...(primaryWarehouseId ? { primaryWarehouseId } : {}),
     ...(pendingDistributorApproval === true ? { pendingDistributorApproval: true } : {}),
     ...(crmRequestedByUserId ? { crmRequestedByUserId } : {}),
+    ...(managedByUserId ? { managedByUserId } : {}),
   };
 }
 
@@ -315,6 +326,10 @@ type AppDataContextValue = {
   refreshTeamMembers: () => Promise<void>;
   /** Re-fetch shipments from the API and merge into app state. */
   refreshShipments: () => Promise<void>;
+  /** Re-fetch sales orders (role-scoped) and merge into app state. */
+  refreshSalesOrders: () => Promise<void>;
+  /** Re-fetch product catalog from the API (Brand Operator source of truth). */
+  refreshProducts: () => Promise<void>;
 };
 
 const AppDataStateContext = createContext<AppDataContextValue | null>(null);
@@ -353,19 +368,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const skipSaveRef = useRef(true);
   const [fetchEpoch, setFetchEpoch] = useState(0);
 
-  const withTimeout = useCallback(async <T,>(p: Promise<T>, ms: number): Promise<T> => {
-    let t: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<never>((_, reject) => {
-      t = setTimeout(() => reject(new Error(`App data fetch timed out after ${ms}ms`)), ms);
-    });
-    try {
-      return await Promise.race([p, timeout]);
-    } finally {
-      if (t) clearTimeout(t);
-    }
-  }, []);
-
-  // Hydrate from localStorage or seed synchronously so retail/HQ never sit on a blank gate (React Strict Mode safe).
+  // Hydrate from localStorage or seed synchronously so dashboards render immediately (stale-while-revalidate).
   useLayoutEffect(() => {
     if (!user) {
       setData(null);
@@ -376,11 +379,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
     const local = loadLocalAppData();
     if (local) {
-      setData(normalizeAppData(local));
+      setData(normalizeAppData(applyCatalogToAppData(local)));
     } else {
       setData(FALLBACK_SEED);
     }
-    setLoading(true);
+    setLoading(false);
     setError(null);
   }, [user?.id]);
 
@@ -390,17 +393,19 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const hadLocalOnStart = Boolean(loadLocalAppData());
 
+    const applyServer = (serverData: AppData) => {
+      const merged = mergeServerWithLocal(serverData, loadLocalAppData());
+      setData(normalizeAppData(applyCatalogToAppData(merged)));
+      setError(null);
+      saveLocalAppData(merged);
+    };
+
     (async () => {
       try {
-        const serverData = await withTimeout(fetchAppData(), 15_000);
-        if (!cancelled) {
-          const merged = mergeServerWithLocal(serverData as AppData, loadLocalAppData());
-          setData(normalizeAppData(merged));
-          setError(null);
-          saveLocalAppData(merged);
-        }
+        const platformData = await fetchAppData({ scope: "platform" });
+        if (!cancelled) applyServer(platformData as AppData);
       } catch (e) {
-        console.error("[AppDataContext] Fetch error:", e);
+        console.error("[AppDataContext] Platform sync error:", e);
         if (!cancelled) {
           const message = e instanceof Error ? e.message : String(e);
           setError(message);
@@ -415,17 +420,23 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             });
           }
         }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        return;
+      }
+
+      if (cancelled) return;
+
+      try {
+        const fullData = await fetchAppData({ scope: "full" });
+        if (!cancelled) applyServer(fullData as AppData);
+      } catch (e) {
+        console.warn("[AppDataContext] Full distributor sync skipped:", e);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [user?.id, fetchEpoch, withTimeout]);
+  }, [user?.id, fetchEpoch]);
 
   const updateData = useCallback((fn: (prev: AppData) => AppData) => {
     setData((prev) => {
@@ -445,12 +456,48 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshShipments = useCallback(async () => {
-    const res = (await apiGetShipments({ limit: 200 })) as { data?: unknown[] };
+    try {
+      const res = (await apiGetShipments({ limit: 200 })) as { data?: unknown[] };
+      const rows = Array.isArray(res.data) ? res.data : [];
+      const shipments = rows.map((r) => mapRowToShipment(r as Record<string, unknown>));
+      setData((prev) => {
+        if (!prev) return prev;
+        const apiIds = new Set(shipments.map((s) => s.id));
+        const localOnly = prev.shipments.filter((s) => !apiIds.has(s.id));
+        return normalizeAppData({ ...prev, shipments: [...shipments, ...localOnly] });
+      });
+    } catch (err) {
+      console.warn("[refreshShipments] API list failed; keeping local shipments:", err);
+    }
+  }, []);
+
+  const refreshSalesOrders = useCallback(async () => {
+    try {
+      const res = await getOrders({ limit: 200 });
+      const rows = Array.isArray(res.data) ? res.data : [];
+      setData((prev) => {
+        if (!prev) return prev;
+        const fromApi = mapApiOrdersToSalesOrders(
+          rows as Record<string, unknown>[],
+          prev.accounts.map((a) => ({ id: a.id, market: a.market })),
+        );
+        return normalizeAppData({
+          ...prev,
+          salesOrders: mergeSalesOrdersFromApi(prev.salesOrders, fromApi),
+        });
+      });
+    } catch (err) {
+      console.warn("[refreshSalesOrders] API list failed; keeping local orders:", err);
+    }
+  }, []);
+
+  const refreshProducts = useCallback(async () => {
+    const res = (await apiGetProducts({ limit: 500 })) as { data?: unknown[] };
     const rows = Array.isArray(res.data) ? res.data : [];
-    const shipments = rows.map((r) => mapRowToShipment(r as Record<string, unknown>));
+    const products = rows.map((r) => mapApiRowToProduct(r as Record<string, unknown>));
     setData((prev) => {
       if (!prev) return prev;
-      return normalizeAppData({ ...prev, shipments });
+      return normalizeAppData(applyCatalogToAppData({ ...prev, products }));
     });
   }, []);
 
@@ -463,8 +510,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo((): AppDataContextValue | null => {
     if (!data) return null;
-    return { data, loading, error, updateData, refreshTeamMembers, refreshShipments };
-  }, [data, loading, error, updateData, refreshTeamMembers, refreshShipments]);
+    return {
+      data,
+      loading,
+      error,
+      updateData,
+      refreshTeamMembers,
+      refreshShipments,
+      refreshSalesOrders,
+      refreshProducts,
+    };
+  }, [data, loading, error, updateData, refreshTeamMembers, refreshShipments, refreshSalesOrders, refreshProducts]);
 
   if (!user) {
     return <>{children}</>;
@@ -492,7 +548,7 @@ export function useAppData(): AppDataContextValue {
 }
 
 export function useProducts() {
-  const { data, updateData } = useAppData();
+  const { data, updateData, refreshProducts } = useAppData();
   
   const addProduct = useCallback(async (p: Product) => {
     // Check for duplicate SKU locally first
@@ -509,10 +565,12 @@ export function useProducts() {
       });
       
       // Update local state with server response (includes id, timestamps)
-      updateData((d) => ({
-        ...d,
-        products: [...d.products, { ...p, id: result.data.id }],
-      }));
+      updateData((d) =>
+        applyCatalogToAppData({
+          ...d,
+          products: [...d.products, { ...p, id: result.data.id }],
+        }),
+      );
       
       toast.success("Product created", { description: `${p.name} (${p.sku})` });
       return { success: true, data: result.data };
@@ -543,12 +601,14 @@ export function useProducts() {
 
       const rid = (result as { data?: { id?: string | number } }).data?.id;
 
-      updateData((d) => ({
-        ...d,
-        products: d.products.map((x) =>
-          x.sku === sku ? { ...merged, id: rid ?? idRaw } : x,
-        ),
-      }));
+      updateData((d) =>
+        applyCatalogToAppData({
+          ...d,
+          products: d.products.map((x) =>
+            x.sku === sku ? { ...merged, id: rid ?? idRaw } : x,
+          ),
+        }),
+      );
 
       toast.success("Product updated");
       return { success: true, data: result.data };
@@ -566,10 +626,12 @@ export function useProducts() {
     }
 
     const dropLocal = () => {
-      updateData((d) => ({
-        ...d,
-        products: d.products.filter((x) => x.sku !== sku),
-      }));
+      updateData((d) =>
+        applyCatalogToAppData({
+          ...d,
+          products: d.products.filter((x) => x.sku !== sku),
+        }),
+      );
     };
 
     try {
@@ -603,8 +665,9 @@ export function useProducts() {
       addProduct,
       patchProduct,
       removeProduct,
+      refreshProducts,
     }),
-    [data.products, addProduct, patchProduct, removeProduct],
+    [data.products, addProduct, patchProduct, removeProduct, refreshProducts],
   );
 }
 
@@ -1314,24 +1377,76 @@ export function useSalesOrders() {
     }
   }, [data.accounts, data.products, updateData]);
   
-  const patchSalesOrder = useCallback(async (id: string, patch: Partial<SalesOrder>) => {
-    // If only status is being updated, use the status endpoint
-    if (patch.status && Object.keys(patch).length === 1) {
-      try {
-        const result = await apiUpdateOrderStatus(id, patch.status);
-        
+  const patchSalesOrder = useCallback(async (
+    id: string,
+    patch: Partial<SalesOrder>,
+    options?: { requireSync?: boolean },
+  ) => {
+    const applyLocalStatus = (apiId: string) => {
+      flushSync(() => {
         updateData((d) => ({
           ...d,
-          salesOrders: d.salesOrders.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+          salesOrders: d.salesOrders.map((x) =>
+            x.id === id || x.id === apiId || x.orderNumber === id ? { ...x, ...patch } : x,
+          ),
         }));
-        
-        toast.success("Order status updated");
-        return { success: true, data: result.data };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to update order";
-        toast.error("Failed to update order", { description: message });
-        return { success: false, error: message };
+      });
+    };
+
+    // Status-only updates (pick & pack, log shipment, HQ order workflow).
+    if (patch.status && Object.keys(patch).length === 1) {
+      const exists = data.salesOrders.some(
+        (x) => x.id === id || x.orderNumber === id,
+      );
+      if (!exists) {
+        return { success: false, synced: false, error: "Order not found in session" };
       }
+
+      const apiId = await resolveOrderIdForApiUpdate(id, data.salesOrders);
+      const requireSync = options?.requireSync === true;
+
+      if (requireSync && !canSyncOrderStatusToApi(apiId)) {
+        return {
+          success: false,
+          synced: false,
+          error:
+            "This order is not saved on the server yet. Refresh the page or recreate the order before fulfillment.",
+        };
+      }
+
+      if (requireSync && canSyncOrderStatusToApi(apiId)) {
+        try {
+          const result = await apiUpdateOrderStatus(apiId, patch.status);
+          applyLocalStatus(apiId);
+          return { success: true, synced: true, data: result.data };
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : "Failed to update order status on server";
+          console.warn("[patchSalesOrder] API status sync failed:", err);
+          const notOnServer = /not found|HTTP 404|404/i.test(message);
+          return {
+            success: false,
+            synced: false,
+            error: notOnServer
+              ? "This order is not saved on the server yet. Refresh the page or recreate the order before fulfillment."
+              : message,
+          };
+        }
+      }
+
+      applyLocalStatus(apiId);
+
+      if (canSyncOrderStatusToApi(apiId)) {
+        try {
+          const result = await apiUpdateOrderStatus(apiId, patch.status);
+          return { success: true, synced: true, data: result.data };
+        } catch (err) {
+          console.warn("[patchSalesOrder] API status sync failed; local state updated:", err);
+          return { success: true, synced: false };
+        }
+      }
+
+      return { success: true, synced: false };
     }
     
     // For other updates, just update local state (full update API not yet implemented)
@@ -1341,7 +1456,7 @@ export function useSalesOrders() {
     }));
     
     return { success: true };
-  }, [updateData]);
+  }, [data.salesOrders, updateData]);
   
   return useMemo(
     () => ({
@@ -1526,7 +1641,7 @@ function nextNprId(existing: NewProductRequest[]): string {
 }
 
 export function useNewProductRequests() {
-  const { data, updateData } = useAppData();
+  const { data, updateData, refreshProducts } = useAppData();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1535,7 +1650,11 @@ export function useNewProductRequests() {
     setError(null);
     try {
       const response = await getNewProductRequests({ limit: 100 });
-      updateData((d) => ({ ...d, newProductRequests: response.data }));
+      const rows = Array.isArray(response.data) ? response.data : [];
+      const mapped = rows.map((row) =>
+        mapNewProductRequestApiResponse(row as Record<string, unknown>),
+      );
+      updateData((d) => ({ ...d, newProductRequests: mapped }));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to fetch new product requests";
       setError(message);
@@ -1559,8 +1678,12 @@ export function useNewProductRequests() {
       });
       updateData((d) => ({
         ...d,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        newProductRequests: [response.data as any, ...(d.newProductRequests ?? [])],
+        newProductRequests: [
+          mapNewProductRequestApiResponse(
+            (response as { data: Record<string, unknown> }).data,
+          ),
+          ...(d.newProductRequests ?? []),
+        ],
       }));
       toast.success("New product request created", { description: response.data.title });
       return { success: true, data: response.data };
@@ -1573,23 +1696,32 @@ export function useNewProductRequests() {
 
   const patchNewProductRequest = useCallback(async (id: string, patch: Partial<NewProductRequest>) => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await apiUpdateNewProductRequest(id, patch as any);
+      const existing = (data.newProductRequests ?? []).find((n) => n.id === id);
+      const apiId = existing ? newProductRequestApiId(existing) : id;
+      const response = await apiUpdateNewProductRequest(
+        apiId,
+        mapNewProductRequestPatchToApi(patch),
+      );
+      const mapped = mapNewProductRequestApiResponse(
+        (response as { data: Record<string, unknown> }).data,
+      );
       updateData((d) => ({
         ...d,
         newProductRequests: (d.newProductRequests ?? []).map((n) =>
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          n.id === id ? { ...n, ...response.data } as any : n
+          n.id === id ? { ...n, ...mapped } : n,
         ),
       }));
+      if (patch.status === "approved") {
+        await refreshProducts();
+      }
       toast.success("New product request updated");
-      return { success: true, data: response.data };
+      return { success: true, data: mapped };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update new product request";
       toast.error("Failed to update new product request", { description: message });
       return { success: false, error: message };
     }
-  }, [updateData]);
+  }, [data.newProductRequests, refreshProducts, updateData]);
 
   return useMemo(
     () => ({

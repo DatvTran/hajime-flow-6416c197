@@ -43,7 +43,7 @@ import { Link } from "react-router-dom";
 const WH_LINK_NONE = "__none__";
 
 export default function SettingsPage() {
-  const { products, addProduct, removeProduct, patchProduct } = useProducts();
+  const { products, addProduct, removeProduct, patchProduct, refreshProducts } = useProducts();
   const { data, updateData, loading } = useAppData();
 
   const [newProductOpen, setNewProductOpen] = useState(false);
@@ -742,7 +742,10 @@ export default function SettingsPage() {
                   defaultType="products"
                   variant="outline"
                   size="sm"
-                  onSuccess={() => toast.success("Products imported", { description: "Refresh to see changes" })}
+                  onSuccess={() => {
+                toast.success("Products imported", { description: "Catalog refreshed from server." });
+                void refreshProducts();
+              }}
                 />
                 <Button
                   type="button"

@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hajime — HQ Command Center · Brand Operator</title>
+<link rel="stylesheet" href="colors_and_type.css">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--font-body);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.shell{display:grid;grid-template-columns:258px 1fr;height:100vh;overflow:hidden}
+.side{background:hsl(var(--sidebar-background));color:hsl(var(--sidebar-foreground));display:flex;flex-direction:column;border-right:1px solid hsl(var(--sidebar-border));overflow-y:auto}
+.logo-row{display:flex;align-items:center;gap:10px;padding:20px 16px 16px;border-bottom:1px solid hsl(var(--sidebar-border))}
+.logo-mark{width:34px;height:34px;border-radius:8px;background:hsl(var(--sidebar-accent));display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
+.logo-mark img{height:26px;filter:brightness(0) invert(1)}
+.logo-name{font-family:var(--font-display);font-weight:600;font-size:16px;color:hsl(35 14%90%);line-height:1.2}
+.logo-sub{font-size:10px;color:hsl(35 12%42%);letter-spacing:.08em;margin-top:1px}
+.hq-pill{margin:14px 10px 0;background:linear-gradient(135deg,hsl(40 88%42%/.1),hsl(40 60%50%/.06));border:1px solid hsl(40 88%42%/.22);border-radius:12px;padding:12px 14px}
+.hq-pill-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.hq-dot{width:8px;height:8px;border-radius:999px;background:hsl(158 56%46%);box-shadow:0 0 0 3px hsl(158 56%46%/.2);flex-shrink:0}
+.hq-pill-title{font-size:12px;font-weight:600;color:hsl(40 80%60%)}
+.hq-pill-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.hq-stat{background:hsl(0 0%100%/.03);border-radius:7px;padding:6px 8px}
+.hq-stat-v{font-family:var(--font-display);font-size:15px;font-weight:600;color:hsl(35 14%88%);line-height:1.1}
+.hq-stat-l{font-size:9px;color:hsl(35 12%44%);text-transform:uppercase;letter-spacing:.06em;margin-top:1px}
+.nav-section{padding:12px 10px 6px;display:flex;flex-direction:column;gap:2px}
+.nav-label{padding:4px 8px 6px;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.14em;color:hsl(var(--sidebar-foreground)/.32)}
+.navitem{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:6px;color:hsl(var(--sidebar-foreground)/.68);font-size:13px;cursor:pointer;transition:background 140ms,color 140ms}
+.navitem:hover{background:hsl(var(--sidebar-accent));color:hsl(35 14%90%)}
+.navitem.active{background:hsl(var(--sidebar-accent));color:hsl(var(--sidebar-primary));font-weight:500}
+.navitem svg{width:15px;height:15px;flex-shrink:0}
+.nb{margin-left:auto;font-size:10px;font-weight:600;padding:1px 6px;border-radius:999px;font-family:var(--font-mono)}
+.nb-gold{background:hsl(40 88%42%/.18);color:hsl(40 88%42%)}
+.nb-red{background:hsl(0 68%48%/.14);color:hsl(0 68%42%)}
+.nb-amber{background:hsl(38 90%50%/.14);color:hsl(30 80%34%)}
+.nb-green{background:hsl(158 56%36%/.15);color:hsl(158 56%32%)}
+.side-div{height:1px;background:hsl(var(--sidebar-border));margin:4px 10px 10px}
+.side-footer{margin-top:auto;padding:12px 10px;border-top:1px solid hsl(var(--sidebar-border));display:flex;align-items:center;gap:10px}
+.avatar{width:30px;height:30px;border-radius:999px;background:hsl(var(--sidebar-accent));color:hsl(35 14%82%);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0}
+.main{display:flex;flex-direction:column;min-width:0;height:100vh;overflow:hidden}
+.topbar{height:54px;display:flex;align-items:center;padding:0 32px;gap:14px;background:hsl(var(--glass-bg));backdrop-filter:blur(12px);border-bottom:1px solid hsl(var(--border)/.6);flex-shrink:0;z-index:10}
+.crumbs{font-size:13px;color:hsl(var(--muted-foreground))}
+.crumbs strong{color:hsl(var(--foreground));font-weight:500}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.icon-btn{width:34px;height:34px;border-radius:8px;border:1px solid hsl(var(--border));background:hsl(var(--background));display:flex;align-items:center;justify-content:center;cursor:pointer;color:hsl(var(--muted-foreground));transition:background 140ms;position:relative}
+.icon-btn:hover{background:hsl(var(--muted))}
+.icon-btn svg{width:16px;height:16px}
+#pg{overflow-y:auto;flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:500;border-radius:8px;padding:0 16px;height:36px;border:1px solid transparent;cursor:pointer;transition:background 140ms,transform 100ms;font-family:var(--font-body)}
+.btn:active{transform:scale(.98)}
+.btn-accent{background:hsl(var(--accent));color:hsl(var(--accent-foreground))}
+.btn-accent:hover{background:hsl(var(--accent-hover))}
+.btn-outline{background:hsl(var(--background));border-color:hsl(var(--border));color:hsl(var(--foreground))}
+.btn-outline:hover{background:hsl(var(--muted))}
+.btn-ink{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
+.btn-ink:hover{background:hsl(24 10%16%)}
+.btn-green{background:hsl(158 56%36%);color:white}
+.btn-green:hover{background:hsl(158 56%30%)}
+.btn-red{background:hsl(var(--background));border-color:hsl(0 68%48%/.3);color:hsl(0 68%44%)}
+.btn-red:hover{background:hsl(0 68%48%/.06)}
+.btn-sm{height:30px;font-size:12px;padding:0 12px}
+.btn svg{width:14px;height:14px}
+.pw{padding:30px 40px 80px;max-width:1320px}
+.ph-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px}
+.sec-title{font-family:var(--font-display);font-size:19px;font-weight:500;letter-spacing:-.01em}
+.sec-link{font-size:12px;color:hsl(var(--accent));cursor:pointer;font-weight:500}
+.sec-link:hover{text-decoration:underline}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
+.kpi{background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:4px;box-shadow:var(--shadow-soft);transition:box-shadow 200ms,transform 200ms}
+.kpi:hover{box-shadow:var(--shadow-lifted);transform:translateY(-1px)}
+.kpi-ic{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.kpi-ic svg{width:17px;height:17px}
+.ic-gold{background:hsl(40 88%42%/.1);color:hsl(40 88%36%)}
+.ic-green{background:hsl(158 56%36%/.1);color:hsl(158 56%30%)}
+.ic-blue{background:hsl(215 72%50%/.1);color:hsl(215 72%42%)}
+.ic-ink{background:hsl(24 10%10%/.07);color:hsl(24 10%18%)}
+.ic-red{background:hsl(0 68%48%/.1);color:hsl(0 68%42%)}
+.kpi-lab{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:hsl(var(--muted-foreground));font-weight:500}
+.kpi-val{font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.1;font-feature-settings:'tnum'}
+.kpi-sub{font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px}
+.kpi-delta{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:500;margin-top:2px}
+.delta-up{color:hsl(158 56%32%)}
+.delta-dn{color:hsl(0 68%44%)}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:500;border:1px solid;white-space:nowrap}
+.pdot{width:6px;height:6px;border-radius:999px}
+.p-green{background:hsl(158 56%36%/.08);color:hsl(158 56%26%);border-color:hsl(158 56%36%/.2)}
+.p-blue{background:hsl(215 72%50%/.08);color:hsl(215 72%38%);border-color:hsl(215 72%50%/.2)}
+.p-amber{background:hsl(38 90%50%/.1);color:hsl(30 80%30%);border-color:hsl(38 90%50%/.25)}
+.p-red{background:hsl(0 68%48%/.08);color:hsl(0 68%38%);border-color:hsl(0 68%48%/.2)}
+.p-neutral{background:hsl(var(--muted));color:hsl(var(--muted-foreground));border-color:hsl(var(--border))}
+.p-ink{background:hsl(24 10%10%/.08);color:hsl(24 10%16%);border-color:hsl(24 10%10%/.2)}
+.card{background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-soft)}
+.card-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid hsl(var(--border)/.5)}
+.card-title{font-size:14px;font-weight:600}
+.card-sub{font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px}
+.filter-bar{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap;align-items:center}
+.filter-btn{padding:6px 14px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid hsl(var(--border));background:hsl(var(--background));color:hsl(var(--muted-foreground));cursor:pointer;transition:all 140ms;font-family:var(--font-body)}
+.filter-btn.active{background:hsl(var(--primary));color:hsl(var(--primary-foreground));border-color:hsl(var(--primary))}
+.filter-btn:hover:not(.active){background:hsl(var(--muted));color:hsl(var(--foreground))}
+.search-wrap{position:relative;flex:1;max-width:320px;margin-left:auto}
+.search-wrap input{width:100%;height:36px;padding:0 12px 0 36px;border-radius:8px;border:1px solid hsl(var(--border));background:hsl(var(--background));font-size:13px;font-family:var(--font-body);color:hsl(var(--foreground));outline:none}
+.search-wrap input:focus{border-color:hsl(var(--ring))}
+.search-wrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:hsl(var(--muted-foreground));pointer-events:none}
+.data-table{width:100%;border-collapse:collapse}
+.data-table th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:hsl(var(--muted-foreground));font-weight:600;padding:10px 16px;background:hsl(var(--muted)/.5);border-bottom:1px solid hsl(var(--border)/.5)}
+.data-table td{padding:12px 16px;border-bottom:1px solid hsl(var(--border)/.4);font-size:13px;vertical-align:middle}
+.data-table tr:last-child td{border-bottom:none}
+.data-table tbody tr{transition:background 120ms}
+.data-table tbody tr:hover td{background:hsl(var(--muted)/.3)}
+.two-col{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;margin-bottom:28px}
+.mono{font-family:var(--font-mono)}
+/* Pipeline / supply chain flow */
+.flow-card{background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:16px;padding:22px 24px;margin-bottom:28px;box-shadow:var(--shadow-soft)}
+.flow-row{display:flex;align-items:stretch;gap:0;position:relative}
+.flow-node{flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;cursor:pointer;padding:0 8px}
+.flow-node:hover .flow-icon{transform:translateY(-2px);box-shadow:var(--shadow-lifted)}
+.flow-icon{width:54px;height:54px;border-radius:14px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;transition:transform 200ms,box-shadow 200ms;border:1px solid hsl(var(--border)/.6);background:hsl(var(--card))}
+.flow-icon svg{width:24px;height:24px}
+.flow-name{font-size:13px;font-weight:600}
+.flow-meta{font-size:11px;color:hsl(var(--muted-foreground));margin-top:2px;line-height:1.4}
+.flow-count{font-family:var(--font-mono);font-size:11px;font-weight:600;margin-top:6px;padding:2px 8px;border-radius:999px}
+.flow-arrow{display:flex;align-items:center;color:hsl(var(--border));flex-shrink:0;padding-top:16px}
+.flow-arrow svg{width:22px;height:22px}
+/* Approval queue */
+.approval-card{background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;margin-bottom:12px;overflow:hidden;box-shadow:var(--shadow-soft);transition:box-shadow 200ms}
+.approval-card:hover{box-shadow:var(--shadow-lifted)}
+.approval-card.urgent{border-color:hsl(0 68%48%/.3)}
+.approval-head{display:flex;align-items:center;gap:14px;padding:16px 20px;cursor:pointer}
+.approval-detail{display:none;padding:16px 20px;border-top:1px solid hsl(var(--border)/.4);background:hsl(var(--muted)/.3)}
+.approval-detail.open{display:block}
+.src-chip{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
+.src-rep{background:hsl(215 72%50%/.12);color:hsl(215 72%42%)}
+.src-retail{background:hsl(40 88%42%/.12);color:hsl(40 88%34%)}
+.src-dist{background:hsl(158 56%36%/.12);color:hsl(158 56%30%)}
+.src-kura{background:hsl(280 40%50%/.12);color:hsl(280 40%48%)}
+/* Markets grid */
+.markets-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:28px}
+.market-card{background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;padding:18px;box-shadow:var(--shadow-soft);transition:box-shadow 200ms,transform 200ms;cursor:pointer}
+.market-card:hover{box-shadow:var(--shadow-lifted);transform:translateY(-1px)}
+.market-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px}
+.market-name{font-family:var(--font-display);font-size:18px;font-weight:600;letter-spacing:-.01em}
+.market-sub{font-size:11px;color:hsl(var(--muted-foreground));margin-top:1px}
+.cover-bar{height:6px;border-radius:999px;background:hsl(var(--border));overflow:hidden;margin:8px 0 4px;position:relative}
+.cover-fill{height:100%;border-radius:999px}
+.cf-low{background:hsl(0 68%48%)}
+.cf-med{background:hsl(38 90%50%)}
+.cf-ok{background:hsl(158 56%36%)}
+/* Incentive overview cards */
+.prog-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:28px}
+.prog-card{background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:16px;overflow:hidden;box-shadow:var(--shadow-soft)}
+.prog-header{padding:18px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid hsl(var(--border)/.5)}
+.prog-icon{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.prog-icon svg{width:20px;height:20px}
+.prog-title{font-size:15px;font-weight:600}
+.prog-sub{font-size:12px;color:hsl(var(--muted-foreground));margin-top:1px}
+.prog-body{padding:16px 20px}
+.prog-stat-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid hsl(var(--border)/.3);font-size:13px}
+.prog-stat-row:last-child{border-bottom:none}
+.prog-stat-lab{color:hsl(var(--muted-foreground))}
+.prog-stat-val{font-weight:600;font-family:var(--font-mono)}
+/* Tier dist bar */
+.tierdist{display:flex;height:28px;border-radius:8px;overflow:hidden;margin:10px 0}
+.tierseg{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:white;min-width:24px}
+/* Activity feed */
+.feed-row{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid hsl(var(--border)/.4)}
+.feed-row:last-child{border-bottom:none}
+.feed-ic{width:30px;height:30px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.feed-ic svg{width:14px;height:14px}
+.fi-blue{background:hsl(215 72%50%/.1);color:hsl(215 72%42%)}
+.fi-gold{background:hsl(40 88%42%/.1);color:hsl(40 88%36%)}
+.fi-green{background:hsl(158 56%36%/.1);color:hsl(158 56%30%)}
+.fi-purple{background:hsl(280 40%50%/.1);color:hsl(280 40%48%)}
+.fi-red{background:hsl(0 68%48%/.08);color:hsl(0 68%42%)}
+.feed-body{flex:1;min-width:0}
+.feed-label{font-size:13px;font-weight:500}
+.feed-sub{font-size:11px;color:hsl(var(--muted-foreground));margin-top:1px}
+.feed-time{font-size:11px;color:hsl(var(--muted-foreground));font-family:var(--font-mono);white-space:nowrap;flex-shrink:0}
+/* Chart */
+.chart-wrap{background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;padding:20px;margin-bottom:20px}
+/* Avail bars */
+.avail-bar{height:5px;border-radius:999px;background:hsl(var(--border));overflow:hidden;margin-top:5px}
+.avail-fill{height:100%;border-radius:999px}
+.af-low{background:hsl(0 68%48%)}
+.af-med{background:hsl(38 90%50%)}
+.af-ok{background:hsl(158 56%36%)}
+/* Form */
+.form-group{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.form-group label{font-size:11px;font-weight:500;color:hsl(var(--muted-foreground));text-transform:uppercase;letter-spacing:.08em}
+.form-group input,.form-group select,.form-group textarea{padding:0 12px;border-radius:8px;border:1px solid hsl(var(--border));background:hsl(var(--background));font-size:13px;font-family:var(--font-body);color:hsl(var(--foreground));outline:none;height:38px}
+.form-group textarea{height:auto;padding:10px 12px;resize:none}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:hsl(var(--ring))}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid hsl(var(--border)/.4)}
+.toggle-row:last-child{border-bottom:none}
+.ti-label{font-size:13px;font-weight:500}
+.ti-sub{font-size:12px;color:hsl(var(--muted-foreground));margin-top:1px}
+.toggle-sw{width:40px;height:22px;border-radius:999px;background:hsl(var(--muted));position:relative;cursor:pointer;transition:background 200ms;flex-shrink:0}
+.toggle-sw::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:999px;background:white;box-shadow:0 1px 3px hsl(24 10%10%/.2);transition:transform 200ms}
+.toggle-sw.on{background:hsl(var(--accent))}
+.toggle-sw.on::after{transform:translateX(18px)}
+/* Alert */
+.alert-bar{display:flex;align-items:flex-start;gap:12px;border-radius:12px;padding:14px 16px;margin-bottom:24px;border:1px solid}
+.alert-err{background:hsl(0 68%48%/.06);border-color:hsl(0 68%48%/.2)}
+.alert-err svg{color:hsl(0 68%44%)}
+.alert-warn{background:hsl(38 90%50%/.07);border-color:hsl(38 90%50%/.22)}
+.alert-warn svg{color:hsl(30 80%34%)}
+.alert-bar svg{width:16px;height:16px;flex-shrink:0;margin-top:1px}
+@keyframes enterUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.enter{animation:enterUp 400ms var(--ease-out-expo) both}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="side">
+  <div class="logo-row">
+    <div class="logo-mark"><img src="assets/hajime-logo.png" alt="Hajime"></div>
+    <div><div class="logo-name">Hajime</div><div class="logo-sub">HQ Command Center</div></div>
+  </div>
+  <div class="hq-pill">
+    <div class="hq-pill-top"><div class="hq-dot"></div><div class="hq-pill-title">All systems live</div></div>
+    <div class="hq-pill-grid">
+      <div class="hq-stat"><div class="hq-stat-v">5</div><div class="hq-stat-l">portals</div></div>
+      <div class="hq-stat"><div class="hq-stat-v">4</div><div class="hq-stat-l">markets</div></div>
+    </div>
+  </div>
+  <nav class="nav-section">
+    <div class="nav-label">Command</div>
+    <div class="navitem active" data-nav="dashboard"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Dashboard</div>
+    <div class="navitem" data-nav="production"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M10 2v7.31M14 9.3V2M8.5 2h7M14 9.3a6.5 6.5 0 1 1-4 0M5.58 16.5h12.85"/></svg>Production requests<span class="nb nb-amber">2</span></div>
+    <div class="navitem" data-nav="replenishment"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>Replenishment orders<span class="nb nb-red" id="replen-nav-badge">3</span></div>
+    <div class="navitem" data-nav="orders"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>All orders</div>
+    <div class="navitem" data-nav="markets"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Markets & allocation</div>
+  </nav>
+  <div class="side-div"></div>
+  <nav class="nav-section" style="padding-top:4px">
+    <div class="nav-label">Network</div>
+    <div class="navitem" data-nav="manufacturers"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M10 2v7.31M14 9.3V2M8.5 2h7M14 9.3a6.5 6.5 0 1 1-4 0M5.58 16.5h12.85"/></svg>Manufacturers<span class="nb nb-amber">2</span></div>
+    <div class="navitem" data-nav="distributors"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Distributors</div>
+    <div class="navitem" data-nav="reps"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Sales reps</div>
+    <div class="navitem" data-nav="accounts"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Retail accounts<span class="nb nb-amber">2</span></div>
+  </nav>
+  <div class="side-div"></div>
+  <nav class="nav-section" style="padding-top:4px">
+    <div class="nav-label">Brand</div>
+    <div class="navitem" data-nav="programs"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Incentive programs</div>
+    <div class="navitem" data-nav="catalog"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Product catalog</div>
+    <div class="navitem" data-nav="analytics"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Analytics</div>
+    <div class="navitem" data-nav="settings"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</div>
+  </nav>
+  <div class="side-footer">
+    <div class="avatar">AN</div>
+    <div><div style="font-size:12px;color:hsl(35 14%88%);font-weight:500">Aiko Nakamura</div><div style="font-size:10px;color:hsl(35 12%44%)">Brand Operator · HQ</div></div>
+  </div>
+</aside>
+<main class="main">
+  <header class="topbar">
+    <div class="crumbs">HQ › <strong id="page-title">Dashboard</strong></div>
+    <div class="topbar-right">
+      <button class="icon-btn"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+      <button class="icon-btn"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span style="position:absolute;top:8px;right:9px;width:6px;height:6px;border-radius:999px;background:hsl(0 68%48%);border:1.5px solid hsl(var(--background))"></span></button>
+      <button class="btn btn-accent" onclick="nav('production')"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M10 2v7.31M14 9.3V2M8.5 2h7M14 9.3a6.5 6.5 0 1 1-4 0M5.58 16.5h12.85"/></svg>Production requests</button>
+    </div>
+  </header>
+  <div id="pg"></div>
+</main>
+</div>
+<script>
+const LABELS={dashboard:'Dashboard',production:'Production requests',replenishment:'Replenishment orders',orders:'All orders',markets:'Markets & allocation',manufacturers:'Manufacturers',distributors:'Distributors',reps:'Sales reps',accounts:'Retail accounts',programs:'Incentive programs',catalog:'Product catalog',analytics:'Analytics',settings:'Settings'};
+function nav(id){
+  document.querySelectorAll('[data-nav]').forEach(el=>el.classList.toggle('active',el.dataset.nav===id));
+  document.getElementById('page-title').textContent=LABELS[id]||id;
+  const pg=document.getElementById('pg');
+  pg.innerHTML=(PAGES[id]||PAGES.dashboard)();
+  pg.scrollTop=0;
+  bind();
+}
+function pill(type,label){
+  const cls={green:'p-green',blue:'p-blue',amber:'p-amber',red:'p-red',neutral:'p-neutral',ink:'p-ink'};
+  const dots={green:'hsl(158 56%36%)',blue:'hsl(215 72%50%)',amber:'hsl(38 90%50%)',red:'hsl(0 68%48%)',neutral:'hsl(var(--muted-foreground))',ink:'hsl(24 10%16%)'};
+  return`<span class="pill ${cls[type]||'p-neutral'}"><span class="pdot" style="background:${dots[type]||'grey'}"></span>${label}</span>`;
+}
+function svgi(d,s=14){return`<svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" style="width:${s}px;height:${s}px">${d}</svg>`;}
+const IC={
+  check:`<polyline points="20 6 9 17 4 12"/>`,
+  doc:`<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>`,
+  truck:`<rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>`,
+  flask:`<path d="M10 2v7.31M14 9.3V2M8.5 2h7M14 9.3a6.5 6.5 0 1 1-4 0M5.58 16.5h12.85"/>`,
+  users:`<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>`,
+  store:`<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>`,
+  star:`<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`,
+  chart:`<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>`,
+  globe:`<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>`,
+  box:`<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/>`,
+  alert:`<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>`,
+  up:`<polyline points="18 15 12 9 6 15"/>`,
+  dn:`<polyline points="6 9 12 15 18 9"/>`,
+  cart:`<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>`,
+  bottle:`<path d="M8 2h8M9 2v3.5a4 4 0 0 1-.6 2.1L7 10M15 2v3.5a4 4 0 0 0 .6 2.1L17 10M7 10v10a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V10"/>`,
+  award:`<circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>`,
+  arrow:`<path d="M5 12h14M12 5l7 7-7 7"/>`,
+};
+function kpi(ic,cl,lab,val,sub,delta,dcl){
+  return`<div class="kpi"><div class="kpi-ic ${cl}">${svgi(ic,17)}</div><div class="kpi-lab">${lab}</div><div class="kpi-val">${val}</div>${sub?`<div class="kpi-sub">${sub}</div>`:''}${delta?`<div class="kpi-delta ${dcl}">${delta}</div>`:''}</div>`;
+}
+
+/* ── Data ── */
+const PRODUCTION=[
+  {po:'PR-2026-0142',src:'kura',srcLabel:'Kuramoto Brewing',sku:'400× Florin Peaks 750ml',market:'Niigata',value:'¥3.6M',rep:'Haruki Sato',date:'Thu 28 May',urgent:true,note:'Kura requests confirmation on Lot 08 assignment and 50% seimaibuai spec before scheduling. Rebuilds Chicago + NYC allocation.'},
+  {po:'PR-2026-0141',src:'kura',srcLabel:'Kuramoto Brewing',sku:'120× Ryusui Reserve 500ml',market:'Niigata',value:'¥2.1M',rep:'Haruki Sato',date:'Tue 26 May',urgent:false,note:'Limited seasonal lot — single-tank batch. Kura requesting quality-hold sign-off for HQ tasting before bottling.'},
+];
+const srcChip={rep:'src-rep',retail:'src-retail',dist:'src-dist',kura:'src-kura'};
+
+const ORDERS=[
+  {po:'PO-2026-0421',acct:'The Drake Hotel',sku:'HJM-FP-750',qty:100,market:'Chicago',eta:'—',st:'amber',sl:'pending'},
+  {po:'PO-2026-0418',acct:'The Drake Hotel',sku:'HJM-FP-750',qty:100,market:'Chicago',eta:'22 May',st:'blue',sl:'in-transit'},
+  {po:'PO-2026-0417',acct:'Quattro Mani',sku:'HJM-JN-720',qty:50,market:'Milan',eta:'9 Apr',st:'green',sl:'delivered'},
+  {po:'PO-2026-0416',acct:'Bar Hemingway',sku:'HJM-FP-750',qty:40,market:'Paris',eta:'2 Apr',st:'green',sl:'delivered'},
+  {po:'PO-2026-0415',acct:'Kioi Sakaba',sku:'HJM-JN-720',qty:120,market:'Tokyo',eta:'—',st:'amber',sl:'pending'},
+  {po:'PO-2026-0414',acct:'The Aviary',sku:'HJM-FP-750',qty:24,market:'NYC',eta:'8 Apr',st:'green',sl:'delivered'},
+  {po:'PO-2026-0412',acct:'Katana Kitten',sku:'HJM-FP-750',qty:24,market:'NYC',eta:'3 Apr',st:'green',sl:'delivered'},
+  {po:'PO-2026-0408',acct:'Gramercy Tavern',sku:'EU-FP-750',qty:24,market:'NYC',eta:'13 May',st:'green',sl:'delivered'},
+];
+
+const MARKETS=[
+  {name:'NYC',sub:'Empire Wines · 24 accounts',cover:32,coverCls:'cf-ok',covLabel:'32 days cover',rev:'$51,400',skus:6,st:'green',sl:'healthy'},
+  {name:'Chicago',sub:'Midwest Spirits · 12 accounts',cover:14,coverCls:'cf-low',covLabel:'14 days cover',rev:'$28,200',skus:5,st:'red',sl:'low stock'},
+  {name:'Tokyo',sub:'Kanto Beverage · 31 accounts',cover:45,coverCls:'cf-ok',covLabel:'45 days cover',rev:'¥4.8M',skus:8,st:'green',sl:'healthy'},
+  {name:'Paris',sub:'Cave Lumière · 9 accounts',cover:18,coverCls:'cf-med',covLabel:'18 days cover',rev:'€19,600',skus:4,st:'amber',sl:'monitor'},
+  {name:'Milan',sub:'Vino Nord · 7 accounts',cover:38,coverCls:'cf-ok',covLabel:'38 days cover',rev:'€14,200',skus:4,st:'green',sl:'healthy'},
+  {name:'London',sub:'Prospect market',cover:0,coverCls:'cf-low',covLabel:'Not yet live',rev:'—',skus:0,st:'neutral',sl:'planned'},
+];
+
+const MFRS=[
+  {name:'Kuramoto Brewing',sub:'Niigata, Japan · Tōji Haruki Sato',tier:'Preferred Kura',quality:'98.6%',ontime:'96.2%',cap:'2,640 cs/Q',active:4,st:'amber',sl:'2 requests open'},
+  {name:'Echigo Kura',sub:'Niigata, Japan · Tōji Ken Mori',tier:'Standard Kura',quality:'97.1%',ontime:'94.0%',cap:'1,800 cs/Q',active:2,st:'green',sl:'on schedule'},
+];
+const DISTS=[
+  {name:'Empire Wines & Spirits',sub:'NYC · Jordan Wei',tier:'Gold Partner',fill:'97.8%',ontime:'94.2%',accounts:24,st:'green',sl:'active'},
+  {name:'Midwest Spirits Co.',sub:'Chicago · Dana Brooks',tier:'Silver Partner',fill:'96.1%',ontime:'95.5%',accounts:12,st:'amber',sl:'stock low'},
+  {name:'Kanto Beverage',sub:'Tokyo · Yuki Tanaka',tier:'Gold Partner',fill:'99.1%',ontime:'98.4%',accounts:31,st:'green',sl:'active'},
+  {name:'Cave Lumière',sub:'Paris · Élise Marchand',tier:'Silver Partner',fill:'95.4%',ontime:'92.0%',accounts:9,st:'amber',sl:'monitor'},
+];
+const REPS=[
+  {name:'Mike Tan',sub:'NYC Territory',tier:'Gold Performer',quota:'61%',rank:'#2 of 12',accounts:24,pipeline:'$22.4K',st:'green'},
+  {name:'Sofia Lim',sub:'NYC · Queens + Bronx',tier:'Silver Performer',quota:'48%',rank:'#5 of 12',accounts:11,pipeline:'$9.6K',st:'green'},
+  {name:'Carlos Reyes',sub:'Chicago Territory',tier:'Gold Performer',quota:'72%',rank:'#1 of 12',accounts:18,pipeline:'$31.2K',st:'green'},
+  {name:'Yuki Tanaka',sub:'Tokyo Territory',tier:'Platinum Performer',quota:'88%',rank:'#1 national',accounts:31,pipeline:'¥6.2M',st:'green'},
+];
+
+const PAGES={};
+
+/* ── DASHBOARD ── */
+PAGES.dashboard=()=>`
+<div class="pw enter">
+  <div class="ph-row">
+    <div><h1 style="font-family:var(--font-display);font-size:30px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Good morning, Aiko.</h1><p style="font-size:13px;color:hsl(var(--muted-foreground));max-width:60ch">2 production requests waiting on your sign-off. Chicago is at 14 days cover and needs a production decision. Order fulfillment runs at the distributor level — everything else across the network is healthy.</p></div>
+    <div style="display:flex;gap:8px;flex-shrink:0;margin-top:4px">
+      <button class="btn btn-outline" onclick="nav('analytics')">Full analytics</button>
+      <button class="btn btn-ink" onclick="nav('production')">Review production</button>
+    </div>
+  </div>
+  <div class="alert-bar alert-err">
+    ${svgi(IC.alert,16)}
+    <div style="flex:1;font-size:13px"><strong style="color:hsl(0 68%36%)">Chicago at 14 days cover</strong> <span style="color:hsl(30 70%35%)">— below the 21-day floor. Kuramoto has an open production request (PR-2026-0142, 400cs Florin Peaks) awaiting your sign-off to rebuild allocation.</span></div>
+    <div style="display:flex;gap:8px;flex-shrink:0"><button class="btn btn-outline btn-sm" onclick="nav('markets')">View market</button><button class="btn btn-accent btn-sm" onclick="nav('production')">Approve production</button></div>
+  </div>
+  <div class="kpi-row">
+    ${kpi(IC.cart,'ic-gold','Network revenue Q2','$486K','across 4 live markets',`${svgi(IC.up,11)} +16% vs Q1`,'kpi-delta delta-up')}
+    ${kpi(IC.flask,'ic-red','Production requests','2','1 urgent · rebuilds Chicago','','')}
+    ${kpi(IC.box,'ic-blue','Network inventory','3,840 cs','across 4 distributor DCs','','')}
+    ${kpi(IC.users,'ic-green','Active accounts','83','+4 onboarding this month',`${svgi(IC.up,11)} 92% retention`,'kpi-delta delta-up')}
+  </div>
+
+  <!-- Supply chain flow -->
+  <div class="sec-head"><div class="sec-title">Supply chain — live</div><span style="font-size:12px;color:hsl(var(--muted-foreground))">Click any node to manage that portal</span></div>
+  <div class="flow-card">
+    <div class="flow-row">
+      <div class="flow-node" onclick="nav('manufacturers')">
+        <div class="flow-icon" style="color:hsl(280 40%48%)">${svgi(IC.flask,24)}</div>
+        <div class="flow-name">Manufacturers</div>
+        <div class="flow-meta">2 kura · 6 batches brewing</div>
+        <div class="flow-count" style="background:hsl(280 40%50%/.1);color:hsl(280 40%48%)">2 requests open</div>
+      </div>
+      <div class="flow-arrow">${svgi(IC.arrow,22)}</div>
+      <div class="flow-node" onclick="nav('dashboard')">
+        <div class="flow-icon" style="color:hsl(40 88%38%);background:hsl(40 88%42%/.06);border-color:hsl(40 88%42%/.3)">${svgi(IC.star,24)}</div>
+        <div class="flow-name">Hajime HQ</div>
+        <div class="flow-meta">You · 2 production sign-offs</div>
+        <div class="flow-count" style="background:hsl(40 88%42%/.12);color:hsl(40 88%34%)">command center</div>
+      </div>
+      <div class="flow-arrow">${svgi(IC.arrow,22)}</div>
+      <div class="flow-node" onclick="nav('distributors')">
+        <div class="flow-icon" style="color:hsl(158 56%30%)">${svgi(IC.truck,24)}</div>
+        <div class="flow-name">Distributors</div>
+        <div class="flow-meta">4 partners · approve orders</div>
+        <div class="flow-count" style="background:hsl(158 56%36%/.1);color:hsl(158 56%30%)">3,840 cs stock</div>
+      </div>
+      <div class="flow-arrow">${svgi(IC.arrow,22)}</div>
+      <div class="flow-node" onclick="nav('reps')">
+        <div class="flow-icon" style="color:hsl(215 72%42%)">${svgi(IC.users,24)}</div>
+        <div class="flow-name">Sales reps</div>
+        <div class="flow-meta">12 reps · 4 territories</div>
+        <div class="flow-count" style="background:hsl(215 72%50%/.1);color:hsl(215 72%42%)">$94K pipeline</div>
+      </div>
+      <div class="flow-arrow">${svgi(IC.arrow,22)}</div>
+      <div class="flow-node" onclick="nav('accounts')">
+        <div class="flow-icon" style="color:hsl(40 88%36%)">${svgi(IC.store,24)}</div>
+        <div class="flow-name">Retail accounts</div>
+        <div class="flow-meta">83 active · 2 onboarding</div>
+        <div class="flow-count" style="background:hsl(40 88%42%/.1);color:hsl(40 88%34%)">$486K Q2</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Production requests</div><div class="card-sub">From kura partners — your sign-off</div></div><button class="btn btn-outline btn-sm" onclick="nav('production')">View all (2)</button></div>
+      ${PRODUCTION.map(a=>`
+      <div style="display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid hsl(var(--border)/.4);cursor:pointer;transition:background 120ms" onmouseover="this.style.background='hsl(var(--muted)/.4)'" onmouseout="this.style.background=''" onclick="nav('production')">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px"><span class="src-chip ${srcChip[a.src]}">Kura</span>${a.urgent?pill('red','urgent'):''}</div>
+          <div style="font-size:13px;font-weight:500;margin-top:4px">${a.sku}</div>
+          <div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:1px">${a.po} · ${a.srcLabel} · ${a.market}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0"><div style="font-family:var(--font-mono);font-size:13px;font-weight:600">${a.value}</div><div style="font-size:10px;color:hsl(var(--muted-foreground));margin-top:2px">${a.date}</div></div>
+      </div>`).join('')}
+    </div>
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Network activity</div><div class="card-sub">Real-time across all portals</div></div></div>
+      <div style="padding:6px 20px">
+        ${[
+          {ic:'fi-blue',ico:IC.cart,l:'Mike Tan submitted PO-2026-0420',s:'Sales Rep · Katana Kitten · $1,536',t:'2m ago'},
+          {ic:'fi-purple',ico:IC.flask,l:'Kuramoto advanced batch B-0416 to bottling',s:'Manufacturer · Ryusui Reserve · 64cs',t:'18m ago'},
+          {ic:'fi-green',ico:IC.truck,l:'Empire Wines shipped PO-2026-0418',s:'Distributor · 100cs → Drake Hotel',t:'1h ago'},
+          {ic:'fi-gold',ico:IC.store,l:'The Aviary placed reorder',s:'Retail · 48cs Florin Peaks',t:'2h ago'},
+          {ic:'fi-purple',ico:IC.award,l:'Kuramoto batch B-0416 graded A+',s:'Manufacturer · quality bonus +¥48K',t:'3h ago'},
+          {ic:'fi-blue',ico:IC.users,l:'Sofia Lim logged 3 visits',s:'Sales Rep · Queens territory',t:'4h ago'},
+        ].map(f=>`<div class="feed-row"><div class="feed-ic ${f.ic}">${svgi(f.ico,14)}</div><div class="feed-body"><div class="feed-label">${f.l}</div><div class="feed-sub">${f.s}</div></div><div class="feed-time">${f.t}</div></div>`).join('')}
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-head"><div class="sec-title">Markets</div><a class="sec-link" onclick="nav('markets')">Manage allocation →</a></div>
+  <div class="markets-grid">
+    ${MARKETS.slice(0,3).map(m=>`
+    <div class="market-card" onclick="nav('markets')">
+      <div class="market-top"><div><div class="market-name">${m.name}</div><div class="market-sub">${m.sub}</div></div>${pill(m.st,m.sl)}</div>
+      <div style="font-size:11px;color:hsl(var(--muted-foreground));display:flex;justify-content:space-between"><span>${m.covLabel}</span><span style="font-family:var(--font-mono);font-weight:600;color:hsl(var(--foreground))">${m.rev}</span></div>
+      <div class="cover-bar"><div class="cover-fill ${m.coverCls}" style="width:${Math.min(100,m.cover/50*100)}%"></div></div>
+    </div>`).join('')}
+  </div>
+</div>`;
+
+/* ── REPLENISHMENT ORDERS (distributor → HQ) ── */
+const REPLEN=[
+  {id:'RPL-2026-0061',dist:'Midwest Spirits Co.',market:'Chicago',date:'Mon 1 Jun',urgent:true,cover:'14 days',lines:[{sku:'Florin Peaks 750ml',pallets:8,cases:480}],value:'$18,240',fulfill:'partial',stock:'340 cs on hand · 140 cs short',note:'Chicago below 21-day cover floor. Requesting 8 pallets Florin Peaks to rebuild. Finished goods short 140cs — covered by Kuramoto PR-2026-0142 once approved.'},
+  {id:'RPL-2026-0060',dist:'Empire Wines & Spirits',market:'NYC',date:'Mon 1 Jun',urgent:false,cover:'32 days',lines:[{sku:'Florin Peaks 750ml',pallets:4,cases:240},{sku:'Junmai Shiro 720ml',pallets:3,cases:180}],value:'$17,280',fulfill:'full',stock:'In stock · ships from Tokyo DC',note:'Routine top-up ahead of summer. Both SKUs fully available in finished goods. Standard 4-pallet + 3-pallet mixed load.'},
+  {id:'RPL-2026-0059',dist:'Kanto Beverage',market:'Tokyo',date:'Sun 31 May',urgent:false,cover:'45 days',lines:[{sku:'Ryusui Reserve 500ml',pallets:2,cases:96}],value:'¥1.9M',fulfill:'hold',stock:'Limited Lot 04 · allocation hold',note:'Ryusui Reserve from limited Lot 04. Requires allocation sign-off — confirm against other markets before releasing 2 pallets.'},
+];
+const fulfillMeta={full:{p:'green',l:'in stock'},partial:{p:'amber',l:'partial stock'},hold:{p:'red',l:'allocation hold'}};
+function getReplenList(){
+  let stored=[];
+  try{stored=JSON.parse(localStorage.getItem('hajime_replen_requests')||'[]');}catch(e){}
+  return stored.concat(REPLEN);
+}
+function approveReplen(id){
+  const card=document.getElementById('rpl-'+id);
+  if(card){card.style.transition='opacity .25s,transform .25s';card.style.opacity='0';card.style.transform='translateX(12px)';setTimeout(()=>{card.remove();bumpReplen();},250);}
+}
+function declineReplen(id){
+  if(!confirm('Decline this replenishment order? The distributor will be notified.'))return;
+  const card=document.getElementById('rpl-'+id);
+  if(card){card.style.transition='opacity .25s';card.style.opacity='0';setTimeout(()=>{card.remove();bumpReplen();},250);}
+}
+function bumpReplen(){
+  const n=document.querySelectorAll('.rpl-card').length;
+  const lbl=document.getElementById('rpl-count');if(lbl)lbl.textContent=n+' order'+(n!==1?'s':'')+' awaiting fulfillment';
+  const empty=document.getElementById('rpl-empty');if(empty&&n===0)empty.style.display='block';
+  document.querySelectorAll('[data-nav="replenishment"] .nb').forEach(b=>{b.textContent=n;b.style.display=n>0?'':'none';});
+}
+PAGES.replenishment=()=>`
+<div class="pw enter">
+  <div class="ph-row">
+    <div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Replenishment orders</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Pallet orders from distributors to restock their DCs — approve to ship from finished goods. Short stock triggers a production request to a kura.</p></div>
+    <button class="btn btn-outline btn-sm" onclick="nav('catalog')">Finished goods</button>
+  </div>
+  <div class="alert-bar alert-err" style="margin-bottom:24px">
+    ${svgi(IC.alert,16)}<div style="flex:1;font-size:13px"><strong style="color:hsl(0 68%36%)">Midwest Spirits (Chicago) at 14 days cover.</strong> <span style="color:hsl(30 70%35%)">Their 8-pallet Florin Peaks request is short 140cs in finished goods — approve the linked Kuramoto production request (PR-2026-0142) to cover the gap.</span></div>
+    <button class="btn btn-accent btn-sm" onclick="nav('production')">View production</button>
+  </div>
+  <div class="filter-bar">
+    <button class="filter-btn active">All (${getReplenList().length})</button>
+    <button class="filter-btn">Urgent (1)</button>
+    <button class="filter-btn">In stock</button>
+    <button class="filter-btn">Short / hold</button>
+  </div>
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px">
+    <div style="font-family:var(--font-display);font-size:17px;font-weight:500" id="rpl-count">${getReplenList().length} orders awaiting fulfillment</div>
+    <span style="font-size:12px;color:hsl(var(--muted-foreground))">Approved orders ship from finished goods to the distributor DC</span>
+  </div>
+  ${getReplenList().map((r,i)=>{
+    const fm=fulfillMeta[r.fulfill];
+    const totalPallets=r.lines.reduce((a,l)=>a+l.pallets,0);
+    return`
+    <div class="rpl-card" id="rpl-${r.id}" style="background:hsl(var(--card));border:1px solid ${r.urgent?'hsl(0 68%48%/.3)':'hsl(var(--border)/.7)'};border-radius:14px;margin-bottom:12px;overflow:hidden;box-shadow:var(--shadow-soft)">
+      <div style="display:flex;align-items:center;gap:14px;padding:16px 20px;cursor:pointer" onclick="const d=this.nextElementSibling;d.style.display=d.style.display==='block'?'none':'block'">
+        <div style="width:42px;height:42px;border-radius:10px;background:hsl(158 56%36%/.1);color:hsl(158 56%30%);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgi(IC.truck,19)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span class="src-chip src-dist">${r.dist}</span>${r.urgent?pill('red','urgent'):''}${pill(fm.p,fm.l)}</div>
+          <div style="font-family:var(--font-display);font-size:17px;font-weight:500;letter-spacing:-.01em">${totalPallets} pallet${totalPallets!==1?'s':''} · ${r.lines.map(l=>l.sku.split(' ').slice(0,2).join(' ')).join(' + ')}</div>
+          <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px">${r.id} · ${r.market} · ${r.cover} cover · received ${r.date}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-right:8px"><div style="font-family:var(--font-display);font-size:20px;font-weight:600">${r.value}</div><div style="font-size:10px;color:hsl(var(--muted-foreground))">${r.lines.reduce((a,l)=>a+l.cases,0)} cases</div></div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button class="btn btn-sm" style="background:hsl(0 68%48%/.08);color:hsl(0 68%40%);border:1px solid hsl(0 68%48%/.25)" onclick="event.stopPropagation();declineReplen('${r.id}')">Decline</button>
+          <button class="btn btn-green btn-sm" onclick="event.stopPropagation();approveReplen('${r.id}')">${r.fulfill==='full'?'Approve & ship':'Approve'} →</button>
+        </div>
+      </div>
+      <div style="display:${i===0?'block':'none'};padding:16px 20px;border-top:1px solid hsl(var(--border)/.4);background:hsl(var(--muted)/.3)">
+        <div style="margin-bottom:14px">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600;margin-bottom:8px">Order lines</div>
+          ${r.lines.map(l=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid hsl(var(--border)/.3);font-size:13px"><span style="font-weight:500">${l.sku}</span><span class="mono" style="color:hsl(var(--muted-foreground))">${l.pallets} pallet${l.pallets!==1?'s':''} · ${l.cases} cases</span></div>`).join('')}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px">
+          <div style="padding:12px 14px;background:hsl(var(--card));border-radius:10px;border:1px solid hsl(var(--border)/.5)"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600;margin-bottom:6px">Finished goods</div><div style="font-size:13px;font-weight:500;color:${fm.p==='green'?'hsl(158 56%30%)':fm.p==='amber'?'hsl(30 80%32%)':'hsl(0 68%42%)'}">${r.stock}</div></div>
+          <div style="padding:12px 14px;background:hsl(var(--card));border-radius:10px;border:1px solid hsl(var(--border)/.5)"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600;margin-bottom:6px">On approval</div><div style="font-size:13px;font-weight:500">Ships to ${r.dist}</div><div style="font-size:11px;color:hsl(var(--muted-foreground))">${r.market} DC</div></div>
+        </div>
+        <div style="padding:12px 14px;background:hsl(var(--card));border-radius:10px;border:1px solid hsl(var(--border)/.5);font-size:13px;margin-bottom:14px"><strong style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground))">Context</strong><div style="margin-top:6px;color:hsl(var(--foreground))">${r.note}</div></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-green btn-sm" onclick="approveReplen('${r.id}')">${svgi(IC.check,13)} ${r.fulfill==='full'?'Approve & ship from finished goods':r.fulfill==='partial'?'Approve available & backorder rest':'Approve with allocation'}</button>
+          ${r.fulfill==='partial'?`<button class="btn btn-outline btn-sm" onclick="nav('production')">Link production request</button>`:''}
+          <button class="btn btn-sm" style="margin-left:auto;background:hsl(0 68%48%/.08);color:hsl(0 68%40%);border:1px solid hsl(0 68%48%/.25)" onclick="declineReplen('${r.id}')">Decline</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('')}
+  <div id="rpl-empty" style="display:none;padding:40px;text-align:center;border:1px dashed hsl(var(--border));border-radius:14px;color:hsl(var(--muted-foreground))">
+    ${svgi(IC.check,28)}<div style="font-size:14px;margin-top:12px;font-weight:500">All caught up</div><div style="font-size:13px;margin-top:4px">No replenishment orders pending. Distributor restock requests appear here.</div>
+  </div>
+</div>`;
+
+/* ── PRODUCTION REQUESTS (HQ ↔ kura) ── */
+PAGES.production=()=>`
+<div class="pw enter">
+  <div class="ph-row">
+    <div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Production requests</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Batch requests from kura partners — your sign-off confirms spec, lot, and allocation before they schedule production. <strong>Retail and rep orders are approved by distributors, not HQ.</strong></p></div>
+    <button class="btn btn-outline btn-sm">Request history</button>
+  </div>
+  <div class="filter-bar">
+    <button class="filter-btn active">All (2)</button>
+    <button class="filter-btn">Urgent (1)</button>
+    <button class="filter-btn">Kuramoto</button>
+    <button class="filter-btn">Echigo Kura</button>
+  </div>
+  ${PRODUCTION.map((a,i)=>`
+  <div class="approval-card${a.urgent?' urgent':''}">
+    <div class="approval-head" onclick="this.nextElementSibling.classList.toggle('open')">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span class="src-chip src-kura">${a.srcLabel}</span>${a.urgent?pill('red','urgent'):''}</div>
+        <div style="font-family:var(--font-display);font-size:17px;font-weight:500;letter-spacing:-.01em">${a.sku}</div>
+        <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px">${a.po} · ${a.market} · received ${a.date}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-right:8px"><div style="font-family:var(--font-display);font-size:20px;font-weight:600">${a.value}</div><div style="font-size:10px;color:hsl(var(--muted-foreground))">batch value</div></div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button class="btn btn-red btn-sm" onclick="event.stopPropagation()">Decline</button>
+        <button class="btn btn-green btn-sm" onclick="event.stopPropagation()">Approve</button>
+      </div>
+    </div>
+    <div class="approval-detail${i===0?' open':''}">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px">
+        <div style="padding:12px 14px;background:hsl(var(--card));border-radius:10px;border:1px solid hsl(var(--border)/.5)"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600;margin-bottom:6px">Requested by</div><div style="font-size:13px;font-weight:500">${a.rep} · Tōji</div><div style="font-size:11px;color:hsl(var(--muted-foreground))">${a.srcLabel}</div></div>
+        <div style="padding:12px 14px;background:hsl(var(--card));border-radius:10px;border:1px solid hsl(var(--border)/.5)"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600;margin-bottom:6px">On approval</div><div style="font-size:13px;font-weight:500">Kura schedules batch</div><div style="font-size:11px;color:hsl(var(--muted-foreground))">finished goods → distributors</div></div>
+      </div>
+      <div style="padding:12px 14px;background:hsl(var(--card));border-radius:10px;border:1px solid hsl(var(--border)/.5);font-size:13px;margin-bottom:14px"><strong style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground))">Context</strong><div style="margin-top:6px;color:hsl(var(--foreground))">${a.note}</div></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-green btn-sm">${svgi(IC.check,13)} Approve & confirm spec</button>
+        <button class="btn btn-outline btn-sm">Request change</button>
+        <button class="btn btn-red btn-sm" style="margin-left:auto">Decline</button>
+      </div>
+    </div>
+  </div>`).join('')}
+</div>`;
+
+/* ── ALL ORDERS ── */
+PAGES.orders=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">All orders</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Every order across all portals and markets · one shared dataset</p></div>
+    <button class="btn btn-outline btn-sm">Export CSV</button>
+  </div>
+  <div class="filter-bar">
+    <button class="filter-btn active">All markets</button>
+    <button class="filter-btn">NYC</button>
+    <button class="filter-btn">Chicago</button>
+    <button class="filter-btn">Tokyo</button>
+    <button class="filter-btn">Paris</button>
+    <button class="filter-btn">Milan</button>
+    <div class="search-wrap"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" placeholder="Search PO or account…"></div>
+  </div>
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>PO</th><th>Account</th><th>SKU</th><th>Qty (cases)</th><th>Market</th><th>ETA</th><th>Status</th></tr></thead>
+      <tbody>${ORDERS.map(o=>`<tr><td class="mono" style="font-size:12px;font-weight:500">${o.po}</td><td style="font-weight:500">${o.acct}</td><td class="mono" style="font-size:12px;color:hsl(var(--muted-foreground))">${o.sku}</td><td class="mono">${o.qty}</td><td>${o.market}</td><td class="mono" style="color:hsl(var(--muted-foreground))">${o.eta}</td><td>${pill(o.st,o.sl)}</td></tr>`).join('')}</tbody>
+    </table>
+  </div>
+</div>`;
+
+/* ── MARKETS ── */
+PAGES.markets=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Markets & allocation</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Inventory cover and revenue by market · manage SKU allocation across distributors</p></div>
+    <button class="btn btn-accent btn-sm">Rebalance allocation</button>
+  </div>
+  <div class="alert-bar alert-err" style="margin-bottom:24px">
+    ${svgi(IC.alert,16)}<div style="flex:1;font-size:13px"><strong style="color:hsl(0 68%36%)">Chicago below cover floor.</strong> <span style="color:hsl(30 70%35%)">14 days of Florin Peaks remaining vs 21-day floor. Recommend approving the Kuramoto production request and reallocating 60cs from NYC surplus.</span></div>
+    <button class="btn btn-accent btn-sm" onclick="nav('production')">Review</button>
+  </div>
+  <div class="markets-grid">
+    ${MARKETS.map(m=>`
+    <div class="market-card">
+      <div class="market-top"><div><div class="market-name">${m.name}</div><div class="market-sub">${m.sub}</div></div>${pill(m.st,m.sl)}</div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:hsl(var(--muted-foreground));margin-bottom:2px"><span>${m.covLabel}</span><span style="font-family:var(--font-mono);font-weight:600;color:hsl(var(--foreground))">${m.rev} Q2</span></div>
+      <div class="cover-bar"><div class="cover-fill ${m.coverCls}" style="width:${Math.min(100,m.cover/50*100)}%"></div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid hsl(var(--border)/.4)">
+        <span style="font-size:12px;color:hsl(var(--muted-foreground))">${m.skus} SKUs listed</span>
+        <button class="btn btn-outline btn-sm">Manage</button>
+      </div>
+    </div>`).join('')}
+  </div>
+  <div class="sec-head"><div class="sec-title">Allocation by SKU</div></div>
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>SKU</th><th>Total stock</th><th>NYC</th><th>Chicago</th><th>Tokyo</th><th>Paris</th><th>Milan</th><th>Unallocated</th></tr></thead>
+      <tbody>
+        ${[
+          {sku:'HJM-FP-750',name:'Florin Peaks',total:1240,a:[480,180,320,80,120,60]},
+          {sku:'HJM-JN-720',name:'Junmai Shiro',total:820,a:[220,140,280,60,80,40]},
+          {sku:'HJM-RY-500',name:'Ryusui Reserve',total:340,a:[120,40,100,20,40,20]},
+          {sku:'EU-FP-750',name:'First Press',total:240,a:[96,40,60,0,0,44]},
+        ].map(r=>`<tr><td><div style="font-weight:500">${r.name}</div><div class="mono" style="font-size:10px;color:hsl(var(--muted-foreground))">${r.sku}</div></td><td class="mono" style="font-weight:600">${r.total} cs</td>${r.a.map((v,i)=>`<td class="mono" style="${i===1&&r.sku==='HJM-FP-750'?'color:hsl(0 68%44%);font-weight:600':''}">${v}</td>`).join('')}<td class="mono" style="color:hsl(var(--muted-foreground))">${r.total-r.a.reduce((x,y)=>x+y,0)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>`;
+
+/* ── MANUFACTURERS ── */
+PAGES.manufacturers=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Manufacturers</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Kura partners producing Hajime SKUs · send production requests and track batches</p></div>
+    <button class="btn btn-accent btn-sm">+ New production request</button>
+  </div>
+  <div class="kpi-row">
+    ${kpi(IC.flask,'ic-gold','Active batches','6','across 2 kura','','')}
+    ${kpi(IC.box,'ic-green','Cases in production','4,440','est. 28-day completion','','')}
+    ${kpi(IC.award,'ic-blue','Avg quality grade','A','98.0% network pass rate','','')}
+    ${kpi(IC.alert,'ic-red','Open requests','2','awaiting kura scheduling','','')}
+  </div>
+  ${MFRS.map(m=>`
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:16px;padding:18px 20px">
+      <div style="width:48px;height:48px;border-radius:12px;background:hsl(280 40%50%/.1);color:hsl(280 40%48%);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgi(IC.flask,22)}</div>
+      <div style="flex:1;min-width:0"><div style="font-family:var(--font-display);font-size:18px;font-weight:600;letter-spacing:-.01em">${m.name}</div><div style="font-size:12px;color:hsl(var(--muted-foreground))">${m.sub}</div></div>
+      <div style="display:flex;gap:24px;align-items:center">
+        <div style="text-align:right"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground))">Tier</div><div style="font-size:13px;font-weight:600;color:hsl(40 88%34%);margin-top:2px">${m.tier}</div></div>
+        <div style="text-align:right"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground))">Quality</div><div class="mono" style="font-size:13px;font-weight:600;color:hsl(158 56%32%);margin-top:2px">${m.quality}</div></div>
+        <div style="text-align:right"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground))">On-time</div><div class="mono" style="font-size:13px;font-weight:600;margin-top:2px">${m.ontime}</div></div>
+        <div style="text-align:right"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground))">Capacity</div><div class="mono" style="font-size:13px;font-weight:600;margin-top:2px">${m.cap}</div></div>
+        ${pill(m.st,m.sl)}
+        <button class="btn btn-outline btn-sm">Manage</button>
+      </div>
+    </div>
+  </div>`).join('')}
+  <div style="padding:24px;text-align:center;border:1px dashed hsl(var(--border));border-radius:14px;color:hsl(var(--muted-foreground));margin-top:4px">
+    ${svgi(IC.flask,28)}<div style="font-size:13px;margin:12px 0">Onboard a new kura partner to expand production capacity</div>
+    <button class="btn btn-outline">+ Add manufacturer</button>
+  </div>
+</div>`;
+
+/* ── DISTRIBUTORS ── */
+PAGES.distributors=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Distributors</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Distribution partners by market · monitor fill rate, on-time delivery, and partner tier</p></div>
+    <button class="btn btn-accent btn-sm">+ Add distributor</button>
+  </div>
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>Distributor</th><th>Market</th><th>Tier</th><th>Fill rate</th><th>On-time</th><th>Accounts</th><th>Status</th><th></th></tr></thead>
+      <tbody>${DISTS.map(d=>`
+      <tr>
+        <td><div style="font-weight:500">${d.name}</div></td>
+        <td style="color:hsl(var(--muted-foreground))">${d.sub}</td>
+        <td><span style="font-size:12px;font-weight:600;color:${d.tier.includes('Gold')?'hsl(40 88%34%)':'hsl(var(--muted-foreground))'}">${d.tier}</span></td>
+        <td class="mono" style="font-weight:600;color:hsl(158 56%32%)">${d.fill}</td>
+        <td class="mono" style="font-weight:600;color:${parseFloat(d.ontime)<94?'hsl(38 90%40%)':'hsl(158 56%32%)'}">${d.ontime}</td>
+        <td class="mono">${d.accounts}</td>
+        <td>${pill(d.st,d.sl)}</td>
+        <td><button class="btn btn-outline btn-sm">Manage</button></td>
+      </tr>`).join('')}</tbody>
+    </table>
+  </div>
+</div>`;
+
+/* ── REPS ── */
+PAGES.reps=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Sales reps</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Field reps across all territories · quota attainment, rankings, and pipeline</p></div>
+    <button class="btn btn-accent btn-sm">+ Add rep</button>
+  </div>
+  <div class="kpi-row">
+    ${kpi(IC.users,'ic-gold','Active reps','12','4 territories','','')}
+    ${kpi(IC.chart,'ic-green','Avg quota attainment','67%','vs 58% expected pace',`${svgi(IC.up,11)} ahead of plan`,'kpi-delta delta-up')}
+    ${kpi(IC.cart,'ic-blue','Total pipeline','$94K','61 open opportunities','','')}
+    ${kpi(IC.star,'ic-ink','Commission paid Q2','$38.4K','across all reps','','')}
+  </div>
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>Rep</th><th>Territory</th><th>Tier</th><th>Quota</th><th>Rank</th><th>Accounts</th><th>Pipeline</th><th></th></tr></thead>
+      <tbody>${REPS.map(r=>`
+      <tr>
+        <td style="font-weight:500">${r.name}</td>
+        <td style="color:hsl(var(--muted-foreground))">${r.sub}</td>
+        <td><span style="font-size:12px;font-weight:600;color:${r.tier.includes('Platinum')?'hsl(215 72%42%)':r.tier.includes('Gold')?'hsl(40 88%34%)':'hsl(var(--muted-foreground))'}">${r.tier}</span></td>
+        <td class="mono" style="font-weight:600">${r.quota}</td>
+        <td class="mono" style="font-size:12px;color:hsl(var(--muted-foreground))">${r.rank}</td>
+        <td class="mono">${r.accounts}</td>
+        <td class="mono" style="color:hsl(var(--accent));font-weight:500">${r.pipeline}</td>
+        <td><button class="btn btn-outline btn-sm">View</button></td>
+      </tr>`).join('')}</tbody>
+    </table>
+  </div>
+</div>`;
+
+/* ── RETAIL ACCOUNTS ── */
+PAGES.accounts=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Retail accounts</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">All accounts across markets · 2 awaiting onboarding approval</p></div>
+    <div class="search-wrap" style="margin-left:0;max-width:280px"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" placeholder="Search accounts…"></div>
+  </div>
+  <div class="alert-bar alert-warn" style="margin-bottom:24px">
+    ${svgi(IC.alert,16)}<div style="flex:1;font-size:13px"><strong style="color:hsl(30 80%28%)">2 accounts onboarding at the distributor level:</strong> <span style="color:hsl(30 70%35%)">NoMad Library (NYC · Empire Wines) and Osteria Sera (Milan · Vino Nord) are awaiting their distributor's approval. HQ sees them here once activated.</span></div>
+    <button class="btn btn-outline btn-sm" onclick="nav('distributors')">View distributors</button>
+  </div>
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>Account</th><th>Type</th><th>Market</th><th>Distributor</th><th>Rep</th><th>30d revenue</th><th>Status</th></tr></thead>
+      <tbody>
+        ${[
+          {n:'The Drake Hotel',t:'Hotel',m:'Chicago',d:'Midwest Spirits',r:'Carlos Reyes',rev:'$4,200',st:'green',sl:'active'},
+          {n:'NoMad Library',t:'Bar',m:'NYC',d:'— pending —',r:'Mike Tan',rev:'—',st:'amber',sl:'onboarding'},
+          {n:'The Aviary',t:'Bar',m:'NYC',d:'Empire Wines',r:'Mike Tan',rev:'$5,760',st:'green',sl:'active'},
+          {n:'Dante',t:'Restaurant',m:'NYC',d:'Empire Wines',r:'Mike Tan',rev:'$3,840',st:'green',sl:'active'},
+          {n:'Kioi Sakaba',t:'Izakaya',m:'Tokyo',d:'Kanto Beverage',r:'Yuki Tanaka',rev:'¥620K',st:'green',sl:'active'},
+          {n:'Bar Hemingway',t:'Bar',m:'Paris',d:'Cave Lumière',r:'É. Marchand',rev:'€2,400',st:'green',sl:'active'},
+          {n:'Osteria Sera',t:'Restaurant',m:'Milan',d:'— pending —',r:'Vino Nord',rev:'—',st:'amber',sl:'onboarding'},
+          {n:'Quattro Mani',t:'Restaurant',m:'Milan',d:'Vino Nord',r:'Vino Nord',rev:'€1,800',st:'green',sl:'active'},
+        ].map(a=>`<tr><td style="font-weight:500">${a.n}</td><td style="color:hsl(var(--muted-foreground))">${a.t}</td><td>${a.m}</td><td style="${a.d.includes('pending')?'color:hsl(30 80%32%);font-weight:500':'color:hsl(var(--muted-foreground))'}">${a.d}</td><td style="font-size:12px;color:hsl(var(--muted-foreground))">${a.r}</td><td class="mono" style="font-weight:500">${a.rev}</td><td>${pill(a.st,a.sl)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>`;
+
+/* ── INCENTIVE PROGRAMS ── */
+PAGES.programs=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Incentive programs</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Administer the reward program for every role — tiers, thresholds, and payouts in one place</p></div>
+    <button class="btn btn-outline btn-sm">Payout schedule</button>
+  </div>
+  <div class="kpi-row">
+    ${kpi(IC.star,'ic-gold','Total payouts Q2','$71.2K','across 4 programs','','')}
+    ${kpi(IC.users,'ic-blue','Members enrolled','98','reps, distributors, kura, retail','','')}
+    ${kpi(IC.award,'ic-green','Tier upgrades Q2','7','members advanced a tier','','')}
+    ${kpi(IC.chart,'ic-ink','Program ROI','3.4×','incremental revenue vs cost','','')}
+  </div>
+  <div class="prog-grid">
+    ${[
+      {ic:IC.store,cl:'ic-gold',title:'Retail Partner Program',sub:'Spend-based tiers · quarterly rebate',members:'42 stores',payout:'$18.6K',metric:'2–4% rebate',tiers:[['Participant',12,'hsl(var(--muted-foreground))'],['Bronze',14,'hsl(30 50%50%)'],['Silver',11,'hsl(220 8%60%)'],['Gold',4,'hsl(40 88%42%)'],['Platinum',1,'hsl(215 72%50%)']]},
+      {ic:IC.users,cl:'ic-blue',title:'Sales Rep Incentive',sub:'Quota attainment · commission + bonuses',members:'12 reps',payout:'$38.4K',metric:'6–12% commission',tiers:[['Standard',3,'hsl(var(--muted-foreground))'],['Silver',4,'hsl(220 8%60%)'],['Gold',4,'hsl(40 88%42%)'],['Platinum',1,'hsl(215 72%50%)']]},
+      {ic:IC.truck,cl:'ic-green',title:'Distributor Partner Program',sub:'Fill rate, on-time & volume',members:'4 distributors',payout:'$11.8K',metric:'3–4% volume rebate',tiers:[['Standard',0,'hsl(var(--muted-foreground))'],['Silver',2,'hsl(220 8%60%)'],['Gold',2,'hsl(40 88%42%)'],['Platinum',0,'hsl(215 72%50%)']]},
+      {ic:IC.flask,cl:'ic-purple',title:'Kura Partner Program',sub:'Quality, yield & on-time production',members:'2 kura',payout:'¥3.2M',metric:'¥2–3/bottle premium',tiers:[['Standard',1,'hsl(var(--muted-foreground))'],['Preferred',1,'hsl(40 88%42%)'],['Master',0,'hsl(215 72%50%)']]},
+    ].map(p=>{
+      const tot=p.tiers.reduce((a,t)=>a+t[1],0)||1;
+      return`<div class="prog-card">
+        <div class="prog-header"><div class="prog-icon ${p.cl==='ic-purple'?'':p.cl}" style="${p.cl==='ic-purple'?'background:hsl(280 40%50%/.1);color:hsl(280 40%48%)':''}">${svgi(p.ic,20)}</div><div style="flex:1"><div class="prog-title">${p.title}</div><div class="prog-sub">${p.sub}</div></div><button class="btn btn-outline btn-sm">Edit</button></div>
+        <div class="prog-body">
+          <div class="prog-stat-row"><span class="prog-stat-lab">Members enrolled</span><span class="prog-stat-val">${p.members}</span></div>
+          <div class="prog-stat-row"><span class="prog-stat-lab">Reward structure</span><span class="prog-stat-val">${p.metric}</span></div>
+          <div class="prog-stat-row"><span class="prog-stat-lab">Q2 payout to date</span><span class="prog-stat-val" style="color:hsl(var(--accent))">${p.payout}</span></div>
+          <div style="font-size:11px;color:hsl(var(--muted-foreground));text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-top:14px;margin-bottom:2px">Tier distribution</div>
+          <div class="tierdist">${p.tiers.map(t=>t[1]>0?`<div class="tierseg" style="background:${t[2]};flex:${t[1]}" title="${t[0]}: ${t[1]}">${t[1]}</div>`:'').join('')}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:6px">${p.tiers.map(t=>`<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:hsl(var(--muted-foreground))"><span style="width:8px;height:8px;border-radius:2px;background:${t[2]}"></span>${t[0]}</span>`).join('')}</div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>
+</div>`;
+
+/* ── PRODUCT CATALOG ── */
+PAGES.catalog=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Product catalog</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Master SKU list · pricing, production source, and market availability</p></div>
+    <button class="btn btn-accent btn-sm">+ Add SKU</button>
+  </div>
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>SKU</th><th>Product</th><th>Type</th><th>Retail</th><th>Wholesale</th><th>Produced by</th><th>Markets</th><th>Status</th></tr></thead>
+      <tbody>
+        ${[
+          {sku:'HJM-FP-750',n:'Florin Peaks',t:'Junmai Daiginjo · 750ml',r:'$48',w:'$38',by:'Kuramoto',mk:'5',st:'green',sl:'active'},
+          {sku:'HJM-JN-720',n:'Junmai Shiro',t:'Junmai · 720ml',r:'$32',w:'$26',by:'Kuramoto',mk:'5',st:'green',sl:'active'},
+          {sku:'HJM-RY-500',n:'Ryusui Reserve',t:'Genshu · 500ml · limited',r:'$82',w:'$65',by:'Kuramoto',mk:'4',st:'green',sl:'active'},
+          {sku:'EU-FP-750',n:'First Press',t:'Coffee Rice · 750ml',r:'$52',w:'$42',by:'Echigo Kura',mk:'3',st:'green',sl:'active'},
+          {sku:'HJM-NG-720',n:'Shirogane Nigori',t:'Nigori · 720ml',r:'$28',w:'$22',by:'Echigo Kura',mk:'2',st:'amber',sl:'seasonal'},
+          {sku:'HJM-HJ-500',n:'Hana Junmai',t:'Junmai · 500ml',r:'$38',w:'$30',by:'Kuramoto',mk:'2',st:'amber',sl:'limited'},
+        ].map(s=>`<tr><td class="mono" style="font-size:11px;color:hsl(var(--muted-foreground))">${s.sku}</td><td style="font-weight:500">${s.n}</td><td style="color:hsl(var(--muted-foreground))">${s.t}</td><td class="mono" style="font-weight:500">${s.r}</td><td class="mono" style="color:hsl(var(--accent));font-weight:500">${s.w}</td><td style="font-size:12px">${s.by}</td><td class="mono">${s.mk}</td><td>${pill(s.st,s.sl)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>`;
+
+/* ── ANALYTICS ── */
+const months=['Nov','Dec','Jan','Feb','Mar','Apr','May'];
+const netRev=[118,132,128,154,168,182,164];
+const maxRev=Math.max(...netRev);
+PAGES.analytics=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Analytics</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Network-wide performance · revenue, sell-through, and supply chain health</p></div>
+    <div style="display:flex;gap:8px"><div class="filter-bar" style="margin:0"><button class="filter-btn active">QTD</button><button class="filter-btn">YTD</button><button class="filter-btn">12mo</button></div><button class="btn btn-outline btn-sm">Export PDF</button></div>
+  </div>
+  <div class="kpi-row">
+    ${kpi(IC.cart,'ic-gold','Network revenue','$486K','Q2 to date',`${svgi(IC.up,11)} +16% vs Q1`,'kpi-delta delta-up')}
+    ${kpi(IC.box,'ic-blue','Cases sold','4,840','all markets',`${svgi(IC.up,11)} +12%`,'kpi-delta delta-up')}
+    ${kpi(IC.store,'ic-green','Avg order value','$3,640','+$340 vs prior',`${svgi(IC.up,11)} +10%`,'kpi-delta delta-up')}
+    ${kpi(IC.users,'ic-ink','Account retention','92%','rolling 12 months','','')}
+  </div>
+  <div class="chart-wrap">
+    <div style="font-size:14px;font-weight:600;margin-bottom:4px">Network revenue · monthly</div>
+    <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:20px">All markets combined · $thousands</div>
+    <div style="display:flex;gap:10px;align-items:flex-end;height:160px">
+      ${months.map((m,i)=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="font-size:10px;font-family:var(--font-mono);font-weight:600;color:hsl(var(--foreground))">$${netRev[i]}K</div><div style="width:100%;border-radius:4px 4px 0 0;background:${i===months.length-1?'hsl(40 88%52%/.5)':'linear-gradient(180deg,hsl(40 88%52%),hsl(40 88%42%))' };height:${netRev[i]/maxRev*130}px"></div><div style="font-size:10px;color:hsl(var(--muted-foreground));font-family:var(--font-mono)">${m}</div></div>`).join('')}
+    </div>
+    <div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:12px">May is partial (shown lighter)</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+    <div class="card">
+      <div class="card-head"><div class="card-title">Revenue by market</div><div class="card-sub">Q2 to date</div></div>
+      <div style="padding:20px">
+        ${[['NYC','$51.4K',88,'hsl(40 88%42%)'],['Tokyo','$48.2K',82,'hsl(40 88%42%)'],['Chicago','$28.2K',48,'hsl(38 90%50%)'],['Paris','$19.6K',34,'hsl(40 88%42%)'],['Milan','$14.2K',24,'hsl(40 88%42%)']].map(r=>`
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+          <div style="width:60px;font-size:13px;font-weight:500">${r[0]}</div>
+          <div style="flex:1;height:8px;border-radius:999px;background:hsl(var(--muted));overflow:hidden"><div style="height:100%;border-radius:999px;background:${r[3]};width:${r[2]}%"></div></div>
+          <div class="mono" style="width:56px;text-align:right;font-size:12px;font-weight:600">${r[1]}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title">Top SKUs by volume</div><div class="card-sub">Cases sold · Q2</div></div>
+      <table class="data-table">
+        <thead><tr><th>SKU</th><th>Cases</th><th>Revenue</th><th>vs Q1</th></tr></thead>
+        <tbody>${[['Florin Peaks',2480,'$238K','+18%'],['Junmai Shiro',1240,'$79K','+9%'],['Ryusui Reserve',640,'$105K','+24%'],['First Press',480,'$50K','+6%']].map(r=>`<tr><td style="font-weight:500">${r[0]}</td><td class="mono">${r[1]}</td><td class="mono">${r[2]}</td><td style="color:hsl(158 56%32%);font-weight:500;font-size:12px">${r[3]}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+  </div>
+</div>`;
+
+/* ── SETTINGS ── */
+PAGES.settings=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Settings</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">HQ configuration · approval rules, notifications, and brand profile</p></div>
+    <button class="btn btn-accent">Save changes</button>
+  </div>
+  <div class="two-col" style="grid-template-columns:1fr 1fr">
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Approval rules</div>
+        <div class="toggle-row"><div><div class="ti-label">Auto-approve reorders under $2,000</div><div class="ti-sub">From accounts in good standing within cadence</div></div><div class="toggle-sw on"></div></div>
+        <div class="toggle-row"><div><div class="ti-label">Require approval for new accounts</div><div class="ti-sub">All onboarding routes through HQ</div></div><div class="toggle-sw on"></div></div>
+        <div class="toggle-row"><div><div class="ti-label">Hold orders that breach cover floor</div><div class="ti-sub">Flag when a market drops below 21 days</div></div><div class="toggle-sw on"></div></div>
+        <div class="toggle-row"><div><div class="ti-label">Auto-route production requests</div><div class="ti-sub">Assign to kura by capacity and SKU</div></div><div class="toggle-sw"></div></div>
+      </div>
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Brand profile</div>
+        <div class="form-group"><label>Brand name</label><input type="text" value="Hajime"></div>
+        <div class="form-group"><label>HQ location</label><input type="text" value="Tokyo, Japan"></div>
+        <div class="form-group"><label>Operator</label><input type="text" value="Aiko Nakamura · Brand Operator" readonly style="background:hsl(var(--muted)/.5);color:hsl(var(--muted-foreground))"></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Notifications</div>
+        ${[['Production sign-offs','Push + email immediately',true],['New orders','Digest every 2 hours',true],['Cover floor breaches','Push immediately',true],['Production milestones','Daily digest',true],['Tier upgrades','Weekly summary',false],['Quality flags','Push immediately',true],['New account requests','Email',true]].map(t=>`<div class="toggle-row"><div><div class="ti-label">${t[0]}</div><div class="ti-sub">${t[1]}</div></div><div class="toggle-sw${t[2]?' on':''}"></div></div>`).join('')}
+      </div>
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Connected portals</div>
+        ${[['Manufacturer (Kura)','2 connected','green'],['Distributor','4 connected','green'],['Sales Rep','12 connected','green'],['Retail Store','83 connected','green']].map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid hsl(var(--border)/.3)"><div style="font-size:13px;font-weight:500">${p[0]}</div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:hsl(var(--muted-foreground))">${p[1]}</span>${pill(p[2],'live')}</div></div>`).join('')}
+      </div>
+    </div>
+  </div>
+</div>`;
+
+function bind(){
+  var rb=document.getElementById('replen-nav-badge');if(rb){var n=getReplenList().length;rb.textContent=n;rb.style.display=n>0?'':'none';}
+  document.querySelectorAll('.filter-btn').forEach(btn=>{
+    btn.addEventListener('click',function(){
+      this.closest('.filter-bar').querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+      this.classList.add('active');
+    });
+  });
+  document.querySelectorAll('.toggle-sw').forEach(t=>t.addEventListener('click',function(){this.classList.toggle('on')}));
+}
+
+document.querySelectorAll('[data-nav]').forEach(el=>el.addEventListener('click',()=>nav(el.dataset.nav)));
+nav('dashboard');
+</script>
+</body>
+</html>

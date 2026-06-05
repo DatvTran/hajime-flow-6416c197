@@ -17,7 +17,21 @@ describe("API v1 only regression", () => {
   it("reads app data using /api/v1/* endpoints only", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ data: [] }),
+      json: async () => ({
+        data: {
+          products: [],
+          accounts: [],
+          orders: [],
+          inventory: [],
+          depletionReports: [],
+          purchaseOrders: [],
+          shipments: [],
+          newProductRequests: [],
+          teamMembers: [],
+          warehouses: [],
+          operationalSettings: null,
+        },
+      }),
     });
 
     await fetchAppData();
@@ -25,6 +39,7 @@ describe("API v1 only regression", () => {
     const requestedUrls = fetchMock.mock.calls.map(([url]) => String(url));
     expect(requestedUrls.length).toBeGreaterThan(0);
     expect(requestedUrls.every((url) => url.includes("/api/v1/"))).toBe(true);
+    expect(requestedUrls.some((url) => url.includes("/api/v1/app-bootstrap"))).toBe(true);
     expect(requestedUrls.some((url) => url.includes("/api/app"))).toBe(false);
   });
 
