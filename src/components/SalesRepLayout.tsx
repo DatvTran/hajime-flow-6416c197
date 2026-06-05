@@ -1,7 +1,9 @@
-import { Suspense, memo, useEffect, useMemo, useState, useId } from "react";
+import { Suspense, memo, useEffect, useMemo, useRef, useState, useId } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
+import { scrollSalesRepMainToHash } from "@/lib/scroll-sales-rep-main";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccounts, useAppData, useSalesOrders } from "@/contexts/AppDataContext";
+import { useFulfillmentPipelineAutoRefresh } from "@/hooks/useShipmentsAutoRefresh";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
 import { filterAccountsForSalesRep } from "@/lib/sales-rep-scope";
@@ -13,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { HajimeLogo } from "@/components/HajimeLogo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LanguageSelect } from "@/components/LanguageSelect";
 import { OperatorOutletFallback } from "@/components/OperatorOutletFallback";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -166,11 +168,12 @@ const SalesRepSidebarNav = memo(function SalesRepSidebarNav({
   draftCount,
 }: SidebarNavProps) {
   const location = useLocation();
+  const { t } = useLanguage();
 
   const mergeBadge = (item: NavItem): number | undefined => {
-    if (item.to === "/sales/accounts" && item.label === "Accounts") return accountCount > 0 ? accountCount : undefined;
+    if (item.to === "/sales/accounts") return accountCount > 0 ? accountCount : undefined;
     if (item.to === "/sales/opportunities") return pipelineCount > 0 ? pipelineCount : undefined;
-    if (item.to.startsWith("/sales/orders") && item.label === "Draft orders") return draftCount > 0 ? draftCount : undefined;
+    if (item.to === "/sales/orders?tab=pending-review") return draftCount > 0 ? draftCount : undefined;
     return undefined;
   };
 
@@ -200,12 +203,12 @@ const SalesRepSidebarNav = memo(function SalesRepSidebarNav({
     return (
       <Link key={item.label + to} to={to} onClick={onNavigate} className={linkClass(active)}>
         <item.icon className="h-[15px] w-[15px] shrink-0 opacity-90" strokeWidth={1.75} />
-        <span className="flex-1">{item.label}</span>
+        <span className="flex-1">{t(item.label)}</span>
         {badge != null && badge > 0 ? (
           <span
             className={cn(
               "rounded-full px-1.5 py-px font-mono text-[10px] font-semibold",
-              item.label === "Pipeline"
+              item.to === "/sales/opportunities"
                 ? "bg-[hsl(158_56%_36%/0.15)] text-[hsl(158_56%_32%)]"
                 : "bg-[hsl(40_88%_42%/0.18)] text-sidebar-primary",
             )}
@@ -221,21 +224,21 @@ const SalesRepSidebarNav = memo(function SalesRepSidebarNav({
     <>
       <div className="space-y-0.5 px-2.5 pt-3.5">
         <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(var(--sidebar-foreground)/0.32)]">
-          Territory
+          {t("Territory")}
         </p>
         {territoryItems.map((item) => renderLink(item))}
       </div>
       <div className="mx-2.5 my-2.5 h-px bg-sidebar-border" />
       <div className="space-y-0.5 px-2.5 pt-1">
         <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(var(--sidebar-foreground)/0.32)]">
-          Orders
+          {t("Orders")}
         </p>
         {ordersItems.map((item) => renderLink(item))}
       </div>
       <div className="mx-2.5 my-2.5 h-px bg-sidebar-border" />
       <div className="space-y-0.5 px-2.5 pt-1 pb-2">
         <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(var(--sidebar-foreground)/0.32)]">
-          Performance
+          {t("Performance")}
         </p>
         {performanceItems.map((item) => renderLink(item))}
       </div>
@@ -245,14 +248,44 @@ const SalesRepSidebarNav = memo(function SalesRepSidebarNav({
 
 export function SalesRepLayout() {
   const { signOut, user } = useAuth();
-  const { language, setLanguage, options, t } = useLanguage();
-  const { pathname, search } = useLocation();
+  const { language, t } = useLanguage();
+  const { pathname, search, hash } = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mainScrollRef = useRef<HTMLElement>(null);
+  const prevPathRef = useRef(pathname);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    const prev = history.scrollRestoration;
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+    return () => {
+      history.scrollRestoration = prev;
+    };
+  }, []);
+
+  // Inner `<main>` scrolls — reset when changing sales routes (hash scroll handled on /sales home).
+  useEffect(() => {
+    const main = mainScrollRef.current;
+    if (!main) return;
+
+    const pathChanged = prevPathRef.current !== pathname;
+    prevPathRef.current = pathname;
+
+    if (pathname === "/sales" || pathname === "/sales/") {
+      if (hash) return;
+      if (pathChanged) main.scrollTo({ top: 0, behavior: "instant" });
+      return;
+    }
+
+    if (pathChanged) main.scrollTo({ top: 0, behavior: "instant" });
+  }, [pathname, hash]);
 
   const { salesOrders } = useSalesOrders();
   const { accounts } = useAccounts();
-  const { data } = useAppData();
+  const { data, loading, refreshShipments, refreshSalesOrders } = useAppData();
   const teamMembers = data.teamMembers ?? [];
+
+  useFulfillmentPipelineAutoRefresh(refreshShipments, refreshSalesOrders, !loading);
 
   const rep = useMemo(
     () => resolveSalesRepLabelForSession(user?.email, user?.displayName ?? ""),
@@ -284,7 +317,7 @@ export function SalesRepLayout() {
       </div>
       <div className="min-w-0 text-left">
         <div className="font-display text-base font-semibold leading-tight text-[hsl(35_14%_90%)]">Hajime</div>
-        <div className="mt-px text-[10px] text-[hsl(35_12%_42%)]">Sales rep · Field territory</div>
+        <div className="mt-px text-[10px] text-[hsl(35_12%_42%)]">{t("Sales rep · Field territory")}</div>
       </div>
     </Link>
   );
@@ -302,18 +335,10 @@ export function SalesRepLayout() {
       </div>
       <div className="mt-3 flex items-center gap-2">
         <div className="min-w-0 flex-1">
-          <Select value={language} onValueChange={(v) => setLanguage(v as typeof language)}>
-            <SelectTrigger className="h-8 border-sidebar-border bg-sidebar text-xs">
-              <SelectValue placeholder={t("Choose language")} />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <p className="mb-1 text-[10px] uppercase tracking-widest text-[hsl(var(--sidebar-foreground)/0.32)]">
+            {t("Language")}
+          </p>
+          <LanguageSelect />
         </div>
         <button
           type="button"
@@ -335,7 +360,12 @@ export function SalesRepLayout() {
           <SalesRepQuotaPill repName={rep} />
         </div>
         <nav className="flex flex-1 flex-col overflow-y-auto pb-3 text-sm" aria-label="Sales rep">
-          <SalesRepSidebarNav accountCount={myAccounts.length} pipelineCount={pipelineCount} draftCount={draftCount} />
+          <SalesRepSidebarNav
+            key={language}
+            accountCount={myAccounts.length}
+            pipelineCount={pipelineCount}
+            draftCount={draftCount}
+          />
         </nav>
         {userBlock}
       </aside>
@@ -356,6 +386,7 @@ export function SalesRepLayout() {
                 </div>
                 <nav className="flex flex-1 flex-col overflow-y-auto pb-4 text-sm" aria-label="Sales menu">
                   <SalesRepSidebarNav
+                    key={language}
                     accountCount={myAccounts.length}
                     pipelineCount={pipelineCount}
                     draftCount={draftCount}
@@ -377,7 +408,7 @@ export function SalesRepLayout() {
 
         <header className="glass-header sticky top-0 z-30 hidden h-[54px] shrink-0 items-center justify-between gap-4 px-8 lg:flex">
           <div className="text-[13px] text-muted-foreground">
-            {section} › <strong className="font-medium text-foreground">{page}</strong>
+            {t(section)} › <strong className="font-medium text-foreground">{t(page)}</strong>
           </div>
           <div className="flex items-center gap-2.5">
             <Button variant="outline" size="sm" className="h-[30px] text-xs" asChild>
@@ -393,12 +424,16 @@ export function SalesRepLayout() {
         </header>
 
         <div className="shrink-0 border-b border-border/40 px-4 py-2.5 text-[13px] text-muted-foreground lg:hidden">
-          {section} › <strong className="font-medium text-foreground">{page}</strong>
+          {t(section)} › <strong className="font-medium text-foreground">{t(page)}</strong>
         </div>
 
-        <main className="scrollbar-thin mx-auto w-full max-w-[1260px] flex-1 overflow-y-auto px-[30px] pb-20 pt-[30px] lg:px-10 lg:pb-[80px]">
+        <main
+          ref={mainScrollRef}
+          data-sales-rep-scroll
+          className="scrollbar-thin mx-auto w-full max-w-[1260px] flex-1 overflow-y-auto px-[30px] pb-20 pt-[30px] lg:px-10 lg:pb-[80px]"
+        >
           <Suspense fallback={<OperatorOutletFallback />}>
-            <Outlet />
+            <Outlet key={language} />
           </Suspense>
         </main>
       </div>

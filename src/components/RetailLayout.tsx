@@ -2,6 +2,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { Suspense, memo, useMemo, useState } from "react";
 import { isSidebarNavItemActive, navPathEndFlag } from "@/lib/sidebar-nav-active";
 import { useAppData, useShipments } from "@/contexts/AppDataContext";
+import { useFulfillmentPipelineAutoRefresh } from "@/hooks/useShipmentsAutoRefresh";
 import { useAuth, useRetailAccountTradingName } from "@/contexts/AuthContext";
 import { useRetailCart } from "@/contexts/RetailCartContext";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ import {
   Truck,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LanguageSelect } from "@/components/LanguageSelect";
 import { RetailOutletFallback } from "@/components/retail/RetailOutletFallback";
 
 function userInitials(displayName: string): string {
@@ -97,6 +98,7 @@ type SidebarNavProps = {
 
 const RetailSidebarNav = memo(function RetailSidebarNav({ onNavigate, cartCases, badgeDeliveries }: SidebarNavProps) {
   const location = useLocation();
+  const { t } = useLanguage();
 
   const mergeBadge = (to: string): number | undefined => {
     if (to === "/retail/new-order" && cartCases > 0) return cartCases;
@@ -121,7 +123,7 @@ const RetailSidebarNav = memo(function RetailSidebarNav({ onNavigate, cartCases,
         className={linkClass(active)}
       >
         <item.icon className="h-[15px] w-[15px] shrink-0 opacity-90" strokeWidth={1.75} />
-        <span className="flex-1">{item.label}</span>
+        <span className="flex-1">{t(item.label)}</span>
         {badge != null && badge > 0 ? (
           <span className="rounded-full bg-[hsl(40_88%_42%/0.18)] px-1.5 py-px font-mono text-[10px] font-semibold text-sidebar-primary">
             {badge > 99 ? "99+" : badge}
@@ -134,22 +136,22 @@ const RetailSidebarNav = memo(function RetailSidebarNav({ onNavigate, cartCases,
   return (
     <>
       <div className="space-y-0.5 px-2.5 pt-3.5">
-        <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(var(--sidebar-foreground)/0.32)]">Store</p>
+        <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(var(--sidebar-foreground)/0.32)]">{t("Store")}</p>
         {storeItems.map((item) => renderLink(item))}
       </div>
       <div className="mx-2.5 my-2.5 h-px bg-sidebar-border" />
       <div className="space-y-0.5 px-2.5 pt-1">
-        <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(var(--sidebar-foreground)/0.32)]">Tracking</p>
+        <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(var(--sidebar-foreground)/0.32)]">{t("Tracking")}</p>
         {trackingItems.map((item) => renderLink(item))}
       </div>
       <div className="mx-2.5 my-2.5 h-px bg-sidebar-border" />
       <div className="space-y-0.5 px-2.5 pt-1">
-        <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(var(--sidebar-foreground)/0.32)]">Rewards</p>
+        <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(var(--sidebar-foreground)/0.32)]">{t("Rewards")}</p>
         {rewardsItems.map((item) => renderLink(item))}
       </div>
       <div className="mx-2.5 my-2.5 h-px bg-sidebar-border" />
       <div className="space-y-0.5 px-2.5 pt-1">
-        <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(var(--sidebar-foreground)/0.32)]">Account</p>
+        <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(var(--sidebar-foreground)/0.32)]">{t("Account")}</p>
         {accountItems.map((item) => renderLink(item))}
       </div>
     </>
@@ -158,13 +160,15 @@ const RetailSidebarNav = memo(function RetailSidebarNav({ onNavigate, cartCases,
 
 export function RetailLayout() {
   const { signOut, user } = useAuth();
-  const { language, setLanguage, options, t } = useLanguage();
+  const { language, t } = useLanguage();
   const storeName = useRetailAccountTradingName();
   const { totalCases } = useRetailCart();
-  const { data } = useAppData();
+  const { data, loading, refreshShipments, refreshSalesOrders } = useAppData();
   const { shipments } = useShipments();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useFulfillmentPipelineAutoRefresh(refreshShipments, refreshSalesOrders, !loading);
 
   const myOrders = useMemo(() => {
     if (!storeName) return [];
@@ -213,7 +217,7 @@ export function RetailLayout() {
         <Star className="size-3.5 fill-white/20" strokeWidth={2} />
       </div>
       <div className="min-w-0">
-        <div className="text-[11px] font-semibold text-[hsl(40_80%_60%)]">Partner perks</div>
+        <div className="text-[11px] font-semibold text-[hsl(40_80%_60%)]">{t("Partner perks")}</div>
         <div className="truncate text-[10px] text-[hsl(35_12%_42%)]">
           {pipelineCount} open · ${formatMoneyCompact(spend30d)} last 30 days
         </div>
@@ -229,23 +233,15 @@ export function RetailLayout() {
         </div>
         <div className="min-w-0 flex-1 text-left">
           <div className="truncate text-xs font-medium text-[hsl(35_14%_88%)]">{user?.displayName ?? "Guest"}</div>
-          <div className="truncate text-[10px] text-[hsl(35_12%_44%)]">Retail account</div>
+          <div className="truncate text-[10px] text-[hsl(35_12%_44%)]">{t("Retail account")}</div>
         </div>
       </div>
       <div className="mt-3 flex items-center gap-2">
         <div className="min-w-0 flex-1">
-          <Select value={language} onValueChange={(v) => setLanguage(v as typeof language)}>
-            <SelectTrigger className="h-8 border-sidebar-border bg-sidebar text-xs">
-              <SelectValue placeholder={t("Choose language")} />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <p className="mb-1 text-[10px] uppercase tracking-widest text-[hsl(var(--sidebar-foreground)/0.32)]">
+            {t("Language")}
+          </p>
+          <LanguageSelect />
         </div>
         <button
           type="button"
@@ -266,7 +262,11 @@ export function RetailLayout() {
         <div className="shrink-0 border-b border-sidebar-border">{logoBlock}</div>
         {tierPill}
         <nav className="flex flex-1 flex-col overflow-y-auto pb-3 text-sm" aria-label="Retail">
-          <RetailSidebarNav cartCases={totalCases} badgeDeliveries={activeDeliveriesBadge} />
+          <RetailSidebarNav
+            key={language}
+            cartCases={totalCases}
+            badgeDeliveries={activeDeliveriesBadge}
+          />
         </nav>
         {userBlock}
       </aside>
@@ -287,6 +287,7 @@ export function RetailLayout() {
                 {tierPill}
                 <nav className="flex flex-1 flex-col overflow-y-auto pb-4 text-sm" aria-label="Retail menu">
                   <RetailSidebarNav
+                    key={language}
                     cartCases={totalCases}
                     badgeDeliveries={activeDeliveriesBadge}
                     onNavigate={() => setMobileOpen(false)}
@@ -308,7 +309,7 @@ export function RetailLayout() {
         {/* Top bar — crumbs + actions (matches retail-store-app.html) */}
         <header className="glass-header sticky top-0 z-30 hidden h-[54px] shrink-0 items-center justify-between gap-4 px-8 lg:flex">
           <div className="text-[13px] text-muted-foreground">
-            {section} › <strong className="font-medium text-foreground">{page}</strong>
+            {t(section)} › <strong className="font-medium text-foreground">{t(page)}</strong>
           </div>
           <div className="flex items-center gap-2.5">
             <Button variant="outline" size="sm" className="h-[30px] text-xs" asChild>
@@ -339,12 +340,12 @@ export function RetailLayout() {
         ) : null}
 
         <div className="shrink-0 border-b border-border/40 px-4 py-2.5 text-[13px] text-muted-foreground lg:hidden">
-          {section} › <strong className="font-medium text-foreground">{page}</strong>
+          {t(section)} › <strong className="font-medium text-foreground">{t(page)}</strong>
         </div>
 
         <main className="scrollbar-thin mx-auto w-full max-w-[1200px] flex-1 overflow-y-auto px-[30px] pb-20 pt-[30px] lg:pb-[80px]">
           <Suspense fallback={<RetailOutletFallback />}>
-            <Outlet />
+            <Outlet key={language} />
           </Suspense>
         </main>
       </div>

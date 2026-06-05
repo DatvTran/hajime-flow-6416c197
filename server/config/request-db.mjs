@@ -6,9 +6,15 @@ const als = new AsyncLocalStorage();
 /**
  * Active Knex connection for this HTTP request.
  * Defaults to platform DB (auth, HQ, legacy shared data).
+ *
+ * @param {string} [tableName] When set, returns a query builder for that table (same as `knex('table')`).
  */
-export function getDb() {
-  return als.getStore()?.db ?? platformDb;
+export function getDb(tableName) {
+  const db = als.getStore()?.db ?? platformDb;
+  if (typeof tableName === 'string' && tableName.length > 0) {
+    return db(tableName);
+  }
+  return db;
 }
 
 /**

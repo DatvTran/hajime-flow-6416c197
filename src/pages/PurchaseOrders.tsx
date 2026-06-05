@@ -15,6 +15,7 @@ import { useInventory, usePurchaseOrders, useTransferOrders, useAppData } from "
 import { resolveReceivingLocationForPo } from "@/lib/po-destination-warehouse";
 import { PurchaseOrdersSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function shouldAddInventoryForTransition(p: PurchaseOrder, nextStatus: PurchaseOrder["status"]): boolean {
   // Production POs ADD inventory when delivered (manufacturer shipment arrives)
@@ -24,6 +25,7 @@ function shouldAddInventoryForTransition(p: PurchaseOrder, nextStatus: PurchaseO
 }
 
 export default function PurchaseOrders() {
+  const { t } = useLanguage();
   const { user } = useAuth();
   const { loading, data } = useAppData();
 
@@ -270,18 +272,18 @@ export default function PurchaseOrders() {
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <Button variant="outline" size="sm" className="w-full justify-center touch-manipulation sm:w-auto">
               <Download className="mr-2 h-4 w-4" />
-              Export
+              {t("Export")}
             </Button>
             {tab === "production" && canCreateProductionRequest ? (
               <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setNewPoOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
-                New production request
+                {t("New production request")}
               </Button>
             ) : null}
             {tab === "transfer" && canCreateTransfer ? (
               <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setNewToOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
-                New transfer order
+                {t("New transfer order")}
               </Button>
             ) : null}
           </div>
@@ -298,7 +300,7 @@ export default function PurchaseOrders() {
           }`}
         >
           <Factory className="h-4 w-4" />
-          Production Orders ({purchaseOrders.length})
+          {t("Production Orders")} ({purchaseOrders.length})
         </button>
         <button
           onClick={() => setTab("transfer")}
@@ -309,7 +311,7 @@ export default function PurchaseOrders() {
           }`}
         >
           <Truck className="h-4 w-4" />
-          Transfer Orders ({transferOrders.length})
+          {t("Transfer Orders")} ({transferOrders.length})
         </button>
       </div>
 
@@ -350,13 +352,13 @@ export default function PurchaseOrders() {
                 <table className="w-full min-w-[880px] text-sm">
                   <thead>
                     <tr className="border-b text-left">
-                      <th className="pb-3 font-medium text-muted-foreground">Request</th>
-                      <th className="pb-3 font-medium text-muted-foreground">Qty (btl)</th>
-                      <th className="pb-3 font-medium text-muted-foreground">Destination warehouse</th>
-                      <th className="pb-3 font-medium text-muted-foreground">Manufacturer</th>
-                      <th className="pb-3 font-medium text-muted-foreground">SKU</th>
-                      <th className="pb-3 font-medium text-muted-foreground">Status</th>
-                      <th className="pb-3 font-medium text-muted-foreground">Expected ship</th>
+                      <th className="pb-3 font-medium text-muted-foreground">{t("Request")}</th>
+                      <th className="pb-3 font-medium text-muted-foreground">{t("Qty (btl)")}</th>
+                      <th className="pb-3 font-medium text-muted-foreground">{t("Destination warehouse")}</th>
+                      <th className="pb-3 font-medium text-muted-foreground">{t("Manufacturer")}</th>
+                      <th className="pb-3 font-medium text-muted-foreground">{t("SKU")}</th>
+                      <th className="pb-3 font-medium text-muted-foreground">{t("Status")}</th>
+                      <th className="pb-3 font-medium text-muted-foreground">{t("Expected ship")}</th>
                       <th className="pb-3 font-medium text-muted-foreground">Required</th>
                       <th className="pb-3 font-medium text-muted-foreground">Notes</th>
                     </tr>

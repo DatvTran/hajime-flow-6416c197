@@ -6,8 +6,10 @@ import { RetailSkeleton } from "@/components/skeletons";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getMySupplyChainIncentiveProgress, type MyIncentiveProgressData } from "@/lib/api-v1-mutations";
+import { SupplyChainProgramNetwork } from "@/components/incentives/SupplyChainProgramNetwork";
 import { retailOrderDisplayId } from "@/lib/order-lines";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const TIER_BENEFITS = [
   { benefit: "Annual spend threshold", participant: "—", bronze: "$15K", silver: "$30K", gold: "$50K", platinum: "$100K" },
@@ -24,6 +26,7 @@ function formatMoney(n: number): string {
 }
 
 export default function RetailPartnerProgramPage() {
+  const { t } = useLanguage();
   const { data, loading } = useAppData();
   const accountName = useRetailAccountTradingName();
   const ringGradId = useId().replace(/:/g, "");
@@ -79,7 +82,7 @@ export default function RetailPartnerProgramPage() {
     <div className="space-y-6 pb-8">
       <RetailPageHeader
         title="Partner program"
-        description={`Hajime Partner Program · ${accountName ?? "your venue"}`}
+        description={t("Hajime Partner Program · {{name}}", { name: accountName ?? "your venue" })}
         actions={
           <Button variant="outline" size="sm" className="h-[30px] text-xs">
             Download statement
@@ -156,6 +159,10 @@ export default function RetailPartnerProgramPage() {
           </div>
         </div>
       </div>
+
+      {incentive && incentive.scope === "retail" ? (
+        <SupplyChainProgramNetwork data={incentive} className="rounded-xl border border-border/70 bg-card p-4" />
+      ) : null}
 
       <section>
         <h2 className="mb-3.5 font-display text-[19px] font-medium tracking-[-0.01em]">Tier comparison</h2>

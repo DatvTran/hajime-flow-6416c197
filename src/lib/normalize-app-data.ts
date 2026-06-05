@@ -114,7 +114,10 @@ export function normalizeAppData(raw: AppData): AppData {
   return {
     ...raw,
     products: mergeProducts(raw.products, SEED.products),
-    salesOrders: pickOrSeed(raw.salesOrders, SEED.salesOrders),
+    // Empty API array is valid (e.g. distributor with no scoped orders) — do not inject seed demos.
+    salesOrders: Array.isArray(raw.salesOrders)
+      ? raw.salesOrders
+      : pickOrSeed(raw.salesOrders, SEED.salesOrders),
     accounts: accountsMerged,
     inventory: pickOrSeed(raw.inventory, SEED.inventory),
     version: raw.version ?? 1,

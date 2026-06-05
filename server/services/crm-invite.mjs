@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { getDb } from '../config/request-db.mjs';
 import { platformDb } from '../config/database.mjs';
 import { Role } from '../rbac/permissions.mjs';
+import { ensurePlatformUserInTenantDb } from '../lib/tenant-user-mirror.mjs';
 
 /** Portal roles allowed when adding a CRM contact (matches Settings team picker). */
 export const CRM_TEAM_MEMBER_ROLES = ['sales_rep', 'retail', 'distributor', 'manufacturer'];
@@ -60,6 +61,11 @@ export async function createCrmUserInvite({
   }
 
   const knex = getDb();
+
+  const mirrored = await ensurePlatformUserInTenantDb(knex, tenantId, invitedByUserId);
+  if (!mirrored) {
+    return { ok: false, reason: 'inviter_not_in_tenant_db' };
+  }
 
   await knex('user_invites')
     .where({ tenant_id: tenantId, email: normalizedEmail, used: false })

@@ -1,11 +1,15 @@
-import { Link } from "react-router-dom";
-import { PageHeader } from "@/components/PageHeader";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  distributorFulfillmentEditPath,
+  distributorShipmentEditPath,
+} from "@/lib/distributor-fulfillment-links";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/StatusBadge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAppData, useSalesOrders, useDepletionReports } from "@/contexts/AppDataContext";
+import { StatusBadge } from "@/components/StatusBadge";
+import { DistributorPartnerHero } from "@/components/distributor/DistributorPartnerHero";
+import { useAppData, usePurchaseOrders, useSalesOrders } from "@/contexts/AppDataContext";
 import { useShipmentsAutoRefresh } from "@/hooks/useShipmentsAutoRefresh";
 import { useAuth } from "@/contexts/AuthContext";
 import { computeInventorySummary, deriveAlerts } from "@/lib/hajime-metrics";
@@ -14,9 +18,18 @@ import { getMyWarehouseOptions, updateMyPrimaryWarehouse } from "@/lib/api-v1-mu
 import type { Warehouse } from "@/types/app-data";
 import { toast } from "@/components/ui/sonner";
 import { DistributorSkeleton } from "@/components/skeletons";
-import { IncentiveProgressDashboardCard } from "@/components/incentives/IncentiveProgressDashboardCard";
-import { Package, ShoppingCart, Truck, Users, AlertTriangle, Warehouse, Calendar, TrendingDown } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  BarChart3,
+  FileText,
+  Package,
+  Star,
+  Truck,
+  Warehouse,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { portalTimeGreeting } from "@/lib/i18n-portal";
 
 function warehousesFromApiRows(rows: Record<string, unknown>[]): Warehouse[] {
   return rows.map((row) => {
@@ -33,19 +46,57 @@ function warehousesFromApiRows(rows: Record<string, unknown>[]): Warehouse[] {
   });
 }
 
+function greetingName(displayName: string): string {
+  const first = displayName.trim().split(/\s+/)[0];
+  return first || "there";
+}
+
+type StockRow = {
+  sku: string;
+  name: string;
+  avail: number;
+  threshold: number;
+  tone: "low" | "med" | "ok";
+};
+
+const toneColor = {
+  low: "text-[hsl(0_68%_44%)]",
+  med: "text-[hsl(38_90%_40%)]",
+  ok: "text-[hsl(158_56%_32%)]",
+} as const;
+
+const toneLabel = {
+  low: "Below reorder point",
+  med: "Monitor stock",
+  ok: "Available",
+} as const;
+
 export default function DistributorHomePage() {
+  const { t, language } = useLanguage();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { data, loading, updateData, refreshTeamMembers, refreshShipments } = useAppData();
+  const { purchaseOrders } = usePurchaseOrders();
+  const { salesOrders } = useSalesOrders();
   const [warehouseOptions, setWarehouseOptions] = useState<{ id: string; name: string }[]>([]);
   const [primarySaving, setPrimarySaving] = useState(false);
+  const [urgentDismissed, setUrgentDismissed] = useState(false);
 
-  const { salesOrders } = useSalesOrders();
-  const { depletionReports } = useDepletionReports();
   const inv = useMemo(() => computeInventorySummary(data.inventory, data.purchaseOrders), [data.inventory, data.purchaseOrders]);
-  const alerts = useMemo(() => deriveAlerts(data).slice(0, 4), [data]);
+  const alerts = useMemo(() => deriveAlerts(data), [data]);
+
+  const openPurchaseOrders = useMemo(
+    () => purchaseOrders.filter((p) => p.status !== "delivered" && p.status !== "cancelled"),
+    [purchaseOrders],
+  );
 
   const awaitingFulfillment = useMemo(
     () => salesOrders.filter((o) => o.status === "confirmed" || o.status === "packed"),
+    [salesOrders],
+  );
+
+  const inTransitOrders = useMemo(
+    () => salesOrders.filter((o) => o.status === "shipped"),
     [salesOrders],
   );
 
@@ -54,20 +105,32 @@ export default function DistributorHomePage() {
     [data.shipments],
   );
 
-  const retailAccounts = useMemo(
-    () => data.accounts.filter((a) => a.status === "active" && a.type !== "distributor"),
-    [data.accounts],
-  );
+  const stockSnapshot = useMemo((): StockRow[] => {
+    const safety = data.operationalSettings?.safetyStockBySku ?? {};
+    const defaultSafety = 120;
+    const bySku: Record<string, { avail: number; name: string }> = {};
+    for (const row of data.inventory) {
+      if (row.locationType !== "distributor_warehouse" || row.status !== "available") continue;
+      const cur = bySku[row.sku] ?? { avail: 0, name: row.productName };
+      cur.avail += row.quantityBottles;
+      bySku[row.sku] = cur;
+    }
+    const rows: StockRow[] = Object.entries(bySku).map(([sku, v]) => {
+      const threshold = safety[sku] ?? defaultSafety;
+      const tone: StockRow["tone"] =
+        v.avail < threshold * 0.5 ? "low" : v.avail < threshold ? "med" : "ok";
+      return { sku, name: v.name, avail: v.avail, threshold, tone };
+    });
+    return rows
+      .sort((a, b) => {
+        const order = { low: 0, med: 1, ok: 2 };
+        return order[a.tone] - order[b.tone] || a.avail - b.avail;
+      })
+      .slice(0, 5);
+  }, [data.inventory, data.operationalSettings?.safetyStockBySku]);
 
-  const depletionFlags = useMemo(
-    () => depletionReports.filter((r) => r.flaggedForReplenishment).length,
-    [depletionReports],
-  );
-
-  const recentDepletions = useMemo(
-    () => depletionReports.slice(0, 5),
-    [depletionReports],
-  );
+  const urgentOrder = awaitingFulfillment[0];
+  const urgentAlert = alerts.find((a) => a.severity === "high") ?? alerts[0];
 
   const myCrmRow = useMemo(() => {
     const em = user?.email?.trim().toLowerCase();
@@ -96,6 +159,14 @@ export default function DistributorHomePage() {
       cancelled = true;
     };
   }, [user?.role]);
+
+  useEffect(() => {
+    const el = document.querySelector("[data-distributor-scroll]");
+    if (!el || !window.location.hash) return;
+    const id = window.location.hash.slice(1);
+    const target = document.getElementById(id);
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [loading]);
 
   const onPrimaryWarehouseChange = async (warehouseId: string) => {
     if (user?.role !== "distributor") return;
@@ -132,203 +203,384 @@ export default function DistributorHomePage() {
     return <DistributorSkeleton />;
   }
 
+  const lowSkuCount = stockSnapshot.filter((s) => s.tone === "low").length;
+  const subtitleParts = [
+    openPurchaseOrders.length > 0
+      ? t("{{count}} open POs from HQ", { count: openPurchaseOrders.length })
+      : null,
+    awaitingFulfillment.length > 0
+      ? t("{{count}} orders in pick & pack", { count: awaitingFulfillment.length })
+      : null,
+    lowSkuCount > 0 ? t("{{count}} SKUs below threshold", { count: lowSkuCount }) : null,
+  ].filter(Boolean);
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Distributor · floor & depletion"
-        description="Floor-first view: what needs picking today, what’s in motion, and where retail depletion flags replenishment — every side-effect is inventory truth, not a separate spreadsheet."
-      />
-
-      <IncentiveProgressDashboardCard />
-
-      {user?.role === "distributor" ? (
-        <Card className="border-border/80">
-          <CardHeader className="pb-2">
-            <CardTitle className="font-display flex items-center gap-2 text-base">
-              <Warehouse className="h-5 w-5" />
-              Your receiving warehouse
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Choose which Hajime depot you operate from — same locations Brand Operator configured under Settings →
-              Warehouses. This updates your CRM profile and lets HQ route stock and shipments to the right DC.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-2 max-w-md">
-              <Label htmlFor="dist-primary-wh">Primary depot</Label>
-              <Select
-                value={selectedPrimaryWarehouseId || "__none__"}
-                onValueChange={(v) => void onPrimaryWarehouseChange(v)}
-                disabled={primarySaving || warehouseOptions.length === 0}
-              >
-                <SelectTrigger id="dist-primary-wh" className="touch-manipulation">
-                  <SelectValue placeholder={warehouseOptions.length === 0 ? "Loading depots…" : "Select depot"} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">None selected</SelectItem>
-                  {warehouseOptions.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>
-                      {w.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {warehouseOptions.length === 0 ? (
-                <p className="text-xs text-amber-700 dark:text-amber-500">
-                  No active warehouses returned — confirm Brand Operator added depots and your CRM email matches your login.
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Signed in as <span className="font-medium text-foreground">{user.email}</span>. Must match your CRM
-                  distributor contact email.
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="card-interactive p-4">
-          <div className="flex items-center gap-2">
-            <Warehouse className="h-4 w-4 text-accent" strokeWidth={1.5} />
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Warehouse inventory</p>
-          </div>
-          <p className="mt-2 font-display text-2xl font-semibold tabular-nums">{inv.available.toLocaleString()}</p>
-          <p className="text-[10px] text-muted-foreground">available bottles</p>
-          <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-            <Link to="/distributor/inventory">Stock positions</Link>
-          </Button>
+    <div key={language} className="animate-enter space-y-7">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="font-display text-[30px] font-semibold tracking-[-0.02em] text-foreground">
+            {portalTimeGreeting(t)}, {greetingName(user?.displayName ?? "there")}.
+          </h1>
+          <p className="mt-1 max-w-[56ch] text-[13px] text-muted-foreground">
+            {subtitleParts.length > 0
+              ? subtitleParts.join(" · ")
+              : t("Floor is clear — inventory, fulfillment, and shipments are in good shape.")}
+          </p>
         </div>
-        <div className="card-interactive p-4">
-          <div className="flex items-center gap-2">
-            <ShoppingCart className="h-4 w-4 text-accent" strokeWidth={1.5} />
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Awaiting fulfillment</p>
-          </div>
-          <p className="mt-2 font-display text-2xl font-semibold tabular-nums">{awaitingFulfillment.length}</p>
-          <p className="text-[10px] text-muted-foreground">approved / ready to pick</p>
-          <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-            <Link to="/distributor/orders?tab=approved">Open queue</Link>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button variant="outline" size="sm" className="h-9" asChild>
+            <Link to="/distributor/reports">{t("Q2 report")}</Link>
           </Button>
-        </div>
-        <div className="card-interactive p-4">
-          <div className="flex items-center gap-2">
-            <Truck className="h-4 w-4 text-accent" strokeWidth={1.5} />
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">In motion</p>
-          </div>
-          <p className="mt-2 font-display text-2xl font-semibold tabular-nums">{activeShipments.length}</p>
-          <p className="text-[10px] text-muted-foreground">active shipments</p>
-          <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-            <Link to="/distributor/shipments">Shipment tracker</Link>
-          </Button>
-        </div>
-        <div className="card-interactive p-4">
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-accent" strokeWidth={1.5} />
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Retail accounts</p>
-          </div>
-          <p className="mt-2 font-display text-2xl font-semibold tabular-nums">{retailAccounts.length}</p>
-          <p className="text-[10px] text-muted-foreground">active (non-distributor)</p>
-          <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-            <Link to="/distributor/accounts">Directory</Link>
-          </Button>
-        </div>
-        <div className="card-interactive p-4">
-          <div className="flex items-center gap-2">
-            <TrendingDown className="h-4 w-4 text-accent" strokeWidth={1.5} />
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Depletion reports</p>
-          </div>
-          <p className="mt-2 font-display text-2xl font-semibold tabular-nums">{depletionFlags}</p>
-          <p className="text-[10px] text-muted-foreground">flagged for replenishment</p>
-          <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
-            <Link to="/distributor/depletions">Report sell-through</Link>
+          <Button size="sm" className="h-9 bg-primary text-primary-foreground hover:bg-[hsl(24_10%_16%)]" asChild>
+            <Link to="/distributor/inventory">{t("Inventory check")}</Link>
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="card-elevated">
-          <div className="flex items-center gap-2 border-b border-border/50 p-5 pb-3">
-            <Package className="h-5 w-5 text-accent" strokeWidth={1.5} />
-            <h3 className="font-display text-lg font-semibold">Orders awaiting fulfillment</h3>
-          </div>
-          <div className="space-y-2 p-5 pt-3 text-sm">
-            {awaitingFulfillment.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-6 text-center">
-                <Package className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
-                <p className="text-sm text-muted-foreground">No orders in pick/pack stage</p>
-              </div>
+      {!urgentDismissed && (urgentOrder || urgentAlert) ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-[hsl(0_68%_48%/0.2)] bg-[hsl(0_68%_48%/0.06)] px-4 py-3.5 sm:flex-row sm:items-start">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[hsl(0_68%_44%)]" strokeWidth={1.75} />
+          <p className="flex-1 text-[13px]">
+            {urgentOrder ? (
+              <>
+                {t("Urgent — {{id}} for {{account}} requires pick while status is {{status}}.", {
+                  id: urgentOrder.id,
+                  account: urgentOrder.account,
+                  status: t(
+                    urgentOrder.status === "confirmed"
+                      ? "confirmed"
+                      : urgentOrder.status.replace(/-/g, " "),
+                  ),
+                })}
+              </>
             ) : (
-              awaitingFulfillment.map((o) => (
-                <div
-                  key={o.id}
-                  className="flex flex-col gap-1 rounded-lg border border-border/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div>
-                    <span className="font-mono text-xs">{o.id}</span>
-                    <p className="font-medium">{o.account}</p>
-                    <p className="text-xs text-muted-foreground">{o.market}</p>
-                  </div>
-                  <StatusBadge status={o.status} />
-                </div>
-              ))
+              <>
+                <strong className="text-[hsl(0_68%_36%)]">{t("Attention")}</strong> — {urgentAlert?.message}
+              </>
             )}
-          </div>
-        </div>
-
-        <div className="card-elevated">
-          <div className="flex items-center gap-2 border-b border-border/50 p-5 pb-3">
-            <Calendar className="h-5 w-5 text-accent" strokeWidth={1.5} />
-            <h3 className="font-display text-lg font-semibold">Delivery schedule</h3>
-          </div>
-          <div className="space-y-2 p-5 pt-3 text-sm">
-            {activeShipments.slice(0, 6).map((s) => (
-              <div key={s.id} className="rounded-lg border border-border/50 px-3 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono text-xs">{s.id}</span>
-                  <span className="text-xs text-muted-foreground">ETA {s.eta}</span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {s.origin} → {s.destination}
-                </p>
-                {shipmentLineContentsLabel(s) ? (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">Receiving:</span> {shipmentLineContentsLabel(s)}
-                  </p>
-                ) : null}
-              </div>
-            ))}
-            <Button variant="link" className="h-auto px-0 text-xs" asChild>
-              <Link to="/distributor/shipments">Full tracker</Link>
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="outline" size="sm" className="h-8" onClick={() => setUrgentDismissed(true)}>
+              {t("Dismiss")}
+            </Button>
+            <Button size="sm" className="h-8 bg-accent text-accent-foreground hover:bg-[hsl(32_78%_48%)]" asChild>
+              <Link to="/distributor/pick-pack">{t("Start pick")}</Link>
             </Button>
           </div>
         </div>
+      ) : null}
 
-        <div className="card-elevated lg:col-span-2">
-          <div className="flex items-center gap-2 border-b border-border/50 p-5 pb-3">
-            <AlertTriangle className="h-5 w-5 text-destructive" strokeWidth={1.5} />
-            <h3 className="font-display text-lg font-semibold">Backorder & risk alerts</h3>
-          </div>
-          <div className="flex flex-col gap-3 p-5 pt-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-2 text-sm">
-              {alerts.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 py-6 text-center">
-                  <AlertTriangle className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
-                  <p className="text-sm text-muted-foreground">No alerts</p>
-                </div>
-              ) : (
-                alerts.map((a) => (
-                  <div key={a.id} className="rounded-lg border border-border/50 px-3 py-2">
-                    {a.message}
-                  </div>
-                ))
+      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          {
+            icon: FileText,
+            tone: "ic-gold",
+            label: t("Open POs"),
+            value: String(openPurchaseOrders.length),
+            sub: openPurchaseOrders.length ? t("Inbound from Hajime HQ") : t("No open production requests"),
+            to: "/distributor/purchase-orders",
+          },
+          {
+            icon: Truck,
+            tone: "ic-green",
+            label: t("In motion"),
+            value: String(activeShipments.length),
+            sub: t("Active shipments"),
+            to: "/distributor/shipments",
+          },
+          {
+            icon: BarChart3,
+            tone: "ic-blue",
+            label: t("Available stock"),
+            value: inv.available.toLocaleString(),
+            sub: t("bottles ready to allocate"),
+            to: "/distributor/inventory",
+          },
+          {
+            icon: Star,
+            tone: "ic-ink",
+            label: t("Pick queue"),
+            value: String(awaitingFulfillment.length),
+            sub: awaitingFulfillment.length ? t("Confirmed / packed orders") : t("Nothing awaiting pick"),
+            to: "/distributor/pick-pack",
+          },
+        ].map((kpi) => (
+          <Link
+            key={kpi.label}
+            to={kpi.to}
+            className="card-interactive flex flex-col gap-1 p-[18px] no-underline"
+          >
+            <div
+              className={cn(
+                "mb-2 flex size-[34px] items-center justify-center rounded-lg",
+                kpi.tone === "ic-gold" && "bg-[hsl(40_88%_42%/0.1)] text-[hsl(40_88%_36%)]",
+                kpi.tone === "ic-green" && "bg-[hsl(158_56%_36%/0.1)] text-[hsl(158_56%_30%)]",
+                kpi.tone === "ic-blue" && "bg-[hsl(215_72%_50%/0.1)] text-[hsl(215_72%_42%)]",
+                kpi.tone === "ic-ink" && "bg-[hsl(24_10%_10%/0.07)] text-[hsl(24_10%_18%)]",
               )}
+            >
+              <kpi.icon className="size-[17px]" strokeWidth={1.75} />
             </div>
-            <Button variant="secondary" size="sm" className="shrink-0 touch-manipulation" asChild>
-              <Link to="/distributor/backorders">Backorder desk</Link>
-            </Button>
+            <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">{kpi.label}</p>
+            <p className="font-display text-[26px] font-semibold tabular-nums leading-none tracking-[-0.02em]">
+              {kpi.value}
+            </p>
+            <p className="text-xs text-muted-foreground">{kpi.sub}</p>
+          </Link>
+        ))}
+      </div>
+
+      <div id="partner-program">
+        <DistributorPartnerHero />
+      </div>
+
+      {user?.role === "distributor" ? (
+        <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-soft)]">
+          <div className="mb-3 flex items-center gap-2">
+            <Warehouse className="size-5 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-base font-semibold">{t("Your receiving warehouse")}</h3>
+          </div>
+          <p className="mb-3 text-sm text-muted-foreground">
+            {t("Choose which Hajime depot you operate from — HQ uses this to route inbound stock and shipments.")}
+          </p>
+          <div className="max-w-md space-y-2">
+            <Label htmlFor="dist-primary-wh">{t("Primary depot")}</Label>
+            <Select
+              value={selectedPrimaryWarehouseId || "__none__"}
+              onValueChange={(v) => void onPrimaryWarehouseChange(v)}
+              disabled={primarySaving || warehouseOptions.length === 0}
+            >
+              <SelectTrigger id="dist-primary-wh" className="touch-manipulation">
+                <SelectValue placeholder={warehouseOptions.length === 0 ? t("Loading depots…") : t("Select depot")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">{t("None selected")}</SelectItem>
+                {warehouseOptions.map((w) => (
+                  <SelectItem key={w.id} value={w.id}>
+                    {w.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
+      ) : null}
+
+      <div className="grid gap-[18px] lg:grid-cols-[1.3fr_1fr]">
+        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[var(--shadow-soft)]">
+          <div className="flex items-center justify-between border-b border-border/50 px-5 py-4">
+            <div>
+              <h3 className="text-sm font-semibold">{t("Open purchase orders")}</h3>
+              <p className="text-xs text-muted-foreground">{t("Received from Hajime HQ")}</p>
+            </div>
+            <Button variant="outline" size="sm" className="h-8" asChild>
+              <Link to="/distributor/purchase-orders">{t("All POs")}</Link>
+            </Button>
+          </div>
+          {openPurchaseOrders.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-muted-foreground">{t("No open purchase orders")}</p>
+          ) : (
+            openPurchaseOrders.slice(0, 5).map((po) => (
+              <Link
+                key={po.id}
+                to={`/distributor/purchase-orders?po=${encodeURIComponent(po.id)}`}
+                className="flex items-center gap-3.5 border-b border-border/40 px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40 no-underline"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-mono text-[11px] text-muted-foreground">{po.id}</p>
+                  <p className="text-[13px] font-medium text-foreground">{po.marketDestination}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {po.sku} · {po.quantity.toLocaleString()} btl
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-xs font-medium text-muted-foreground">{po.requiredDate || po.requestedShipDate}</p>
+                  <div className="mt-1">
+                    <StatusBadge status={po.status} size="xs" />
+                  </div>
+                </div>
+              </Link>
+            ))
+          )}
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[var(--shadow-soft)]">
+          <div className="flex items-center justify-between border-b border-border/50 px-5 py-4">
+            <div>
+              <h3 className="text-sm font-semibold">{t("Inventory snapshot")}</h3>
+              <p className="text-xs text-muted-foreground">{t("Critical SKUs at your warehouse")}</p>
+            </div>
+            <Button variant="outline" size="sm" className="h-8" asChild>
+              <Link to="/distributor/inventory">{t("Full inventory")}</Link>
+            </Button>
+          </div>
+          {stockSnapshot.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-muted-foreground">{t("No distributor warehouse stock rows")}</p>
+          ) : (
+            stockSnapshot.map((row) => (
+              <Link
+                key={row.sku}
+                to="/distributor/inventory"
+                className="flex items-center gap-3 border-b border-border/40 px-5 py-3 transition-colors last:border-b-0 hover:bg-muted/40 no-underline"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium text-foreground">{row.name}</p>
+                  <p className="font-mono text-[11px] text-muted-foreground">{row.sku}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className={cn("font-mono text-[13px] font-semibold tabular-nums", toneColor[row.tone])}>
+                    {row.avail.toLocaleString()} {t("avail")}
+                  </p>
+                  <p className={cn("text-[10px] font-semibold", toneColor[row.tone])}>{t(toneLabel[row.tone])}</p>
+                </div>
+              </Link>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div id="delivery-schedule" className="space-y-3.5 scroll-mt-6">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="font-display text-[19px] font-medium tracking-[-0.01em]">{t("Active shipments")}</h2>
+          <Link to="/distributor/shipments" className="text-xs font-medium text-accent hover:underline">
+            {t("All shipments →")}
+          </Link>
+        </div>
+        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[var(--shadow-soft)]">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border/50 bg-muted/50">
+                  {["Tracking", "Route", "Contents", "ETA", "Status"].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
+                    >
+                      {t(h)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(activeShipments.length ? activeShipments : data.shipments).slice(0, 6).map((s) => (
+                  <tr
+                    key={s.id}
+                    className="cursor-pointer border-b border-border/40 transition-colors last:border-b-0 hover:bg-muted/30"
+                    onClick={() => navigate(distributorShipmentEditPath(s, salesOrders))}
+                  >
+                    <td className="px-4 py-3 font-mono text-xs text-accent">{s.id}</td>
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{s.destination}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {s.origin} → {s.destination}
+                      </p>
+                    </td>
+                    <td className="max-w-[200px] truncate px-4 py-3 text-xs text-muted-foreground">
+                      {shipmentLineContentsLabel(s) || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs">{s.eta}</td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={s.status} size="xs" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="flex items-baseline justify-between gap-3 pt-2">
+          <h2 className="font-display text-[19px] font-medium tracking-[-0.01em]">{t("Delivery schedule")}</h2>
+          <Link to="/distributor/shipments" className="text-xs font-medium text-accent hover:underline">
+            {t("Full tracker →")}
+          </Link>
+        </div>
+        <div className="space-y-2">
+          {activeShipments.slice(0, 6).map((s) => (
+            <Link
+              key={`sched-${s.id}`}
+              to={distributorShipmentEditPath(s, salesOrders)}
+              className="flex flex-col gap-2 rounded-[10px] border border-border/60 bg-card px-4 py-3 shadow-[var(--shadow-soft)] no-underline text-inherit transition-shadow hover:shadow-[var(--shadow-lifted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:items-center sm:gap-3.5"
+            >
+              <p className="w-20 shrink-0 font-mono text-xs font-medium text-muted-foreground">{t("ETA")}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-medium">{s.destination}</p>
+                <p className="text-xs text-muted-foreground">{shipmentLineContentsLabel(s) || s.origin}</p>
+              </div>
+              <p className="font-mono text-[11px] text-muted-foreground">{s.id}</p>
+              <StatusBadge status={s.status === "delivered" ? "delivered" : "confirmed"} size="xs" />
+            </Link>
+          ))}
+          {activeShipments.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
+              {t("No upcoming deliveries in motion")}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-soft)]">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Package className="size-5 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-base font-semibold">{t("Orders awaiting fulfillment")}</h3>
+          </div>
+          <Button variant="secondary" size="sm" asChild>
+            <Link to="/distributor/backorders">{t("Backorder desk")}</Link>
+          </Button>
+        </div>
+        {awaitingFulfillment.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("No orders in pick/pack stage")}</p>
+        ) : (
+          <div className="space-y-2">
+            {awaitingFulfillment.slice(0, 6).map((o) => (
+              <Link
+                key={o.id}
+                to={distributorFulfillmentEditPath(o)}
+                className="flex flex-col gap-1 rounded-lg border border-border/50 px-3 py-2 no-underline text-inherit transition-colors hover:bg-muted/40 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <span className="font-mono text-xs">{o.id}</span>
+                  <p className="font-medium">{o.account}</p>
+                  <p className="text-xs text-muted-foreground">{o.market}</p>
+                </div>
+                <StatusBadge status={o.status} />
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-soft)]">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Truck className="size-5 text-accent" strokeWidth={1.5} />
+            <h3 className="font-display text-base font-semibold">{t("Orders in transit")}</h3>
+          </div>
+          <Button variant="secondary" size="sm" asChild>
+            <Link to="/distributor/orders?tab=distributor">{t("All in transit")}</Link>
+          </Button>
+        </div>
+        {inTransitOrders.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("No shipped orders awaiting delivery confirmation")}</p>
+        ) : (
+          <div className="space-y-2">
+            {inTransitOrders.slice(0, 6).map((o) => (
+              <Link
+                key={o.id}
+                to={distributorFulfillmentEditPath(o)}
+                className="flex flex-col gap-1 rounded-lg border border-border/50 px-3 py-2 no-underline text-inherit transition-colors hover:bg-muted/40 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <span className="font-mono text-xs">{o.id}</span>
+                  <p className="font-medium">{o.account}</p>
+                  <p className="text-xs text-muted-foreground">{o.market}</p>
+                </div>
+                <StatusBadge status={o.status} />
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

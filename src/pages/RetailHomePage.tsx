@@ -25,8 +25,10 @@ import {
   TrendingUp,
   Truck,
 } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { portalTimeGreeting } from "@/lib/i18n-portal";
 
-const STEP_LABELS = ["Placed", "Approved", "Packed", "In transit", "Delivered"] as const;
+const STEP_LABEL_KEYS = ["Placed", "Approved", "Packed", "In transit", "Delivered"] as const;
 
 function fulfillmentStepIndex(status: string): number {
   switch (status) {
@@ -63,19 +65,13 @@ function greetingName(displayName: string): string {
   return first || "there";
 }
 
-function timeGreeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
-}
-
 function primaryLineSummary(o: SalesOrder): string {
   const lines = orderLineEntries(o);
   return lines.map((l) => `${l.quantityBottles}× ${l.sku}`).join(", ");
 }
 
 export default function RetailHomePage() {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const { data, loading } = useAppData();
@@ -200,12 +196,12 @@ export default function RetailHomePage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="font-display text-[26px] font-semibold tracking-[-0.02em] text-foreground">
-            {timeGreeting()}, {greetingName(user?.displayName ?? "there")}.
+            {portalTimeGreeting(t)}, {greetingName(user?.displayName ?? "there")}.
           </h1>
           <p className="mt-1 max-w-[52ch] text-[13px] leading-relaxed text-muted-foreground">{desc}</p>
         </div>
         <Button variant="outline" className="h-9 shrink-0 self-start" asChild>
-          <Link to="/reports">View reports</Link>
+          <Link to="/reports">{t("View reports")}</Link>
         </Button>
       </div>
 
@@ -214,17 +210,21 @@ export default function RetailHomePage() {
         <div className="flex flex-col gap-3 rounded-xl border border-[hsl(38_90%_50%/0.22)] bg-[hsl(38_90%_50%/0.07)] px-4 py-3.5 sm:flex-row sm:items-start">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[hsl(30_80%_34%)]" strokeWidth={1.75} />
           <div className="min-w-0 flex-1 text-[13px] leading-snug">
-            <strong className="text-[hsl(30_80%_28%)]">Low stock — {lowStockSku.product.name}:</strong>{" "}
+            <strong className="text-[hsl(30_80%_28%)]">
+              {t("Low stock — {{name}}:", { name: lowStockSku.product.name })}
+            </strong>{" "}
             <span className="text-[hsl(30_70%_35%)]">
-              {lowStockSku.bottles} bottles remaining on shelf · reorder before you run dry.
+              {t("{{bottles}} bottles remaining on shelf · reorder before you run dry.", {
+                bottles: lowStockSku.bottles,
+              })}
             </span>
           </div>
           <div className="flex shrink-0 gap-2">
             <Button type="button" variant="outline" size="sm" className="h-[30px] text-xs" onClick={() => setAlertDismissed(true)}>
-              Dismiss
+              {t("Dismiss")}
             </Button>
             <Button size="sm" className="h-[30px] bg-accent text-xs text-accent-foreground hover:bg-[hsl(32_78%_48%)]" asChild>
-              <Link to="/retail/new-order">Reorder now</Link>
+              <Link to="/retail/new-order">{t("Reorder now")}</Link>
             </Button>
           </div>
         </div>
@@ -235,14 +235,14 @@ export default function RetailHomePage() {
         <KpiTile
           icon={<ShoppingCart className="size-[17px]" strokeWidth={1.75} />}
           iconClass="bg-[hsl(40_88%_42%/0.1)] text-[hsl(40_88%_36%)]"
-          label="Open orders"
+          label={t("Open orders")}
           value={String(pendingPipeline)}
-          sub={trackerOrder?.requestedDelivery ? `Next ETA ${trackerOrder.requestedDelivery}` : "No open pipeline"}
+          sub={trackerOrder?.requestedDelivery ? `Next ETA ${trackerOrder.requestedDelivery}` : t("No open pipeline")}
         />
         <KpiTile
           icon={<Truck className="size-[17px]" strokeWidth={1.75} />}
           iconClass="bg-[hsl(215_72%_50%/0.1)] text-[hsl(215_72%_42%)]"
-          label="Last 30 days"
+          label={t("Last 30 days")}
           value={`$${formatMoney(spend30d.sum)}`}
           sub={`${spend30d.casesApprox > 0 ? `${spend30d.casesApprox} cases · ` : ""}${spend30d.skuCount} SKUs`}
           delta={
@@ -258,16 +258,16 @@ export default function RetailHomePage() {
         <KpiTile
           icon={<Home className="size-[17px]" strokeWidth={1.75} />}
           iconClass="bg-[hsl(158_56%_36%/0.1)] text-[hsl(158_56%_30%)]"
-          label="On backbar"
+          label={t("On backbar")}
           value={`${activeSkuCount} SKUs`}
           sub={`${shelfTracked} tracking depletion`}
         />
         <KpiTile
           icon={<Star className="size-[17px]" strokeWidth={1.75} />}
           iconClass="bg-[hsl(24_10%_10%/0.07)] text-[hsl(24_10%_18%)]"
-          label="YTD spend"
+          label={t("YTD spend")}
           value={`$${formatMoney(ytdSpend)}`}
-          sub="Partner tier progress"
+          sub={t("Partner tier progress")}
         />
       </section>
 
@@ -278,9 +278,9 @@ export default function RetailHomePage() {
       {/* Active shipment */}
       <section>
         <div className="mb-3.5 flex items-baseline justify-between gap-4">
-          <h2 className="font-display text-[19px] font-medium tracking-[-0.01em]">Active shipment</h2>
+          <h2 className="font-display text-[19px] font-medium tracking-[-0.01em]">{t("Active shipment")}</h2>
           <Link to="/shipments" className="text-xs font-medium text-accent hover:underline">
-            All deliveries →
+            {t("All deliveries →")}
           </Link>
         </div>
 
@@ -308,10 +308,11 @@ export default function RetailHomePage() {
                     aria-hidden
                   />
                   <div className="relative z-[1] flex items-start">
-                    {STEP_LABELS.map((label, i) => {
+                    {STEP_LABEL_KEYS.map((labelKey, i) => {
+                      const label = t(labelKey);
                       const row = stepRowState(trackerOrder.status, i);
                       return (
-                        <div key={label} className="flex min-w-0 flex-1 flex-col items-center gap-1.5 text-center">
+                        <div key={labelKey} className="flex min-w-0 flex-1 flex-col items-center gap-1.5 text-center">
                           <div
                             className={cn(
                               "flex size-8 items-center justify-center rounded-full border-2 border-card text-xs font-medium",

@@ -6,6 +6,7 @@ import {
   getMySupplyChainIncentiveProgress,
   type MyIncentiveProgressData,
 } from "@/lib/api-v1-mutations";
+import { SupplyChainProgramNetwork } from "@/components/incentives/SupplyChainProgramNetwork";
 
 function formatMoney(n: number): string {
   return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -80,8 +81,24 @@ export function IncentiveProgressDashboardCard({ retailTradingName, activityHint
     );
   }
 
-  const { program, totals, spifs, partner, matched } = data;
+  const { program, totals, spifs, partner, matched, matchHint } = data;
   const rates = program.spifRates;
+
+  const scopeDescription =
+    matchHint ??
+    (data.scope === "distributor"
+      ? matched
+        ? "Your distributor program snapshot from Hajime HQ (read-only)."
+        : "We could not match your login to a partner row yet. Ask HQ to align your CRM name or partner name in the Incentive Manager."
+      : data.scope === "sales_rep"
+        ? matched
+          ? "SPIF payouts logged under your name for this quarter."
+          : "No SPIF lines matched your name yet — totals stay at zero until HQ logs activity for you."
+        : data.scope === "retail"
+          ? matched
+            ? "Venue-linked SPIF activity from HQ — rebates flow through your distributor and field rep."
+            : "No HQ lines tagged to your store yet. Orders still sync; SPIFs appear when HQ logs your trading name."
+          : "");
 
   return (
     <Card className="border-border/80">
@@ -90,20 +107,10 @@ export function IncentiveProgressDashboardCard({ retailTradingName, activityHint
           <Gift className="h-4 w-4 shrink-0 text-muted-foreground" />
           Supply chain incentives
         </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          {data.scope === "distributor" &&
-            (matched
-              ? "Your distributor program snapshot from Hajime HQ (read-only)."
-              : "We could not match your login to a partner row yet. Ask HQ to align your CRM name or partner name in the Incentive Manager.")}
-          {data.scope === "sales_rep" &&
-            (matched
-              ? "SPIF payouts logged under your name for this quarter."
-              : "No SPIF lines matched your name yet — totals below stay at zero until HQ logs activity for you.")}
-          {data.scope === "retail" &&
-            "SPIFs are paid to distributor reps; below is your venue-linked activity (if noted) and current program rates."}
-        </p>
+        <p className="text-sm text-muted-foreground">{scopeDescription}</p>
       </CardHeader>
       <CardContent className="space-y-4">
+        <SupplyChainProgramNetwork data={data} />
         {data.scope === "distributor" && partner ? (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 bg-muted/25 px-3 py-2 text-sm">
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -158,8 +165,14 @@ export function IncentiveProgressDashboardCard({ retailTradingName, activityHint
                       {SPIF_TYPE_LABEL[s.type] ?? s.type.replace(/_/g, " ")}
                     </span>
                     <span className="text-muted-foreground"> · {s.date}</span>
+                    {s.retailAccountName ? (
+                      <p className="truncate text-xs text-muted-foreground">Retail · {s.retailAccountName}</p>
+                    ) : null}
                     {s.partnerName ? (
-                      <p className="truncate text-xs text-muted-foreground">{s.partnerName}</p>
+                      <p className="truncate text-xs text-muted-foreground">Distributor · {s.partnerName}</p>
+                    ) : null}
+                    {s.repName ? (
+                      <p className="truncate text-xs text-muted-foreground">Rep · {s.repName}</p>
                     ) : null}
                     {s.notes ? (
                       <p className="line-clamp-1 text-xs text-muted-foreground">{s.notes}</p>

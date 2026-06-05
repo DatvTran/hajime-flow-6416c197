@@ -1,5 +1,6 @@
 /**
  * Role-scoped views of tenant incentive manager state (read-only, no full payload).
+ * HQ Incentive Manager is the source of truth; SPIFs link distributor ↔ sales rep ↔ retail.
  */
 
 function norm(s) {
@@ -17,17 +18,22 @@ function tokens(s) {
     .filter((t) => t.length > 2);
 }
 
-function distributorCandidates(user, teamMember) {
+function distributorCandidates(user, teamMember, linkedAccountTradingName) {
   const out = new Set();
   const dn = norm(user?.displayName);
   if (dn) {
     out.add(dn);
-    for (const t of tokens(user?.displayName ?? "")) out.add(t);
+    for (const t of tokens(user?.displayName ?? '')) out.add(t);
   }
   const tmName = norm(teamMember?.name);
   if (tmName) {
     out.add(tmName);
-    for (const t of tokens(teamMember?.name ?? "")) out.add(t);
+    for (const t of tokens(teamMember?.name ?? '')) out.add(t);
+  }
+  const linked = norm(linkedAccountTradingName);
+  if (linked) {
+    out.add(linked);
+    for (const t of tokens(linkedAccountTradingName ?? '')) out.add(t);
   }
   const email = String(user?.email ?? '').toLowerCase().trim();
   const local = email.split('@')[0]?.replace(/[._+]/g, ' ') ?? '';
@@ -59,8 +65,20 @@ function scorePartnerMatch(partnerName, candidates) {
   return score;
 }
 
-function pickPartnerForDistributor(partners, user, teamMember) {
-  const candidates = distributorCandidates(user, teamMember);
+/**
+ * @param {object[]} partners
+ * @param {{ displayName?: string, email?: string }} user
+ * @param {{ name?: string } | null | undefined} teamMember
+ * @param {string | null | undefined} linkedAccountTradingName
+ */
+function pickPartnerForDistributor(partners, user, teamMember, linkedAccountTradingName) {
+  if (linkedAccountTradingName) {
+    const ln = norm(linkedAccountTradingName);
+    const exact = partners.find((p) => norm(p.name) === ln);
+    if (exact) return exact;
+  }
+
+  const candidates = distributorCandidates(user, teamMember, linkedAccountTradingName);
   let best = null;
   let bestScore = 0;
   for (const p of partners) {
@@ -108,27 +126,84 @@ function spifsForPartner(state, partner) {
   );
 }
 
+function spifsForRetail(state, retailTradingName) {
+  const hint = norm(retailTradingName);
+  if (!hint) return [];
+  return state.spifs.filter((s) => {
+    const ra = norm(s.retailAccountName);
+    if (ra && (ra === hint || ra.includes(hint) || hint.includes(ra))) return true;
+    const blob = norm(`${s.notes ?? ''} ${s.partnerName ?? ''} ${s.repName ?? ''} ${s.retailAccountName ?? ''}`);
+    return blob.includes(hint);
+  });
+}
+
+function mapSpifRow(s, extra = {}) {
+  return {
+    id: s.id,
+    type: s.type,
+    date: s.date,
+    quantity: s.quantity,
+    payout: s.payout,
+    repName: s.repName,
+    partnerName: s.partnerName,
+    retailAccountName: s.retailAccountName,
+    notes: s.notes,
+    ...extra,
+  };
+}
+
+function buildNetworkSummary(spifs) {
+  const reps = [...new Set(spifs.map((s) => String(s.repName || '').trim()).filter(Boolean))];
+  const retailAccounts = [
+    ...new Set(spifs.map((s) => String(s.retailAccountName || '').trim()).filter(Boolean)),
+  ];
+  const distributors = [...new Set(spifs.map((s) => String(s.partnerName || '').trim()).filter(Boolean))];
+  return {
+    distributorCount: distributors.length,
+    repCount: reps.length,
+    retailAccountCount: retailAccounts.length,
+    distributors: distributors.slice(0, 8),
+    reps: reps.slice(0, 8),
+    retailAccounts: retailAccounts.slice(0, 8),
+  };
+}
+
 /**
  * @param {object} params
  * @param {string} params.role
  * @param {{ displayName?: string, email?: string }} params.user
  * @param {{ name?: string } | null | undefined} params.teamMember
  * @param {ReturnType<import('./incentive-manager-state.mjs').normalizeIncentiveManagerState>} params.state
- * @param {string} [params.retailTradingName]
+ * @param {string | null | undefined} [params.retailTradingName]
+ * @param {string | null | undefined} [params.linkedAccountTradingName]
  */
-export function buildMyIncentiveProgress({ role, user, teamMember, state, retailTradingName }) {
+export function buildMyIncentiveProgress({
+  role,
+  user,
+  teamMember,
+  state,
+  retailTradingName,
+  linkedAccountTradingName,
+}) {
   const program = {
     spifRates: state.spifRates,
     volumeBonusesUsd: state.volumeBonusesUsd,
   };
 
   if (role === 'distributor') {
-    const partner = pickPartnerForDistributor(state.partners, user, teamMember);
+    const partner = pickPartnerForDistributor(state.partners, user, teamMember, linkedAccountTradingName);
     const spifs = spifsForPartner(state, partner);
     const payoutTotal = spifs.reduce((a, s) => a + (Number(s.payout) || 0), 0);
+    const matchHint = partner
+      ? null
+      : linkedAccountTradingName
+        ? `No partner row matched "${linkedAccountTradingName}" — add or rename the partner in HQ Incentive Manager.`
+        : 'Link your distributor CRM email to a partner name in HQ Incentive Manager (Settings → CRM).';
+
     return {
       scope: 'distributor',
       matched: Boolean(partner),
+      matchHint,
       partner: partner
         ? {
             id: partner.id,
@@ -143,67 +218,61 @@ export function buildMyIncentiveProgress({ role, user, teamMember, state, retail
             adfSpend: partner.adfSpend,
           }
         : null,
-      spifs: spifs.slice(0, 50).map((s) => ({
-        id: s.id,
-        type: s.type,
-        date: s.date,
-        quantity: s.quantity,
-        payout: s.payout,
-        repName: s.repName,
-        notes: s.notes,
-      })),
+      spifs: spifs.slice(0, 50).map((s) => mapSpifRow(s)),
       totals: { payoutTotal, spifCount: spifs.length },
       program,
+      network: buildNetworkSummary(spifs),
+      hqSource: 'incentive_manager',
     };
   }
 
   if (role === 'sales_rep' || role === 'sales') {
     const spifs = state.spifs.filter((s) => repMatchesSpi(s.repName, user, teamMember));
     const payoutTotal = spifs.reduce((a, s) => a + (Number(s.payout) || 0), 0);
+    const matchHint =
+      spifs.length > 0
+        ? null
+        : 'HQ has not logged SPIFs under your rep name yet — payouts appear here after Incentive Manager entries.';
+
     return {
       scope: 'sales_rep',
       matched: spifs.length > 0,
+      matchHint,
       partner: null,
-      spifs: spifs.slice(0, 50).map((s) => ({
-        id: s.id,
-        type: s.type,
-        date: s.date,
-        quantity: s.quantity,
-        payout: s.payout,
-        partnerName: s.partnerName,
-        notes: s.notes,
-      })),
+      spifs: spifs.slice(0, 50).map((s) => mapSpifRow(s)),
       totals: { payoutTotal, spifCount: spifs.length },
       program,
+      network: buildNetworkSummary(spifs),
+      hqSource: 'incentive_manager',
     };
   }
 
   if (role === 'retail' || role === 'retail_account') {
     const hintRaw = String(retailTradingName || user?.displayName || '').trim();
-    const hint = norm(hintRaw);
-    const spifs = hint
-      ? state.spifs.filter((s) => {
-          const blob = norm(`${s.notes ?? ''} ${s.partnerName ?? ''} ${s.repName ?? ''}`);
-          return blob.includes(hint);
-        })
-      : [];
+    const spifs = spifsForRetail(state, hintRaw);
     const payoutTotal = spifs.reduce((a, s) => a + (Number(s.payout) || 0), 0);
+    const servicingDistributor = spifs.find((s) => s.partnerName)?.partnerName ?? null;
+    const assignedRep = spifs.find((s) => s.repName)?.repName ?? null;
+    const matchHint =
+      spifs.length > 0
+        ? null
+        : hintRaw
+          ? `No HQ SPIF lines tagged "${hintRaw}" yet — ask your rep or distributor to log activity with your venue name.`
+          : 'Set your retail trading name in account settings so HQ SPIFs can link to your store.';
+
     return {
       scope: 'retail',
       matched: spifs.length > 0,
-      retailTradingName: retailTradingName || null,
+      matchHint,
+      retailTradingName: hintRaw || null,
+      servicingDistributor,
+      assignedRep,
       partner: null,
-      spifs: spifs.slice(0, 25).map((s) => ({
-        id: s.id,
-        type: s.type,
-        date: s.date,
-        quantity: s.quantity,
-        payout: s.payout,
-        partnerName: s.partnerName,
-        notes: s.notes,
-      })),
+      spifs: spifs.slice(0, 25).map((s) => mapSpifRow(s)),
       totals: { payoutTotal, spifCount: spifs.length },
       program,
+      network: buildNetworkSummary(spifs),
+      hqSource: 'incentive_manager',
     };
   }
 

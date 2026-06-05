@@ -37,18 +37,42 @@ export function buildRetailDeliveryRows(
   const storeShipments = shipments.filter((s) => retailShipmentMatchesStore(s.destination, storeName));
 
   const orderById = new Map(storeOrders.map((o) => [o.id, o]));
-  const linkedOrderIds = new Set(storeShipments.map((s) => s.linkedOrder).filter(Boolean));
+  const orderByNumber = new Map(
+    storeOrders
+      .filter((o) => o.orderNumber?.trim())
+      .map((o) => [o.orderNumber!.trim(), o] as const),
+  );
+
+  const resolveOrder = (shipment: Shipment): SalesOrder | undefined => {
+    const link = shipment.linkedOrder?.trim();
+    if (!link) return undefined;
+    return (
+      orderById.get(link) ??
+      (shipment.linkedOrderDbId ? orderById.get(shipment.linkedOrderDbId) : undefined) ??
+      orderByNumber.get(link)
+    );
+  };
+
+  const linkedOrderKeys = new Set<string>();
+  for (const s of storeShipments) {
+    if (s.linkedOrder) linkedOrderKeys.add(s.linkedOrder);
+    if (s.linkedOrderDbId) linkedOrderKeys.add(s.linkedOrderDbId);
+    const o = resolveOrder(s);
+    if (o?.id) linkedOrderKeys.add(o.id);
+    if (o?.orderNumber) linkedOrderKeys.add(o.orderNumber);
+  }
 
   const rows: DeliveryRow[] = storeShipments.map((shipment) => ({
     kind: "shipment",
     shipment,
-    order: shipment.linkedOrder ? orderById.get(shipment.linkedOrder) : undefined,
+    order: resolveOrder(shipment),
   }));
 
   for (const order of storeOrders) {
     if (order.status === "delivered") continue;
-    if (linkedOrderIds.has(order.id)) continue;
-    if (["draft", "confirmed"].includes(order.status)) {
+    const keys = [order.id, order.orderNumber?.trim()].filter(Boolean) as string[];
+    if (keys.some((k) => linkedOrderKeys.has(k))) continue;
+    if (["draft", "confirmed", "packed"].includes(order.status)) {
       rows.push({ kind: "order_pending", order });
     }
   }
