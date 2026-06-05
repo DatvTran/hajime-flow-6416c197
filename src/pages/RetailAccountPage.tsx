@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   getRetailAccountSettings,
   patchRetailAccountSettings,
@@ -28,6 +29,7 @@ const fieldClass =
   "h-[38px] w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none transition-colors focus:border-ring focus:ring-1 focus:ring-ring";
 
 export default function RetailAccountPage() {
+  const { t } = useLanguage();
   const { user } = useAuth();
   const tradingName = useRetailAccountTradingName();
   const { accounts } = useAccounts();
@@ -99,7 +101,9 @@ export default function RetailAccountPage() {
     <div className="space-y-6 pb-8">
       <RetailPageHeader
         title="My account"
-        description={`Account settings for ${tradingName ?? "your venue"} · Hajime portal`}
+        description={t("Account settings for {{name}} · Hajime portal", {
+          name: tradingName ?? "your venue",
+        })}
         actions={
           <Button
             className="h-9 bg-accent text-accent-foreground hover:bg-[hsl(32_78%_48%)]"

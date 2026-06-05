@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Product, SalesOrder } from "@/data/mockData";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function filterKey(raw: string | null): RetailOrderFilter {
   if (raw === "pending" || raw === "in_transit" || raw === "delivered") return raw;
@@ -33,6 +34,7 @@ function formatMoney(n: number): string {
 }
 
 export default function RetailMyOrdersPage() {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const { data, loading } = useAppData();
   const accountName = useRetailAccountTradingName();
@@ -70,7 +72,7 @@ export default function RetailMyOrdersPage() {
     <div className="space-y-6 pb-8">
       <RetailPageHeader
         title="My orders"
-        description={`Full order history for ${accountName ?? "your venue"}.`}
+        description={t("Full order history for {{name}}.", { name: accountName ?? "your venue" })}
         actions={
           <Button variant="outline" size="sm" className="h-[30px] text-xs">
             Export CSV

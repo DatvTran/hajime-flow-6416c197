@@ -26,6 +26,8 @@ const RULES: { prefix: string; section: string; page: string }[] = [
   { prefix: "/distributor/finance", section: "Operations", page: "Payments & remits" },
   { prefix: "/distributor/reports", section: "Service", page: "Analytics" },
   { prefix: "/distributor/alerts", section: "Service", page: "Alerts hub" },
+  { prefix: "/distributor/pick-pack", section: "Operations", page: "Pick & pack" },
+  { prefix: "/distributor/log-shipment", section: "Operations", page: "Log shipment" },
   { prefix: "/distributor/orders", section: "Operations", page: "Orders to fulfill" },
   { prefix: "/distributor/shipments", section: "Operations", page: "Deliveries" },
   { prefix: "/distributor", section: "Operations", page: "Floor · today" },

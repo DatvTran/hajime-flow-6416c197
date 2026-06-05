@@ -13,15 +13,37 @@ import {
   getShipments,
   getNewProductRequests,
 } from "./api-v1";
-import { getOperationalSettings, getTeamMembers, getWarehouses } from "@/lib/api-v1-mutations";
+import { getOperationalSettings, getTeamMembers, getWarehouses, getAppBootstrap } from "@/lib/api-v1-mutations";
 import type { AppData, OperationalSettings, TeamMember, TeamMemberPortalRole, Warehouse } from "@/types/app-data";
 import type { NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
+import { isSeedStyleSalesOrderId } from "@/lib/sales-order-utils";
 
 // Feature flag to control granular API usage - Stage 3: Always use granular
 const USE_GRANULAR_API = true;
 
 // Dev mode flag for logging (kept for error logging)
-const isDev = process.env.NODE_ENV === 'development' || import.meta.env?.DEV;
+const isDev = import.meta.env.DEV;
+
+const API_CALL_TIMEOUT_MS = 5_000;
+const BOOTSTRAP_TIMEOUT_MS = { platform: 5_000, full: 12_000 } as const;
+
+async function fetchWithTimeout<T>(
+  label: string,
+  fn: () => Promise<T>,
+  ms = API_CALL_TIMEOUT_MS,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function sliceIsoDate(v: unknown): string {
   if (v == null || v === "") return new Date().toISOString().slice(0, 10);
@@ -296,6 +318,20 @@ export function mapRowToShipment(s: Record<string, unknown>): Shipment {
       })
     : undefined;
 
+  const orderNumberRaw =
+    s.sales_order_number ?? s.salesOrderNumber ?? s.order_number ?? s.orderNumber;
+  const orderNumber =
+    orderNumberRaw != null && String(orderNumberRaw).trim() !== ""
+      ? String(orderNumberRaw).trim()
+      : undefined;
+  const orderDbId =
+    s.order_id != null && String(s.order_id).trim() !== "" ? String(s.order_id).trim() : undefined;
+  const trackingRaw = s.tracking_number ?? s.trackingNumber;
+  const tracking =
+    trackingRaw != null && String(trackingRaw).trim() !== ""
+      ? String(trackingRaw).trim()
+      : undefined;
+
   return {
     id: s.shipment_number != null ? String(s.shipment_number) : String(s.id ?? ""),
     origin: String(s.from_location ?? s.fromLocation ?? "—"),
@@ -306,14 +342,15 @@ export function mapRowToShipment(s: Record<string, unknown>): Shipment {
     shipDate: shipTs ? String(shipTs).slice(0, 10) : "",
     eta: etaTs ? String(etaTs).slice(0, 10) : "",
     actualDelivery: delTs ? String(delTs).slice(0, 10) : "",
-    linkedOrder: String(s.order_id ?? ""),
+    linkedOrder: orderNumber ?? orderDbId ?? "",
+    ...(orderDbId ? { linkedOrderDbId: orderDbId } : {}),
     type,
     status,
     notes: String(s.notes ?? ""),
     ...(orderKind ? { orderType: orderKind } : {}),
     ...(lineItems?.length ? { lineItems } : {}),
     ...(originPort ? { originPort } : {}),
-    ...(waybillNumber ? { waybillNumber } : {}),
+    ...(waybillNumber || tracking ? { waybillNumber: waybillNumber ?? tracking } : {}),
     ...(shippedAtIso ? { shippedAt: shippedAtIso } : {}),
   };
 }
@@ -331,7 +368,7 @@ function parseMaybeJson<T>(value: unknown, fallback: T): T {
   return fallback;
 }
 
-function mapRowToNewProductRequest(row: Record<string, unknown>): NewProductRequest {
+export function mapRowToNewProductRequest(row: Record<string, unknown>): NewProductRequest {
   const specs = parseMaybeJson<NewProductRequest["specs"]>(row.specs, {
     baseSpirit: "rhum",
     targetAbv: 25,
@@ -359,6 +396,7 @@ function mapRowToNewProductRequest(row: Record<string, unknown>): NewProductRequ
 
   return {
     id: String(row.request_id ?? row.id ?? ""),
+    databaseId: row.id != null ? String(row.id) : undefined,
     title: String(row.title ?? "Untitled request"),
     requestedBy: String(row.requested_by ?? "brand_operator"),
     requestedAt: String(row.requested_at ?? row.created_at ?? new Date().toISOString()),
@@ -583,23 +621,111 @@ function transformToAppData(
   }
 }
 
+/** Map `/api/v1/orders` rows → client `SalesOrder` (shared by bootstrap + refresh). */
+export function mapApiOrdersToSalesOrders(
+  orders: Record<string, unknown>[],
+  accounts: { id: string; market?: string }[],
+): import("@/data/mockData").SalesOrder[] {
+  const accountById = new Map(accounts.map((a) => [String(a.id), a]));
+  return orders.map((o) => {
+    const account = accountById.get(String(o.account_id));
+    const firstLine =
+      Array.isArray(o.items) && o.items.length > 0
+        ? (o.items[0] as Record<string, unknown>)
+        : null;
+    const quantity = firstLine?.quantity_ordered != null ? Number(firstLine.quantity_ordered) : 0;
+    const price = Number(o.total_amount ?? o.subtotal ?? 0);
+    return {
+      id: String(o.id),
+      account:
+        String(o.account_trading_name ?? o.account_name ?? o.account_number ?? "Unknown account"),
+      market: account?.market || "Unknown",
+      orderDate: o.order_date ? String(o.order_date).slice(0, 10) : new Date().toISOString().slice(0, 10),
+      requestedDelivery: o.requested_delivery_date
+        ? String(o.requested_delivery_date).slice(0, 10)
+        : new Date().toISOString().slice(0, 10),
+      sku: firstLine?.sku ? String(firstLine.sku) : "—",
+      quantity,
+      price,
+      salesRep: o.sales_rep ? String(o.sales_rep) : "—",
+      status: (o.status as import("@/data/mockData").SalesOrder["status"]) || "draft",
+      paymentStatus: "pending",
+      accountId: String(o.account_id || ""),
+      orderNumber: o.order_number ? String(o.order_number) : String(o.id),
+      subtotal: Number(o.subtotal ?? price),
+      taxAmount: Number(o.tax_amount ?? 0),
+      shippingCost: Number(o.shipping_cost ?? 0),
+      totalAmount: price,
+    };
+  });
+}
+
+/** Keep offline-only drafts; replace rows that exist on the server. */
+export function mergeSalesOrdersFromApi(
+  existing: import("@/data/mockData").SalesOrder[],
+  fromApi: import("@/data/mockData").SalesOrder[],
+): import("@/data/mockData").SalesOrder[] {
+  const apiIds = new Set(fromApi.map((o) => o.id));
+  const apiNumbers = new Set(
+    fromApi.flatMap((o) => [o.orderNumber, o.id].filter(Boolean).map(String)),
+  );
+  const localOnly = existing.filter((o) => {
+    if (apiIds.has(o.id)) return false;
+    const on = o.orderNumber?.trim();
+    if (on && apiNumbers.has(on)) return false;
+    if (isSeedStyleSalesOrderId(o.id) && apiNumbers.has(o.id)) return false;
+    // Drop demo seed orders not on server — they break pick & pack status sync.
+    if (isSeedStyleSalesOrderId(o.id) && o.status !== "draft") return false;
+    return true;
+  });
+  return [...fromApi, ...localOnly];
+}
+
 /**
- * Fetch data using granular APIs
- * Uses Promise.allSettled to handle partial failures gracefully
+ * Single HTTP request — server runs parallel DB queries (platform-first for HQ).
  */
-export async function fetchAppDataGranular(): Promise<AppData> {
+async function fetchAppDataBootstrap(scope: "platform" | "full" = "platform"): Promise<AppData> {
+  const res = await fetchWithTimeout(
+    `bootstrap:${scope}`,
+    () => getAppBootstrap({ scope }),
+    BOOTSTRAP_TIMEOUT_MS[scope],
+  );
+  const payload = (res as { data?: Record<string, unknown> }).data ?? {};
+  const data = transformToAppData(
+    (payload.products as unknown[]) || [],
+    (payload.accounts as unknown[]) || [],
+    (payload.orders as unknown[]) || [],
+    (payload.inventory as unknown[]) || [],
+    (payload.depletionReports as unknown[]) || [],
+    (payload.purchaseOrders as unknown[]) || [],
+    (payload.shipments as unknown[]) || [],
+    (payload.newProductRequests as unknown[]) || [],
+    (payload.teamMembers as unknown[]) || [],
+    (payload.warehouses as unknown[]) || [],
+  ) as AppData;
+
+  const opRow = payload.operationalSettings as Record<string, unknown> | null | undefined;
+  const operationalSettings = mapOperationalSettingsFromApi(opRow ?? null, data.products || []);
+  return operationalSettings ? { ...data, operationalSettings } : data;
+}
+
+
+/**
+ * Fallback: 11 parallel API calls.
+ */
+export async function fetchAppDataGranular(scope: "platform" | "full" = "platform"): Promise<AppData> {
   const results = await Promise.allSettled([
-    getProducts({ limit: 500 }),
-    getAccounts({ limit: 500 }),
-    getOrders({ limit: 100 }),
-    getInventory({ limit: 100 }),
-    getDepletionReports({ limit: 200 }),
-    getPurchaseOrders({ limit: 200 }),
-    getShipments({ limit: 100 }),
-    getNewProductRequests({ limit: 100 }),
-    getTeamMembers({ includeInactive: true }),
-    getWarehouses({ includeInactive: true }),
-    getOperationalSettings(),
+    fetchWithTimeout("products", () => getProducts({ limit: 500 }), API_CALL_TIMEOUT_MS),
+    fetchWithTimeout("accounts", () => getAccounts({ limit: 500 }), API_CALL_TIMEOUT_MS),
+    fetchWithTimeout("orders", () => getOrders({ limit: 100 }), API_CALL_TIMEOUT_MS),
+    fetchWithTimeout("inventory", () => getInventory({ limit: 100 }), API_CALL_TIMEOUT_MS),
+    fetchWithTimeout("depletionReports", () => getDepletionReports({ limit: 200 }), API_CALL_TIMEOUT_MS),
+    fetchWithTimeout("purchaseOrders", () => getPurchaseOrders({ limit: 200 }), API_CALL_TIMEOUT_MS),
+    fetchWithTimeout("shipments", () => getShipments({ limit: 100 }), API_CALL_TIMEOUT_MS),
+    fetchWithTimeout("newProductRequests", () => getNewProductRequests({ limit: 100 }), API_CALL_TIMEOUT_MS),
+    fetchWithTimeout("teamMembers", () => getTeamMembers({ includeInactive: true }), API_CALL_TIMEOUT_MS),
+    fetchWithTimeout("warehouses", () => getWarehouses({ includeInactive: true }), API_CALL_TIMEOUT_MS),
+    fetchWithTimeout("operationalSettings", () => getOperationalSettings(), API_CALL_TIMEOUT_MS),
   ]);
   
   const productsRes = results[0].status === 'fulfilled' ? results[0].value : { data: [] };
@@ -644,10 +770,18 @@ export async function fetchAppDataGranular(): Promise<AppData> {
 }
 
 /**
- * Fetch data - Stage 4+: Use granular APIs only.
+ * Fetch app data — bootstrap endpoint first (1 HTTP round-trip), granular fallback.
  */
-export async function fetchAppData(): Promise<AppData> {
-  return fetchAppDataGranular();
+export async function fetchAppData(opts?: { scope?: "platform" | "full" }): Promise<AppData> {
+  const scope = opts?.scope ?? "platform";
+  try {
+    return await fetchAppDataBootstrap(scope);
+  } catch (e) {
+    if (isDev) {
+      console.warn("[DataService] Bootstrap failed, falling back to granular APIs:", e);
+    }
+    return fetchAppDataGranular(scope);
+  }
 }
 
 // Stage 4: putAppData removed — use api-v1-mutations for all writes

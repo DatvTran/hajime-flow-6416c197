@@ -1,7 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import Dashboard from "@/pages/Dashboard";
-import DistributorHomePage from "@/pages/DistributorHomePage";
 import RetailHomePage from "@/pages/RetailHomePage";
 import SalesRepHomePage from "@/pages/SalesRepHomePage";
 
@@ -18,7 +17,7 @@ export default function RoleHomeEntry() {
     case "manufacturer":
       return <Navigate to="/manufacturer" replace />;
     case "distributor":
-      return <DistributorHomePage />;
+      return <Navigate to="/distributor" replace />;
     case "retail":
       return <RetailHomePage />;
     case "sales":

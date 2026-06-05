@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAppData } from "@/contexts/AppDataContext";
 import {
   getSupplyChainIncentivesState,
   putSupplyChainIncentivesState,
@@ -71,6 +72,8 @@ interface SPIFEntry {
   partnerId: string;
   partnerName: string;
   repName: string;
+  /** Retail store trading name — links SPIF to retail portal & HQ reporting */
+  retailAccountName?: string;
   type: "new_on_premise" | "new_off_premise" | "reorder" | "tasting";
   date: string;
   quantity: number;
@@ -314,6 +317,7 @@ const SEED_SPIFS: SPIFEntry[] = [
     quantity: 2,
     payout: 300,
     notes: "The Drake Hotel - new cocktail menu",
+    retailAccountName: "The Drake Hotel",
   },
   {
     id: "s2",
@@ -409,8 +413,11 @@ function coerceServerPayload(data: SupplyChainIncentiveStatePayload): {
 
 // ===== MAIN COMPONENT =====
 
+const RETAIL_ACCOUNT_TYPES = new Set(["retail", "bar", "restaurant", "hotel", "lifestyle"]);
+
 export default function IncentiveManagerPage() {
   const { user, isLoading } = useAuth();
+  const { data: appData } = useAppData();
   const [bootstrapped, setBootstrapped] = useState(false);
   const skipNextRemoteSave = useRef(true);
   const [lastRemoteSaveAt, setLastRemoteSaveAt] = useState<string | null>(null);
@@ -722,11 +729,22 @@ export default function IncentiveManagerPage() {
   const [spifForm, setSpifForm] = useState({
     partnerId: "",
     repName: "",
+    retailAccountName: "",
     type: "new_on_premise" as SPIFEntry["type"],
     date: new Date().toISOString().split("T")[0],
     quantity: 1,
     notes: "",
   });
+
+  const retailAccountOptions = useMemo(
+    () =>
+      [...appData.accounts]
+        .filter((a) => RETAIL_ACCOUNT_TYPES.has(a.type))
+        .map((a) => a.tradingName)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b)),
+    [appData.accounts],
+  );
 
   const calculateSPIFPayout = (type: string, quantity: number): number => {
     const rate = spifRates[type as SpifRateKey];
@@ -743,11 +761,13 @@ export default function IncentiveManagerPage() {
     const partner = partners.find(p => p.id === spifForm.partnerId);
     const payout = calculateSPIFPayout(spifForm.type, spifForm.quantity);
 
+    const retailAccountName = spifForm.retailAccountName.trim();
     const newSPIF: SPIFEntry = {
       id: generateId(),
       partnerId: spifForm.partnerId,
       partnerName: partner?.name || "",
       repName: spifForm.repName,
+      ...(retailAccountName ? { retailAccountName } : {}),
       type: spifForm.type,
       date: spifForm.date,
       quantity: spifForm.quantity,
@@ -761,6 +781,7 @@ export default function IncentiveManagerPage() {
     setSpifForm({
       partnerId: "",
       repName: "",
+      retailAccountName: "",
       type: "new_on_premise",
       date: new Date().toISOString().split("T")[0],
       quantity: 1,
@@ -865,7 +886,7 @@ export default function IncentiveManagerPage() {
     <div className="space-y-6">
       <PageHeader
         title="Supply Chain Incentive Manager"
-        description="Track partner performance, SPIF payouts, and margin optimization. When you are signed in, partners, SPIFs, supply chain prices, SPIF rates, and quarterly bonuses are saved to the server for your organization (with automatic sync a moment after you stop editing)."
+        description="Track partner performance, SPIF payouts, and margin optimization. Log SPIFs with distributor, sales rep, and retail account so each portal sees the same data. Changes sync to the server for your organization (HQ source of truth for distributor, rep, and retail views)."
         variant={user.role === "retail" ? "retail" : "default"}
         titleAddon={
           <span className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs font-normal tabular-nums text-muted-foreground">
@@ -1347,6 +1368,7 @@ export default function IncentiveManagerPage() {
                 <Button onClick={() => setSpifForm({
                   partnerId: "",
                   repName: "",
+                  retailAccountName: "",
                   type: "new_on_premise",
                   date: new Date().toISOString().split("T")[0],
                   quantity: 1,
@@ -1385,6 +1407,24 @@ export default function IncentiveManagerPage() {
                       onChange={e => setSpifForm(prev => ({ ...prev, repName: e.target.value }))}
                       placeholder="e.g., Sarah Mitchell"
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Retail account</Label>
+                    <Input
+                      list="hq-spif-retail-accounts"
+                      value={spifForm.retailAccountName}
+                      onChange={(e) => setSpifForm((prev) => ({ ...prev, retailAccountName: e.target.value }))}
+                      placeholder="e.g., The Drake Hotel"
+                    />
+                    <datalist id="hq-spif-retail-accounts">
+                      {retailAccountOptions.map((name) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                    <p className="text-xs text-muted-foreground">
+                      Links this SPIF to the retail store portal and distributor rollup in HQ reporting.
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">

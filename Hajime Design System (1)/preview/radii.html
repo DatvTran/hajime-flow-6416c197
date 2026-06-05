@@ -1,0 +1,16 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css">
+<style>body{margin:0;padding:24px;background:hsl(var(--background))}
+.row{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.cell{display:flex;flex-direction:column;align-items:center;gap:8px}
+.box{width:64px;height:48px;background:hsl(var(--card));border:1px solid hsl(var(--border))}
+.lab{font-family:var(--font-mono);font-size:10px;color:hsl(var(--muted-foreground))}
+.name{font-size:11px;font-weight:500;color:hsl(var(--foreground))}
+</style></head><body>
+<div class="row">
+  <div class="cell"><div class="box" style="border-radius:6px"></div><div class="name">sm</div><div class="lab">6px</div></div>
+  <div class="cell"><div class="box" style="border-radius:8px"></div><div class="name">md</div><div class="lab">8px</div></div>
+  <div class="cell"><div class="box" style="border-radius:10px"></div><div class="name">lg (default)</div><div class="lab">10px · --radius</div></div>
+  <div class="cell"><div class="box" style="border-radius:14px"></div><div class="name">xl</div><div class="lab">14px</div></div>
+  <div class="cell"><div class="box" style="border-radius:18px"></div><div class="name">2xl</div><div class="lab">18px</div></div>
+  <div class="cell"><div class="box" style="border-radius:9999px"></div><div class="name">full</div><div class="lab">pill</div></div>
+</div></body></html>

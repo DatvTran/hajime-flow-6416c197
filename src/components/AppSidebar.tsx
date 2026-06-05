@@ -14,7 +14,6 @@ import {
   Settings,
   LogOut,
   AlertTriangle,
-  Globe,
   Map as MapIcon,
   Warehouse,
   Home,
@@ -52,7 +51,7 @@ import { Button } from "@/components/ui/button";
 import { HajimeLogo } from "@/components/HajimeLogo";
 import { useAuth, type HajimeRole } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LanguageSelect } from "@/components/LanguageSelect";
 import { Link, useLocation } from "react-router-dom";
 import { isSidebarNavItemActive, navPathEndFlag } from "@/lib/sidebar-nav-active";
 
@@ -165,7 +164,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           items: [
             { title: "Floor · today", url: "/distributor", icon: LayoutDashboard },
             { title: "Warehouse inventory", url: "/distributor/inventory", icon: Warehouse },
-            { title: "Orders to fulfill", url: "/distributor/orders?tab=approved", icon: ShoppingCart },
+            { title: "Pick & pack", url: "/distributor/pick-pack", icon: ShoppingCart },
             { title: "Report depletions", url: "/distributor/depletions", icon: TrendingDown },
             { title: "Sell-through velocity", url: "/distributor/sellthrough", icon: TrendingUp },
             { title: "Inventory adjustments", url: "/distributor/adjustments", icon: Scale },
@@ -352,7 +351,7 @@ function NavSection({
 export function AppSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
   const { user, signOut } = useAuth();
-  const { language, setLanguage, options, t } = useLanguage();
+  const { t } = useLanguage();
   const collapsed = state === "collapsed";
   const closeMobileNav = () => {
     if (isMobile) setOpenMobile(false);
@@ -415,25 +414,11 @@ export function AppSidebar() {
           {!collapsed && (
             <p className="text-[10px] uppercase tracking-widest text-sidebar-foreground/40">{t("Language")}</p>
           )}
-          <Select value={language} onValueChange={(v) => setLanguage(v as typeof language)}>
-            <SelectTrigger
-              className={cn(
-                "bg-sidebar text-xs",
-                collapsed ? "mx-auto size-8 shrink-0 justify-center p-0" : "h-8",
-              )}
-              aria-label={t("Choose language")}
-              title={t("Choose language")}
-            >
-              {collapsed ? <Globe className="h-4 w-4" /> : <SelectValue placeholder={t("Choose language")} />}
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {collapsed ? (
+            <LanguageSelect className="mx-auto max-w-[8rem]" />
+          ) : (
+            <LanguageSelect />
+          )}
         </div>
 
         <Button

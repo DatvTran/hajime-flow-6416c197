@@ -1,0 +1,177 @@
+/* ============================================================
+   Hajime Design System — Colors & Type
+   Sourced directly from hajime-flow / src/index.css and tailwind.config.ts
+   Palette: warm stone + sumi ink + barrel gold
+   ============================================================ */
+
+/* ─── Brand fonts (self-hosted, static weights) ─── */
+@font-face { font-family: 'Cormorant Garamond'; src: url('fonts/CormorantGaramond-Light.ttf') format('truetype');        font-weight: 300; font-style: normal;  font-display: swap; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('fonts/CormorantGaramond-LightItalic.ttf') format('truetype');  font-weight: 300; font-style: italic;  font-display: swap; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('fonts/CormorantGaramond-Regular.ttf') format('truetype');      font-weight: 400; font-style: normal;  font-display: swap; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('fonts/CormorantGaramond-Italic.ttf') format('truetype');       font-weight: 400; font-style: italic;  font-display: swap; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('fonts/CormorantGaramond-Medium.ttf') format('truetype');       font-weight: 500; font-style: normal;  font-display: swap; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('fonts/CormorantGaramond-MediumItalic.ttf') format('truetype'); font-weight: 500; font-style: italic;  font-display: swap; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('fonts/CormorantGaramond-SemiBold.ttf') format('truetype');     font-weight: 600; font-style: normal;  font-display: swap; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('fonts/CormorantGaramond-SemiBoldItalic.ttf') format('truetype');font-weight: 600; font-style: italic;  font-display: swap; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('fonts/CormorantGaramond-Bold.ttf') format('truetype');         font-weight: 700; font-style: normal;  font-display: swap; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('fonts/CormorantGaramond-BoldItalic.ttf') format('truetype');   font-weight: 700; font-style: italic;  font-display: swap; }
+
+/* ─── DM Sans + JetBrains Mono (Google Fonts — no brand files provided) ─── */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  /* ─── Neutrals — warm stone ─── */
+  --background: 40 18% 97%;          /* #F7F4EE — paper */
+  --foreground: 24 10% 10%;          /* #1C1916 — sumi ink */
+  --card: 40 20% 99%;
+  --card-foreground: 24 10% 10%;
+  --popover: 40 20% 99%;
+  --popover-foreground: 24 10% 10%;
+  --secondary: 35 16% 93%;
+  --secondary-foreground: 24 10% 10%;
+  --muted: 37 14% 94%;
+  --muted-foreground: 24 6% 50%;     /* #857F78 — quiet text */
+  --border: 35 12% 89%;
+  --input: 35 12% 89%;
+  --ring: 40 88% 42%;
+
+  /* ─── Primary — ink ─── */
+  --primary: 24 10% 10%;
+  --primary-foreground: 40 20% 97%;
+
+  /* ─── Accent — barrel gold (signature) ─── */
+  --accent: 40 88% 42%;              /* #C98A0C — barrel gold */
+  --accent-foreground: 40 20% 97%;
+  --accent-hover: 32 78% 48%;        /* warmer press state */
+
+  /* ─── Semantic ─── */
+  --success: 158 56% 36%;            /* #278F65 */
+  --success-foreground: 0 0% 100%;
+  --warning: 38 90% 50%;             /* #F2A10D */
+  --warning-foreground: 24 10% 10%;
+  --destructive: 0 68% 48%;          /* #CC2727 */
+  --destructive-foreground: 0 0% 100%;
+  --info: 215 72% 50%;               /* #2A78DB */
+  --info-foreground: 0 0% 100%;
+
+  /* ─── Sidebar — deep sumi ink ─── */
+  --sidebar-background: 24 12% 8%;   /* #17140F */
+  --sidebar-foreground: 35 12% 78%;
+  --sidebar-primary: 40 88% 42%;
+  --sidebar-primary-foreground: 24 12% 8%;
+  --sidebar-accent: 24 10% 13%;
+  --sidebar-accent-foreground: 35 14% 90%;
+  --sidebar-border: 24 10% 15%;
+  --sidebar-ring: 40 88% 42%;
+
+  /* ─── Surfaces ─── */
+  --surface-elevated: 40 20% 100%;
+  --surface-sunken: 37 14% 94%;
+  --glass-bg: 40 20% 99% / 0.8;
+  --glass-border: 35 12% 89% / 0.6;
+
+  /* ─── Radius ─── */
+  --radius: 0.625rem;                /* 10px */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-full: 9999px;
+
+  /* ─── Shadows — warm ink, subtle ─── */
+  --shadow-soft:   0 1px 2px hsl(24 10% 10% / 0.04), 0 4px 12px hsl(24 10% 10% / 0.03);
+  --shadow-lifted: 0 2px 4px hsl(24 10% 10% / 0.06), 0 8px 24px hsl(24 10% 10% / 0.06);
+  --shadow-float:  0 4px 8px hsl(24 10% 10% / 0.06), 0 16px 40px hsl(24 10% 10% / 0.1);
+
+  /* ─── Easing ─── */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:   cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ─── Spacing — tailwind 4-pt ─── */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* ─── Type families ─── */
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-body:    'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', Menlo, monospace;
+
+  /* ─── Type scale ─── */
+  --fs-2xs: 0.625rem;  /* 10px — eyebrows / metadata */
+  --fs-xs:  0.75rem;   /* 12px */
+  --fs-sm:  0.875rem;  /* 14px */
+  --fs-base:1rem;      /* 16px */
+  --fs-lg:  1.125rem;  /* 18px */
+  --fs-xl:  1.25rem;   /* 20px */
+  --fs-2xl: 1.5rem;    /* 24px */
+  --fs-3xl: 1.875rem;  /* 30px */
+  --fs-4xl: 2.25rem;   /* 36px */
+  --fs-5xl: 3rem;      /* 48px */
+}
+
+/* ─── Base element styling ─── */
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-body);
+  font-feature-settings: 'ss01', 'cv01';
+  line-height: 1.6;
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  font-weight: 500;
+  line-height: 1.2;
+}
+h1 { font-weight: 600; font-size: var(--fs-3xl); }
+h2 { font-weight: 500; font-size: var(--fs-2xl); }
+h3 { font-weight: 500; font-size: var(--fs-xl); }
+p  { font-size: var(--fs-sm); line-height: 1.6; }
+small, .eyebrow {
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+code, .font-mono, .tabular-nums {
+  font-family: var(--font-mono);
+  font-feature-settings: 'ss01', 'cv01', 'tnum';
+}
+
+/* ─── Semantic helpers ─── */
+.bg-background { background: hsl(var(--background)); }
+.bg-card       { background: hsl(var(--card)); }
+.bg-muted      { background: hsl(var(--muted)); }
+.bg-sidebar    { background: hsl(var(--sidebar-background)); color: hsl(var(--sidebar-foreground)); }
+.bg-accent     { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
+.text-muted    { color: hsl(var(--muted-foreground)); }
+.text-accent   { color: hsl(var(--accent)); }
+.border-default{ border: 1px solid hsl(var(--border)); }
+
+/* ─── Signature brand mark ─── */
+.hajime-mark {
+  font-family: var(--font-display);
+  font-weight: 300;
+  letter-spacing: 0.08em;
+}
+
+/* ─── Textures & backgrounds ─── */
+.bg-dot-grid {
+  background-image: radial-gradient(circle, hsl(var(--foreground) / 0.04) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.gradient-accent {
+  background: linear-gradient(135deg, hsl(40 88% 42%), hsl(32 78% 48%));
+}

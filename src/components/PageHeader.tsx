@@ -11,7 +11,7 @@ interface PageHeaderProps {
 }
 
 export function PageHeader({ title, description, actions, titleAddon, variant = "default" }: PageHeaderProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const useKitTypography = variant === "retail" || variant === "sales_rep";
   const titleClass = useKitTypography
     ? "font-display text-[26px] font-semibold tracking-[-0.02em] text-foreground"
@@ -23,11 +23,15 @@ export function PageHeader({ title, description, actions, titleAddon, variant = 
     <div className="mb-8 flex flex-col gap-4 sm:mb-10 sm:flex-row sm:items-start sm:justify-between sm:gap-6 animate-enter">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className={titleClass}>{t(title)}</h1>
+          <h1 key={language} className={titleClass}>
+            {t(title)}
+          </h1>
           {titleAddon}
         </div>
         {description && (
-          <p className={descClass}>{t(description)}</p>
+          <p key={language} className={descClass}>
+            {t(description)}
+          </p>
         )}
       </div>
       {actions && (

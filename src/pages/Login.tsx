@@ -34,6 +34,9 @@ const RETAIL_ACCOUNT_OPTIONS = seedAccounts
 const RETAIL_VENUE_OPTIONS =
   RETAIL_ACCOUNT_OPTIONS.length > 0 ? RETAIL_ACCOUNT_OPTIONS : ["The Drake Hotel"];
 
+/** Seeded HQ admin (`server/seeds/001_initial_data.mjs`). */
+const DEMO_BRAND_OPERATOR_PASSWORD = "admin123!";
+
 /** Seeded DB password for all demo retail personas (`server/seeds/001_initial_data.mjs`). */
 const DEMO_RETAIL_PASSWORD = "retail123!";
 
@@ -83,7 +86,7 @@ export default function Login() {
     if (r === "brand_operator") {
       setEmail("admin@hajime.jp");
       setDisplayName("Admin");
-      setPassword("");
+      setPassword(DEMO_BRAND_OPERATOR_PASSWORD);
     }
     if (r === "retail") {
       setEmail("retail@hajime.jp");
@@ -360,6 +363,12 @@ export default function Login() {
                       required
                       className="h-10 touch-manipulation"
                     />
+                    {role === "brand_operator" ? (
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        Demo HQ login: <span className="font-mono text-foreground">admin@hajime.jp</span> · password{" "}
+                        <span className="font-mono text-foreground">{DEMO_BRAND_OPERATOR_PASSWORD}</span> (from DB seed).
+                      </p>
+                    ) : null}
                     {role === "retail" ? (
                       <p className="text-[11px] leading-relaxed text-muted-foreground">
                         Demo retail accounts use password <span className="font-mono text-foreground">{DEMO_RETAIL_PASSWORD}</span> after{" "}

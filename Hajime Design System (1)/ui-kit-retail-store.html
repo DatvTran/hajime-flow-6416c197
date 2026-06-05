@@ -1,0 +1,279 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8"><title>Hajime UI Kit — Retail Store</title>
+<link rel="stylesheet" href="colors_and_type.css">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--font-body);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .shell{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+
+  .side{background:hsl(var(--sidebar-background));color:hsl(var(--sidebar-foreground));padding:18px 14px;display:flex;flex-direction:column;gap:20px;border-right:1px solid hsl(var(--sidebar-border))}
+  .logo{display:flex;align-items:center;gap:10px;padding:6px 8px}
+  .logo .mark{width:32px;height:32px;border-radius:8px;background:hsl(var(--sidebar-accent) / .6);display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .logo img{height:26px;filter:brightness(0) invert(1)}
+  .logo .name{font-family:var(--font-display);font-weight:600;font-size:16px;color:hsl(35 14% 90%)}
+  .logo .sub{font-size:9px;text-transform:uppercase;letter-spacing:.18em;color:hsl(35 12% 55%);margin-top:2px}
+  .group{display:flex;flex-direction:column;gap:2px}
+  .group-label{padding:4px 10px;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.14em;color:hsl(var(--sidebar-foreground) / .4)}
+  .navitem{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;color:hsl(var(--sidebar-foreground) / .72);font-size:13px;cursor:pointer}
+  .navitem:hover{background:hsl(var(--sidebar-accent));color:hsl(35 14% 90%)}
+  .navitem.active{background:hsl(var(--sidebar-accent));color:hsl(var(--sidebar-primary));font-weight:500}
+  .navitem svg{width:15px;height:15px;flex-shrink:0}
+  .user{display:flex;align-items:center;gap:10px;padding:10px;border-top:1px solid hsl(var(--sidebar-border));margin-top:auto}
+  .avatar{width:28px;height:28px;border-radius:999px;background:hsl(var(--sidebar-accent));color:hsl(35 14% 90%);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500}
+  .user-meta{font-size:12px;color:hsl(35 14% 90%);line-height:1.3}
+  .user-meta .r{color:hsl(35 12% 50%);font-size:10px}
+
+  .main{display:flex;flex-direction:column;min-width:0}
+  .topbar{height:56px;display:flex;align-items:center;padding:0 28px;gap:16px;background:hsl(var(--glass-bg));backdrop-filter:blur(12px);border-bottom:1px solid hsl(var(--border) / .6)}
+  .crumbs{font-size:13px;color:hsl(var(--muted-foreground))}
+  .crumbs strong{color:hsl(var(--foreground));font-weight:500}
+  .content{padding:28px 40px 80px;max-width:1160px}
+
+  h1{font-family:var(--font-display);font-size:28px;font-weight:600;letter-spacing:-.02em;margin:0 0 6px}
+  .desc{color:hsl(var(--muted-foreground));margin:0 0 24px;max-width:56ch}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:500;border-radius:8px;padding:0 14px;height:36px;border:1px solid transparent;cursor:pointer}
+  .btn-p{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
+  .btn-o{background:hsl(var(--background));border-color:hsl(var(--border));color:hsl(var(--foreground))}
+  .btn-a{background:hsl(var(--accent));color:hsl(var(--accent-foreground))}
+  .btn-a:hover{background:hsl(32 78% 48%)}
+
+  /* Reorder cards */
+  .section-title{font-family:var(--font-display);font-size:18px;font-weight:500;margin:0 0 4px;letter-spacing:-.01em}
+  .section-sub{font-size:12px;color:hsl(var(--muted-foreground));margin:0 0 16px}
+  .reorder{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:32px}
+  .rcard{background:hsl(var(--card));border:1px solid hsl(var(--border) / .6);border-radius:14px;padding:18px;display:flex;gap:14px;align-items:flex-start;box-shadow:0 1px 2px hsl(24 10% 10% / .04),0 4px 12px hsl(24 10% 10% / .03)}
+  .bottle{width:54px;height:90px;flex-shrink:0;background:linear-gradient(135deg,hsl(24 10% 10%),hsl(24 14% 18%));border-radius:6px 6px 10px 10px;position:relative;box-shadow:inset 0 -12px 0 hsl(40 88% 42% / .6)}
+  .bottle::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:14px;height:14px;background:hsl(35 14% 85%);border-radius:2px}
+  .bottle.junmai{background:linear-gradient(135deg,hsl(40 20% 95%),hsl(37 14% 90%));border:1px solid hsl(35 12% 80%)}
+  .bottle.junmai::before{background:hsl(24 10% 10%)}
+  .bottle.ryu{background:linear-gradient(135deg,hsl(215 60% 20%),hsl(215 72% 30%))}
+  .rcard .info{flex:1;min-width:0}
+  .rcard .name{font-family:var(--font-display);font-size:16px;font-weight:500;margin-bottom:2px}
+  .rcard .sku{font-family:var(--font-mono);font-size:10px;color:hsl(var(--muted-foreground));text-transform:uppercase;letter-spacing:.08em}
+  .rcard .price{font-family:var(--font-display);font-weight:600;font-size:18px;margin-top:10px;font-feature-settings:'tnum'}
+  .rcard .per{font-size:11px;color:hsl(var(--muted-foreground));font-weight:400;margin-left:2px}
+  .qty{display:flex;align-items:center;gap:8px;margin-top:12px}
+  .qty-btn{width:28px;height:28px;border-radius:6px;border:1px solid hsl(var(--border));background:hsl(var(--background));display:flex;align-items:center;justify-content:center;cursor:pointer;color:hsl(var(--foreground))}
+  .qty-val{font-family:var(--font-mono);font-weight:500;min-width:24px;text-align:center;font-feature-settings:'tnum'}
+  .cart-btn{margin-top:12px;width:100%;height:34px;border-radius:8px;background:hsl(var(--accent));color:hsl(var(--accent-foreground));border:0;font-weight:500;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+  .cart-btn:hover{background:hsl(32 78% 48%)}
+  .cart-btn.in{background:hsl(var(--muted));color:hsl(var(--foreground))}
+
+  /* Order tracker */
+  .tracker{background:hsl(var(--card));border:1px solid hsl(var(--border) / .6);border-radius:16px;padding:22px 24px;margin-bottom:28px;box-shadow:0 1px 2px hsl(24 10% 10% / .04),0 4px 12px hsl(24 10% 10% / .03)}
+  .tracker-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px}
+  .tracker-top .po{font-family:var(--font-mono);font-size:12px;color:hsl(var(--muted-foreground))}
+  .tracker-top h3{font-family:var(--font-display);font-size:20px;font-weight:500;margin:2px 0 4px;letter-spacing:-.01em}
+  .tracker-top .eta{font-size:13px;color:hsl(var(--muted-foreground))}
+  .tracker-top .eta strong{color:hsl(var(--foreground));font-weight:500}
+  .steps{display:flex;align-items:center;gap:0;position:relative;margin-top:20px}
+  .step{flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;position:relative;z-index:1}
+  .step .dot{width:26px;height:26px;border-radius:999px;background:hsl(var(--muted));border:2px solid hsl(var(--card));display:flex;align-items:center;justify-content:center;color:hsl(var(--muted-foreground))}
+  .step.done .dot{background:hsl(158 56% 36%);color:#fff}
+  .step.current .dot{background:hsl(var(--accent));color:#fff;box-shadow:0 0 0 4px hsl(var(--accent) / .18)}
+  .step .label{font-size:11px;color:hsl(var(--muted-foreground));font-weight:500}
+  .step.done .label, .step.current .label{color:hsl(var(--foreground))}
+  .step .date{font-family:var(--font-mono);font-size:10px;color:hsl(var(--muted-foreground))}
+  .steps::before{content:'';position:absolute;left:0;right:0;top:13px;height:2px;background:hsl(var(--border));z-index:0}
+  .steps::after{content:'';position:absolute;left:0;top:13px;height:2px;width:62%;background:hsl(158 56% 36%);z-index:0}
+  .line-items{margin-top:22px;padding-top:18px;border-top:1px solid hsl(var(--border) / .6);display:flex;gap:18px;flex-wrap:wrap;font-size:13px}
+  .line-items span{color:hsl(var(--muted-foreground))}
+  .line-items strong{color:hsl(var(--foreground));font-family:var(--font-mono);font-weight:500;margin-left:4px}
+
+  /* KPI row retail */
+  .rkpis{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:28px}
+  .rkpi{background:hsl(var(--card));border:1px solid hsl(var(--border) / .6);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:6px;box-shadow:0 1px 2px hsl(24 10% 10% / .04)}
+  .rkpi .lab{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:hsl(var(--muted-foreground));font-weight:500}
+  .rkpi .val{font-family:var(--font-display);font-size:24px;font-weight:600;letter-spacing:-.02em;font-feature-settings:'tnum'}
+  .rkpi .sub{font-size:12px;color:hsl(var(--muted-foreground))}
+
+  /* Recent orders list */
+  .order-list{background:hsl(var(--card));border:1px solid hsl(var(--border) / .6);border-radius:14px;overflow:hidden}
+  .order-row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:16px;padding:14px 18px;border-bottom:1px solid hsl(var(--border) / .5);align-items:center}
+  .order-row:last-child{border-bottom:0}
+  .order-row:hover{background:hsl(var(--muted) / .4)}
+  .order-po{font-family:var(--font-mono);font-size:12px;font-weight:500}
+  .order-when{font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px}
+  .order-items{font-size:13px}
+  .order-total{font-family:var(--font-mono);font-feature-settings:'tnum';font-size:14px;font-weight:500}
+  .pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:500;text-transform:capitalize;border:1px solid}
+  .dot{width:6px;height:6px;border-radius:999px}
+  .p-green{background:hsl(158 56% 36% / .08);color:hsl(158 56% 26%);border-color:hsl(158 56% 36% / .2)}
+  .p-blue{background:hsl(215 72% 50% / .08);color:hsl(215 72% 38%);border-color:hsl(215 72% 50% / .2)}
+  .p-amber{background:hsl(38 90% 50% / .12);color:hsl(30 80% 30%);border-color:hsl(38 90% 50% / .3)}
+</style></head><body>
+
+<div class="shell">
+  <aside class="side">
+    <div class="logo">
+      <div class="mark"><img src="assets/hajime-logo.png" alt=""></div>
+      <div>
+        <div class="name">Hajime</div>
+        <div class="sub">The Drake Hotel</div>
+      </div>
+    </div>
+    <div class="group">
+      <div class="group-label">Store</div>
+      <div class="navitem active"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Home</div>
+      <div class="navitem"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>New order</div>
+      <div class="navitem"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>My orders</div>
+      <div class="navitem"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>Reorder</div>
+    </div>
+    <div class="group">
+      <div class="group-label">Tracking</div>
+      <div class="navitem"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Deliveries</div>
+    </div>
+
+    <div class="user">
+      <div class="avatar">MD</div>
+      <div class="user-meta"><div>Mei Daniels</div><div class="r">Beverage Director</div></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="crumbs">Store › <strong>Home</strong></div>
+      <button class="btn btn-a" style="margin-left:auto">+ New order</button>
+    </header>
+
+    <div class="content">
+      <h1>Good afternoon, Mei.</h1>
+      <p class="desc">Your last order arrived Monday. Backbar pace says you'll need a top-up of Florin Peaks by next Thursday.</p>
+
+      <!-- KPI snapshot -->
+      <section class="rkpis">
+        <div class="rkpi">
+          <div class="lab">Open orders</div>
+          <div class="val">2</div>
+          <div class="sub">Next ETA Thu 14 Apr</div>
+        </div>
+        <div class="rkpi">
+          <div class="lab">Last 30 days</div>
+          <div class="val">$3,840</div>
+          <div class="sub">12 cases · 3 SKUs</div>
+        </div>
+        <div class="rkpi">
+          <div class="lab">On backbar</div>
+          <div class="val">6 SKUs</div>
+          <div class="sub">Depletion tracking on</div>
+        </div>
+      </section>
+
+      <!-- Live order tracker -->
+      <div class="tracker">
+        <div class="tracker-top">
+          <div>
+            <div class="po">PO-2026-0418 · Placed Fri 11 Apr</div>
+            <h3>100 cases · Florin Peaks 750ml</h3>
+            <div class="eta">Estimated arrival <strong>Thu 14 Apr, 10 – 12am</strong> via Kentoku Logistics</div>
+          </div>
+          <span class="pill p-blue"><span class="dot" style="background:hsl(215 72% 50%)"></span>in-transit</span>
+        </div>
+        <div class="steps">
+          <div class="step done"><div class="dot">✓</div><div class="label">Placed</div><div class="date">Fri 11 Apr</div></div>
+          <div class="step done"><div class="dot">✓</div><div class="label">Approved</div><div class="date">Fri 11 Apr</div></div>
+          <div class="step done"><div class="dot">✓</div><div class="label">Packed</div><div class="date">Mon 14 Apr</div></div>
+          <div class="step current"><div class="dot">●</div><div class="label">Shipped</div><div class="date">Wed 16 Apr</div></div>
+          <div class="step"><div class="dot">○</div><div class="label">Delivered</div><div class="date">—</div></div>
+        </div>
+        <div class="line-items">
+          <div>Total <strong>$4,200.00</strong></div>
+          <div>Payable on delivery <strong>Net 30</strong></div>
+          <div>Tracking <strong>KT-3387-2226</strong></div>
+        </div>
+      </div>
+
+      <!-- Reorder picks -->
+      <div class="section-title">Reorder picks</div>
+      <p class="section-sub">Based on your backbar depletion over the last 90 days</p>
+      <section class="reorder">
+        <div class="rcard">
+          <div class="bottle"></div>
+          <div class="info">
+            <div class="sku">HJM-FP-750</div>
+            <div class="name">Florin Peaks</div>
+            <div style="font-size:12px;color:hsl(var(--muted-foreground))">Junmai Daiginjo · 750ml</div>
+            <div class="price">$48.00<span class="per"> / bottle</span></div>
+            <div class="qty">
+              <button class="qty-btn">−</button><span class="qty-val">24</span><button class="qty-btn">+</button>
+              <span style="font-size:11px;color:hsl(var(--muted-foreground));margin-left:auto">= 2 cases</span>
+            </div>
+            <button class="cart-btn">Add to order</button>
+          </div>
+        </div>
+        <div class="rcard">
+          <div class="bottle junmai"></div>
+          <div class="info">
+            <div class="sku">HJM-JN-720</div>
+            <div class="name">Junmai Shiro</div>
+            <div style="font-size:12px;color:hsl(var(--muted-foreground))">Junmai · 720ml</div>
+            <div class="price">$32.00<span class="per"> / bottle</span></div>
+            <div class="qty">
+              <button class="qty-btn">−</button><span class="qty-val">12</span><button class="qty-btn">+</button>
+              <span style="font-size:11px;color:hsl(var(--muted-foreground));margin-left:auto">= 1 case</span>
+            </div>
+            <button class="cart-btn in">✓ In current order</button>
+          </div>
+        </div>
+        <div class="rcard">
+          <div class="bottle ryu"></div>
+          <div class="info">
+            <div class="sku">HJM-RY-500</div>
+            <div class="name">Ryusui Reserve</div>
+            <div style="font-size:12px;color:hsl(var(--muted-foreground))">Genshu · 500ml · limited</div>
+            <div class="price">$82.00<span class="per"> / bottle</span></div>
+            <div class="qty">
+              <button class="qty-btn">−</button><span class="qty-val">6</span><button class="qty-btn">+</button>
+              <span style="font-size:11px;color:hsl(var(--muted-foreground));margin-left:auto">½ case</span>
+            </div>
+            <button class="cart-btn">Add to order</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Recent orders -->
+      <div class="section-title">Your recent orders</div>
+      <p class="section-sub">Tap any order to open its tracker</p>
+      <div class="order-list">
+        <div class="order-row">
+          <div>
+            <div class="order-po">PO-2026-0418</div>
+            <div class="order-when">Placed Fri 11 Apr · by Mei</div>
+          </div>
+          <div class="order-items">100× Florin Peaks, 12× Junmai Shiro</div>
+          <div class="order-total">$4,584.00</div>
+          <span class="pill p-blue"><span class="dot" style="background:hsl(215 72% 50%)"></span>in-transit</span>
+        </div>
+        <div class="order-row">
+          <div>
+            <div class="order-po">PO-2026-0412</div>
+            <div class="order-when">Delivered Mon 04 Apr</div>
+          </div>
+          <div class="order-items">48× Florin Peaks</div>
+          <div class="order-total">$2,304.00</div>
+          <span class="pill p-green"><span class="dot" style="background:hsl(158 56% 36%)"></span>delivered</span>
+        </div>
+        <div class="order-row">
+          <div>
+            <div class="order-po">PO-2026-0406</div>
+            <div class="order-when">Delivered Mon 21 Mar</div>
+          </div>
+          <div class="order-items">24× Ryusui Reserve, 24× Junmai Shiro</div>
+          <div class="order-total">$2,736.00</div>
+          <span class="pill p-green"><span class="dot" style="background:hsl(158 56% 36%)"></span>delivered</span>
+        </div>
+        <div class="order-row">
+          <div>
+            <div class="order-po">PO-2026-0399</div>
+            <div class="order-when">Placed Sat 02 Mar · awaiting HQ</div>
+          </div>
+          <div class="order-items">120× mixed case</div>
+          <div class="order-total">$5,040.00</div>
+          <span class="pill p-amber"><span class="dot" style="background:hsl(38 90% 50%)"></span>pending</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body></html>

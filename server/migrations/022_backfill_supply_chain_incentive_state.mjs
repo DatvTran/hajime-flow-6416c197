@@ -50,6 +50,7 @@ const DEMO_STATE = {
       quantity: 2,
       payout: 300,
       notes: 'The Drake Hotel - new cocktail menu',
+      retailAccountName: 'The Drake Hotel',
     },
   ],
 };

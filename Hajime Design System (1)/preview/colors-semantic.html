@@ -1,0 +1,26 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body{margin:0;padding:24px;background:hsl(var(--background))}
+  .row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .sw{border-radius:10px;border:1px solid hsl(var(--border));background:hsl(var(--card));overflow:hidden;display:flex;flex-direction:column}
+  .chip{height:54px}
+  .pill{display:inline-flex;gap:6px;align-items:center;font-size:11px;font-weight:500;padding:3px 10px;border-radius:999px;ring-inset:1px;border:1px solid}
+  .dot{width:6px;height:6px;border-radius:999px}
+  .meta{padding:8px 10px;font-size:11px;display:flex;flex-direction:column;gap:6px}
+  .meta .name{font-weight:500}
+  .meta .val{color:hsl(var(--muted-foreground));font-family:var(--font-mono);font-size:10px}
+</style></head><body>
+<div class="row">
+  <div class="sw"><div class="chip" style="background:hsl(158 56% 36%)"></div>
+    <div class="meta"><div><span class="name">Success</span><div class="val">158 56% 36%</div></div>
+      <span class="pill" style="background:hsl(158 56% 36% / .08);color:hsl(158 56% 30%);border-color:hsl(158 56% 36% / .2)"><span class="dot" style="background:hsl(158 56% 36%)"></span>delivered</span></div></div>
+  <div class="sw"><div class="chip" style="background:hsl(38 90% 50%)"></div>
+    <div class="meta"><div><span class="name">Warning</span><div class="val">38 90% 50%</div></div>
+      <span class="pill" style="background:hsl(38 90% 50% / .12);color:hsl(30 80% 32%);border-color:hsl(38 90% 50% / .3)"><span class="dot" style="background:hsl(38 90% 50%)"></span>pending</span></div></div>
+  <div class="sw"><div class="chip" style="background:hsl(0 68% 48%)"></div>
+    <div class="meta"><div><span class="name">Destructive</span><div class="val">0 68% 48%</div></div>
+      <span class="pill" style="background:hsl(0 68% 48% / .08);color:hsl(0 68% 38%);border-color:hsl(0 68% 48% / .2)"><span class="dot" style="background:hsl(0 68% 48%)"></span>overdue</span></div></div>
+  <div class="sw"><div class="chip" style="background:hsl(215 72% 50%)"></div>
+    <div class="meta"><div><span class="name">Info</span><div class="val">215 72% 50%</div></div>
+      <span class="pill" style="background:hsl(215 72% 50% / .08);color:hsl(215 72% 40%);border-color:hsl(215 72% 50% / .2)"><span class="dot" style="background:hsl(215 72% 50%)"></span>in-transit</span></div></div>
+</div></body></html>

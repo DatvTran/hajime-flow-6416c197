@@ -10,3 +10,11 @@ if (!rootElement) {
 
 const root = createRoot(rootElement);
 root.render(<App />);
+
+declare global {
+  interface Window {
+    __hajimeMarkBooted?: () => void;
+  }
+}
+
+window.__hajimeMarkBooted?.();

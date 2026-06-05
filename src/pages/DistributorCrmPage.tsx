@@ -22,7 +22,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useAuth } from "@/contexts/AuthContext";
 import { useAppData } from "@/contexts/AppDataContext";
+import { filterTeamMembersForDistributor } from "@/lib/distributor-scope";
 import {
   approveRetailCrmContact,
   createTeamMember,
@@ -33,10 +35,19 @@ import {
 import { toast } from "@/components/ui/sonner";
 import { Badge } from "@/components/ui/badge";
 import type { TeamMember } from "@/types/app-data";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function DistributorCrmPage() {
+  const { t } = useLanguage();
+  const { user } = useAuth();
   const { data, refreshTeamMembers } = useAppData();
-  const teamMembers = data.teamMembers ?? [];
+  const teamMembers = useMemo(
+    () =>
+      user?.id
+        ? filterTeamMembersForDistributor(data.teamMembers ?? [], user.id)
+        : (data.teamMembers ?? []),
+    [data.teamMembers, user?.id],
+  );
 
   const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState("");
@@ -80,9 +91,16 @@ export default function DistributorCrmPage() {
     }
     setSaving(true);
     try {
-      await createTeamMember({ name: n, email: em, role: "sales_rep" });
+      const result = (await createTeamMember({ name: n, email: em, role: "sales_rep" })) as {
+        data?: { id?: string };
+        invite?: { status?: string; reason?: string };
+      };
       await refreshTeamMembers();
-      toast.success("Sales rep CRM contact added", { description: em });
+      const inviteNote =
+        result.invite?.status === "skipped"
+          ? " Saved — portal invite will be sent when email is configured."
+          : "";
+      toast.success("Sales rep CRM contact added", { description: `${em}${inviteNote}` });
       setAddOpen(false);
       setName("");
       setEmail("");
@@ -258,15 +276,15 @@ export default function DistributorCrmPage() {
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="font-display text-lg">Pending retail (from sales reps)</CardTitle>
+            <CardTitle className="font-display text-lg">{t("Pending retail (from sales reps)")}</CardTitle>
             <CardDescription>
-              Submitted by reps — approve to activate the CRM row and send the portal invite (same rules as Brand HQ).
+              {t("Submitted by reps — approve to activate the CRM row and send the portal invite (same rules as Brand HQ).")}
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent>
           {pendingRetail.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No pending retail CRM requests.</p>
+            <p className="text-sm text-muted-foreground">{t("No pending retail CRM requests.")}</p>
           ) : (
             <ul className="divide-y rounded-lg border border-border/80">
               {pendingRetail.map((m) => (
@@ -282,7 +300,7 @@ export default function DistributorCrmPage() {
                     disabled={approvingId === m.id}
                     onClick={() => void approve(m)}
                   >
-                    {approvingId === m.id ? "Approving…" : "Approve"}
+                    {approvingId === m.id ? t("Approving…") : t("Approve")}
                   </Button>
                 </li>
               ))}
@@ -294,19 +312,18 @@ export default function DistributorCrmPage() {
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="font-display text-lg">Sales reps</CardTitle>
+            <CardTitle className="font-display text-lg">{t("Sales reps")}</CardTitle>
             <CardDescription>
-              Manage Sales rep CRM contacts: edit details, deactivate, resend portal invites, or reactivate and send a
-              fresh invite after an account was archived.
+              {t("Manage Sales rep CRM contacts: edit details, deactivate, resend portal invites, or reactivate and send a fresh invite after an account was archived.")}
             </CardDescription>
           </div>
           <Button type="button" className="touch-manipulation" onClick={() => setAddOpen(true)}>
-            Add sales rep
+            {t("Add sales rep")}
           </Button>
         </CardHeader>
         <CardContent>
           {salesReps.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No sales rep CRM contacts yet.</p>
+            <p className="text-sm text-muted-foreground">{t("No sales rep CRM contacts yet.")}</p>
           ) : (
             <ul className="divide-y rounded-lg border border-border/80">
               {salesReps.map((m) => (
@@ -319,7 +336,7 @@ export default function DistributorCrmPage() {
                     <p className="truncate text-sm text-muted-foreground">{m.email}</p>
                     {m.isActive === false ? (
                       <Badge variant="secondary" className="mt-1">
-                        Inactive
+                        {t("Inactive")}
                       </Badge>
                     ) : null}
                   </div>

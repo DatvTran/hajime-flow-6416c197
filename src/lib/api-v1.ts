@@ -220,6 +220,7 @@ export function getOrders(params?: {
   limit?: number;
   status?: string;
   account_id?: string;
+  order_number?: string;
   date_from?: string;
   date_to?: string;
 }): Promise<OrdersResponse> {
@@ -228,6 +229,7 @@ export function getOrders(params?: {
   if (params?.limit) query.set("limit", String(params.limit));
   if (params?.status) query.set("status", params.status);
   if (params?.account_id) query.set("account_id", params.account_id);
+  if (params?.order_number) query.set("order_number", params.order_number);
   if (params?.date_from) query.set("date_from", params.date_from);
   if (params?.date_to) query.set("date_to", params.date_to);
   

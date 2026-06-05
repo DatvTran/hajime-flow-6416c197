@@ -15,7 +15,17 @@
     <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Visible until React mounts; also shown if the JS bundle fails after a deploy. -->
+      <div
+        id="boot-fallback"
+        style="min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;padding:2rem;background:#0a0a0a;color:#faf9f7;font-family:system-ui,sans-serif;text-align:center"
+      >
+        <p style="margin:0;font-size:1.25rem;font-weight:600;letter-spacing:0.04em">Hajime</p>
+        <p style="margin:0;font-size:0.875rem;color:#888888">Loading sign-in…</p>
+      </div>
+    </div>
+    <script src="/boot.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

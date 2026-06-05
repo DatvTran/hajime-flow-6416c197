@@ -205,28 +205,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Check for existing session on mount
+  // Check for existing session on mount (timeout so HQ login never hangs on a dead API)
   useEffect(() => {
+    let cancelled = false;
+
     const checkSession = async () => {
       const tokens = getStoredTokens();
       if (!tokens) {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
         return;
       }
 
+      const timeoutMs = 10_000;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+
       try {
-        const response = await apiFetch("/api/auth/me");
+        const response = await Promise.race([
+          apiFetch("/api/auth/me"),
+          new Promise<Response>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error("Session check timed out")),
+              timeoutMs,
+            );
+          }),
+        ]);
         const userData = await response.json();
-        setUser(userFromAuthPayload(userData));
+        if (!cancelled) setUser(userFromAuthPayload(userData));
       } catch (err) {
-        // Session invalid, clear tokens
+        console.warn("[Auth] Session check failed:", err);
         storeTokens(null);
       } finally {
-        setIsLoading(false);
+        if (timer) clearTimeout(timer);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
-    checkSession();
+    void checkSession();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const signIn = useCallback(async (email: string, password: string, opts?: SignInOptions) => {
@@ -249,7 +266,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: "Login failed" }));
-        throw new Error(error.error || "Invalid email or password");
+        const fallback =
+          response.status === 503
+            ? "The server database is temporarily unavailable. Try again in a minute."
+            : response.status === 401
+              ? "Invalid email or password"
+              : "Login failed";
+        throw new Error(error.error || fallback);
       }
 
       const data = await response.json();

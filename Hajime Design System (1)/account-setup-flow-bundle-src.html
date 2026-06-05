@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hajime — Account Setup Flow</title>
+<meta name="ext-resource-dependency" content="assets/hajime-logo.png" data-resource-id="hajimeLogo" />
+<link rel="stylesheet" href="colors_and_type.css">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--font-body);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;height:100vh;overflow:hidden}
+#root{height:100vh;display:flex;flex-direction:column}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+
+/* ─── Tokens ─── */
+const C = {
+  bg: 'hsl(40 18% 97%)',
+  card: 'hsl(40 20% 99%)',
+  border: 'hsl(35 12% 89%)',
+  muted: 'hsl(24 6% 50%)',
+  accent: 'hsl(40 88% 42%)',
+  accentHov: 'hsl(32 78% 48%)',
+  ink: 'hsl(24 10% 10%)',
+  inkFg: 'hsl(40 20% 97%)',
+  sidebar: 'hsl(24 12% 8%)',
+  sidebarFg: 'hsl(35 12% 78%)',
+  sidebarAccent: 'hsl(24 10% 13%)',
+  sidebarBorder: 'hsl(24 10% 15%)',
+  success: 'hsl(158 56% 36%)',
+  warning: 'hsl(38 90% 50%)',
+  info: 'hsl(215 72% 50%)',
+  softShadow: '0 1px 2px hsl(24 10% 10% / .04), 0 4px 12px hsl(24 10% 10% / .03)',
+  liftedShadow: '0 2px 4px hsl(24 10% 10% / .06), 0 8px 24px hsl(24 10% 10% / .06)',
+};
+
+/* ─── Shared UI primitives ─── */
+const Btn = ({ children, variant='ink', size='md', onClick, style={}, disabled=false }) => {
+  const base = {
+    display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6,
+    fontFamily:'var(--font-body)', fontWeight:500, borderRadius:8, border:'1px solid transparent',
+    cursor: disabled ? 'not-allowed' : 'pointer', transition:'background 140ms, transform 100ms',
+    opacity: disabled ? 0.5 : 1,
+    ...(size==='md' ? {fontSize:13, padding:'0 16px', height:36} : {fontSize:12, padding:'0 12px', height:30}),
+    ...( variant==='accent' ? {background:C.accent, color:C.inkFg} :
+         variant==='outline' ? {background:C.card, borderColor:C.border, color:C.ink} :
+         variant==='ghost' ? {background:'transparent', color:C.muted, borderColor:'transparent'} :
+         {background:C.ink, color:C.inkFg} ),
+    ...style
+  };
+  return <button style={base} onClick={disabled ? undefined : onClick}>{children}</button>;
+};
+
+const Field = ({ label, hint, children, required }) => (
+  <div style={{display:'flex', flexDirection:'column', gap:5}}>
+    <label style={{fontSize:12, fontWeight:500, color:C.ink, display:'flex', gap:4, alignItems:'center'}}>
+      {label}
+      {required && <span style={{color:C.accent, fontSize:10}}>*</span>}
+      {hint && <span style={{fontWeight:400, color:C.muted, fontSize:11}}>— {hint}</span>}
+    </label>
+    {children}
+  </div>
+);
+
+const Input = ({ placeholder='', value, onChange, type='text', readOnly=false, mono=false, style={} }) => (
+  <input
+    type={type}
+    placeholder={placeholder}
+    value={value}
+    onChange={onChange}
+    readOnly={readOnly}
+    style={{
+      height:36, borderRadius:8, border:`1px solid ${C.border}`,
+      background: readOnly ? 'hsl(37 14% 94%)' : C.card,
+      padding:'0 12px', fontSize:13, color:C.ink, width:'100%', outline:'none',
+      fontFamily: mono ? 'var(--font-mono)' : 'var(--font-body)',
+      ...style
+    }}
+  />
+);
+
+const Select = ({ value, onChange, options }) => (
+  <select value={value} onChange={onChange} style={{
+    height:36, borderRadius:8, border:`1px solid ${C.border}`,
+    background:C.card, padding:'0 12px', fontSize:13, color:C.ink,
+    width:'100%', outline:'none', cursor:'pointer', fontFamily:'var(--font-body)'
+  }}>
+    {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+  </select>
+);
+
+const Textarea = ({ placeholder, value, onChange, rows=3 }) => (
+  <textarea
+    placeholder={placeholder}
+    value={value}
+    onChange={onChange}
+    rows={rows}
+    style={{
+      borderRadius:8, border:`1px solid ${C.border}`, background:C.card,
+      padding:'10px 12px', fontSize:13, color:C.ink, width:'100%',
+      outline:'none', resize:'vertical', fontFamily:'var(--font-body)', lineHeight:1.6
+    }}
+  />
+);
+
+const Checkbox = ({ checked, onChange, label }) => (
+  <label style={{display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:C.ink}}>
+    <div onClick={() => onChange(!checked)} style={{
+      width:18, height:18, borderRadius:4, border:`1.5px solid ${checked ? C.accent : C.border}`,
+      background: checked ? C.accent : C.card,
+      display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, cursor:'pointer',
+      transition:'all 140ms'
+    }}>
+      {checked && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+    </div>
+    {label}
+  </label>
+);
+
+const RadioGroup = ({ options, value, onChange }) => (
+  <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+    {options.map(opt => (
+      <label key={opt} style={{
+        display:'flex', alignItems:'center', gap:7, cursor:'pointer',
+        padding:'6px 14px', borderRadius:8, fontSize:13,
+        border:`1px solid ${value===opt ? C.accent : C.border}`,
+        background: value===opt ? 'hsl(40 88% 42% / .07)' : C.card,
+        color: value===opt ? 'hsl(40 88% 32%)' : C.ink,
+        transition:'all 140ms', fontWeight: value===opt ? 500 : 400
+      }}>
+        <input type="radio" name="radio" value={opt} checked={value===opt} onChange={()=>onChange(opt)} style={{display:'none'}} />
+        {value===opt && <span style={{fontSize:9, color:C.accent}}>●</span>}
+        {opt}
+      </label>
+    ))}
+  </div>
+);
+
+const Pill = ({ label, variant='green' }) => {
+  const map = {
+    green: {bg:'hsl(158 56% 36% / .1)',color:'hsl(158 56% 26%)',border:'hsl(158 56% 36% / .22)'},
+    amber: {bg:'hsl(38 90% 50% / .1)',color:'hsl(30 80% 28%)',border:'hsl(38 90% 50% / .28)'},
+    blue: {bg:'hsl(215 72% 50% / .1)',color:'hsl(215 72% 36%)',border:'hsl(215 72% 50% / .22)'},
+    stone: {bg:'hsl(37 14% 94%)',color:C.muted,border:C.border},
+  };
+  const s = map[variant] || map.stone;
+  return <span style={{
+    display:'inline-flex', alignItems:'center', gap:5,
+    borderRadius:9999, padding:'2px 9px', fontSize:11, fontWeight:500,
+    background:s.bg, color:s.color, border:`1px solid ${s.border}`
+  }}>{label}</span>;
+};
+
+const SectionCard = ({ title, children, style={} }) => (
+  <div style={{background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:'22px 24px', boxShadow:C.softShadow, ...style}}>
+    {title && <div style={{fontFamily:'var(--font-display)', fontSize:16, fontWeight:500, letterSpacing:'-.01em', marginBottom:18, paddingBottom:14, borderBottom:`1px solid ${C.border}`}}>{title}</div>}
+    {children}
+  </div>
+);
+
+/* ─── Sidebar (Sales Rep / Distributor) ─── */
+const Sidebar = ({ active }) => {
+  const navItems = [
+    { icon: <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>, label: 'Dashboard' },
+    { icon: <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, label: 'Accounts', active: true },
+    { icon: <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>, label: 'Orders' },
+    { icon: <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>, label: 'Deliveries' },
+    { icon: <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>, label: 'Reports' },
+  ];
+  return (
+    <aside style={{
+      width:252, background:C.sidebar, color:C.sidebarFg,
+      display:'flex', flexDirection:'column', borderRight:`1px solid ${C.sidebarBorder}`,
+      flexShrink:0
+    }}>
+      <div style={{display:'flex', alignItems:'center', gap:10, padding:'20px 16px 16px', borderBottom:`1px solid ${C.sidebarBorder}`}}>
+        <div style={{width:34, height:34, borderRadius:8, background:C.sidebarAccent, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', flexShrink:0}}>
+          <img src={window.__resources.hajimeLogo} alt="Hajime" style={{height:26, filter:'brightness(0) invert(1)'}} />
+        </div>
+        <div>
+          <div style={{fontFamily:'var(--font-display)', fontWeight:600, fontSize:16, color:'hsl(35 14% 90%)', lineHeight:1.2}}>Hajime</div>
+          <div style={{fontSize:10, color:'hsl(35 12% 42%)', marginTop:1}}>Sales Operations</div>
+        </div>
+      </div>
+
+      <div style={{padding:'14px 10px 6px', display:'flex', flexDirection:'column', gap:2}}>
+        <div style={{padding:'4px 8px 6px', fontSize:10, fontWeight:500, textTransform:'uppercase', letterSpacing:'.14em', color:'hsl(35 12% 38%)'}}>Field</div>
+        {navItems.map(item => (
+          <div key={item.label} style={{
+            display:'flex', alignItems:'center', gap:9, padding:'8px 10px', borderRadius:6,
+            fontSize:13, cursor:'pointer',
+            background: item.active ? C.sidebarAccent : 'transparent',
+            color: item.active ? 'hsl(40 88% 60%)' : 'hsl(35 12% 62%)',
+            fontWeight: item.active ? 500 : 400,
+          }}>
+            {item.icon}{item.label}
+          </div>
+        ))}
+      </div>
+
+      <div style={{marginTop:'auto', padding:'12px 10px', borderTop:`1px solid ${C.sidebarBorder}`, display:'flex', alignItems:'center', gap:10}}>
+        <div style={{width:30, height:30, borderRadius:999, background:C.sidebarAccent, color:'hsl(35 14% 82%)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:600, flexShrink:0}}>MR</div>
+        <div>
+          <div style={{fontSize:12, color:'hsl(35 14% 88%)', fontWeight:500}}>Marco Rossi</div>
+          <div style={{fontSize:10, color:'hsl(35 12% 44%)'}}>Sales Representative</div>
+        </div>
+      </div>
+    </aside>
+  );
+};
+
+/* ─── Step indicator (onboarding form) ─── */
+const StepBar = ({ steps, current }) => (
+  <div style={{display:'flex', alignItems:'center', gap:0, marginBottom:32}}>
+    {steps.map((s, i) => (
+      <React.Fragment key={s}>
+        <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:6, flex:1, position:'relative', zIndex:1}}>
+          <div style={{
+            width:28, height:28, borderRadius:999, display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:11, fontWeight:600, transition:'all 200ms',
+            background: i < current ? C.success : i === current ? C.accent : C.card,
+            color: i <= current ? '#fff' : C.muted,
+            border: `2px solid ${i < current ? C.success : i === current ? C.accent : C.border}`,
+            boxShadow: i === current ? `0 0 0 4px hsl(40 88% 42% / .15)` : 'none'
+          }}>
+            {i < current ? <svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5l3 3 6-7" stroke="white" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg> : i+1}
+          </div>
+          <div style={{fontSize:11, fontWeight: i===current ? 500 : 400, color: i===current ? C.ink : C.muted, textAlign:'center', whiteSpace:'nowrap'}}>{s}</div>
+        </div>
+        {i < steps.length-1 && (
+          <div style={{height:2, flex:1, marginBottom:22, background: i < current ? C.success : C.border, transition:'background 300ms'}} />
+        )}
+      </React.Fragment>
+    ))}
+  </div>
+);
+
+/* ─── SCREEN 1: Sales Rep — Send Invite ─── */
+const SendInviteScreen = ({ onSent }) => {
+  const [form, setForm] = useState({ name:'', email:'', store:'', message:'Hi,\n\nI\'ve set you up with a Hajime account. Please complete your application using the link below to activate ordering with Tre Amici Imports & Vertical Wine Group.\n\nThis takes about 5 minutes. Your rep will review and approve within one business day.\n\nWelcome aboard.' });
+  const set = k => e => setForm(f => ({...f, [k]:e.target.value}));
+  const ready = form.name && form.email && form.store;
+
+  return (
+    <div style={{display:'flex', height:'100vh', overflow:'hidden'}}>
+      <Sidebar />
+      <div style={{flex:1, display:'flex', flexDirection:'column', minWidth:0, overflow:'hidden'}}>
+        {/* Topbar */}
+        <header style={{height:54, display:'flex', alignItems:'center', padding:'0 32px', gap:14, background:'hsl(40 20% 99% / .8)', backdropFilter:'blur(12px)', borderBottom:`1px solid hsl(35 12% 89% / .6)`, flexShrink:0}}>
+          <span style={{fontSize:13, color:C.muted}}>Accounts › <strong style={{color:C.ink, fontWeight:500}}>New account</strong></span>
+          <div style={{marginLeft:'auto', display:'flex', gap:10}}>
+            <Btn variant="outline" onClick={() => {}}>Discard</Btn>
+            <Btn variant="accent" disabled={!ready} onClick={onSent}>
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              Send invitation
+            </Btn>
+          </div>
+        </header>
+
+        <div style={{flex:1, overflowY:'auto', padding:'32px 48px 80px'}}>
+          <div style={{maxWidth:820, margin:'0 auto'}}>
+            <div style={{marginBottom:28}}>
+              <div style={{fontSize:11, textTransform:'uppercase', letterSpacing:'.1em', color:C.muted, fontWeight:500, marginBottom:6}}>New account</div>
+              <h1 style={{fontFamily:'var(--font-display)', fontSize:28, fontWeight:600, letterSpacing:'-.02em', marginBottom:6}}>Send store invitation</h1>
+              <p style={{fontSize:13, color:C.muted, maxWidth:'52ch'}}>An email will be sent to the store contact with a secure link to complete the New Licensee Application. You'll be notified when they submit.</p>
+            </div>
+
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:24}}>
+              {/* Left: form */}
+              <div style={{display:'flex', flexDirection:'column', gap:20}}>
+                <SectionCard title="Store contact">
+                  <div style={{display:'flex', flexDirection:'column', gap:14}}>
+                    <Field label="Store / business name" required>
+                      <Input placeholder="e.g. The Drake Hotel" value={form.store} onChange={set('store')} />
+                    </Field>
+                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                      <Field label="Contact name" required>
+                        <Input placeholder="Full name" value={form.name} onChange={set('name')} />
+                      </Field>
+                      <Field label="Contact title">
+                        <Input placeholder="e.g. Beverage Director" value={form.title} onChange={set('title')} />
+                      </Field>
+                    </div>
+                    <Field label="Email address" required>
+                      <Input type="email" placeholder="contact@store.com" value={form.email} onChange={set('email')} />
+                    </Field>
+                    <Field label="Phone (optional)">
+                      <Input placeholder="416-555-0100" value={form.phone} onChange={set('phone')} />
+                    </Field>
+                  </div>
+                </SectionCard>
+
+                <SectionCard title="Invitation message">
+                  <div style={{display:'flex', flexDirection:'column', gap:14}}>
+                    <Field label="Personal note" hint="appended to the standard email">
+                      <Textarea rows={5} value={form.message} onChange={set('message')} />
+                    </Field>
+                    <div style={{display:'flex', alignItems:'center', gap:8, padding:'10px 14px', borderRadius:8, background:'hsl(40 88% 42% / .06)', border:`1px solid hsl(40 88% 42% / .2)`}}>
+                      <svg width="14" height="14" fill="none" stroke="hsl(40 88% 36%)" strokeWidth="1.75" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                      <span style={{fontSize:12, color:'hsl(40 88% 32%)'}}>Link expires in <strong>7 days</strong>. One click activates the form.</span>
+                    </div>
+                  </div>
+                </SectionCard>
+              </div>
+
+              {/* Right: email preview */}
+              <div style={{display:'flex', flexDirection:'column', gap:12}}>
+                <div style={{fontSize:11, textTransform:'uppercase', letterSpacing:'.1em', color:C.muted, fontWeight:500}}>Email preview</div>
+                <div style={{background:C.card, border:`1px solid ${C.border}`, borderRadius:14, overflow:'hidden', boxShadow:C.softShadow}}>
+                  {/* Email chrome */}
+                  <div style={{background:'hsl(37 14% 94%)', borderBottom:`1px solid ${C.border}`, padding:'10px 16px', display:'flex', flexDirection:'column', gap:4}}>
+                    <div style={{fontSize:11, color:C.muted}}>To: <span style={{color:C.ink}}>{form.email || 'contact@store.com'}</span></div>
+                    <div style={{fontSize:11, color:C.muted}}>From: <span style={{color:C.ink}}>noreply@hajimeops.com</span></div>
+                    <div style={{fontSize:11, color:C.muted}}>Subject: <span style={{color:C.ink, fontWeight:500}}>Complete your Tre Amici Imports account setup</span></div>
+                  </div>
+                  {/* Email body */}
+                  <div style={{padding:'24px 24px 28px'}}>
+                    <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:20, paddingBottom:16, borderBottom:`1px solid ${C.border}`}}>
+                      <img src={window.__resources.hajimeLogo} alt="Hajime" style={{height:22}} />
+                      <span style={{fontFamily:'var(--font-display)', fontWeight:600, fontSize:15, color:C.ink}}>Hajime</span>
+                    </div>
+                    <p style={{fontSize:13, color:C.muted, marginBottom:4}}>Hi{form.name ? ` ${form.name.split(' ')[0]}` : ''},</p>
+                    <p style={{fontSize:13, color:C.ink, marginBottom:16, lineHeight:1.7}}>{form.message || '—'}</p>
+                    <div style={{background:'hsl(40 18% 97%)', border:`1px solid ${C.border}`, borderRadius:10, padding:'16px 18px', marginBottom:20}}>
+                      <div style={{fontSize:11, textTransform:'uppercase', letterSpacing:'.1em', color:C.muted, fontWeight:500, marginBottom:8}}>Your application</div>
+                      <div style={{fontFamily:'var(--font-display)', fontSize:17, fontWeight:500, marginBottom:2}}>{form.store || 'Your store'}</div>
+                      <div style={{fontSize:12, color:C.muted, marginBottom:14}}>Tre Amici Imports & Vertical Wine Group · New Licensee Application</div>
+                      <div style={{display:'inline-flex', alignItems:'center', gap:6, background:C.accent, color:C.inkFg, borderRadius:8, padding:'8px 18px', fontSize:13, fontWeight:500, cursor:'pointer'}}>
+                        Complete application →
+                      </div>
+                    </div>
+                    <p style={{fontSize:11, color:C.muted, lineHeight:1.7}}>Questions? Reply to this email or contact your Hajime representative, Marco Rossi.</p>
+                  </div>
+                </div>
+
+                {/* Summary */}
+                <div style={{background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:'16px 18px', boxShadow:C.softShadow}}>
+                  <div style={{fontSize:11, textTransform:'uppercase', letterSpacing:'.1em', color:C.muted, fontWeight:500, marginBottom:12}}>What happens next</div>
+                  {[
+                    ['Store receives email','Instant'],
+                    ['They complete 5-step form','~5 min'],
+                    ['You review & approve','1 business day'],
+                    ['Account activated','Ordering enabled'],
+                  ].map(([a,b],i) => (
+                    <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'7px 0', borderBottom: i < 3 ? `1px solid ${C.border}` : 'none'}}>
+                      <span style={{fontSize:12, color:C.ink}}>{a}</span>
+                      <span style={{fontSize:11, color:C.muted, fontFamily:'var(--font-mono)'}}>{b}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ─── SCREEN 2: Confirmation sent ─── */
+const InviteSentScreen = ({ onContinue }) => (
+  <div style={{display:'flex', height:'100vh', overflow:'hidden'}}>
+    <Sidebar />
+    <div style={{flex:1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:0}}>
+      <div style={{maxWidth:520, textAlign:'center', padding:40}}>
+        <div style={{width:56, height:56, borderRadius:999, background:'hsl(158 56% 36% / .1)', border:`1px solid hsl(158 56% 36% / .22)`, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px'}}>
+          <svg width="22" height="22" fill="none" stroke={C.success} strokeWidth="1.75" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h2 style={{fontFamily:'var(--font-display)', fontSize:26, fontWeight:600, letterSpacing:'-.02em', marginBottom:10}}>Invitation sent</h2>
+        <p style={{fontSize:13, color:C.muted, lineHeight:1.7, marginBottom:28}}>An email has been sent to <strong style={{color:C.ink}}>contact@thedrakehotel.com</strong> with a secure link to complete the New Licensee Application. You'll receive a notification when they submit.</p>
+        <div style={{background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:'16px 20px', marginBottom:28, textAlign:'left', boxShadow:C.softShadow}}>
+          <div style={{display:'grid', gridTemplateColumns:'auto 1fr', gap:'8px 16px', alignItems:'center'}}>
+            {[
+              ['Store','The Drake Hotel'],
+              ['Contact','Mei Daniels — Beverage Director'],
+              ['Sent to','mei@thedrakehotel.com'],
+              ['Link expires','23 May 2026'],
+              ['Assigned rep','Marco Rossi'],
+            ].map(([k,v]) => (
+              <React.Fragment key={k}>
+                <span style={{fontSize:11, textTransform:'uppercase', letterSpacing:'.08em', color:C.muted, fontWeight:500}}>{k}</span>
+                <span style={{fontSize:13, color:C.ink}}>{v}</span>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+        <div style={{display:'flex', gap:12, justifyContent:'center'}}>
+          <Btn variant="outline">Back to accounts</Btn>
+          <Btn variant="accent" onClick={onContinue}>Preview applicant form →</Btn>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+/* ─── SCREEN 3–7: Retail Store Onboarding Form ─── */
+const STEPS = ['Business info', 'Shipping & contact', 'Accounting & payment', 'Delivery', 'Terms & sign'];
+
+const OnboardingForm = ({ onComplete }) => {
+  const [step, setStep] = useState(0);
+  const [data, setData] = useState({
+    // Step 1
+    businessName:'', affiliatedGroup:'', licenseeNum:'', hstNum:'',
+    // Step 2
+    shippingAddr:'', city:'', province:'ON', postalCode:'', phone:'',
+    contactName:'', contactTitle:'', contactPhone:'', contactEmail:'',
+    // Step 3
+    acctName:'', acctTitle:'', acctPhone:'', acctEmail:'',
+    paymentMethod:'Credit Card',
+    cardNum:'', cardExpiry:'', cardCvc:'',
+    billingSame:true, billingAddr:'', billingCity:'', billingPostal:'', billingPhone:'',
+    cardInitial:'',
+    // Step 4
+    frontDoor:true, operatingDays:'', receivingHours:'', loadingDock:false,
+    poRequired:false, receiverName:'', receiverPhone:'',
+    signatureRequired:true, doorCode:'', deliveryNotes:'',
+    // Step 5
+    printName:'', signature:'', date: new Date().toLocaleDateString('en-CA',{day:'2-digit',month:'short',year:'numeric'}),
+    agreed: false,
+  });
+  const set = k => e => setData(d => ({...d, [k]: e.target ? e.target.value : e}));
+  const setBool = k => v => setData(d => ({...d, [k]:v}));
+
+  const provinces = ['AB','BC','MB','NB','NL','NS','NT','NU','ON','PE','QC','SK','YT'].map(p=>({value:p,label:p}));
+
+  const stepContent = [
+    /* STEP 0 — Business info */
+    <div style={{display:'flex', flexDirection:'column', gap:18}}>
+      <SectionCard title="Business information">
+        <div style={{display:'flex', flexDirection:'column', gap:14}}>
+          <Field label="Business name" required>
+            <Input placeholder="Legal business name" value={data.businessName} onChange={set('businessName')} />
+          </Field>
+          <Field label="Affiliated group" hint="if applicable">
+            <Input placeholder="Parent company or group" value={data.affiliatedGroup} onChange={set('affiliatedGroup')} />
+          </Field>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+            <Field label="Licensee #" required>
+              <Input placeholder="LIC-0000000" value={data.licenseeNum} onChange={set('licenseeNum')} mono />
+            </Field>
+            <Field label="HST Registration #" required>
+              <Input placeholder="12345 6789 RT0001" value={data.hstNum} onChange={set('hstNum')} mono />
+            </Field>
+          </div>
+        </div>
+      </SectionCard>
+      <div style={{padding:'14px 16px', background:'hsl(40 88% 42% / .06)', borderRadius:10, border:`1px solid hsl(40 88% 42% / .18)`, fontSize:12, color:'hsl(40 88% 30%)', lineHeight:1.6}}>
+        You must be <strong>19 years of age or older</strong> to place an order. Currently licensed to deliver in <strong>Ontario only</strong>.
+      </div>
+    </div>,
+
+    /* STEP 1 — Shipping & contact */
+    <div style={{display:'flex', flexDirection:'column', gap:18}}>
+      <SectionCard title="Shipping address">
+        <div style={{display:'flex', flexDirection:'column', gap:14}}>
+          <Field label="Shipping address" required>
+            <Input placeholder="Street address" value={data.shippingAddr} onChange={set('shippingAddr')} />
+          </Field>
+          <div style={{display:'grid', gridTemplateColumns:'1fr auto 120px 140px', gap:12}}>
+            <Field label="City" required>
+              <Input placeholder="Toronto" value={data.city} onChange={set('city')} />
+            </Field>
+            <Field label="Province">
+              <Select value={data.province} onChange={set('province')} options={provinces} />
+            </Field>
+            <Field label="Postal code" required>
+              <Input placeholder="M5V 2T6" value={data.postalCode} onChange={set('postalCode')} mono />
+            </Field>
+            <Field label="Phone #" required>
+              <Input placeholder="416-555-0100" value={data.phone} onChange={set('phone')} />
+            </Field>
+          </div>
+        </div>
+      </SectionCard>
+      <SectionCard title="Main contact">
+        <div style={{display:'flex', flexDirection:'column', gap:14}}>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+            <Field label="Full name" required>
+              <Input placeholder="Full name" value={data.contactName} onChange={set('contactName')} />
+            </Field>
+            <Field label="Title" required>
+              <Input placeholder="e.g. Beverage Director" value={data.contactTitle} onChange={set('contactTitle')} />
+            </Field>
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+            <Field label="Phone #">
+              <Input placeholder="416-555-0100" value={data.contactPhone} onChange={set('contactPhone')} />
+            </Field>
+            <Field label="Email" required>
+              <Input type="email" placeholder="contact@store.com" value={data.contactEmail} onChange={set('contactEmail')} />
+            </Field>
+          </div>
+        </div>
+      </SectionCard>
+    </div>,
+
+    /* STEP 2 — Accounting & payment */
+    <div style={{display:'flex', flexDirection:'column', gap:18}}>
+      <SectionCard title="Accounting details">
+        <div style={{display:'flex', flexDirection:'column', gap:14}}>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+            <Field label="Accounting contact name" required>
+              <Input placeholder="Full name" value={data.acctName} onChange={set('acctName')} />
+            </Field>
+            <Field label="Title" required>
+              <Input placeholder="e.g. Controller" value={data.acctTitle} onChange={set('acctTitle')} />
+            </Field>
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+            <Field label="Phone #">
+              <Input placeholder="416-555-0200" value={data.acctPhone} onChange={set('acctPhone')} />
+            </Field>
+            <Field label="Email" required>
+              <Input type="email" placeholder="accounting@store.com" value={data.acctEmail} onChange={set('acctEmail')} />
+            </Field>
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Method of payment">
+        <div style={{display:'flex', flexDirection:'column', gap:16}}>
+          <RadioGroup options={['Credit Card','EFT','E-Transfer','Cheque']} value={data.paymentMethod} onChange={set('paymentMethod')} />
+
+          {data.paymentMethod === 'Credit Card' && (
+            <div style={{display:'flex', flexDirection:'column', gap:14, paddingTop:16, borderTop:`1px solid ${C.border}`}}>
+              <div style={{fontSize:12, fontWeight:500, color:C.ink, textTransform:'uppercase', letterSpacing:'.08em'}}>Credit card details</div>
+              <Field label="Card number" required>
+                <Input placeholder="•••• •••• •••• ••••" value={data.cardNum} onChange={set('cardNum')} mono />
+              </Field>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12}}>
+                <Field label="Expiry" required>
+                  <Input placeholder="MM/YY" value={data.cardExpiry} onChange={set('cardExpiry')} mono />
+                </Field>
+                <Field label="Security code" required>
+                  <Input placeholder="CVC" value={data.cardCvc} onChange={set('cardCvc')} mono />
+                </Field>
+                <Field label="Initial" hint="authorization">
+                  <Input placeholder="Your initials" value={data.cardInitial} onChange={set('cardInitial')} />
+                </Field>
+              </div>
+              <div style={{padding:'10px 14px', background:'hsl(37 14% 94%)', borderRadius:8, border:`1px solid ${C.border}`, fontSize:12, color:C.muted, lineHeight:1.6}}>
+                By initialling above, you authorize Tre Amici Imports & Vertical Wine Group to charge this card for agreed upon purchases.
+              </div>
+
+              <div style={{paddingTop:8}}>
+                <Checkbox checked={data.billingSame} onChange={setBool('billingSame')} label="Billing address same as shipping" />
+              </div>
+
+              {!data.billingSame && (
+                <div style={{display:'flex', flexDirection:'column', gap:12, paddingTop:4}}>
+                  <Field label="Billing address">
+                    <Input placeholder="Street address" value={data.billingAddr} onChange={set('billingAddr')} />
+                  </Field>
+                  <div style={{display:'grid', gridTemplateColumns:'1fr 120px 140px', gap:12}}>
+                    <Field label="City">
+                      <Input placeholder="City" value={data.billingCity} onChange={set('billingCity')} />
+                    </Field>
+                    <Field label="Postal code">
+                      <Input placeholder="M5V 2T6" value={data.billingPostal} onChange={set('billingPostal')} mono />
+                    </Field>
+                    <Field label="Phone #">
+                      <Input placeholder="416-555-0100" value={data.billingPhone} onChange={set('billingPhone')} />
+                    </Field>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </SectionCard>
+    </div>,
+
+    /* STEP 3 — Delivery instructions */
+    <div style={{display:'flex', flexDirection:'column', gap:18}}>
+      <SectionCard title="Delivery instructions">
+        <div style={{display:'flex', flexDirection:'column', gap:16}}>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:16}}>
+            <div>
+              <div style={{fontSize:12, fontWeight:500, color:C.ink, marginBottom:10}}>Front door access</div>
+              <RadioGroup options={['Yes','No']} value={data.frontDoor ? 'Yes' : 'No'} onChange={v => setBool('frontDoor')(v==='Yes')} />
+            </div>
+            <div>
+              <div style={{fontSize:12, fontWeight:500, color:C.ink, marginBottom:10}}>Loading dock access</div>
+              <RadioGroup options={['Yes','No']} value={data.loadingDock ? 'Yes' : 'No'} onChange={v => setBool('loadingDock')(v==='Yes')} />
+            </div>
+            <div>
+              <div style={{fontSize:12, fontWeight:500, color:C.ink, marginBottom:10}}>Purchase order required</div>
+              <RadioGroup options={['Yes','No']} value={data.poRequired ? 'Yes' : 'No'} onChange={v => setBool('poRequired')(v==='Yes')} />
+            </div>
+            <div>
+              <div style={{fontSize:12, fontWeight:500, color:C.ink, marginBottom:10}}>Signature required</div>
+              <RadioGroup options={['Yes','No']} value={data.signatureRequired ? 'Yes' : 'No'} onChange={v => setBool('signatureRequired')(v==='Yes')} />
+            </div>
+          </div>
+
+          <div style={{height:1, background:C.border}} />
+
+          <Field label="Operating days" required>
+            <Input placeholder="e.g. Monday – Saturday" value={data.operatingDays} onChange={set('operatingDays')} />
+          </Field>
+          <Field label="Receiving hours" required hint="when staff can accept deliveries">
+            <Input placeholder="e.g. 8:00am – 4:00pm" value={data.receivingHours} onChange={set('receivingHours')} />
+          </Field>
+
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+            <Field label="Receiver contact name">
+              <Input placeholder="Full name" value={data.receiverName} onChange={set('receiverName')} />
+            </Field>
+            <Field label="Receiver phone #">
+              <Input placeholder="416-555-0300" value={data.receiverPhone} onChange={set('receiverPhone')} />
+            </Field>
+          </div>
+
+          <Field label="Door code / lock box #">
+            <Input placeholder="Optional" value={data.doorCode} onChange={set('doorCode')} mono />
+          </Field>
+
+          <Field label="Requested delivery instructions" hint="we accommodate where possible">
+            <Textarea rows={3} placeholder="Any special instructions for the delivery driver…" value={data.deliveryNotes} onChange={set('deliveryNotes')} />
+          </Field>
+
+          <div style={{padding:'10px 14px', background:'hsl(37 14% 94%)', borderRadius:8, border:`1px solid ${C.border}`, fontSize:12, color:C.muted, lineHeight:1.6}}>
+            While we try to accommodate all delivery requests, we cannot always allow for specific instructions based on access circumstances.
+          </div>
+        </div>
+      </SectionCard>
+    </div>,
+
+    /* STEP 4 — Terms & signature */
+    <div style={{display:'flex', flexDirection:'column', gap:18}}>
+      <SectionCard title="Terms & conditions of trade">
+        <div style={{
+          height:240, overflowY:'auto', fontSize:12, color:C.muted, lineHeight:1.8,
+          padding:'4px 4px 4px 0', marginBottom:16,
+          borderBottom:`1px solid ${C.border}`
+        }}>
+          <p style={{marginBottom:10}}><strong style={{color:C.ink}}>Eligibility.</strong> You must be 19 years of age or older to place an order. Currently we are licensed to deliver products in Ontario only.</p>
+          <p style={{marginBottom:10}}><strong style={{color:C.ink}}>Initial payment.</strong> Initial payment must be made by credit card (Visa or MasterCard). Initial order will be placed within 48 hours of receipt of this form completed and signed.</p>
+          <p style={{marginBottom:10}}><strong style={{color:C.ink}}>Credit terms.</strong> All orders are due on receipt until credit has been established with client. A credit application must be completed and approved. All payments are to be made by credit card, Electronic Funds Transfer, e-Transfer, or cheque. Non-adherence to Terms & Conditions of Trade will result in your account being placed on due on receipt.</p>
+          <p style={{marginBottom:10}}><strong style={{color:C.ink}}>Default.</strong> If payment has not been received within the agreed terms, Tre Amici Imports and Vertical Wine Group reserves the right to cease shipment of product until all outstanding invoices have been paid. Additionally, all necessary collection, legal expenses, and interest may be charged to debtor in the event of default or failure to pay for goods sold and delivered.</p>
+          <p style={{marginBottom:10}}><strong style={{color:C.ink}}>Credit card on file.</strong> Tre Amici Imports and Vertical Wine Group reserves the right to charge the credit card on file upon default of payment on account.</p>
+          <p style={{marginBottom:10}}><strong style={{color:C.ink}}>Delivery.</strong> Delivery is approximately 2–5 business days after order has been placed and is subject to stock availability. Rush delivery is available at a surcharge of $25.00 per order. Should you miss your delivery we will call you to re-schedule.</p>
+          <p style={{marginBottom:10}}><strong style={{color:C.ink}}>Returns.</strong> Tre Amici Imports accepts returns provided the product is unopened and in saleable condition. Only product purchased within the calendar year will be accepted. A 20% restocking fee will be applied to all Clase Azul products. A credit note will be issued on all returns.</p>
+          <p style={{marginBottom:10}}><strong style={{color:C.ink}}>Storage.</strong> Please note, not all products are meant to be aged and storing conditions play a large role in the enjoyment of our products.</p>
+          <p style={{marginBottom:10}}><strong style={{color:C.ink}}>LCBO facilitation.</strong> TRE AMICI IMPORTS INC. and VERTICAL WINE GROUP act as facilitators in arranging for the purchase and delivery of wine from the LCBO. Licensee prices include LCBO mark-ups and taxes. Prices shown on portfolio listing are per bottle. LCBO sale price is available upon request. Prices are estimates and subject to change without notice. HST and bottle deposit are not included.</p>
+          <p><strong style={{color:C.ink}}>Exclusivity.</strong> TRE AMICI IMPORTS INC. and VERTICAL WINE GROUP is the exclusive Ontario agent for the wineries listed, whether sold directly or through the LCBO. All wines are sold in cases of 4, 6 or 12 bottles. Mixed cases are not possible due to LCBO regulations.</p>
+        </div>
+        <Checkbox checked={data.agreed} onChange={setBool('agreed')} label="I have read and accept the Terms & Conditions of Trade, and I have authority to sign for the business." />
+      </SectionCard>
+
+      {data.agreed && (
+        <SectionCard title="Signature">
+          <div style={{display:'flex', flexDirection:'column', gap:14}}>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 160px', gap:12}}>
+              <Field label="Print name" required>
+                <Input placeholder="Legal full name" value={data.printName} onChange={set('printName')} />
+              </Field>
+              <Field label="Signature" hint="type your full name">
+                <Input
+                  placeholder="Sign here"
+                  value={data.signature}
+                  onChange={set('signature')}
+                  style={{fontFamily:'Georgia, serif', fontStyle:'italic', fontSize:16, letterSpacing:'-.01em'}}
+                />
+              </Field>
+              <Field label="Date">
+                <Input value={data.date} readOnly />
+              </Field>
+            </div>
+            {data.signature && (
+              <div style={{padding:'12px 16px', background:'hsl(37 14% 94%)', borderRadius:8, border:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10}}>
+                <svg width="14" height="14" fill="none" stroke={C.success} strokeWidth="1.75" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                <span style={{fontSize:12, color:C.muted}}>Signed as <em style={{color:C.ink}}>{data.signature}</em> on {data.date}</span>
+              </div>
+            )}
+          </div>
+        </SectionCard>
+      )}
+    </div>
+  ];
+
+  const canAdvance = [
+    data.businessName && data.licenseeNum && data.hstNum,
+    data.shippingAddr && data.city && data.postalCode && data.contactName && data.contactEmail,
+    data.acctName && data.acctEmail,
+    data.operatingDays && data.receivingHours,
+    data.agreed && data.printName && data.signature,
+  ];
+
+  return (
+    <div style={{minHeight:'100vh', background:C.bg, display:'flex', flexDirection:'column'}}>
+      {/* Header */}
+      <header style={{background:C.card, borderBottom:`1px solid ${C.border}`, padding:'0 40px', height:60, display:'flex', alignItems:'center', gap:16, flexShrink:0, position:'sticky', top:0, zIndex:20}}>
+        <img src={window.__resources.hajimeLogo} alt="Hajime" style={{height:24}} />
+        <div style={{height:20, width:1, background:C.border}} />
+        <span style={{fontFamily:'var(--font-display)', fontWeight:500, fontSize:15, color:C.ink}}>New Licensee Application</span>
+        <div style={{marginLeft:'auto', display:'flex', alignItems:'center', gap:10}}>
+          <span style={{fontSize:12, color:C.muted}}>Step {step+1} of {STEPS.length}</span>
+          <Pill label="Tre Amici Imports" variant="stone" />
+        </div>
+      </header>
+
+      <div style={{flex:1, overflowY:'auto'}}>
+        <div style={{maxWidth:720, margin:'0 auto', padding:'40px 24px 100px'}}>
+          <StepBar steps={STEPS} current={step} />
+
+          <div style={{marginBottom:28}}>
+            <h2 style={{fontFamily:'var(--font-display)', fontSize:22, fontWeight:600, letterSpacing:'-.02em', marginBottom:4}}>{STEPS[step]}</h2>
+            <p style={{fontSize:13, color:C.muted}}>
+              {['Business name, licensee number, and HST registration.','Delivery address and the primary person we\'ll contact.','Who handles invoicing, and how you\'ll pay.','When and how deliveries should arrive at your location.','Read, agree, and sign to complete your application.'][step]}
+            </p>
+          </div>
+
+          {stepContent[step]}
+
+          <div style={{display:'flex', justifyContent:'space-between', marginTop:32, paddingTop:24, borderTop:`1px solid ${C.border}`}}>
+            <Btn variant="outline" onClick={() => step > 0 && setStep(s => s-1)} disabled={step===0}>← Back</Btn>
+            <div style={{display:'flex', gap:10, alignItems:'center'}}>
+              <span style={{fontSize:12, color:C.muted}}>
+                {!canAdvance[step] && step < STEPS.length-1 ? 'Complete required fields to continue' : ''}
+              </span>
+              {step < STEPS.length-1
+                ? <Btn variant="accent" disabled={!canAdvance[step]} onClick={() => setStep(s=>s+1)}>Continue →</Btn>
+                : <Btn variant="accent" disabled={!canAdvance[step]} onClick={onComplete}>Submit application →</Btn>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ─── SCREEN: Complete / Submitted ─── */
+const SubmittedScreen = () => (
+  <div style={{minHeight:'100vh', background:C.bg, display:'flex', flexDirection:'column'}}>
+    <header style={{background:C.card, borderBottom:`1px solid ${C.border}`, padding:'0 40px', height:60, display:'flex', alignItems:'center', gap:16}}>
+      <img src={window.__resources.hajimeLogo} alt="Hajime" style={{height:24}} />
+      <div style={{height:20, width:1, background:C.border}} />
+      <span style={{fontFamily:'var(--font-display)', fontWeight:500, fontSize:15, color:C.ink}}>New Licensee Application</span>
+    </header>
+    <div style={{flex:1, display:'flex', alignItems:'center', justifyContent:'center', padding:40}}>
+      <div style={{maxWidth:520, textAlign:'center'}}>
+        <div style={{width:64, height:64, borderRadius:999, background:'hsl(158 56% 36% / .1)', border:`1px solid hsl(158 56% 36% / .22)`, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 24px'}}>
+          <svg width="26" height="26" fill="none" stroke={C.success} strokeWidth="1.75" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h2 style={{fontFamily:'var(--font-display)', fontSize:28, fontWeight:600, letterSpacing:'-.02em', marginBottom:12}}>Application submitted</h2>
+        <p style={{fontSize:13, color:C.muted, lineHeight:1.8, marginBottom:32}}>Thank you. Your New Licensee Application for <strong style={{color:C.ink}}>The Drake Hotel</strong> has been received. Marco Rossi will review and activate your account within one business day. You'll receive an email confirmation shortly.</p>
+        <div style={{background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:'20px 24px', marginBottom:28, textAlign:'left', boxShadow:C.softShadow}}>
+          <div style={{fontSize:11, textTransform:'uppercase', letterSpacing:'.1em', color:C.muted, fontWeight:500, marginBottom:14}}>Application summary</div>
+          <div style={{display:'grid', gridTemplateColumns:'auto 1fr', gap:'10px 20px', alignItems:'start'}}>
+            {[
+              ['Application ref','APP-2026-00847'],
+              ['Submitted','16 May 2026, 2:34 pm'],
+              ['Business','The Drake Hotel'],
+              ['Licensee #','LIC-1047882'],
+              ['Assigned rep','Marco Rossi'],
+              ['Expected activation','17 May 2026'],
+            ].map(([k,v]) => (
+              <React.Fragment key={k}>
+                <span style={{fontSize:11, textTransform:'uppercase', letterSpacing:'.08em', color:C.muted, fontWeight:500, paddingTop:1}}>{k}</span>
+                <span style={{fontSize:13, color:C.ink, fontFamily: k==='Application ref' || k==='Licensee #' ? 'var(--font-mono)' : 'inherit'}}>{v}</span>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+        <p style={{fontSize:12, color:C.muted}}>Questions? Contact your Hajime rep at <a href="mailto:marco@hajimeops.com" style={{color:C.accent, textDecoration:'none'}}>marco@hajimeops.com</a></p>
+      </div>
+    </div>
+  </div>
+);
+
+/* ─── ROOT ─── */
+const FLOW = ['invite', 'sent', 'form', 'done'];
+
+const App = () => {
+  const [screen, setScreen] = useState('invite');
+  const { tweaks } = window.__TweaksPanel__?.useTweaks?.({}) ?? { tweaks: {} };
+
+  return (
+    <>
+      {screen === 'invite' && <SendInviteScreen onSent={() => setScreen('sent')} />}
+      {screen === 'sent'   && <InviteSentScreen onContinue={() => setScreen('form')} />}
+      {screen === 'form'   && <OnboardingForm onComplete={() => setScreen('done')} />}
+      {screen === 'done'   && <SubmittedScreen />}
+
+      {/* Flow nav pill — always visible */}
+      <div style={{
+        position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)',
+        background:C.sidebar, borderRadius:999, padding:'8px 6px',
+        display:'flex', alignItems:'center', gap:2, boxShadow:'0 4px 20px hsl(24 10% 10% / .25)',
+        zIndex:100
+      }}>
+        {[
+          {id:'invite', label:'1 · Send invite'},
+          {id:'sent',   label:'2 · Invite sent'},
+          {id:'form',   label:'3 · Store form'},
+          {id:'done',   label:'4 · Submitted'},
+        ].map(({id,label}) => (
+          <button key={id} onClick={() => setScreen(id)} style={{
+            padding:'5px 14px', borderRadius:999, fontSize:11, fontWeight:500,
+            background: screen===id ? C.accent : 'transparent',
+            color: screen===id ? C.inkFg : 'hsl(35 12% 55%)',
+            border:'none', cursor:'pointer', transition:'all 140ms', whiteSpace:'nowrap'
+          }}>{label}</button>
+        ))}
+      </div>
+    </>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+
+<template id="__bundler_thumbnail" data-bg-color="#F7F4EE">
+  <svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg">
+    <!-- Background -->
+    <rect width="400" height="260" fill="#F7F4EE"/>
+    <!-- Sidebar -->
+    <rect width="90" height="260" fill="#17140F"/>
+    <!-- Logo circle area -->
+    <rect x="12" y="16" width="28" height="28" rx="6" fill="#241F18"/>
+    <!-- Ensō circle simplified -->
+    <circle cx="26" cy="30" r="9" fill="none" stroke="#C98A0C" stroke-width="2.5" stroke-dasharray="50 6"/>
+    <text x="26" y="34" text-anchor="middle" font-family="serif" font-size="8" fill="#C98A0C">一</text>
+    <!-- Nav items -->
+    <rect x="10" y="60" width="70" height="7" rx="3" fill="#2A241C"/>
+    <rect x="10" y="74" width="70" height="7" rx="3" fill="#C98A0C" opacity=".3"/>
+    <rect x="10" y="88" width="70" height="7" rx="3" fill="#2A241C"/>
+    <rect x="10" y="102" width="70" height="7" rx="3" fill="#2A241C"/>
+    <rect x="10" y="116" width="70" height="7" rx="3" fill="#2A241C"/>
+    <!-- Main content area -->
+    <!-- Topbar -->
+    <rect x="90" y="0" width="310" height="36" fill="#FDFCFA" opacity=".9"/>
+    <rect x="104" y="14" width="80" height="6" rx="2" fill="#D4CFC9"/>
+    <rect x="350" y="10" width="40" height="16" rx="5" fill="#C98A0C"/>
+    <!-- Page title -->
+    <rect x="104" y="52" width="40" height="5" rx="2" fill="#C98A0C" opacity=".5"/>
+    <rect x="104" y="62" width="120" height="12" rx="3" fill="#1C1916"/>
+    <rect x="104" y="80" width="160" height="5" rx="2" fill="#D4CFC9"/>
+    <!-- Two column cards -->
+    <rect x="104" y="100" width="170" height="110" rx="8" fill="#FDFCFA" stroke="#E3DDD2" stroke-width="1"/>
+    <rect x="116" y="112" width="60" height="6" rx="2" fill="#1C1916"/>
+    <rect x="116" y="124" width="146" height="8" rx="4" fill="#F0EDE7" stroke="#E3DDD2" stroke-width="1"/>
+    <rect x="116" y="138" width="146" height="8" rx="4" fill="#F0EDE7" stroke="#E3DDD2" stroke-width="1"/>
+    <rect x="116" y="152" width="146" height="8" rx="4" fill="#F0EDE7" stroke="#E3DDD2" stroke-width="1"/>
+    <rect x="116" y="168" width="80" height="22" rx="5" fill="#C98A0C"/>
+    <!-- Email preview card -->
+    <rect x="284" y="100" width="116" height="110" rx="8" fill="#FDFCFA" stroke="#E3DDD2" stroke-width="1"/>
+    <rect x="284" y="100" width="116" height="20" rx="8" fill="#F0EDE7"/>
+    <rect x="284" y="116" width="116" height="4" fill="#F0EDE7"/>
+    <rect x="292" y="128" width="70" height="5" rx="2" fill="#D4CFC9"/>
+    <rect x="292" y="138" width="100" height="5" rx="2" fill="#D4CFC9"/>
+    <rect x="292" y="148" width="80" height="5" rx="2" fill="#D4CFC9"/>
+    <rect x="292" y="162" width="60" height="14" rx="4" fill="#C98A0C"/>
+    <!-- Bottom nav pill -->
+    <rect x="120" y="230" width="160" height="22" rx="11" fill="#17140F"/>
+    <rect x="124" y="234" width="36" height="14" rx="7" fill="#C98A0C"/>
+    <rect x="164" y="234" width="36" height="14" rx="7" fill="transparent"/>
+    <rect x="204" y="234" width="36" height="14" rx="7" fill="transparent"/>
+    <rect x="244" y="234" width="32" height="14" rx="7" fill="transparent"/>
+  </svg>
+</template>
+</body>
+</html>

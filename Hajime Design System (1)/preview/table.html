@@ -1,0 +1,22 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css">
+<style>body{margin:0;padding:24px;background:hsl(var(--background))}
+.card{background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:12px;overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:10px 14px;font-weight:500;color:hsl(var(--muted-foreground));font-size:11px;border-bottom:1px solid hsl(var(--border));background:hsl(var(--muted) / .3)}
+td{padding:10px 14px;border-bottom:1px solid hsl(var(--border) / .5)}
+tr:last-child td{border-bottom:0}
+tr:hover td{background:hsl(var(--muted) / .5)}
+.mono{font-family:var(--font-mono);font-size:12px;font-weight:500}
+.tnum{font-family:var(--font-mono);font-feature-settings:'tnum'}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:500;border:1px solid}
+.dot{width:5px;height:5px;border-radius:999px}
+.in-transit{background:hsl(215 72% 50% / .08);color:hsl(215 72% 38%);border-color:hsl(215 72% 50% / .2)}
+.delivered{background:hsl(158 56% 36% / .08);color:hsl(158 56% 28%);border-color:hsl(158 56% 36% / .2)}
+</style></head><body>
+<div class="card"><table>
+<thead><tr><th>PO</th><th>SKU</th><th>Qty</th><th>Region</th><th>Ship</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td class="mono">PO-2026-0418</td><td class="mono">HJM-FP-750</td><td class="tnum">1,200</td><td>Toronto</td><td class="tnum" style="color:hsl(var(--muted-foreground))">14 Apr</td><td><span class="pill in-transit"><span class="dot" style="background:hsl(215 72% 50%)"></span>in-transit</span></td></tr>
+<tr><td class="mono">PO-2026-0417</td><td class="mono">HJM-JN-720</td><td class="tnum">600</td><td>Milan</td><td class="tnum" style="color:hsl(var(--muted-foreground))">09 Apr</td><td><span class="pill delivered"><span class="dot" style="background:hsl(158 56% 36%)"></span>delivered</span></td></tr>
+<tr><td class="mono">PO-2026-0416</td><td class="mono">HJM-FP-750</td><td class="tnum">480</td><td>Paris</td><td class="tnum" style="color:hsl(var(--muted-foreground))">02 Apr</td><td><span class="pill delivered"><span class="dot" style="background:hsl(158 56% 36%)"></span>delivered</span></td></tr>
+</tbody></table></div></body></html>

@@ -33,8 +33,10 @@ import { resolveSalesRepLabelForSession } from "@/data/team-roster";
 import { filterAccountsForSalesRep } from "@/lib/sales-rep-scope";
 import { computeSalesRepOpportunities } from "@/lib/sales-rep-opportunities";
 import { cn } from "@/lib/utils";
+import { scrollSalesRepMainToHashWhenReady } from "@/lib/scroll-sales-rep-main";
 import { StatusBadge } from "@/components/StatusBadge";
 import { IncentiveProgressDashboardCard } from "@/components/incentives/IncentiveProgressDashboardCard";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const VISIT_STORAGE = "hajime_rep_visit_notes";
 const MS_DAY = 86400000;
@@ -165,6 +167,7 @@ function isToday(date: Date): boolean {
 }
 
 export default function SalesRepHomePage() {
+  const { t } = useLanguage();
   const { data, updateData, loading } = useAppData();
   const location = useLocation();
 
@@ -242,13 +245,13 @@ export default function SalesRepHomePage() {
     }
   }, [data.visitNotes, rep, updateData]);
 
+  const hashScrollInstant = useRef(true);
   useEffect(() => {
-    const raw = location.hash.replace(/^#/, "");
-    if (!raw) return;
-    const el = document.getElementById(raw);
-    if (!el) return;
-    requestAnimationFrame(() => el.scrollIntoView({ behavior: "smooth", block: "start" }));
-  }, [location.hash]);
+    if (loading) return;
+    const behavior: ScrollBehavior = hashScrollInstant.current ? "instant" : "smooth";
+    hashScrollInstant.current = false;
+    return scrollSalesRepMainToHashWhenReady(location.hash, { behavior });
+  }, [location.hash, loading]);
 
   // Generate dynamic schedule based on actual dates and account data
   const schedule = useMemo(() => {
@@ -497,10 +500,10 @@ export default function SalesRepHomePage() {
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button variant="outline" size="sm" className="h-9 touch-manipulation" asChild>
-            <Link to="/sales#route-planner">Open route</Link>
+            <Link to="/sales#route-planner">{t("Open route")}</Link>
           </Button>
           <Button size="sm" className="h-9 touch-manipulation bg-primary text-primary-foreground hover:bg-primary/90" asChild>
-            <Link to="/sales/reports">Analytics</Link>
+            <Link to="/sales/reports">{t("Analytics")}</Link>
           </Button>
         </div>
       </div>
@@ -511,23 +514,23 @@ export default function SalesRepHomePage() {
           <div className="mb-2 flex size-[34px] items-center justify-center rounded-lg bg-[hsl(40_88%_42%/0.1)] text-[hsl(40_88%_36%)]">
             <Users className="size-[17px]" strokeWidth={1.75} />
           </div>
-          <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Accounts managed</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">{t("Accounts managed")}</p>
           <p className="font-display text-[26px] font-semibold tracking-[-0.02em] tabular-nums">{myAccounts.length}</p>
-          <p className="text-xs text-muted-foreground">Assigned to you in CRM</p>
+          <p className="text-xs text-muted-foreground">{t("Assigned to you in CRM")}</p>
         </div>
         <div className="flex flex-col gap-1 rounded-[14px] border border-border/70 bg-card p-[18px] shadow-[var(--shadow-soft)] transition-all hover:-translate-y-px hover:shadow-md">
           <div className="mb-2 flex size-[34px] items-center justify-center rounded-lg bg-[hsl(158_56%_36%/0.1)] text-[hsl(158_56%_30%)]">
             <ShoppingCart className="size-[17px]" strokeWidth={1.75} />
           </div>
-          <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Quarter sell-in</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">{t("Quarter sell-in")}</p>
           <p className="font-display text-[26px] font-semibold tracking-[-0.02em] tabular-nums">
             ${quarterSellIn.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </p>
-          <p className="text-xs text-muted-foreground">Submitted orders (excl. drafts)</p>
+          <p className="text-xs text-muted-foreground">{t("Submitted orders (excl. drafts)")}</p>
           {quarterSellIn > 0 ? (
             <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-[hsl(158_56%_32%)]">
               <TrendingUp className="size-3" aria-hidden />
-              On the board
+              {t("On the board")}
             </div>
           ) : null}
         </div>
@@ -535,7 +538,7 @@ export default function SalesRepHomePage() {
           <div className="mb-2 flex size-[34px] items-center justify-center rounded-lg bg-[hsl(215_72%_50%/0.1)] text-[hsl(215_72%_42%)]">
             <Target className="size-[17px]" strokeWidth={1.75} />
           </div>
-          <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Pipeline signals</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">{t("Pipeline signals")}</p>
           <p className="font-display text-[26px] font-semibold tracking-[-0.02em] tabular-nums">
             ${pipelineValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </p>
@@ -547,21 +550,21 @@ export default function SalesRepHomePage() {
           <div className="mb-2 flex size-[34px] items-center justify-center rounded-lg bg-[hsl(24_10%_10%/0.07)] text-[hsl(24_10%_18%)]">
             <Star className="size-[17px]" strokeWidth={1.75} />
           </div>
-          <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Draft queue</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">{t("Draft queue")}</p>
           <p className="font-display text-[26px] font-semibold tracking-[-0.02em] tabular-nums">{myDrafts.length}</p>
-          <p className="text-xs text-muted-foreground">Awaiting submit / approval</p>
+          <p className="text-xs text-muted-foreground">{t("Awaiting submit / approval")}</p>
         </div>
       </div>
 
       {/* Incentive program */}
       <div>
         <div className="mb-3.5 flex items-baseline justify-between gap-3">
-          <h2 className="font-display text-[19px] font-medium tracking-[-0.01em] text-foreground">Incentive program</h2>
+          <h2 className="font-display text-[19px] font-medium tracking-[-0.01em] text-foreground">{t("Incentive program")}</h2>
           <Link
             to="/sales#supply-chain-incentives"
             className="text-xs font-medium text-accent hover:underline"
           >
-            Full program →
+            {t("Full program →")}
           </Link>
         </div>
         <div id="supply-chain-incentives">
@@ -574,7 +577,7 @@ export default function SalesRepHomePage() {
         <div className="overflow-hidden rounded-[14px] border border-border/70 bg-card shadow-[var(--shadow-soft)]">
           <div className="flex items-center justify-between border-b border-border/50 px-5 py-4">
             <div>
-              <p className="text-sm font-semibold">Today&apos;s route</p>
+              <p className="text-sm font-semibold">{t("Today's route")}</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {todayRouteRow?.dateDisplay ?? formatDateDisplay(new Date())}
                 {todayRouteRow?.accountList.length
@@ -583,7 +586,7 @@ export default function SalesRepHomePage() {
               </p>
             </div>
             <Button variant="outline" size="sm" className="h-[30px] text-xs touch-manipulation" asChild>
-              <Link to="/sales/accounts">Directory</Link>
+              <Link to="/sales/accounts">{t("Directory")}</Link>
             </Button>
           </div>
           {!todayRouteRow?.accountList.length ? (
@@ -645,7 +648,7 @@ export default function SalesRepHomePage() {
               </p>
             </div>
             <Button variant="outline" size="sm" className="h-[30px] text-xs touch-manipulation" asChild>
-              <Link to="/sales/opportunities">All opps</Link>
+              <Link to="/sales/opportunities">View pipeline</Link>
             </Button>
           </div>
           {!opportunities.length ? (

@@ -79,7 +79,7 @@ export function ProductRequestDetailDialog({ open, onOpenChange, request, onPatc
       },
     });
     toast.success("Proposal approved", {
-      description: `${request.id} approved. Create a production PO to begin manufacturing.`,
+      description: `${request.id} approved — SKU will be added to the shared product catalog.`,
     });
   };
 
@@ -336,7 +336,7 @@ export function ProductRequestDetailDialog({ open, onOpenChange, request, onPatc
         onOpenChange={setPoDialogOpen}
         existing={purchaseOrders}
         onCreate={handleCreatePo}
-        prefill={{ sku: undefined, quantity: String(proposalQty) }}
+        prefill={{ sku: request.resultingSku, quantity: String(proposalQty) }}
         variant="production"
         userRole={user?.role ?? "brand_operator"}
       />

@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/AppLayout";
 import { RetailLayout } from "@/components/RetailLayout";
 import { SalesRepLayout } from "@/components/SalesRepLayout";
+import { DistributorLayout } from "@/components/DistributorLayout";
 import { AppDataProvider } from "@/contexts/AppDataContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { RetailCartProvider } from "@/contexts/RetailCartContext";
@@ -54,6 +55,10 @@ const DistributorDepletionsPage = lazyWithChunkReload(() => import("./pages/Dist
 const DistributorInventoryAdjustmentsPage = lazyWithChunkReload(() => import("./pages/DistributorInventoryAdjustmentsPage"));
 const DistributorSellThroughPage = lazyWithChunkReload(() => import("./pages/DistributorSellThroughPage"));
 const DistributorCrmPage = lazyWithChunkReload(() => import("./pages/DistributorCrmPage"));
+const DistributorHomePage = lazyWithChunkReload(() => import("./pages/DistributorHomePage"));
+const DistributorPartnerProgramPage = lazyWithChunkReload(() => import("./pages/DistributorPartnerProgramPage"));
+const DistributorPickPackPage = lazyWithChunkReload(() => import("./pages/DistributorPickPackPage"));
+const DistributorLogShipmentPage = lazyWithChunkReload(() => import("./pages/DistributorLogShipmentPage"));
 const SalesRepCrmPage = lazyWithChunkReload(() => import("./pages/SalesRepCrmPage"));
 
 // Sales routes
@@ -76,9 +81,16 @@ const RetailBackbarPage = lazyWithChunkReload(() => import("./pages/RetailBackba
 
 const queryClient = new QueryClient();
 
+function useDistributorPortalShell(): boolean {
+  const { user } = useAuth();
+  const { pathname } = useLocation();
+  return user?.role === "distributor" || pathname === "/distributor" || pathname.startsWith("/distributor/");
+}
+
 function AppDataShell() {
   const { user } = useAuth();
   const { state, formattedTimeRemaining, stayActive } = useInactivityTimer();
+  const distributorPortal = useDistributorPortalShell();
   
   if (!user) {
     return null;
@@ -92,6 +104,8 @@ function AppDataShell() {
         </RetailCartProvider>
       ) : user?.role === "sales_rep" || user?.role === "sales" ? (
         <SalesRepLayout />
+      ) : distributorPortal ? (
+        <DistributorLayout />
       ) : (
         <AppLayout />
       )}
@@ -149,8 +163,10 @@ const App = () => {
                     <Route path="/crm" element={<CrmPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     {/* Distributor namespaced routes */}
-                    <Route path="/distributor" element={<RoleHomeEntry />} />
+                    <Route path="/distributor" element={<DistributorHomePage />} />
                     <Route path="/distributor/inventory" element={<Inventory />} />
+                    <Route path="/distributor/pick-pack" element={<DistributorPickPackPage />} />
+                    <Route path="/distributor/log-shipment" element={<DistributorLogShipmentPage />} />
                     <Route path="/distributor/orders" element={<Orders />} />
                     <Route path="/distributor/accounts" element={<Accounts />} />
                     <Route path="/distributor/crm" element={<DistributorCrmPage />} />
@@ -162,6 +178,7 @@ const App = () => {
                     <Route path="/distributor/sellthrough" element={<DistributorSellThroughPage />} />
                     <Route path="/distributor/alerts" element={<AlertsHubPage />} />
                     <Route path="/distributor/finance" element={<FinancePaymentsPage />} />
+                    <Route path="/distributor/partner-program" element={<DistributorPartnerProgramPage />} />
                     <Route path="/distributor/reports" element={<Reports />} />
                     {/* Sales namespaced routes */}
                     <Route path="/sales" element={<SalesRepHomePage />} />

@@ -1,0 +1,1366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hajime — The Drake Hotel</title>
+<link rel="stylesheet" href="colors_and_type.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* ── Shell ── */
+.shell { display: grid; grid-template-columns: 252px 1fr; min-height: 100vh; }
+
+/* ── Sidebar ── */
+.side {
+  background: hsl(var(--sidebar-background));
+  color: hsl(var(--sidebar-foreground));
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid hsl(var(--sidebar-border));
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.logo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 16px 16px;
+  border-bottom: 1px solid hsl(var(--sidebar-border));
+}
+.logo-mark {
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  background: hsl(var(--sidebar-accent));
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; flex-shrink: 0;
+}
+.logo-mark img { height: 26px; filter: brightness(0) invert(1); }
+.logo-text .name {
+  font-family: var(--font-display);
+  font-weight: 600; font-size: 16px;
+  color: hsl(35 14% 90%);
+  line-height: 1.2;
+}
+.logo-text .store-name {
+  font-size: 11px; color: hsl(35 12% 48%);
+  line-height: 1.2; margin-top: 1px;
+}
+
+.nav-section { padding: 16px 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+.nav-label {
+  padding: 4px 8px 6px;
+  font-size: 10px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .14em;
+  color: hsl(var(--sidebar-foreground) / .35);
+}
+.navitem {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 10px; border-radius: 6px;
+  color: hsl(var(--sidebar-foreground) / .7);
+  font-size: 13px; cursor: pointer;
+  transition: background 150ms, color 150ms;
+  position: relative;
+}
+.navitem:hover { background: hsl(var(--sidebar-accent)); color: hsl(35 14% 90%); }
+.navitem.active {
+  background: hsl(var(--sidebar-accent));
+  color: hsl(var(--sidebar-primary));
+  font-weight: 500;
+}
+.navitem svg { width: 15px; height: 15px; flex-shrink: 0; }
+.navitem .badge {
+  margin-left: auto;
+  background: hsl(var(--accent) / .18);
+  color: hsl(var(--accent));
+  font-size: 10px; font-weight: 600;
+  padding: 1px 6px; border-radius: 999px;
+  font-family: var(--font-mono);
+}
+.navitem .badge.new {
+  background: hsl(158 56% 36% / .15);
+  color: hsl(158 56% 32%);
+}
+
+/* Partner tier pill in sidebar */
+.tier-pill {
+  margin: 0 10px 10px;
+  background: linear-gradient(135deg, hsl(40 88% 42% / .12), hsl(40 60% 50% / .08));
+  border: 1px solid hsl(40 88% 42% / .25);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.tier-dot {
+  width: 28px; height: 28px; border-radius: 999px;
+  background: linear-gradient(135deg, hsl(40 88% 42%), hsl(32 78% 48%));
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; font-size: 12px; color: white;
+}
+.tier-info .t { font-size: 11px; font-weight: 600; color: hsl(40 80% 62%); letter-spacing: .02em; }
+.tier-info .p { font-size: 10px; color: hsl(35 12% 45%); margin-top: 1px; }
+
+.side-footer {
+  margin-top: auto;
+  padding: 12px 10px;
+  border-top: 1px solid hsl(var(--sidebar-border));
+  display: flex; align-items: center; gap: 10px;
+}
+.avatar {
+  width: 30px; height: 30px; border-radius: 999px;
+  background: hsl(var(--sidebar-accent));
+  color: hsl(35 14% 80%);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; flex-shrink: 0;
+}
+.user-meta { flex: 1; min-width: 0; }
+.user-meta .uname { font-size: 12px; color: hsl(35 14% 88%); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-meta .urole { font-size: 10px; color: hsl(35 12% 45%); }
+
+/* ── Main ── */
+.main { display: flex; flex-direction: column; min-width: 0; }
+.topbar {
+  height: 54px;
+  display: flex; align-items: center;
+  padding: 0 32px; gap: 16px;
+  background: hsl(var(--glass-bg));
+  backdrop-filter: blur(12px) saturate(1.4);
+  border-bottom: 1px solid hsl(var(--border) / .6);
+  position: sticky; top: 0; z-index: 10;
+}
+.crumbs { font-size: 13px; color: hsl(var(--muted-foreground)); }
+.crumbs strong { color: hsl(var(--foreground)); font-weight: 500; }
+.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.icon-btn {
+  width: 34px; height: 34px; border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: hsl(var(--muted-foreground));
+  transition: background 150ms, color 150ms;
+}
+.icon-btn:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.icon-btn svg { width: 16px; height: 16px; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 13px; font-weight: 500; border-radius: 8px;
+  padding: 0 16px; height: 36px;
+  border: 1px solid transparent; cursor: pointer;
+  transition: background 150ms, transform 100ms;
+  font-family: var(--font-body);
+}
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+.btn-primary:hover { background: hsl(24 10% 16%); }
+.btn-accent { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
+.btn-accent:hover { background: hsl(var(--accent-hover)); }
+.btn-outline { background: hsl(var(--background)); border-color: hsl(var(--border)); color: hsl(var(--foreground)); }
+.btn-outline:hover { background: hsl(var(--muted)); }
+.btn svg { width: 14px; height: 14px; }
+
+/* ── Page content ── */
+.content { padding: 32px 40px 80px; max-width: 1200px; }
+
+/* ── Greeting ── */
+.greeting-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 28px; gap: 16px;
+}
+.greeting h1 {
+  font-family: var(--font-display);
+  font-size: 30px; font-weight: 600;
+  letter-spacing: -.02em; margin-bottom: 4px;
+}
+.greeting p { font-size: 13px; color: hsl(var(--muted-foreground)); max-width: 52ch; }
+.greeting-actions { display: flex; gap: 8px; flex-shrink: 0; margin-top: 4px; }
+
+/* ── Section headers ── */
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+.sec-title {
+  font-family: var(--font-display);
+  font-size: 19px; font-weight: 500;
+  letter-spacing: -.01em;
+}
+.sec-link {
+  font-size: 12px; color: hsl(var(--accent));
+  text-decoration: none; font-weight: 500;
+  cursor: pointer;
+}
+.sec-link:hover { text-decoration: underline; }
+.sec-sub { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 2px; margin-bottom: 16px; }
+
+/* ── KPI tiles ── */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+.kpi {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / .7);
+  border-radius: 14px; padding: 18px;
+  display: flex; flex-direction: column; gap: 4px;
+  box-shadow: var(--shadow-soft);
+  transition: box-shadow 200ms, transform 200ms;
+}
+.kpi:hover { box-shadow: var(--shadow-lifted); transform: translateY(-1px); }
+.kpi-icon {
+  width: 34px; height: 34px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 8px; flex-shrink: 0;
+}
+.kpi-icon svg { width: 17px; height: 17px; }
+.kpi-icon.gold { background: hsl(40 88% 42% / .1); color: hsl(40 88% 36%); }
+.kpi-icon.green { background: hsl(158 56% 36% / .1); color: hsl(158 56% 30%); }
+.kpi-icon.blue { background: hsl(215 72% 50% / .1); color: hsl(215 72% 42%); }
+.kpi-icon.ink { background: hsl(24 10% 10% / .07); color: hsl(24 10% 18%); }
+.kpi-lab { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: hsl(var(--muted-foreground)); font-weight: 500; }
+.kpi-val {
+  font-family: var(--font-display);
+  font-size: 26px; font-weight: 600;
+  letter-spacing: -.02em; line-height: 1.1;
+  font-feature-settings: 'tnum';
+}
+.kpi-sub { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
+.kpi-delta {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; font-weight: 500; margin-top: 2px;
+}
+.kpi-delta.up { color: hsl(158 56% 32%); }
+.kpi-delta.down { color: hsl(0 68% 44%); }
+
+/* ── Incentive Program ── */
+.incentive-wrap { margin-bottom: 32px; }
+.incentive-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / .7);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+}
+.incentive-header {
+  background: linear-gradient(135deg, hsl(24 12% 10%), hsl(24 14% 14%));
+  padding: 24px 28px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.incentive-header::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 60% 80% at 80% 50%, hsl(40 88% 42% / .12), transparent);
+  pointer-events: none;
+}
+.incentive-header::after {
+  content: '';
+  position: absolute;
+  top: -40px; right: -40px;
+  width: 200px; height: 200px;
+  border-radius: 999px;
+  border: 1px solid hsl(40 88% 42% / .08);
+}
+.ih-left { display: flex; align-items: center; gap: 16px; position: relative; z-index: 1; }
+.enso-wrap {
+  position: relative; width: 62px; height: 62px; flex-shrink: 0;
+}
+.enso-wrap svg { width: 62px; height: 62px; }
+.enso-label {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.enso-label .tier-abbr {
+  font-family: var(--font-display);
+  font-size: 14px; font-weight: 600; color: hsl(40 88% 62%);
+  letter-spacing: -.01em; line-height: 1;
+}
+.ih-info .eyebrow {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .14em;
+  color: hsl(35 12% 42%); font-weight: 500; margin-bottom: 4px;
+}
+.ih-info .tier-name {
+  font-family: var(--font-display);
+  font-size: 22px; font-weight: 600; color: hsl(35 14% 90%);
+  letter-spacing: -.01em; line-height: 1.1;
+}
+.ih-info .tier-sub { font-size: 12px; color: hsl(35 12% 50%); margin-top: 3px; }
+
+.ih-right { display: flex; align-items: center; gap: 20px; position: relative; z-index: 1; }
+.ih-stat { text-align: right; }
+.ih-stat .s-lab { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: hsl(35 12% 40%); font-weight: 500; }
+.ih-stat .s-val {
+  font-family: var(--font-display);
+  font-size: 22px; font-weight: 600; color: hsl(35 14% 90%);
+  font-feature-settings: 'tnum'; letter-spacing: -.01em;
+}
+.ih-stat .s-sub { font-size: 11px; color: hsl(35 12% 46%); }
+.ih-divider { width: 1px; height: 44px; background: hsl(35 12% 22%); }
+
+.incentive-body { padding: 24px 28px; }
+
+/* Progress section */
+.progress-section { margin-bottom: 24px; }
+.progress-meta {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.progress-meta .pm-left .pm-label { font-size: 13px; font-weight: 500; }
+.progress-meta .pm-left .pm-sub { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 1px; }
+.progress-meta .pm-right { text-align: right; }
+.progress-meta .pm-right .pm-need { font-size: 13px; font-weight: 600; color: hsl(var(--accent)); font-feature-settings: 'tnum'; }
+.progress-meta .pm-right .pm-goal { font-size: 11px; color: hsl(var(--muted-foreground)); margin-top: 1px; }
+
+.prog-track {
+  width: 100%; height: 10px; border-radius: 999px;
+  background: hsl(var(--muted));
+  position: relative; overflow: hidden;
+}
+.prog-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, hsl(40 88% 42%), hsl(32 78% 52%));
+  position: relative;
+  transition: width 1s var(--ease-out-expo);
+}
+.prog-fill::after {
+  content: '';
+  position: absolute; right: 0; top: 0; bottom: 0;
+  width: 40px;
+  background: linear-gradient(90deg, transparent, hsl(40 88% 65% / .4));
+  border-radius: 999px;
+}
+.tier-markers {
+  display: flex; justify-content: space-between;
+  margin-top: 8px;
+}
+.tier-marker { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.tm-dot {
+  width: 6px; height: 6px; border-radius: 999px;
+  background: hsl(var(--border));
+}
+.tm-dot.reached { background: hsl(var(--accent)); }
+.tm-dot.current { background: hsl(var(--accent)); box-shadow: 0 0 0 3px hsl(40 88% 42% / .2); }
+.tm-label { font-size: 10px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+.tm-label.active { color: hsl(var(--accent)); font-weight: 600; }
+
+/* Perks + activity grid */
+.incentive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+.perks-panel {}
+.perks-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: hsl(var(--muted-foreground)); margin-bottom: 12px; }
+.perks-list { display: flex; flex-direction: column; gap: 8px; }
+.perk-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  background: hsl(var(--muted) / .5);
+  border: 1px solid hsl(var(--border) / .5);
+}
+.perk-item.locked {
+  opacity: .5;
+  background: transparent;
+  border-style: dashed;
+}
+.perk-check {
+  width: 18px; height: 18px; border-radius: 999px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: hsl(158 56% 36%); color: white; font-size: 10px;
+  margin-top: 1px;
+}
+.perk-check.locked-icon {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+.perk-text .pt { font-size: 13px; font-weight: 500; }
+.perk-text .ps { font-size: 11px; color: hsl(var(--muted-foreground)); margin-top: 1px; }
+.perk-item.locked .perk-text .pt { font-size: 12px; }
+
+.activity-panel {}
+.activity-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: hsl(var(--muted-foreground)); margin-bottom: 12px; }
+.activity-list { display: flex; flex-direction: column; gap: 0; }
+.act-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid hsl(var(--border) / .5);
+}
+.act-row:last-child { border-bottom: none; }
+.act-icon {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.act-icon svg { width: 14px; height: 14px; }
+.act-icon.g { background: hsl(40 88% 42% / .1); color: hsl(40 88% 36%); }
+.act-icon.b { background: hsl(215 72% 50% / .1); color: hsl(215 72% 42%); }
+.act-icon.gr { background: hsl(158 56% 36% / .1); color: hsl(158 56% 30%); }
+.act-body { flex: 1; min-width: 0; }
+.act-body .ab { font-size: 13px; font-weight: 500; }
+.act-body .as { font-size: 11px; color: hsl(var(--muted-foreground)); margin-top: 1px; }
+.act-pts {
+  font-family: var(--font-mono);
+  font-size: 13px; font-weight: 500;
+  color: hsl(var(--accent));
+  white-space: nowrap;
+}
+
+/* ── Alert banner ── */
+.alert-bar {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: hsl(38 90% 50% / .08);
+  border: 1px solid hsl(38 90% 50% / .25);
+  border-radius: 12px; padding: 14px 16px;
+  margin-bottom: 28px;
+}
+.alert-bar svg { width: 16px; height: 16px; color: hsl(30 80% 32%); flex-shrink: 0; margin-top: 1px; }
+.alert-bar .ab-text { font-size: 13px; }
+.alert-bar .ab-text strong { font-weight: 600; color: hsl(30 80% 28%); }
+.alert-bar .ab-text span { color: hsl(30 70% 35%); }
+.alert-actions { margin-left: auto; display: flex; gap: 8px; flex-shrink: 0; }
+
+/* ── Order tracker ── */
+.tracker-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / .7);
+  border-radius: 16px; padding: 22px 24px;
+  margin-bottom: 28px;
+  box-shadow: var(--shadow-soft);
+}
+.tracker-top {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 22px;
+}
+.tracker-top .po-num {
+  font-family: var(--font-mono);
+  font-size: 11px; color: hsl(var(--muted-foreground));
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.tracker-top h3 {
+  font-family: var(--font-display);
+  font-size: 20px; font-weight: 500;
+  letter-spacing: -.01em; margin: 3px 0 4px;
+}
+.tracker-top .eta { font-size: 13px; color: hsl(var(--muted-foreground)); }
+.tracker-top .eta strong { color: hsl(var(--foreground)); font-weight: 500; }
+.tracker-steps {
+  display: flex; align-items: flex-start; gap: 0;
+  position: relative; margin-bottom: 20px;
+}
+.tracker-steps::before {
+  content: ''; position: absolute;
+  left: 5%; right: 5%; top: 16px;
+  height: 2px; background: hsl(var(--border));
+}
+.tracker-steps::after {
+  content: ''; position: absolute;
+  left: 5%; top: 16px; height: 2px;
+  width: 55%; background: hsl(158 56% 36%);
+}
+.tstep { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; position: relative; z-index: 1; }
+.tstep-dot {
+  width: 32px; height: 32px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; border: 2px solid hsl(var(--card));
+  background: hsl(var(--muted)); color: hsl(var(--muted-foreground));
+}
+.tstep.done .tstep-dot { background: hsl(158 56% 36%); color: white; }
+.tstep.current .tstep-dot {
+  background: hsl(var(--accent)); color: white;
+  box-shadow: 0 0 0 5px hsl(40 88% 42% / .16);
+}
+.tstep-label { font-size: 11px; color: hsl(var(--muted-foreground)); font-weight: 500; text-align: center; }
+.tstep.done .tstep-label,
+.tstep.current .tstep-label { color: hsl(var(--foreground)); }
+.tstep-date { font-family: var(--font-mono); font-size: 10px; color: hsl(var(--muted-foreground)); }
+.tracker-details {
+  display: flex; gap: 20px; flex-wrap: wrap;
+  padding-top: 18px; border-top: 1px solid hsl(var(--border) / .6);
+  font-size: 13px;
+}
+.tracker-details span { color: hsl(var(--muted-foreground)); }
+.tracker-details strong {
+  color: hsl(var(--foreground));
+  font-family: var(--font-mono); font-weight: 500;
+  margin-left: 4px;
+}
+
+/* ── Catalog / Reorder picks ── */
+.product-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 32px; }
+.pcard {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / .6);
+  border-radius: 14px; padding: 18px;
+  display: flex; flex-direction: column; gap: 0;
+  box-shadow: var(--shadow-soft);
+  transition: box-shadow 250ms, transform 250ms;
+}
+.pcard:hover { box-shadow: var(--shadow-lifted); transform: translateY(-2px); }
+.pcard-top { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; }
+.bottle-thumb {
+  width: 50px; height: 82px; flex-shrink: 0;
+  border-radius: 6px 6px 10px 10px;
+  position: relative; overflow: hidden;
+}
+.bottle-thumb::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 14px; border-radius: 4px; }
+.bt-dark { background: linear-gradient(160deg, hsl(24 10% 14%), hsl(24 12% 10%)); }
+.bt-dark::after { background: hsl(40 88% 42% / .5); }
+.bt-light { background: linear-gradient(160deg, hsl(37 16% 96%), hsl(35 12% 90%)); border: 1px solid hsl(35 12% 84%); }
+.bt-light::after { background: hsl(35 12% 76%); }
+.bt-blue { background: linear-gradient(160deg, hsl(215 60% 22%), hsl(215 72% 30%)); }
+.bt-blue::after { background: hsl(215 40% 16%); }
+.bt-copper { background: linear-gradient(160deg, hsl(32 60% 35%), hsl(30 50% 28%)); }
+.bt-copper::after { background: hsl(30 40% 22%); }
+.bottle-cap {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 13px; height: 12px; background: hsl(35 14% 85%); border-radius: 2px;
+}
+.bt-dark .bottle-cap { background: hsl(35 14% 80%); }
+.bt-blue .bottle-cap { background: hsl(35 14% 88%); }
+.bt-copper .bottle-cap { background: hsl(35 20% 86%); }
+.pcard-info { flex: 1; min-width: 0; }
+.pcard-sku { font-family: var(--font-mono); font-size: 10px; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
+.pcard-name { font-family: var(--font-display); font-size: 17px; font-weight: 500; letter-spacing: -.01em; line-height: 1.2; }
+.pcard-type { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
+.pcard-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.tag {
+  font-size: 10px; font-weight: 500; padding: 2px 8px;
+  border-radius: 999px; border: 1px solid;
+}
+.tag-warn { background: hsl(38 90% 50% / .1); color: hsl(30 80% 30%); border-color: hsl(38 90% 50% / .25); }
+.tag-info { background: hsl(215 72% 50% / .1); color: hsl(215 72% 38%); border-color: hsl(215 72% 50% / .2); }
+.tag-neu { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); border-color: hsl(var(--border)); }
+.tag-gold { background: hsl(40 88% 42% / .1); color: hsl(40 88% 30%); border-color: hsl(40 88% 42% / .25); }
+
+.pcard-price-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.pcard-price {
+  font-family: var(--font-display);
+  font-size: 20px; font-weight: 600;
+  font-feature-settings: 'tnum'; letter-spacing: -.01em;
+}
+.pcard-per { font-size: 12px; color: hsl(var(--muted-foreground)); font-weight: 400; margin-left: 2px; font-family: var(--font-body); }
+.pcard-stock { font-size: 12px; color: hsl(var(--muted-foreground)); }
+.pcard-stock strong { color: hsl(158 56% 28%); font-weight: 600; }
+
+.qty-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+}
+.qty-btn {
+  width: 28px; height: 28px; border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 14px;
+  color: hsl(var(--foreground));
+  transition: background 120ms;
+}
+.qty-btn:hover { background: hsl(var(--muted)); }
+.qty-val {
+  font-family: var(--font-mono); font-weight: 500;
+  min-width: 26px; text-align: center;
+  font-feature-settings: 'tnum';
+}
+.qty-case { font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+
+.add-btn {
+  width: 100%; height: 34px; border-radius: 8px;
+  background: hsl(var(--accent)); color: hsl(var(--accent-foreground));
+  border: none; font-weight: 500; font-size: 13px;
+  cursor: pointer; font-family: var(--font-body);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  transition: background 150ms, transform 100ms;
+}
+.add-btn:hover { background: hsl(var(--accent-hover)); }
+.add-btn:active { transform: scale(0.98); }
+.add-btn.in-order {
+  background: hsl(158 56% 36% / .1);
+  color: hsl(158 56% 28%);
+  border: 1px solid hsl(158 56% 36% / .25);
+}
+.add-btn svg { width: 13px; height: 13px; }
+
+.depletion-bar-wrap { margin: 10px 0; }
+.dep-label { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 11px; color: hsl(var(--muted-foreground)); }
+.dep-label strong { color: hsl(var(--foreground)); font-weight: 500; }
+.dep-track { height: 4px; border-radius: 999px; background: hsl(var(--border)); overflow: hidden; }
+.dep-fill { height: 100%; border-radius: 999px; }
+.dep-fill.low { background: hsl(0 68% 48%); }
+.dep-fill.med { background: hsl(38 90% 50%); }
+.dep-fill.ok { background: hsl(158 56% 36%); }
+
+/* ── Recent orders ── */
+.orders-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / .7);
+  border-radius: 14px; overflow: hidden;
+  margin-bottom: 28px;
+}
+.orders-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid hsl(var(--border) / .5);
+}
+.orders-header-title { font-size: 14px; font-weight: 600; }
+.order-row {
+  display: grid;
+  grid-template-columns: 2fr 2.5fr 1fr auto;
+  gap: 16px; padding: 14px 20px;
+  border-bottom: 1px solid hsl(var(--border) / .4);
+  align-items: center;
+  transition: background 120ms;
+  cursor: pointer;
+}
+.order-row:last-child { border-bottom: none; }
+.order-row:hover { background: hsl(var(--muted) / .4); }
+.order-id { font-family: var(--font-mono); font-size: 12px; font-weight: 500; }
+.order-date { font-size: 11px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
+.order-items { font-size: 13px; color: hsl(var(--muted-foreground)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.order-total { font-family: var(--font-mono); font-size: 13px; font-weight: 500; font-feature-settings: 'tnum'; text-align: right; }
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  border-radius: 999px; padding: 3px 10px;
+  font-size: 11px; font-weight: 500;
+  border: 1px solid; white-space: nowrap;
+}
+.pdot { width: 6px; height: 6px; border-radius: 999px; }
+.p-green { background: hsl(158 56% 36% / .08); color: hsl(158 56% 26%); border-color: hsl(158 56% 36% / .2); }
+.p-blue { background: hsl(215 72% 50% / .08); color: hsl(215 72% 38%); border-color: hsl(215 72% 50% / .2); }
+.p-amber { background: hsl(38 90% 50% / .12); color: hsl(30 80% 30%); border-color: hsl(38 90% 50% / .3); }
+.p-neutral { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); border-color: hsl(var(--border)); }
+
+/* ── Support card ── */
+.support-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / .7);
+  border-radius: 14px; padding: 20px 22px;
+  display: flex; align-items: center; gap: 18px;
+}
+.support-icon {
+  width: 42px; height: 42px; border-radius: 10px;
+  background: hsl(var(--muted));
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.support-icon svg { width: 20px; height: 20px; color: hsl(var(--muted-foreground)); }
+.support-text .st { font-size: 14px; font-weight: 500; }
+.support-text .ss { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
+.support-actions { margin-left: auto; display: flex; gap: 8px; }
+
+/* ── Animations ── */
+@keyframes enterUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.enter { animation: enterUp 500ms var(--ease-out-expo) both; }
+.enter-d1 { animation-delay: 50ms; }
+.enter-d2 { animation-delay: 100ms; }
+.enter-d3 { animation-delay: 150ms; }
+.enter-d4 { animation-delay: 200ms; }
+.enter-d5 { animation-delay: 250ms; }
+.enter-d6 { animation-delay: 300ms; }
+
+/* ── Divider ── */
+.divider { height: 1px; background: hsl(var(--border) / .5); margin: 4px 10px 12px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="side">
+    <div class="logo-row">
+      <div class="logo-mark">
+        <img src="assets/hajime-logo.png" alt="Hajime">
+      </div>
+      <div class="logo-text">
+        <div class="name">Hajime</div>
+        <div class="store-name">The Drake Hotel</div>
+      </div>
+    </div>
+
+    <!-- Partner tier pill -->
+    <div style="padding: 14px 10px 0;">
+      <div class="tier-pill">
+        <div class="tier-dot">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
+        <div class="tier-info">
+          <div class="t">Silver Partner</div>
+          <div class="p">76.8% to Gold · $11,600 to go</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nav groups -->
+    <nav class="nav-section">
+      <div class="nav-label">Store</div>
+      <div class="navitem active">
+        <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Home
+      </div>
+      <div class="navitem">
+        <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        Catalog
+      </div>
+      <div class="navitem">
+        <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+        New order
+        <span class="badge new">1</span>
+      </div>
+      <div class="navitem">
+        <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        Reorder
+      </div>
+    </nav>
+
+    <div class="divider"></div>
+
+    <nav class="nav-section" style="padding-top: 4px;">
+      <div class="nav-label">Tracking</div>
+      <div class="navitem">
+        <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        Deliveries
+        <span class="badge">1</span>
+      </div>
+      <div class="navitem">
+        <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        My orders
+      </div>
+      <div class="navitem">
+        <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        Backbar tracker
+      </div>
+    </nav>
+
+    <div class="divider"></div>
+
+    <nav class="nav-section" style="padding-top: 4px;">
+      <div class="nav-label">Rewards</div>
+      <div class="navitem">
+        <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Partner program
+      </div>
+      <div class="navitem">
+        <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Sell-through reports
+      </div>
+    </nav>
+
+    <div class="divider"></div>
+
+    <nav class="nav-section" style="padding-top: 4px; padding-bottom: 4px;">
+      <div class="nav-label">Account</div>
+      <div class="navitem">
+        <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        Support
+      </div>
+      <div class="navitem">
+        <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
+        My account
+      </div>
+    </nav>
+
+    <div class="side-footer">
+      <div class="avatar">MD</div>
+      <div class="user-meta">
+        <div class="uname">Mei Daniels</div>
+        <div class="urole">Beverage Director</div>
+      </div>
+      <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="width:14px;height:14px;color:hsl(35 12% 42%);flex-shrink:0;cursor:pointer"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="main">
+    <header class="topbar">
+      <div class="crumbs">Store › <strong>Home</strong></div>
+      <div class="topbar-actions">
+        <button class="icon-btn" title="Search">
+          <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <button class="icon-btn" title="Notifications">
+          <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </button>
+        <button class="btn btn-accent">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New order
+        </button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- ── Greeting ── -->
+      <div class="greeting-row enter">
+        <div class="greeting">
+          <h1>Good afternoon, Mei.</h1>
+          <p>Your last delivery landed Monday. Backbar data shows Florin Peaks depletion ahead of pace — consider a top-up before Thu 22 May.</p>
+        </div>
+        <div class="greeting-actions">
+          <button class="btn btn-outline">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" style="width:14px;height:14px"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            View reports
+          </button>
+        </div>
+      </div>
+
+      <!-- ── Alert ── -->
+      <div class="alert-bar enter enter-d1">
+        <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div class="ab-text">
+          <strong>Low stock alert:</strong> <span>Florin Peaks (HJM-FP-750) shows 12 bottles remaining — estimated run-out in 9 days at current pace. Your allocated replenishment window opens 19 May.</span>
+        </div>
+        <div class="alert-actions">
+          <button class="btn btn-outline" style="height:30px;font-size:12px;padding:0 12px">Dismiss</button>
+          <button class="btn btn-accent" style="height:30px;font-size:12px;padding:0 12px">Reorder now</button>
+        </div>
+      </div>
+
+      <!-- ── KPIs ── -->
+      <div class="kpi-row enter enter-d2">
+        <div class="kpi">
+          <div class="kpi-icon gold">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+          </div>
+          <div class="kpi-lab">Open orders</div>
+          <div class="kpi-val">2</div>
+          <div class="kpi-sub">Next ETA Thu 22 May</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-icon blue">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          </div>
+          <div class="kpi-lab">Last 30 days</div>
+          <div class="kpi-val">$4,200</div>
+          <div class="kpi-delta up">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:12px;height:12px"><polyline points="18 15 12 9 6 15"/></svg>
+            +9% vs prior period
+          </div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-icon green">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </div>
+          <div class="kpi-lab">On backbar</div>
+          <div class="kpi-val">6 SKUs</div>
+          <div class="kpi-sub">3 tracking depletion</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-icon ink">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <div class="kpi-lab">YTD spend</div>
+          <div class="kpi-val">$38,400</div>
+          <div class="kpi-sub">Silver Partner tier</div>
+        </div>
+      </div>
+
+      <!-- ── Incentive Program ── -->
+      <div class="incentive-wrap enter enter-d3">
+        <div class="sec-head">
+          <div class="sec-title">Partner program</div>
+          <a class="sec-link">View full rewards history →</a>
+        </div>
+        <div class="incentive-card">
+
+          <!-- Dark header -->
+          <div class="incentive-header">
+            <div class="ih-left">
+              <!-- Ensō progress ring -->
+              <div class="enso-wrap">
+                <svg viewBox="0 0 62 62" fill="none">
+                  <!-- Track -->
+                  <circle cx="31" cy="31" r="27" stroke="hsl(35 12% 22%)" stroke-width="4"/>
+                  <!-- Fill: 76.8% of circumference -->
+                  <circle cx="31" cy="31" r="27"
+                    stroke="url(#goldGrad)" stroke-width="4"
+                    stroke-linecap="round"
+                    stroke-dasharray="169.6 220.8"
+                    transform="rotate(-90 31 31)"/>
+                  <!-- Tier markers -->
+                  <defs>
+                    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stop-color="hsl(40,88%,42%)"/>
+                      <stop offset="100%" stop-color="hsl(32,78%,58%)"/>
+                    </linearGradient>
+                  </defs>
+                </svg>
+                <div class="enso-label">
+                  <span style="font-family:var(--font-display);font-size:9px;color:hsl(35 12% 50%);letter-spacing:.04em;line-height:1.2;text-align:center">SILVER</span>
+                  <span style="font-size:13px;font-weight:700;color:hsl(40 80% 62%);line-height:1">77%</span>
+                </div>
+              </div>
+
+              <div class="ih-info">
+                <div class="eyebrow">Hajime Partner Program</div>
+                <div class="tier-name">Silver Partner</div>
+                <div class="tier-sub">Member since Jan 2025 · 16-month streak</div>
+              </div>
+            </div>
+
+            <div class="ih-right">
+              <div class="ih-stat">
+                <div class="s-lab">YTD Spend</div>
+                <div class="s-val">$38,400</div>
+                <div class="s-sub">of $50,000 goal</div>
+              </div>
+              <div class="ih-divider"></div>
+              <div class="ih-stat">
+                <div class="s-lab">This quarter</div>
+                <div class="s-val">$14,220</div>
+                <div class="s-sub">2.0% rebate · Q2 2026</div>
+              </div>
+              <div class="ih-divider"></div>
+              <div class="ih-stat">
+                <div class="s-lab">Rebate accrued</div>
+                <div class="s-val">$768</div>
+                <div class="s-sub">Paid Jun 30</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Progress body -->
+          <div class="incentive-body">
+            <div class="progress-section">
+              <div class="progress-meta">
+                <div class="pm-left">
+                  <div class="pm-label">Progress to Gold Partner</div>
+                  <div class="pm-sub">Rolling 12-month spend · resets Jan 2027</div>
+                </div>
+                <div class="pm-right">
+                  <div class="pm-need">$11,600 to go</div>
+                  <div class="pm-goal">Gold unlocks at $50,000</div>
+                </div>
+              </div>
+              <div class="prog-track">
+                <div class="prog-fill" style="width: 76.8%"></div>
+              </div>
+              <!-- Tier markers -->
+              <div class="tier-markers" style="padding: 0 2%;">
+                <div class="tier-marker">
+                  <div class="tm-dot reached"></div>
+                  <div class="tm-label active">Participant</div>
+                </div>
+                <div class="tier-marker" style="margin-left: 14%;">
+                  <div class="tm-dot reached"></div>
+                  <div class="tm-label active">Bronze</div>
+                </div>
+                <div class="tier-marker" style="margin-left: 14%;">
+                  <div class="tm-dot current"></div>
+                  <div class="tm-label active">Silver ← you</div>
+                </div>
+                <div class="tier-marker" style="margin-left: 14%;">
+                  <div class="tm-dot"></div>
+                  <div class="tm-label">Gold</div>
+                </div>
+                <div class="tier-marker">
+                  <div class="tm-dot"></div>
+                  <div class="tm-label">Platinum</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Perks + activity -->
+            <div class="incentive-grid">
+              <!-- Perks -->
+              <div class="perks-panel">
+                <div class="perks-title">Active benefits</div>
+                <div class="perks-list">
+                  <div class="perk-item">
+                    <div class="perk-check">✓</div>
+                    <div class="perk-text">
+                      <div class="pt">Priority allocation</div>
+                      <div class="ps">Guaranteed fill on core SKUs during peak season</div>
+                    </div>
+                  </div>
+                  <div class="perk-item">
+                    <div class="perk-check">✓</div>
+                    <div class="perk-text">
+                      <div class="pt">2% quarterly rebate</div>
+                      <div class="ps">$768 accrued this quarter · paid Jun 30</div>
+                    </div>
+                  </div>
+                  <div class="perk-item">
+                    <div class="perk-check">✓</div>
+                    <div class="perk-text">
+                      <div class="pt">Dedicated rep · James Okada</div>
+                      <div class="ps">james.okada@hajimespirits.com</div>
+                    </div>
+                  </div>
+                  <div class="perk-item">
+                    <div class="perk-check">✓</div>
+                    <div class="perk-text">
+                      <div class="pt">Early access to limited releases</div>
+                      <div class="ps">Ryusui Reserve lot preview unlocked</div>
+                    </div>
+                  </div>
+                  <div class="perk-item locked">
+                    <div class="perk-check locked-icon">
+                      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:10px;height:10px"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </div>
+                    <div class="perk-text">
+                      <div class="pt">Volume pricing (–5% all SKUs) · Gold</div>
+                      <div class="ps">Unlocks at $50,000 annual spend</div>
+                    </div>
+                  </div>
+                  <div class="perk-item locked">
+                    <div class="perk-check locked-icon">
+                      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:10px;height:10px"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </div>
+                    <div class="perk-text">
+                      <div class="pt">Co-marketing support ($2,000/yr) · Gold</div>
+                      <div class="ps">Menu inserts, staff tastings, event support</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Activity -->
+              <div class="activity-panel">
+                <div class="activity-title">Recent reward activity</div>
+                <div class="activity-list">
+                  <div class="act-row">
+                    <div class="act-icon g">
+                      <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+                    </div>
+                    <div class="act-body">
+                      <div class="ab">Order placed · PO-2026-0418</div>
+                      <div class="as">100 cases Florin Peaks · Fri 11 Apr</div>
+                    </div>
+                    <div class="act-pts">+$84 rebate</div>
+                  </div>
+                  <div class="act-row">
+                    <div class="act-icon gr">
+                      <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                    </div>
+                    <div class="act-body">
+                      <div class="ab">Q1 rebate paid</div>
+                      <div class="as">$654 credited · 1 Apr 2026</div>
+                    </div>
+                    <div class="act-pts" style="color:hsl(158 56% 32%)">Paid</div>
+                  </div>
+                  <div class="act-row">
+                    <div class="act-icon b">
+                      <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    </div>
+                    <div class="act-body">
+                      <div class="ab">Early access unlocked</div>
+                      <div class="as">Ryusui Reserve Lot 04 · 28 Mar</div>
+                    </div>
+                    <div class="act-pts" style="color:hsl(215 72% 42%);font-size:11px;">Limited</div>
+                  </div>
+                  <div class="act-row">
+                    <div class="act-icon g">
+                      <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+                    </div>
+                    <div class="act-body">
+                      <div class="ab">Order placed · PO-2026-0412</div>
+                      <div class="as">48 cases Florin Peaks · 04 Apr</div>
+                    </div>
+                    <div class="act-pts">+$46 rebate</div>
+                  </div>
+                  <div class="act-row">
+                    <div class="act-icon g">
+                      <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+                    </div>
+                    <div class="act-body">
+                      <div class="ab">Order placed · PO-2026-0406</div>
+                      <div class="as">24 cases Ryusui, 24 cases Junmai · 21 Mar</div>
+                    </div>
+                    <div class="act-pts">+$55 rebate</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Active shipment ── -->
+      <div class="sec-head enter enter-d4">
+        <div class="sec-title">Active shipment</div>
+        <a class="sec-link">All deliveries →</a>
+      </div>
+      <div class="tracker-card enter enter-d4">
+        <div class="tracker-top">
+          <div>
+            <div class="po-num">PO-2026-0418 · Placed Fri 11 Apr</div>
+            <h3>100 cases · Florin Peaks 750ml</h3>
+            <div class="eta">Estimated arrival <strong>Thu 22 May, 10 – 12am</strong> via Kentoku Logistics</div>
+          </div>
+          <span class="pill p-blue"><span class="pdot" style="background:hsl(215 72% 50%)"></span>in-transit</span>
+        </div>
+        <div class="tracker-steps">
+          <div class="tstep done">
+            <div class="tstep-dot">
+              <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="width:14px;height:14px"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="tstep-label">Placed</div>
+            <div class="tstep-date">Fri 11 Apr</div>
+          </div>
+          <div class="tstep done">
+            <div class="tstep-dot">
+              <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="width:14px;height:14px"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="tstep-label">HQ approved</div>
+            <div class="tstep-date">Fri 11 Apr</div>
+          </div>
+          <div class="tstep done">
+            <div class="tstep-dot">
+              <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="width:14px;height:14px"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="tstep-label">Packed</div>
+            <div class="tstep-date">Mon 14 Apr</div>
+          </div>
+          <div class="tstep current">
+            <div class="tstep-dot">
+              <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+            </div>
+            <div class="tstep-label">In transit</div>
+            <div class="tstep-date">Wed 15 May</div>
+          </div>
+          <div class="tstep">
+            <div class="tstep-dot">
+              <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" style="width:14px;height:14px"><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <div class="tstep-label">Delivered</div>
+            <div class="tstep-date">Thu 22 May</div>
+          </div>
+        </div>
+        <div class="tracker-details">
+          <div>Total <strong>$4,200.00</strong></div>
+          <div>Payment <strong>Net 30</strong></div>
+          <div>Tracking <strong>KT-3387-2226</strong></div>
+          <div>Carrier <strong>Kentoku Logistics</strong></div>
+          <div style="margin-left:auto">
+            <button class="btn btn-outline" style="height:30px;font-size:12px;padding:0 12px">Track shipment</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Reorder picks ── -->
+      <div class="sec-head enter enter-d5">
+        <div class="sec-title">Reorder picks</div>
+        <a class="sec-link">Full catalog →</a>
+      </div>
+      <p class="sec-sub">Based on backbar depletion rate over the last 90 days</p>
+
+      <div class="product-grid enter enter-d5">
+
+        <!-- Card 1: Florin Peaks -->
+        <div class="pcard">
+          <div class="pcard-top">
+            <div class="bottle-thumb bt-dark">
+              <div class="bottle-cap"></div>
+            </div>
+            <div class="pcard-info">
+              <div class="pcard-sku">HJM-FP-750</div>
+              <div class="pcard-name">Florin Peaks</div>
+              <div class="pcard-type">Junmai Daiginjo · 750ml</div>
+              <div class="pcard-tags">
+                <span class="tag tag-warn">Low stock</span>
+                <span class="tag tag-gold">Priority alloc.</span>
+              </div>
+            </div>
+          </div>
+          <div class="depletion-bar-wrap">
+            <div class="dep-label">
+              <span>Backbar stock</span>
+              <strong>12 bottles · ~9 days left</strong>
+            </div>
+            <div class="dep-track"><div class="dep-fill low" style="width: 18%"></div></div>
+          </div>
+          <div class="pcard-price-row">
+            <div>
+              <span class="pcard-price">$48.00</span>
+              <span class="pcard-per">/ bottle</span>
+            </div>
+            <div class="pcard-stock">Avail. <strong>240 cases</strong></div>
+          </div>
+          <div class="qty-row">
+            <button class="qty-btn">−</button>
+            <span class="qty-val">24</span>
+            <button class="qty-btn">+</button>
+            <span class="qty-case">= 2 cases</span>
+          </div>
+          <button class="add-btn">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+            Add to order
+          </button>
+        </div>
+
+        <!-- Card 2: Junmai Shiro -->
+        <div class="pcard">
+          <div class="pcard-top">
+            <div class="bottle-thumb bt-light">
+              <div class="bottle-cap"></div>
+            </div>
+            <div class="pcard-info">
+              <div class="pcard-sku">HJM-JN-720</div>
+              <div class="pcard-name">Junmai Shiro</div>
+              <div class="pcard-type">Junmai · 720ml</div>
+              <div class="pcard-tags">
+                <span class="tag tag-info">In order</span>
+                <span class="tag tag-neu">12 cases avail.</span>
+              </div>
+            </div>
+          </div>
+          <div class="depletion-bar-wrap">
+            <div class="dep-label">
+              <span>Backbar stock</span>
+              <strong>28 bottles · ~21 days left</strong>
+            </div>
+            <div class="dep-track"><div class="dep-fill med" style="width: 42%"></div></div>
+          </div>
+          <div class="pcard-price-row">
+            <div>
+              <span class="pcard-price">$32.00</span>
+              <span class="pcard-per">/ bottle</span>
+            </div>
+            <div class="pcard-stock">Avail. <strong>144 cases</strong></div>
+          </div>
+          <div class="qty-row">
+            <button class="qty-btn">−</button>
+            <span class="qty-val">12</span>
+            <button class="qty-btn">+</button>
+            <span class="qty-case">= 1 case</span>
+          </div>
+          <button class="add-btn in-order">
+            <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="width:12px;height:12px"><polyline points="20 6 9 17 4 12"/></svg>
+            In current order
+          </button>
+        </div>
+
+        <!-- Card 3: Ryusui Reserve -->
+        <div class="pcard">
+          <div class="pcard-top">
+            <div class="bottle-thumb bt-blue">
+              <div class="bottle-cap"></div>
+            </div>
+            <div class="pcard-info">
+              <div class="pcard-sku">HJM-RY-500</div>
+              <div class="pcard-name">Ryusui Reserve</div>
+              <div class="pcard-type">Genshu · 500ml · limited</div>
+              <div class="pcard-tags">
+                <span class="tag tag-gold">Early access</span>
+                <span class="tag tag-neu">Lot 04</span>
+              </div>
+            </div>
+          </div>
+          <div class="depletion-bar-wrap">
+            <div class="dep-label">
+              <span>Backbar stock</span>
+              <strong>44 bottles · ~35 days left</strong>
+            </div>
+            <div class="dep-track"><div class="dep-fill ok" style="width: 68%"></div></div>
+          </div>
+          <div class="pcard-price-row">
+            <div>
+              <span class="pcard-price">$82.00</span>
+              <span class="pcard-per">/ bottle</span>
+            </div>
+            <div class="pcard-stock">Avail. <strong>38 cases</strong></div>
+          </div>
+          <div class="qty-row">
+            <button class="qty-btn">−</button>
+            <span class="qty-val">6</span>
+            <button class="qty-btn">+</button>
+            <span class="qty-case">= ½ case</span>
+          </div>
+          <button class="add-btn">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+            Add to order
+          </button>
+        </div>
+
+      </div>
+
+      <!-- ── Recent orders ── -->
+      <div class="sec-head enter enter-d6">
+        <div class="sec-title">Recent orders</div>
+        <a class="sec-link">All orders →</a>
+      </div>
+      <div class="orders-card enter enter-d6">
+        <div class="orders-header">
+          <div class="orders-header-title">Order history</div>
+          <button class="btn btn-outline" style="height:30px;font-size:12px;padding:0 12px">Export CSV</button>
+        </div>
+        <!-- Header row -->
+        <div class="order-row" style="background:hsl(var(--muted)/0.4);cursor:default;pointer-events:none">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:hsl(var(--muted-foreground));font-weight:600">Order</div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:hsl(var(--muted-foreground));font-weight:600">Items</div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:hsl(var(--muted-foreground));font-weight:600;text-align:right">Total</div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:hsl(var(--muted-foreground));font-weight:600">Status</div>
+        </div>
+        <div class="order-row">
+          <div>
+            <div class="order-id">PO-2026-0418</div>
+            <div class="order-date">Placed Fri 11 Apr · by Mei</div>
+          </div>
+          <div class="order-items">100× Florin Peaks, 12× Junmai Shiro</div>
+          <div class="order-total">$4,584.00</div>
+          <span class="pill p-blue"><span class="pdot" style="background:hsl(215 72% 50%)"></span>in-transit</span>
+        </div>
+        <div class="order-row">
+          <div>
+            <div class="order-id">PO-2026-0412</div>
+            <div class="order-date">Delivered Mon 4 Apr</div>
+          </div>
+          <div class="order-items">48× Florin Peaks 750ml</div>
+          <div class="order-total">$2,304.00</div>
+          <span class="pill p-green"><span class="pdot" style="background:hsl(158 56% 36%)"></span>delivered</span>
+        </div>
+        <div class="order-row">
+          <div>
+            <div class="order-id">PO-2026-0406</div>
+            <div class="order-date">Delivered Mon 21 Mar</div>
+          </div>
+          <div class="order-items">24× Ryusui Reserve, 24× Junmai Shiro</div>
+          <div class="order-total">$2,736.00</div>
+          <span class="pill p-green"><span class="pdot" style="background:hsl(158 56% 36%)"></span>delivered</span>
+        </div>
+        <div class="order-row">
+          <div>
+            <div class="order-id">PO-2026-0399</div>
+            <div class="order-date">Placed Sat 2 Mar · awaiting HQ</div>
+          </div>
+          <div class="order-items">120× mixed case</div>
+          <div class="order-total">$5,040.00</div>
+          <span class="pill p-amber"><span class="pdot" style="background:hsl(38 90% 50%)"></span>pending</span>
+        </div>
+        <div class="order-row">
+          <div>
+            <div class="order-id">PO-2026-0388</div>
+            <div class="order-date">Delivered Fri 21 Feb</div>
+          </div>
+          <div class="order-items">36× Florin Peaks, 12× Ryusui Reserve</div>
+          <div class="order-total">$2,712.00</div>
+          <span class="pill p-green"><span class="pdot" style="background:hsl(158 56% 36%)"></span>delivered</span>
+        </div>
+      </div>
+
+      <!-- ── Support ── -->
+      <div class="support-card enter enter-d6">
+        <div class="support-icon">
+          <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div class="support-text">
+          <div class="st">Your rep: James Okada</div>
+          <div class="ss">Questions on delivery, invoicing, or allocations? james.okada@hajimespirits.com · responds within 4 hours</div>
+        </div>
+        <div class="support-actions">
+          <button class="btn btn-outline">Send message</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

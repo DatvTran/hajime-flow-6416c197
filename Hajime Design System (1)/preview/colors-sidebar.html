@@ -1,0 +1,16 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body{margin:0;padding:24px;background:hsl(var(--sidebar-background));color:hsl(var(--sidebar-foreground));min-height:140px}
+  .row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .sw{border-radius:10px;border:1px solid hsl(var(--sidebar-border));overflow:hidden;background:hsl(var(--sidebar-accent))}
+  .chip{height:54px}
+  .meta{padding:8px 10px;font-size:11px;color:hsl(var(--sidebar-foreground))}
+  .meta .name{font-weight:500;color:hsl(35 14% 90%)}
+  .meta .val{color:hsl(35 12% 55%);font-family:var(--font-mono);font-size:10px;margin-top:2px}
+</style></head><body>
+<div class="row">
+  <div class="sw"><div class="chip" style="background:hsl(24 12% 8%)"></div><div class="meta"><div class="name">Sidebar bg</div><div class="val">24 12% 8%</div></div></div>
+  <div class="sw"><div class="chip" style="background:hsl(24 10% 13%)"></div><div class="meta"><div class="name">Sidebar accent</div><div class="val">24 10% 13%</div></div></div>
+  <div class="sw"><div class="chip" style="background:hsl(24 10% 15%)"></div><div class="meta"><div class="name">Sidebar border</div><div class="val">24 10% 15%</div></div></div>
+  <div class="sw"><div class="chip" style="background:hsl(40 88% 42%)"></div><div class="meta"><div class="name">Sidebar primary</div><div class="val">40 88% 42%</div></div></div>
+</div></body></html>

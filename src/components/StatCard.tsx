@@ -1,3 +1,4 @@
+import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 import { LucideIcon } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -42,13 +43,16 @@ export function StatCard({
   onClick,
   isActive,
 }: StatCardProps) {
+  const { t } = useLanguage();
+  const labelText = t(label);
+  const subtitleText = subtitle ? t(subtitle) : undefined;
   const inner = (
     <>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-muted-foreground">{label}</p>
+          <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-muted-foreground">{labelText}</p>
           <p className="mt-2 font-display text-2xl font-semibold tracking-tight text-foreground animate-count-up">{value}</p>
-          {subtitle && <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>}
+          {subtitleText && <p className="mt-1 text-xs text-muted-foreground">{subtitleText}</p>}
           {trend !== undefined && (
             <div className="mt-1.5 inline-flex items-center gap-1">
               <svg
@@ -97,7 +101,7 @@ export function StatCard({
         onClick={onClick}
         className={cn(shellClass, "w-full cursor-pointer text-left font-sans active:scale-[0.98]")}
         aria-pressed={isActive}
-        aria-label={`Filter by ${label}`}
+        aria-label={`Filter by ${labelText}`}
       >
         {inner}
       </button>
@@ -106,7 +110,7 @@ export function StatCard({
 
   if (to) {
     return (
-      <Link to={to} className={cn(shellClass, "block text-inherit no-underline active:scale-[0.98]")} aria-label={`Open ${label}`}>
+      <Link to={to} className={cn(shellClass, "block text-inherit no-underline active:scale-[0.98]")} aria-label={`Open ${labelText}`}>
         {inner}
       </Link>
     );

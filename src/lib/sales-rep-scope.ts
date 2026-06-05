@@ -33,7 +33,7 @@ export function accountBelongsToSalesRep(
   if (salesOwnerMatches(account.salesOwner, rep)) return true;
 
   const trading = (account.tradingName || account.legalName || "").trim().toLowerCase();
-  return teamMembers.some((tm) => {
+  return (teamMembers ?? []).some((tm) => {
     if (tm.role !== "retail") return false;
     if (String(tm.crmRequestedByUserId) !== String(user.id)) return false;
     if (tm.linkedAccountId && tm.linkedAccountId === account.id) return true;

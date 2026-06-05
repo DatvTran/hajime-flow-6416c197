@@ -56,6 +56,7 @@ export function normalizeIncentiveManagerState(body) {
       partnerId: String(s.partnerId ?? '').trim().slice(0, 64),
       partnerName: String(s.partnerName ?? '').trim().slice(0, 255),
       repName: String(s.repName ?? '').trim().slice(0, 255),
+      retailAccountName: String(s.retailAccountName ?? '').trim().slice(0, 255),
       type,
       date: String(s.date ?? '').trim().slice(0, 32),
       quantity: Math.max(1, Math.floor(Number(s.quantity) || 1)),
