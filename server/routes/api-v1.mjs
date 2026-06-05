@@ -73,6 +73,7 @@ import {
   applyPortalOrdersScope,
   applyPortalShipmentsScope,
   assertCanAccessSalesOrder,
+  distributorManagedAccountIds,
   hydrateShipmentsWithOrderNumbers,
   resolveSalesOrderPk,
 } from '../lib/portal-data-scope.mjs';
@@ -1527,11 +1528,20 @@ router.get('/orders', requirePermission(Permission.ORDERS_READ), async (req, res
       });
     }
     
-    let baseQuery = getDb('sales_orders')
+    const db = getDb();
+    let baseQuery = db('sales_orders')
       .where('sales_orders.tenant_id', tenantId)
       .whereNull('sales_orders.deleted_at');
 
-    baseQuery = await applyPortalOrdersScope(baseQuery, getDb(), tenantId, req.user);
+    if (req.user?.role === Role.DISTRIBUTOR) {
+      const accountIds = await distributorManagedAccountIds(db, tenantId, req.user.userId);
+      baseQuery =
+        accountIds.length === 0
+          ? baseQuery.whereRaw('1 = 0')
+          : baseQuery.whereIn('sales_orders.account_id', accountIds);
+    } else {
+      baseQuery = await applyPortalOrdersScope(baseQuery, db, tenantId, req.user);
+    }
     
     if (status) baseQuery = baseQuery.where('sales_orders.status', status);
     if (account_id) baseQuery = baseQuery.where('sales_orders.account_id', account_id);
@@ -1617,7 +1627,10 @@ router.get('/orders/:id', requirePermission(Permission.ORDERS_READ), async (req,
     }
     
     const items = await getDb('sales_order_items')
-      .where({ sales_order_id: orderPk, tenant_id: tenantId })
+      .where({
+        'sales_order_items.sales_order_id': orderPk,
+        'sales_order_items.tenant_id': tenantId,
+      })
       .leftJoin('products', 'sales_order_items.product_id', 'products.id')
       .select(
         'sales_order_items.*',
