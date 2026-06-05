@@ -5,10 +5,11 @@
 import { getDb } from '../config/request-db.mjs';
 import { platformDb } from '../config/database.mjs';
 import { hqFetchForScope } from './hq-global-view.mjs';
-import { hasPermission, Permission } from '../rbac/permissions.mjs';
+import { hasPermission, Permission, Role } from '../rbac/permissions.mjs';
 import {
   applyPortalOrdersScope,
   applyPortalShipmentsScope,
+  distributorManagedAccountIds,
   hydrateShipmentsWithOrderNumbers,
 } from './portal-data-scope.mjs';
 
@@ -77,7 +78,15 @@ async function fetchOrders(req, scope) {
       let q = db('sales_orders')
         .where('sales_orders.tenant_id', tid)
         .whereNull('sales_orders.deleted_at');
-      q = await applyPortalOrdersScope(q, db, tid, req.user);
+      if (req.user?.role === Role.DISTRIBUTOR) {
+        const accountIds = await distributorManagedAccountIds(db, tid, req.user.userId);
+        q =
+          accountIds.length === 0
+            ? q.whereRaw('1 = 0')
+            : q.whereIn('sales_orders.account_id', accountIds);
+      } else {
+        q = await applyPortalOrdersScope(q, db, tid, req.user);
+      }
       return q
         .leftJoin('accounts', 'sales_orders.account_id', 'accounts.id')
         .select(

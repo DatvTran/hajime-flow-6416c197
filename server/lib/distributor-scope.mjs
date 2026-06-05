@@ -46,7 +46,7 @@ export async function linkedAccountIdsForDistributor(db, tenantId, distributorUs
   const distId = distributorUserId != null ? Number(distributorUserId) : null;
   if (!tenantId || !distId) return [];
 
-  return getDb()('team_members')
+  return db('team_members')
     .where({ tenant_id: tenantId, managed_by_user_id: distId })
     .whereNotNull('linked_account_id')
     .pluck('linked_account_id');
