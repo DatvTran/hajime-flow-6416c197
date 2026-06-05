@@ -148,9 +148,15 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
+  LOG_RAW=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+  REB_HITS=$(echo "$LOG_RAW" | grep -ciE "RouteErrorBoundary" || true)
+  LOG_ERRORS=$(echo "$LOG_RAW" \
     | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
-  if [[ "$LOG_ERRORS" -eq 0 ]]; then
+  if [[ "$REB_HITS" -gt 0 ]]; then
+    fail "RouteErrorBoundary triggered $REB_HITS time(s) in last 24h — render crash reached users"
+    info "fly logs -a $APP_NAME --since 24h | grep -i RouteErrorBoundary"
+    stop "RouteErrorBoundary hit in prod logs — a render crash made it to a user. Fix before any new code."
+  elif [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
   elif [[ "$LOG_ERRORS" -le 5 ]]; then
     warn "$LOG_ERRORS error-class line(s) — review:"
@@ -330,6 +336,27 @@ else
   else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
+  fi
+
+  # Cross-tenant probe: tenant A token must not read tenant B data (should 403)
+  # Set HAJIME_TEST_TOKEN (valid JWT for tenant A) and HAJIME_OTHER_TENANT_ID
+  # (tenant B UUID) to enable this check; skipped when either is absent.
+  CROSS_TOKEN="${HAJIME_TEST_TOKEN:-}"
+  CROSS_TENANT="${HAJIME_OTHER_TENANT_ID:-}"
+  if [[ -z "$CROSS_TOKEN" || -z "$CROSS_TENANT" ]]; then
+    warn "Cross-tenant check skipped — set HAJIME_TEST_TOKEN + HAJIME_OTHER_TENANT_ID to enable"
+  else
+    CROSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: Bearer $CROSS_TOKEN" \
+      "${BASE_URL}/api/products?tenantId=${CROSS_TENANT}" 2>/dev/null || echo "000")
+    if [[ "$CROSS_CODE" == "403" ]]; then
+      pass "Cross-tenant probe → 403  ✓"
+    elif [[ "$CROSS_CODE" == "401" ]]; then
+      warn "Cross-tenant probe → 401 (token expired? refresh HAJIME_TEST_TOKEN)"
+    else
+      fail "Cross-tenant probe → $CROSS_CODE (expected 403) — possible data leak"
+      stop "Cross-tenant request returned $CROSS_CODE instead of 403. Investigate before deploying."
+    fi
   fi
 fi
 fi  # end START_TIER <= 3
