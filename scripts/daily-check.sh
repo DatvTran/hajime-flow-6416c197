@@ -148,8 +148,20 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
-    | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
+  # Fetch once; run multiple checks against the same snapshot
+  RAW_LOGS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+
+  # RouteErrorBoundary hits are an explicit STOP — a render crash reached a real user
+  REB_HITS=$(echo "$RAW_LOGS" | grep -c "RouteErrorBoundary" || true)
+  if [[ "$REB_HITS" -gt 0 ]]; then
+    fail "$REB_HITS RouteErrorBoundary hit(s) in last 24h"
+    stop "RouteErrorBoundary detected in prod logs. A render crash made it to a user — fix the crashing route before anything else."
+  else
+    pass "No RouteErrorBoundary hits in last 24h"
+  fi
+
+  # General error-class scan
+  LOG_ERRORS=$(echo "$RAW_LOGS" | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
   elif [[ "$LOG_ERRORS" -le 5 ]]; then
@@ -315,6 +327,18 @@ else
   stop "founder_admin or brand_operator is in SELF_REGISTERABLE_ROLES — anyone can self-register as admin."
 fi
 
+# Secondary: confirm the /register route handler actually passes body through registerSchema
+# (not a hand-rolled role check that could be bypassed)
+REGISTER_SCHEMA_USE=$(grep -A 10 "router\.post.*['\"]\/register" \
+  server/routes/auth.mjs 2>/dev/null \
+  | grep -i "registerSchema" || true)
+if [[ -n "$REGISTER_SCHEMA_USE" ]]; then
+  pass "Role guard: /register route uses registerSchema (enforces SELF_REGISTERABLE_ROLES)"
+else
+  warn "Could not confirm /register uses registerSchema — inspect server/routes/auth.mjs manually"
+  (( T3_FAILS++ )) || true
+fi
+
 # ── 3f. Auth smoke tests against prod ────────────────────────────────────────
 step "3f. Auth smoke — production"
 if [[ -n "$SKIP_PROD" ]]; then
@@ -331,6 +355,13 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  # Cross-tenant isolation (manual — requires a live token):
+  info "Cross-tenant check (run manually with a real brand-A token):"
+  info "  TOKEN=<brand-A-access-token>"
+  info "  curl -i -H \"Authorization: Bearer \$TOKEN\" \\"
+  info "    \"${BASE_URL}/api/products?tenantId=<brand-B-uuid>\""
+  info "  Expected: 403 Forbidden"
 fi
 fi  # end START_TIER <= 3
 
@@ -354,7 +385,7 @@ else
   echo ""
   echo "    Role              Path(s) to visit"
   echo "    ─────────────     ────────────────────────────────────────────────"
-  echo "    Brand Operator    /orders · /inventory · /markets (Cartographic)"
+  echo "    Brand Operator    /orders · /inventory · /global-markets (Cartographic)"
   echo "    Sales Rep         / · /sales/accounts · create a draft order"
   echo "    Manufacturer      /manufacturer (portal + production runs visible)"
   echo "    Retail            /retail/orders · /shipments · confirm no /settings link"
@@ -389,6 +420,13 @@ echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
 echo -e "${DIM}  npx playwright test --reporter=line       # all 6 suites${NC}"
 echo -e "${DIM}  fly volumes list -a $APP_NAME             # disk usage${NC}"
 echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+echo -e "${DIM}    SELECT event_type, role, count(*) FROM auth_events${NC}"
+echo -e "${DIM}    WHERE created_at > NOW()-'7 days'::interval GROUP BY 1,2${NC}"
+echo -e "${DIM}    Watch for: permission_denied spikes, account_locked, register with privileged role${NC}"
+echo -e "${DIM}  Review the three known gaps — has priority shifted?${NC}"
+echo -e "${DIM}    · Depletion reporting (inventory burn-down)${NC}"
+echo -e "${DIM}    · Sales Rep inventory visibility (blind to stock levels)${NC}"
+echo -e "${DIM}    · Production PO inventory gate (POs not blocked on stock)${NC}"
 echo ""
 
 [[ $TOTAL_FAILS -eq 0 ]]  # exit 0 on success, 1 on any failures
