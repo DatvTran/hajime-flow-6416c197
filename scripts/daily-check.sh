@@ -3,7 +3,12 @@
 #  Hajime daily health check — run every working day before writing new code.
 #
 #  Tiers run in order; Tier 1 failures block the rest.
-#  STOP CONDITIONS exit immediately and must be resolved before anything else.
+#  STOP CONDITIONS exit immediately and must be resolved before anything else:
+#    · Health endpoint not 200 + database:connected
+#    · RouteErrorBoundary hit in prod logs (render crash reached users)
+#    · tsc --noEmit errors (Vite green ≠ types green)
+#    · npm audit high/critical in runtime deps
+#    · auth_events shows privileged role in SELF_REGISTERABLE_ROLES
 #
 #  Usage:
 #    bash scripts/daily-check.sh               # full run
@@ -148,17 +153,24 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
-    | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
-  if [[ "$LOG_ERRORS" -eq 0 ]]; then
+  LOG_OUTPUT=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+  LOG_ERRORS=$(echo "$LOG_OUTPUT" \
+    | grep -ciE "error|unhandled|ECONN|5[0-9]{2}|RouteErrorBoundary" || true)
+  REB_HITS=$(echo "$LOG_OUTPUT" \
+    | grep -ciE "RouteErrorBoundary" || true)
+
+  if [[ "$REB_HITS" -gt 0 ]]; then
+    fail "$REB_HITS RouteErrorBoundary hit(s) in last 24h — render crash reached a user"
+    stop "RouteErrorBoundary triggered $REB_HITS time(s) in production logs. A render crash made it to users — fix before anything else."
+  elif [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
   elif [[ "$LOG_ERRORS" -le 5 ]]; then
     warn "$LOG_ERRORS error-class line(s) — review:"
-    info "fly logs -a $APP_NAME --since 24h | grep -iE 'error|unhandled|ECONN|5[0-9][0-9]'"
+    info "fly logs -a $APP_NAME --since 24h | grep -iE 'error|unhandled|ECONN|5[0-9][0-9]|RouteErrorBoundary'"
     (( T1_FAILS++ )) || true
   else
     fail "$LOG_ERRORS error-class lines in last 24h — likely a real issue"
-    info "fly logs -a $APP_NAME --since 24h | grep -iE 'error|unhandled|ECONN|5[0-9][0-9]'"
+    info "fly logs -a $APP_NAME --since 24h | grep -iE 'error|unhandled|ECONN|5[0-9][0-9]|RouteErrorBoundary'"
     (( T1_FAILS++ )) || true
   fi
 fi
@@ -331,6 +343,14 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  # Cross-tenant isolation — requires a real tenant-A token (manual)
+  echo ""
+  info "Cross-tenant smoke (manual — needs a real access token):"
+  info "  TOKEN=<tenant-A-access-token>"
+  info "  curl -i -H \"Authorization: Bearer \$TOKEN\" \\"
+  info "    \"${BASE_URL}/api/products?tenantId=<tenant-B-uuid>\""
+  info "  Expected: HTTP 403"
 fi
 fi  # end START_TIER <= 3
 
