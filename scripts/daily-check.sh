@@ -148,7 +148,18 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
+  LOGS_24H=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+
+  # RouteErrorBoundary = render crash reached a user — hard stop
+  REB_COUNT=$(echo "$LOGS_24H" | grep -ci "RouteErrorBoundary" || true)
+  if [[ "$REB_COUNT" -gt 0 ]]; then
+    fail "$REB_COUNT RouteErrorBoundary hit(s) in last 24h"
+    stop "RouteErrorBoundary appears in logs — a render crash reached users. Fix before proceeding."
+  else
+    pass "No RouteErrorBoundary hits in last 24h"
+  fi
+
+  LOG_ERRORS=$(echo "$LOGS_24H" \
     | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
@@ -330,6 +341,22 @@ else
   else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
+  fi
+
+  # Cross-tenant isolation: tenant A token must not access tenant B data (expect 403).
+  # Set CROSS_TENANT_TOKEN (tenant A JWT) and CROSS_TENANT_B_ID (tenant B UUID) to enable.
+  if [[ -n "${CROSS_TENANT_TOKEN:-}" && -n "${CROSS_TENANT_B_ID:-}" ]]; then
+    CT_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: Bearer ${CROSS_TENANT_TOKEN}" \
+      "${BASE_URL}/api/products?tenantId=${CROSS_TENANT_B_ID}" 2>/dev/null || echo "000")
+    if [[ "$CT_CODE" == "403" ]]; then
+      pass "Cross-tenant GET /api/products (tenant B) → 403  ✓"
+    else
+      fail "Cross-tenant GET /api/products (tenant B) → $CT_CODE (expected 403)"
+      stop "Cross-tenant isolation failed — tenant A token accessed tenant B data."
+    fi
+  else
+    warn "Skipping cross-tenant test — set CROSS_TENANT_TOKEN + CROSS_TENANT_B_ID to enable"
   fi
 fi
 fi  # end START_TIER <= 3
