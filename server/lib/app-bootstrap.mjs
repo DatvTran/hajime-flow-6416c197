@@ -12,6 +12,7 @@ import {
   distributorManagedAccountIds,
   hydrateShipmentsWithOrderNumbers,
 } from './portal-data-scope.mjs';
+import { attachSalesOrderItems } from './sales-order-items.mjs';
 
 const LIMITS = {
   products: 300,
@@ -100,7 +101,11 @@ async function fetchOrders(req, scope) {
     },
     scope,
   );
-  return rows.slice(0, limit);
+  const sliced = rows.slice(0, limit);
+  const tenantId = req.user?.tenantId ?? null;
+  if (!tenantId || sliced.length === 0) return sliced;
+  const db = getDb();
+  return attachSalesOrderItems(db, tenantId, sliced);
 }
 
 async function fetchInventory(req, scope) {

@@ -540,46 +540,42 @@ function transformToAppData(
           lastOrderDate: a.last_order_date || new Date().toISOString(),
         };
       }),
-      salesOrders: (orders || []).map((o) => {
-        const account = accountById.get(String(o.account_id));
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const firstLine = Array.isArray(o.items) && o.items.length > 0 ? (o.items[0] as any) : null;
-        const quantity = firstLine?.quantity_ordered ?? 0;
-        const price = Number(o.total_amount ?? o.subtotal ?? 0);
+      salesOrders: mapApiOrdersToSalesOrders(
+        (orders || []) as Record<string, unknown>[],
+        (accounts || []).map((a) => ({
+          id: String((a as { id: string | number }).id),
+          market: (a as { market?: string }).market,
+        })),
+      ),
+      inventory: (inventory || []).map((i) => {
+        const qty = Number(i.quantity_on_hand ?? 0);
+        const reserved = Number(i.reserved_quantity ?? 0);
+        const available = Number(i.available_quantity ?? qty - reserved);
+        const warehouse = String(i.location ?? i.warehouse ?? "Main Warehouse");
+        const caseSize = Number(i.case_size ?? i.metadata?.caseSize ?? 12) || 12;
+        const invStatus =
+          available <= 0
+            ? "reserved"
+            : available <= (Number(i.reorder_point) || 0)
+              ? "low"
+              : "available";
         return {
-          id: String(o.id),
-          account: o.account_trading_name || o.account_name || o.account_number || "Unknown account",
-          market: account?.market || "Unknown",
-          orderDate: o.order_date ? String(o.order_date).slice(0, 10) : new Date().toISOString().slice(0, 10),
-          requestedDelivery: o.requested_delivery_date
-            ? String(o.requested_delivery_date).slice(0, 10)
+          id: String(i.id),
+          sku: String(i.sku ?? ""),
+          productName: String(i.product_name ?? i.name ?? i.sku ?? ""),
+          batchLot: String(i.batch_lot ?? `B${new Date().getFullYear()}-${String(i.id).padStart(3, "0")}`),
+          productionDate: i.production_date
+            ? String(i.production_date).slice(0, 10)
             : new Date().toISOString().slice(0, 10),
-          sku: firstLine?.sku || "—",
-          quantity,
-          price,
-          salesRep: o.sales_rep || "—",
-          status: o.status || "draft",
-          paymentStatus: "pending",
-          accountId: String(o.account_id || ""),
-          orderNumber: o.order_number || String(o.id),
-          subtotal: Number(o.subtotal ?? price),
-          taxAmount: Number(o.tax_amount ?? 0),
-          shippingCost: Number(o.shipping_cost ?? 0),
-          totalAmount: price,
+          quantityBottles: qty,
+          quantityCases: caseSize > 0 ? Math.round((qty / caseSize) * 10) / 10 : qty,
+          warehouse,
+          locationType: "distributor_warehouse" as const,
+          status: invStatus === "low" ? ("available" as const) : (invStatus as "available" | "reserved"),
+          labelVersion: String(i.label_version ?? "v1.0"),
+          notes: String(i.notes ?? ""),
         };
       }),
-      inventory: (inventory || []).map(i => ({
-        id: i.id,
-        sku: i.sku,
-        productName: i.product_name,
-        location: i.location,
-        quantityBottles: i.quantity_on_hand,
-        reservedQuantity: i.reserved_quantity,
-        availableQuantity: i.available_quantity,
-        reorderPoint: i.reorder_point,
-        reorderQuantity: i.reorder_quantity,
-        status: i.available_quantity <= (i.reorder_point || 0) ? "low" : "available",
-      })),
       depletionReports: (depletionReports || []).map(r => ({
         id: r.id,
         accountId: r.account_id,
@@ -633,6 +629,20 @@ export function mapApiOrdersToSalesOrders(
       Array.isArray(o.items) && o.items.length > 0
         ? (o.items[0] as Record<string, unknown>)
         : null;
+    const items = Array.isArray(o.items) ? o.items : [];
+    const lines =
+      items.length > 0
+        ? items.map((it) => {
+            const row = it as Record<string, unknown>;
+            const qty = Number(row.quantity_ordered ?? 0);
+            const unit = Number(row.unit_price ?? 0);
+            return {
+              sku: String(row.sku ?? "—"),
+              quantityBottles: qty,
+              lineTotal: Math.round(qty * unit * 100) / 100,
+            };
+          })
+        : undefined;
     const quantity = firstLine?.quantity_ordered != null ? Number(firstLine.quantity_ordered) : 0;
     const price = Number(o.total_amount ?? o.subtotal ?? 0);
     return {
@@ -644,9 +654,10 @@ export function mapApiOrdersToSalesOrders(
       requestedDelivery: o.requested_delivery_date
         ? String(o.requested_delivery_date).slice(0, 10)
         : new Date().toISOString().slice(0, 10),
-      sku: firstLine?.sku ? String(firstLine.sku) : "—",
-      quantity,
+      sku: firstLine?.sku ? String(firstLine.sku) : lines?.[0]?.sku ?? "—",
+      quantity: lines?.[0]?.quantityBottles ?? quantity,
       price,
+      ...(lines && lines.length > 0 ? { lines } : {}),
       salesRep: o.sales_rep ? String(o.sales_rep) : "—",
       status: (o.status as import("@/data/mockData").SalesOrder["status"]) || "draft",
       paymentStatus: "pending",

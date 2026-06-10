@@ -69,6 +69,7 @@ import {
   paginateMergedRows,
 } from '../lib/hq-global-view.mjs';
 import { buildAppBootstrapPayload } from '../lib/app-bootstrap.mjs';
+import { attachSalesOrderItems } from '../lib/sales-order-items.mjs';
 import {
   applyPortalOrdersScope,
   applyPortalShipmentsScope,
@@ -1576,8 +1577,9 @@ router.get('/orders', requirePermission(Permission.ORDERS_READ), async (req, res
     
     const dataResultPromise = dataQuery.limit(Number(limit)).offset(offset);
     
-    const [countResult, orders] = await Promise.all([countQuery, dataResultPromise]);
-    
+    const [countResult, ordersRaw] = await Promise.all([countQuery, dataResultPromise]);
+    const orders = await attachSalesOrderItems(db, tenantId, ordersRaw);
+
     res.json({
       data: orders,
       pagination: {
