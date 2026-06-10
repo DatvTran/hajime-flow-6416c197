@@ -42,6 +42,12 @@ export default function DistributorPickPackPage() {
     [salesOrders],
   );
 
+  useEffect(() => {
+    if (loading) return;
+    if (pickQueue.length > 0) return;
+    void refreshSalesOrders();
+  }, [loading, pickQueue.length, refreshSalesOrders]);
+
   const inTransitOrders = useMemo(
     () => salesOrders.filter((o) => o.status === "shipped"),
     [salesOrders],
