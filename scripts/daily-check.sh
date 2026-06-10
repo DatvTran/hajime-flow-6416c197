@@ -148,9 +148,15 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
-    | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
-  if [[ "$LOG_ERRORS" -eq 0 ]]; then
+  LOG_OUTPUT=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+  LOG_ERRORS=$(echo "$LOG_OUTPUT" | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
+  REB_HITS=$(echo "$LOG_OUTPUT" | grep -c "RouteErrorBoundary" || true)
+
+  if [[ "$REB_HITS" -gt 0 ]]; then
+    fail "$REB_HITS RouteErrorBoundary hit(s) in last 24h — render crash reached users"
+    echo "$LOG_OUTPUT" | grep "RouteErrorBoundary" | tail -5 | sed 's/^/       /'
+    stop "RouteErrorBoundary triggered $REB_HITS time(s) — a page crashed for a real user. Fix before anything else."
+  elif [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
   elif [[ "$LOG_ERRORS" -le 5 ]]; then
     warn "$LOG_ERRORS error-class line(s) — review:"
@@ -331,7 +337,37 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  # Cross-tenant guard: tenant-A token must not see tenant-B data (expect 403)
+  # Set TENANT_A_TOKEN and TENANT_B_UUID in env to enable this check.
+  if [[ -n "${TENANT_A_TOKEN:-}" && -n "${TENANT_B_UUID:-}" ]]; then
+    step "3g. Cross-tenant guard"
+    XT_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: Bearer $TENANT_A_TOKEN" \
+      "${BASE_URL}/api/products?tenantId=${TENANT_B_UUID}" 2>/dev/null || echo "000")
+    if [[ "$XT_CODE" == "403" ]]; then
+      pass "Cross-tenant request → 403  ✓"
+    elif [[ "$XT_CODE" == "401" ]]; then
+      warn "Cross-tenant request → 401 (token may be expired; re-run with a fresh token)"
+    else
+      fail "Cross-tenant request → $XT_CODE (expected 403 — potential data leak)"
+      stop "Cross-tenant request returned $XT_CODE instead of 403. Tenant isolation may be broken."
+    fi
+  else
+    info "3g skipped — set TENANT_A_TOKEN + TENANT_B_UUID to enable cross-tenant guard check"
+  fi
 fi
+
+# ── 3h. auth_events 24h note ─────────────────────────────────────────────────
+step "3h. auth_events (last 24h) — if you have DB access"
+echo ""
+info "If you have psql access, run:"
+echo "    SELECT event_type, COUNT(*) FROM auth_events"
+echo "      WHERE created_at > NOW() - INTERVAL '24 hours'"
+echo "      GROUP BY event_type ORDER BY count DESC;"
+info "Watch for: permission_denied spikes, repeated account_locked, unexpected 'register' rows with privileged roles."
+echo ""
+
 fi  # end START_TIER <= 3
 
 # =============================================================================
@@ -386,9 +422,10 @@ fi
 echo ""
 echo -e "${DIM}Weekly add-ons (not daily — too noisy):${NC}"
 echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
-echo -e "${DIM}  npx playwright test --reporter=line       # all 6 suites${NC}"
-echo -e "${DIM}  fly volumes list -a $APP_NAME             # disk usage${NC}"
+echo -e "${DIM}  npx playwright test --reporter=line           # all 6 suites${NC}"
+echo -e "${DIM}  fly volumes list -a $APP_NAME                 # disk usage${NC}"
 echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+echo -e "${DIM}  Review known gaps: depletion reporting · sales rep inventory visibility · production PO inventory gate${NC}"
 echo ""
 
 [[ $TOTAL_FAILS -eq 0 ]]  # exit 0 on success, 1 on any failures
