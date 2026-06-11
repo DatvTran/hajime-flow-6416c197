@@ -41,6 +41,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { portalTimeGreeting } from "@/lib/i18n-portal";
+import { DistributorDeliveryScheduleView } from "@/components/distributor/DistributorDeliveryScheduleView";
 
 function warehousesFromApiRows(rows: Record<string, unknown>[]): Warehouse[] {
   return rows.map((row) => {
@@ -421,7 +422,7 @@ export default function DistributorHomePage() {
         </DistributorCard>
       </DistributorTwoCol>
 
-      <div id="delivery-schedule" className="scroll-mt-6 space-y-3.5">
+      <div id="active-shipments" className="scroll-mt-6 space-y-3.5">
         <DistributorSectionHead title="Active shipments" linkLabel="All shipments →" linkTo="/distributor/shipments" />
         <DistributorCard>
           <div className="overflow-x-auto">
@@ -465,30 +466,15 @@ export default function DistributorHomePage() {
             </table>
           </div>
         </DistributorCard>
+      </div>
 
-        <DistributorSectionHead title="Delivery schedule" linkLabel="Full tracker →" linkTo="/distributor/shipments" />
-        <div className="space-y-2">
-          {activeShipments.slice(0, 6).map((s) => (
-            <Link
-              key={`sched-${s.id}`}
-              to={distributorShipmentEditPath(s, salesOrders)}
-              className="flex flex-col gap-2 rounded-[10px] border border-border/60 bg-card px-4 py-3 shadow-[var(--shadow-soft)] no-underline text-inherit transition-shadow hover:shadow-[var(--shadow-lifted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:items-center sm:gap-3.5"
-            >
-              <p className="w-20 shrink-0 font-mono text-xs font-medium text-muted-foreground">{t("ETA")}</p>
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-medium">{s.destination}</p>
-                <p className="text-xs text-muted-foreground">{shipmentLineContentsLabel(s) || s.origin}</p>
-              </div>
-              <p className="font-mono text-[11px] text-muted-foreground">{s.id}</p>
-              <StatusBadge status={s.status === "delivered" ? "delivered" : "confirmed"} size="xs" />
-            </Link>
-          ))}
-          {activeShipments.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
-              {t("No upcoming deliveries in motion")}
-            </p>
-          ) : null}
-        </div>
+      <div id="delivery-schedule" className="scroll-mt-6 space-y-3.5">
+        <DistributorSectionHead title="Delivery schedule" linkLabel="Full tracker →" linkTo="/distributor/schedule" />
+        <DistributorDeliveryScheduleView
+          shipments={data.shipments}
+          salesOrders={salesOrders}
+          compact
+        />
       </div>
 
       <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-soft)]">
