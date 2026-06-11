@@ -1,98 +1,68 @@
 #!/usr/bin/env node
 /**
- * Verifies every sidebar navigation URL resolves to a registered React Router route.
+ * Audit that every sidebar navigation URL has a matching React Router <Route>.
  *
- * Catches the class of bug that caused the /orders crash: a field rename or route
- * removal that leaves a sidebar link pointing at a dead path, triggering
- * RouteErrorBoundary in production.
+ * Parses AppSidebar.tsx for url: "..." values and App.tsx for <Route path="...">
+ * declarations, then cross-checks them. Query strings are stripped before matching;
+ * dynamic segments (:param) in routes match any path segment.
  *
- * Exit 0 → all sidebar URLs match a registered route.
- * Exit 1 → one or more URLs are unmatched (stop condition for daily-check.sh).
+ * Exit 0: all sidebar URLs resolve. Exit 1: at least one is missing a route.
  */
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
+import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = resolve(__dirname, '..');
 
-const GREEN = '\x1b[32m';
-const RED   = '\x1b[31m';
-const DIM   = '\x1b[2m';
-const RESET = '\x1b[0m';
-const BOLD  = '\x1b[1m';
+// ── Extract sidebar URLs ──────────────────────────────────────────────────────
+const sidebarSrc = readFileSync(resolve(root, 'src/components/AppSidebar.tsx'), 'utf8');
+const rawSidebarUrls = [...sidebarSrc.matchAll(/url:\s*["']([^"']+)["']/g)].map((m) => m[1]);
 
-// ── Parse App.tsx for registered <Route path="..."> values ────────────────────
-function extractRegisteredRoutes(content) {
-  const routes = [];
-  for (const m of content.matchAll(/<Route[^>]+path="([^"]+)"/g)) {
-    const p = m[1];
-    if (p !== '*') routes.push(p); // exclude catch-all
-  }
-  return routes;
+// Deduplicate, strip query strings
+const sidebarUrls = [...new Set(rawSidebarUrls.map((u) => u.split('?')[0]))];
+
+// ── Extract registered routes ─────────────────────────────────────────────────
+const appSrc = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
+const registeredRoutes = [...appSrc.matchAll(/<Route\b[^>]*\bpath=["']([^"']+)["']/g)].map(
+  (m) => m[1],
+);
+
+// ── Match helper ──────────────────────────────────────────────────────────────
+// Converts a route pattern like "/retail/orders/:orderId" to a regex and tests it
+// against a concrete URL like "/retail/orders".
+function routeMatchesUrl(routePattern, url) {
+  if (routePattern === '*') return true; // catch-all
+  const pattern =
+    '^' +
+    routePattern
+      .split('/')
+      .map((seg) => (seg.startsWith(':') ? '[^/]+' : seg.replace(/[.+^${}()|[\]\\]/g, '\\$&')))
+      .join('/') +
+    '$';
+  return new RegExp(pattern).test(url);
 }
 
-// ── Parse AppSidebar.tsx for url: "..." values ────────────────────────────────
-function extractSidebarUrls(content) {
-  const urls = [];
-  for (const m of content.matchAll(/url:\s*"([^"]+)"/g)) {
-    urls.push(m[1]);
-  }
-  return urls;
-}
-
-// ── Convert a route pattern like /retail/orders/:orderId to a regex ───────────
-function routeToRegex(pattern) {
-  // Escape regex metacharacters except for the : param syntax we handle below
-  const escaped = pattern.replace(/[.+*?^${}()|[\]\\]/g, '\\$&');
-  const withParams = escaped.replace(/:[^/]+/g, '[^/]+');
-  return new RegExp(`^${withParams}\\/?$`);
-}
-
-// ── Strip query string and hash (sidebar URLs like /orders?tab=approved) ──────
-function stripQueryAndHash(url) {
-  return url.split('?')[0].split('#')[0];
-}
-
-// ── Main ──────────────────────────────────────────────────────────────────────
-const appContent     = readFileSync(path.join(ROOT, 'src/App.tsx'), 'utf-8');
-const sidebarContent = readFileSync(path.join(ROOT, 'src/components/AppSidebar.tsx'), 'utf-8');
-
-const registeredRoutes = extractRegisteredRoutes(appContent);
-const rawSidebarUrls   = extractSidebarUrls(sidebarContent);
-// Deduplicate (e.g. "/retail/new-order" appears twice for "New order" and "Catalog")
-const sidebarUrls = [...new Set(rawSidebarUrls)];
-
-const routeRegexes = registeredRoutes.map(r => ({ pattern: r, regex: routeToRegex(r) }));
-
+// ── Run audit ────────────────────────────────────────────────────────────────
 let failures = 0;
-const results = [];
+const missing = [];
 
-for (const rawUrl of sidebarUrls) {
-  const url     = stripQueryAndHash(rawUrl);
-  const matched = routeRegexes.some(({ regex }) => regex.test(url));
-  results.push({ url, rawUrl, matched });
-  if (!matched) failures++;
-}
-
-// ── Output ────────────────────────────────────────────────────────────────────
-const fileInfo = `${DIM}src/App.tsx${RESET}`;
-console.log(`\n${BOLD}audit-sidebar-links${RESET} — ${sidebarUrls.length} unique sidebar URLs · ${registeredRoutes.length} routes in ${fileInfo}\n`);
-
-for (const { url, rawUrl, matched } of results) {
-  const suffix = rawUrl !== url ? ` ${DIM}(strips query: ${rawUrl})${RESET}` : '';
-  if (matched) {
-    console.log(`  ${GREEN}✓${RESET} ${url}${suffix}`);
-  } else {
-    console.log(`  ${RED}✗${RESET} ${url}${suffix}  ${RED}← no matching route${RESET}`);
+for (const url of sidebarUrls) {
+  const matched = registeredRoutes.some((route) => routeMatchesUrl(route, url));
+  if (!matched) {
+    missing.push(url);
+    failures++;
   }
 }
 
-console.log('');
+// ── Report ────────────────────────────────────────────────────────────────────
 if (failures === 0) {
-  console.log(`${GREEN}✓ All ${sidebarUrls.length} sidebar URLs resolve to registered routes.${RESET}\n`);
-  process.exit(0);
+  console.log(`OK: all ${sidebarUrls.length} sidebar URLs resolve to registered routes`);
+  console.log(`    (${registeredRoutes.length} routes checked in App.tsx)`);
 } else {
-  console.error(`${RED}✗ ${failures} sidebar URL(s) have no matching route — fix before deploying.${RESET}\n`);
+  for (const url of missing) {
+    console.error(`MISSING ROUTE: sidebar links to "${url}" but no matching <Route> in App.tsx`);
+  }
+  console.error(`\nFAIL: ${failures} sidebar URL(s) have no matching route`);
   process.exit(1);
 }

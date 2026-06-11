@@ -13,6 +13,8 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint . && npm run check:no-legacy-start",
     "check:no-legacy-start": "node scripts/check-no-legacy-start.mjs",
+    "audit:sidebar": "node scripts/audit-sidebar-links.mjs",
+    "audit:imports": "node scripts/audit-imports.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
