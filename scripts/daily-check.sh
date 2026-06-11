@@ -6,7 +6,8 @@
 #  STOP CONDITIONS exit immediately and must be resolved before anything else.
 #
 #  Usage:
-#    bash scripts/daily-check.sh               # full run
+#    bash scripts/daily-check.sh               # full run (Tiers 1–4)
+#    bash scripts/daily-check.sh --weekly      # daily run + weekly add-ons
 #    bash scripts/daily-check.sh --skip-fly    # skip fly CLI checks (offline)
 #    bash scripts/daily-check.sh --skip-prod   # skip prod HTTP calls
 #    bash scripts/daily-check.sh --tier 2      # start from tier N
@@ -24,12 +25,14 @@ HEALTH_URL="${BASE_URL}/api/health"
 SKIP_FLY=""
 SKIP_PROD=""
 START_TIER=1
+WEEKLY=""
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-fly)   SKIP_FLY=1 ;;
     --skip-prod)  SKIP_PROD=1 ;;
+    --weekly)     WEEKLY=1 ;;
     --tier)       START_TIER="${2:?'--tier requires a number'}"; shift ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
@@ -365,9 +368,75 @@ fi
 fi  # end START_TIER <= 4
 
 # =============================================================================
+#  TIER W — Weekly add-ons  (~20–30 min, run once a week)
+# =============================================================================
+TW_FAILS=0
+
+if [[ -n "$WEEKLY" ]]; then
+hdr "TIER W — Weekly add-ons  (~20–30 min)"
+
+# ── Wa. Dependency freshness ──────────────────────────────────────────────────
+step "Wa. Dependency freshness (root)"
+npm outdated 2>&1 || true   # outdated exits non-zero when updates exist; don't fail
+pass "npm outdated (root) — review any major bumps above"
+
+step "Wb. Dependency freshness (server/)"
+npm outdated --prefix server 2>&1 || true
+pass "npm outdated (server) — review any major bumps above"
+
+# ── Wc. Full Playwright suite ─────────────────────────────────────────────────
+step "Wc. Full Playwright suite (all 6 suites, Chromium)"
+if [[ -f "playwright.config.ts" ]] && has_cmd npx; then
+  if npx playwright test --project=chromium --reporter=line 2>&1; then
+    pass "Playwright full suite: all tests pass"
+  else
+    fail "Playwright full suite: failures detected — check output above"
+    (( TW_FAILS++ )) || true
+  fi
+else
+  warn "Playwright not configured — skip or install: npm install -D @playwright/test"
+fi
+
+# ── Wd. Fly volume disk usage ─────────────────────────────────────────────────
+step "Wd. Fly volumes — disk usage"
+if [[ -n "$SKIP_FLY" ]]; then
+  warn "SKIP_FLY set — skipping volumes check"
+elif ! has_cmd fly; then
+  warn "fly CLI not found — skipping volumes check"
+else
+  VOL_OUT=$(fly volumes list -a "$APP_NAME" 2>/dev/null || echo "")
+  if [[ -n "$VOL_OUT" ]]; then
+    echo "$VOL_OUT" | sed 's/^/       /'
+    pass "fly volumes list: output above — verify server/data is not ballooning"
+  else
+    warn "No volumes found or fly volumes list returned empty"
+  fi
+fi
+
+# ── We. Manual review reminders ───────────────────────────────────────────────
+step "We. Manual review reminders (cannot be automated)"
+echo ""
+echo -e "  ${YELLOW}DB:${NC}  Review auth_events for the past 7 days:"
+echo -e "       SELECT event_type, COUNT(*) FROM auth_events"
+echo -e "       WHERE created_at > NOW() - INTERVAL '7 days'"
+echo -e "       GROUP BY event_type ORDER BY count DESC;"
+echo ""
+echo -e "  ${YELLOW}DB:${NC}  Review audit_logs for anomalies past 7 days:"
+echo -e "       SELECT action, resource_type, COUNT(*) FROM audit_logs"
+echo -e "       WHERE created_at > NOW() - INTERVAL '7 days'"
+echo -e "       GROUP BY action, resource_type ORDER BY count DESC;"
+echo ""
+echo -e "  ${YELLOW}GAP:${NC} Depletion reporting — any upstream changes affecting priority?"
+echo -e "  ${YELLOW}GAP:${NC} Sales Rep inventory visibility — widget still outstanding?"
+echo -e "  ${YELLOW}GAP:${NC} Production PO inventory gate — still blocked on PO approval flow?"
+echo ""
+
+fi  # end WEEKLY
+
+# =============================================================================
 #  SUMMARY
 # =============================================================================
-TOTAL_FAILS=$(( T1_FAILS + T2_FAILS + T3_FAILS + T4_FAILS ))
+TOTAL_FAILS=$(( T1_FAILS + T2_FAILS + T3_FAILS + T4_FAILS + TW_FAILS ))
 
 echo ""
 echo -e "${BOLD}${BLUE}━━━ SUMMARY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -381,14 +450,17 @@ else
   [[ $T2_FAILS -gt 0 ]] && echo -e "  ${RED}✗  Tier 2 (Code):       $T2_FAILS failure(s)${NC}"
   [[ $T3_FAILS -gt 0 ]] && echo -e "  ${RED}✗  Tier 3 (Security):   $T3_FAILS failure(s)${NC}"
   [[ $T4_FAILS -gt 0 ]] && echo -e "  ${RED}✗  Tier 4 (Smoke):      $T4_FAILS failure(s)${NC}"
+  [[ $TW_FAILS -gt 0 ]] && echo -e "  ${RED}✗  Tier W (Weekly):     $TW_FAILS failure(s)${NC}"
 fi
 
-echo ""
-echo -e "${DIM}Weekly add-ons (not daily — too noisy):${NC}"
-echo -e "${DIM}  npm outdated && (cd server && npm outdated)${NC}"
-echo -e "${DIM}  npx playwright test --reporter=line       # all 6 suites${NC}"
-echo -e "${DIM}  fly volumes list -a $APP_NAME             # disk usage${NC}"
-echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+if [[ -z "$WEEKLY" ]]; then
+  echo ""
+  echo -e "${DIM}Run with --weekly once a week for add-ons:${NC}"
+  echo -e "${DIM}  npm outdated (root + server)${NC}"
+  echo -e "${DIM}  npx playwright test --project=chromium  # all 6 suites${NC}"
+  echo -e "${DIM}  fly volumes list -a $APP_NAME${NC}"
+  echo -e "${DIM}  Review auth_events + audit_logs for past 7 days${NC}"
+fi
 echo ""
 
 [[ $TOTAL_FAILS -eq 0 ]]  # exit 0 on success, 1 on any failures
