@@ -51,13 +51,6 @@ export const TEAM_ROSTER: TeamMember[] = [
     createdAt: "2026-01-10",
   },
   {
-    id: "tm-seed-8",
-    displayName: "Priya Nandakumar",
-    email: "pnandakumar@convoysupply.example",
-    role: "distributor",
-    createdAt: "2026-01-11",
-  },
-  {
     id: "tm-seed-9",
     displayName: "Kirin Production Liaison",
     email: "export@kirin.example",

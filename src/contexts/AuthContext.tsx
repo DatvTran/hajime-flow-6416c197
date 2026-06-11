@@ -486,6 +486,9 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
 
 export function homePathForRole(role: HajimeRole): string {
   if (role === "manufacturer") return "/manufacturer";
+  if (role === "distributor") return "/distributor";
+  if (role === "retail") return "/";
+  if (role === "sales_rep" || role === "sales") return "/sales";
   if (role === "founder_admin") return "/";
   return "/";
 }
