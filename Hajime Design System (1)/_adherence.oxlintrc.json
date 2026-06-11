@@ -1,0 +1,213 @@
+{
+  "plugins": [
+    "react",
+    "import"
+  ],
+  "rules": {
+    "react/forbid-elements": [
+      "warn",
+      {
+        "forbid": []
+      }
+    ],
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": [
+              "app/**",
+              "deck-stage.js",
+              "design-canvas.jsx",
+              "journeys/**",
+              "markets/**",
+              "tweaks-panel.jsx"
+            ],
+            "message": "Import design-system components from 'index.js', not component internals."
+          }
+        ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "Literal[value=/#[0-9a-fA-F]{3,8}\\b/]",
+        "message": "Raw hex color — use a design-system color token via var()."
+      },
+      {
+        "selector": "Literal[value=/\\b\\d+px\\b/]",
+        "message": "Raw px value — use a design-system spacing token via var()."
+      },
+      {
+        "selector": "Literal[value=/font-family\\s*:\\s*(?!['\\\"]?(?:Cormorant Garamond|DM Sans|JetBrains Mono))/i]",
+        "message": "Font not provided by the design system. Available: Cormorant Garamond, DM Sans, JetBrains Mono."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/index.js"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "x-omelette": {
+    "components": {},
+    "tokens": [
+      "--accent",
+      "--accent-foreground",
+      "--accent-hover",
+      "--background",
+      "--border",
+      "--card",
+      "--card-foreground",
+      "--destructive",
+      "--destructive-foreground",
+      "--ease-in-out",
+      "--ease-out-expo",
+      "--font-body",
+      "--font-display",
+      "--font-mono",
+      "--foreground",
+      "--fs-2xl",
+      "--fs-2xs",
+      "--fs-3xl",
+      "--fs-4xl",
+      "--fs-5xl",
+      "--fs-base",
+      "--fs-lg",
+      "--fs-sm",
+      "--fs-xl",
+      "--fs-xs",
+      "--glass-bg",
+      "--glass-border",
+      "--info",
+      "--info-foreground",
+      "--input",
+      "--muted",
+      "--muted-foreground",
+      "--popover",
+      "--popover-foreground",
+      "--primary",
+      "--primary-foreground",
+      "--radius",
+      "--radius-2xl",
+      "--radius-full",
+      "--radius-lg",
+      "--radius-md",
+      "--radius-sm",
+      "--radius-xl",
+      "--ring",
+      "--secondary",
+      "--secondary-foreground",
+      "--shadow-float",
+      "--shadow-lifted",
+      "--shadow-soft",
+      "--sidebar-accent",
+      "--sidebar-accent-foreground",
+      "--sidebar-background",
+      "--sidebar-border",
+      "--sidebar-foreground",
+      "--sidebar-primary",
+      "--sidebar-primary-foreground",
+      "--sidebar-ring",
+      "--space-1",
+      "--space-10",
+      "--space-12",
+      "--space-2",
+      "--space-3",
+      "--space-4",
+      "--space-5",
+      "--space-6",
+      "--space-8",
+      "--success",
+      "--success-foreground",
+      "--surface-elevated",
+      "--surface-sunken",
+      "--warning",
+      "--warning-foreground"
+    ],
+    "tokenKinds": {
+      "--background": "color",
+      "--foreground": "color",
+      "--card": "color",
+      "--card-foreground": "color",
+      "--popover": "color",
+      "--popover-foreground": "color",
+      "--secondary": "color",
+      "--secondary-foreground": "color",
+      "--muted": "color",
+      "--muted-foreground": "color",
+      "--border": "color",
+      "--input": "color",
+      "--ring": "color",
+      "--primary": "color",
+      "--primary-foreground": "color",
+      "--accent": "color",
+      "--accent-foreground": "color",
+      "--accent-hover": "color",
+      "--success": "color",
+      "--success-foreground": "color",
+      "--warning": "color",
+      "--warning-foreground": "color",
+      "--destructive": "color",
+      "--destructive-foreground": "color",
+      "--info": "color",
+      "--info-foreground": "color",
+      "--sidebar-background": "color",
+      "--sidebar-foreground": "color",
+      "--sidebar-primary": "color",
+      "--sidebar-primary-foreground": "color",
+      "--sidebar-accent": "color",
+      "--sidebar-accent-foreground": "color",
+      "--sidebar-border": "color",
+      "--sidebar-ring": "color",
+      "--surface-elevated": "color",
+      "--surface-sunken": "color",
+      "--glass-bg": "color",
+      "--glass-border": "color",
+      "--radius": "radius",
+      "--radius-sm": "radius",
+      "--radius-md": "radius",
+      "--radius-lg": "radius",
+      "--radius-xl": "radius",
+      "--radius-2xl": "radius",
+      "--radius-full": "radius",
+      "--shadow-soft": "shadow",
+      "--shadow-lifted": "shadow",
+      "--shadow-float": "shadow",
+      "--ease-out-expo": "other",
+      "--ease-in-out": "other",
+      "--space-1": "spacing",
+      "--space-2": "spacing",
+      "--space-3": "spacing",
+      "--space-4": "spacing",
+      "--space-5": "spacing",
+      "--space-6": "spacing",
+      "--space-8": "spacing",
+      "--space-10": "spacing",
+      "--space-12": "spacing",
+      "--font-display": "font",
+      "--font-body": "font",
+      "--font-mono": "font",
+      "--fs-2xs": "spacing",
+      "--fs-xs": "spacing",
+      "--fs-sm": "spacing",
+      "--fs-base": "spacing",
+      "--fs-lg": "spacing",
+      "--fs-xl": "spacing",
+      "--fs-2xl": "spacing",
+      "--fs-3xl": "spacing",
+      "--fs-4xl": "spacing",
+      "--fs-5xl": "spacing"
+    },
+    "fontFamilies": [
+      "Cormorant Garamond",
+      "DM Sans",
+      "JetBrains Mono"
+    ]
+  }
+}

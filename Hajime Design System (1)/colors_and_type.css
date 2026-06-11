@@ -21,54 +21,54 @@
 
 :root {
   /* ─── Neutrals — warm stone ─── */
-  --background: 40 18% 97%;          /* #F7F4EE — paper */
-  --foreground: 24 10% 10%;          /* #1C1916 — sumi ink */
-  --card: 40 20% 99%;
-  --card-foreground: 24 10% 10%;
-  --popover: 40 20% 99%;
-  --popover-foreground: 24 10% 10%;
-  --secondary: 35 16% 93%;
-  --secondary-foreground: 24 10% 10%;
-  --muted: 37 14% 94%;
-  --muted-foreground: 24 6% 50%;     /* #857F78 — quiet text */
-  --border: 35 12% 89%;
-  --input: 35 12% 89%;
-  --ring: 40 88% 42%;
+  --background: 40 18% 97%; /* @kind color */
+  --foreground: 24 10% 10%; /* @kind color */
+  --card: 40 20% 99%; /* @kind color */
+  --card-foreground: 24 10% 10%; /* @kind color */
+  --popover: 40 20% 99%; /* @kind color */
+  --popover-foreground: 24 10% 10%; /* @kind color */
+  --secondary: 35 16% 93%; /* @kind color */
+  --secondary-foreground: 24 10% 10%; /* @kind color */
+  --muted: 37 14% 94%; /* @kind color */
+  --muted-foreground: 24 6% 50%; /* @kind color */
+  --border: 35 12% 89%; /* @kind color */
+  --input: 35 12% 89%; /* @kind color */
+  --ring: 40 88% 42%; /* @kind color */
 
   /* ─── Primary — ink ─── */
-  --primary: 24 10% 10%;
-  --primary-foreground: 40 20% 97%;
+  --primary: 24 10% 10%; /* @kind color */
+  --primary-foreground: 40 20% 97%; /* @kind color */
 
   /* ─── Accent — barrel gold (signature) ─── */
-  --accent: 40 88% 42%;              /* #C98A0C — barrel gold */
-  --accent-foreground: 40 20% 97%;
-  --accent-hover: 32 78% 48%;        /* warmer press state */
+  --accent: 40 88% 42%; /* @kind color */
+  --accent-foreground: 40 20% 97%; /* @kind color */
+  --accent-hover: 32 78% 48%; /* @kind color */
 
   /* ─── Semantic ─── */
-  --success: 158 56% 36%;            /* #278F65 */
-  --success-foreground: 0 0% 100%;
-  --warning: 38 90% 50%;             /* #F2A10D */
-  --warning-foreground: 24 10% 10%;
-  --destructive: 0 68% 48%;          /* #CC2727 */
-  --destructive-foreground: 0 0% 100%;
-  --info: 215 72% 50%;               /* #2A78DB */
-  --info-foreground: 0 0% 100%;
+  --success: 158 56% 36%; /* @kind color */
+  --success-foreground: 0 0% 100%; /* @kind color */
+  --warning: 38 90% 50%; /* @kind color */
+  --warning-foreground: 24 10% 10%; /* @kind color */
+  --destructive: 0 68% 48%; /* @kind color */
+  --destructive-foreground: 0 0% 100%; /* @kind color */
+  --info: 215 72% 50%; /* @kind color */
+  --info-foreground: 0 0% 100%; /* @kind color */
 
   /* ─── Sidebar — deep sumi ink ─── */
-  --sidebar-background: 24 12% 8%;   /* #17140F */
-  --sidebar-foreground: 35 12% 78%;
-  --sidebar-primary: 40 88% 42%;
-  --sidebar-primary-foreground: 24 12% 8%;
-  --sidebar-accent: 24 10% 13%;
-  --sidebar-accent-foreground: 35 14% 90%;
-  --sidebar-border: 24 10% 15%;
-  --sidebar-ring: 40 88% 42%;
+  --sidebar-background: 24 12% 8%; /* @kind color */
+  --sidebar-foreground: 35 12% 78%; /* @kind color */
+  --sidebar-primary: 40 88% 42%; /* @kind color */
+  --sidebar-primary-foreground: 24 12% 8%; /* @kind color */
+  --sidebar-accent: 24 10% 13%; /* @kind color */
+  --sidebar-accent-foreground: 35 14% 90%; /* @kind color */
+  --sidebar-border: 24 10% 15%; /* @kind color */
+  --sidebar-ring: 40 88% 42%; /* @kind color */
 
   /* ─── Surfaces ─── */
-  --surface-elevated: 40 20% 100%;
-  --surface-sunken: 37 14% 94%;
-  --glass-bg: 40 20% 99% / 0.8;
-  --glass-border: 35 12% 89% / 0.6;
+  --surface-elevated: 40 20% 100%; /* @kind color */
+  --surface-sunken: 37 14% 94%; /* @kind color */
+  --glass-bg: 40 20% 99% / 0.8; /* @kind color */
+  --glass-border: 35 12% 89% / 0.6; /* @kind color */
 
   /* ─── Radius ─── */
   --radius: 0.625rem;                /* 10px */
@@ -85,8 +85,8 @@
   --shadow-float:  0 4px 8px hsl(24 10% 10% / 0.06), 0 16px 40px hsl(24 10% 10% / 0.1);
 
   /* ─── Easing ─── */
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-in-out:   cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1); /* @kind other */
+  --ease-in-out:   cubic-bezier(0.65, 0, 0.35, 1); /* @kind other */
 
   /* ─── Spacing — tailwind 4-pt ─── */
   --space-1: 0.25rem;

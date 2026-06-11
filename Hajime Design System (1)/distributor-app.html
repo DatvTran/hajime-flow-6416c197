@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- @dsCard group="Brand" name="Distributor App" -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -270,7 +271,7 @@ body{background:hsl(var(--background));color:hsl(var(--foreground));font-family:
   <div class="side-div"></div>
   <nav class="nav-section" style="padding-top:4px">
     <div class="nav-label">Logistics</div>
-    <div class="navitem" data-nav="shipments"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Active shipments<span class="nb nb-green">4</span></div>
+    <div class="navitem" data-nav="shipments"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Shipments<span class="nb nb-green">5</span></div>
     <div class="navitem" data-nav="schedule"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Delivery schedule</div>
     <div class="navitem" data-nav="accounts"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Retail accounts<span class="nb nb-red" id="pending-badge" style="display:none">0</span></div>
     <div class="navitem" data-nav="sales-reps"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/><line x1="15" y1="11" x2="21" y2="11"/><line x1="18" y1="8" x2="18" y2="14"/></svg>Sales reps</div>
@@ -296,10 +297,16 @@ body{background:hsl(var(--background));color:hsl(var(--foreground));font-family:
     </div>
   </header>
   <div id="pg"></div>
+  <div id="receipt-modal" style="display:none;position:fixed;inset:0;background:hsl(24 12%8%/.5);backdrop-filter:blur(4px);z-index:100;align-items:center;justify-content:center" onclick="if(event.target===this)closeReceipt()">
+    <div style="background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:18px;padding:26px;max-width:520px;width:90%;box-shadow:var(--shadow-float)">
+      <div id="receipt-body"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px"><button class="btn btn-outline btn-sm" onclick="closeReceipt()">Close</button><button class="btn btn-accent btn-sm" onclick="closeReceipt()">Download PDF</button></div>
+    </div>
+  </div>
 </main>
 </div>
 <script>
-const LABELS={dashboard:'Dashboard',approvals:'Order approvals','purchase-orders':'Purchase orders',inventory:'Inventory',replenish:'Request replenishment','pick-pack':'Pick & pack','log-shipment':'Log shipment',shipments:'Active shipments','account-detail':'Account',schedule:'Delivery schedule',accounts:'Retail accounts','sales-reps':'Sales reps',partner:'Partner program',analytics:'Analytics & reports',support:'Support'};
+const LABELS={dashboard:'Dashboard',approvals:'Order approvals','purchase-orders':'Purchase orders',inventory:'Inventory',replenish:'Request replenishment','pick-pack':'Pick & pack','log-shipment':'Log shipment',shipments:'Shipments','account-detail':'Account',schedule:'Delivery schedule',accounts:'Retail accounts','sales-reps':'Sales reps',partner:'Partner program',analytics:'Analytics & reports',support:'Support'};
 let currentAcct='The Drake Hotel';
 function nav(id){
   document.querySelectorAll('[data-nav]').forEach(el=>el.classList.toggle('active',el.dataset.nav===id));
@@ -848,21 +855,94 @@ PAGES['account-detail']=()=>{
 };
 
 /* ── SHIPMENTS ── */
+const INBOUND=[
+  {tracking:'NF-5521-0098',po:'RPL-2026-0061',from:'Kuramoto Brewing → Empire Wines DC',items:'8 pallets · 448 cs Florin Peaks 750ml',sku:'HJM-FP-750',cases:448,eta:'Wed 18 Jun, 8–11am',st:'blue',sl:'in-transit',steps:['done','done','cur',''],carrier:'Nippon Freight',rcv:''},
+  {tracking:'NF-5518-0072',po:'RPL-2026-0058',from:'Hajime HQ Tokyo DC → Empire Wines DC',items:'4 pallets · 224 cs Junmai Shiro 720ml',sku:'HJM-JN-720',cases:224,eta:'Mon 16 Jun, 1–3pm',st:'blue',sl:'in-transit',steps:['done','done','cur',''],carrier:'Nippon Freight',rcv:''},
+  {tracking:'NF-5502-0041',po:'RPL-2026-0054',from:'Echigo Kura → Empire Wines DC',items:'3 pallets · 144 cs Ryusui Reserve 500ml',sku:'HJM-RY-500',cases:144,eta:'Received Fri 6 Jun, 9am',st:'green',sl:'received',steps:['done','done','done','done'],carrier:'Nippon Freight',rcv:'J. Wei · 144 cs verified'},
+];
+function viewReceipt(idx){
+  const s=INBOUND[idx];if(!s)return;
+  const cap=s.cases?(s.cases*Math.round(({'HJM-FP-750':38,'HJM-JN-720':26,'HJM-RY-500':65})[s.sku]||30)):0;
+  const ov=document.getElementById('receipt-modal');
+  document.getElementById('receipt-body').innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid hsl(var(--border)/.5)">
+      <div style="width:44px;height:44px;border-radius:11px;background:hsl(158 56%36%/.1);color:hsl(158 56%30%);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgi(IC.check,22)}</div>
+      <div><div style="font-family:var(--font-display);font-size:18px;font-weight:600;letter-spacing:-.01em">Goods receipt</div><div style="font-size:12px;color:hsl(var(--muted-foreground))">GRN-${s.tracking.replace(/\D/g,'').slice(-6)} · verified at Empire Wines DC</div></div>
+      <span style="margin-left:auto">${pill('green','received')}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+      ${[['Source order',s.po],['Tracking',s.tracking],['From',s.from.split('→')[0].trim()],['Carrier',s.carrier],['Received',s.eta.replace('Received ','')],['Verified by','J. Wei · Operations Lead']].map(r=>`<div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600">${r[0]}</div><div style="font-size:13px;font-weight:500;margin-top:2px;font-family:${/\d{3,}/.test(r[1])&&!/ /.test(r[1])?'var(--font-mono)':'inherit'}">${r[1]}</div></div>`).join('')}
+    </div>
+    <div style="border:1px solid hsl(var(--border)/.6);border-radius:10px;overflow:hidden;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;padding:10px 14px;background:hsl(var(--muted)/.5);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600"><div>SKU received</div><div style="text-align:right">Ordered</div><div style="text-align:right">Verified</div></div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;padding:12px 14px;font-size:13px;align-items:center"><div><div style="font-weight:500">${s.items.split('·').slice(1).join('·').trim()}</div><div style="font-family:var(--font-mono);font-size:11px;color:hsl(var(--muted-foreground))">${s.sku}</div></div><div class="mono" style="text-align:right">${s.cases} cs</div><div class="mono" style="text-align:right;color:hsl(158 56%32%);font-weight:600">${s.cases} cs ✓</div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:hsl(158 56%36%/.06);border:1px solid hsl(158 56%36%/.2);border-radius:10px;font-size:12px;color:hsl(158 56%28%)">${svgi(IC.check,14)} Full quantity verified — no discrepancies. ${s.cases} cases added to inventory under ${s.sku}.</div>`;
+  if(ov)ov.style.display='flex';
+}
+function closeReceipt(){const ov=document.getElementById('receipt-modal');if(ov)ov.style.display='none';}
+function receiveInbound(idx){
+  const s=INBOUND[idx];if(!s||s.st==='green')return;
+  s.st='green';s.sl='received';s.steps=['done','done','done','done'];
+  s.eta='Received '+new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+', '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  s.rcv='J. Wei · '+s.cases+' cs verified';
+  const inv=INV.find(i=>i.sku===s.sku);
+  if(inv){inv.oh+=s.cases;inv.avail+=s.cases;if(inv.avail>=inv.rpt*1.5)inv.st='ok';else if(inv.avail>=inv.rpt)inv.st='med';}
+  const badge=document.querySelector('[data-nav="shipments"] .nb');
+  if(badge){const n=INBOUND.filter(x=>x.st!=='green').length+SHIPMENTS.filter(x=>x.st!=='green').length;badge.textContent=n;badge.style.display=n>0?'':'none';}
+  nav('shipments');
+}
 PAGES.shipments=()=>`
 <div class="pw enter">
-  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Active shipments</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">All outbound shipments · live tracking via Kentoku Logistics</p></div>
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Shipments</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Track inbound stock from manufacturers and outbound deliveries to accounts</p></div>
     <button class="btn btn-accent btn-sm">+ Log new shipment</button>
   </div>
-  <div class="filter-bar"><button class="filter-btn active">All</button><button class="filter-btn">In transit</button><button class="filter-btn">Delivered</button></div>
-  ${SHIPMENTS.map((s,i)=>`
+  <div class="filter-bar" style="margin-bottom:18px">
+    <button class="filter-btn dir-btn active" onclick="shipDir('in')">↓ Inbound to warehouse <span class="mono" style="opacity:.6">(${INBOUND.filter(s=>s.st!=='green').length})</span></button>
+    <button class="filter-btn dir-btn" onclick="shipDir('out')">↑ Outbound to accounts <span class="mono" style="opacity:.6">(${SHIPMENTS.filter(s=>s.st!=='green').length})</span></button>
+  </div>
+
+  <!-- INBOUND -->
+  <div id="ship-in">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <div style="font-size:12px;color:hsl(var(--muted-foreground))">Pallets en route from manufacturers & HQ to the Empire Wines DC — from your approved replenishment requests.</div>
+    </div>
+    ${INBOUND.map((s,i)=>`
+    <div style="background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;margin-bottom:12px;overflow:hidden;box-shadow:var(--shadow-soft)">
+      <div style="display:flex;align-items:center;gap:14px;padding:16px 20px;cursor:pointer;transition:background 140ms" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'" onmouseover="this.style.background='hsl(var(--muted)/.25)'" onmouseout="this.style.background=''">
+        <div style="width:38px;height:38px;border-radius:9px;background:hsl(280 40%50%/.1);color:hsl(280 40%48%);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgi(IC.truck,18)}</div>
+        <div style="flex:1;min-width:0"><div style="font-family:var(--font-mono);font-size:11px;color:hsl(var(--muted-foreground))">${s.tracking} · ${s.po}</div><div style="font-size:14px;font-weight:600;margin-top:2px">${s.from}</div><div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px">${s.items}</div></div>
+        <div style="text-align:right;flex-shrink:0"><div style="font-size:13px;color:hsl(var(--muted-foreground))">${s.st==='green'?'Arrived':'ETA'}</div><div style="font-size:13px;font-weight:500;margin-top:2px">${s.eta.replace('Received ','')}</div></div>
+        ${pill(s.st,s.sl)}
+        ${svgi(`<path d="m6 9 6 6 6-6"/>`,16)}
+      </div>
+      <div style="display:${i===0?'block':'none'};padding:16px 20px;border-top:1px solid hsl(var(--border)/.4)">
+        <div class="mini-steps">
+          ${['Packed at source','Dispatched','In transit','Received at DC'].map((l,j)=>`<div class="mstep ${s.steps[j]===''?'':s.steps[j]}"><div class="mstep-dot">${s.steps[j]==='done'?svgi(IC.check,8):s.steps[j]==='cur'?'●':'○'}</div><div class="mstep-lbl">${l}</div></div>`).join('')}
+        </div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:13px;margin-top:16px;padding-top:14px;border-top:1px solid hsl(var(--border)/.5)">
+          <div>Carrier <strong>${s.carrier}</strong></div>
+          <div>Tracking <strong style="font-family:var(--font-mono)">${s.tracking}</strong></div>
+          <div>Source order <strong style="font-family:var(--font-mono)">${s.po}</strong></div>
+          ${s.rcv?`<div>Received <strong>${s.rcv}</strong></div>`:''}
+          <div style="margin-left:auto">${s.st==='green'?`<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();viewReceipt(${i})">View receipt</button>`:`<button class="btn btn-green btn-sm" onclick="event.stopPropagation();receiveInbound(${i})">Receive & add to inventory</button>`}</div>
+        </div>
+      </div>
+    </div>`).join('')}
+  </div>
+
+  <!-- OUTBOUND -->
+  <div id="ship-out" style="display:none">
+    <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:12px">Deliveries from the Empire Wines DC out to retail accounts.</div>
+    ${SHIPMENTS.map((s,i)=>`
   <div style="background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;margin-bottom:12px;overflow:hidden;box-shadow:var(--shadow-soft)">
-    <div style="display:flex;align-items:center;gap:14px;padding:16px 20px;cursor:pointer;transition:background 140ms" onclick="this.nextElementSibling.classList.toggle('open')" onmouseover="this.style.background='hsl(var(--muted)/.25)'" onmouseout="this.style.background=''">
+    <div style="display:flex;align-items:center;gap:14px;padding:16px 20px;cursor:pointer;transition:background 140ms" onclick="const d=this.nextElementSibling;d.style.display=d.style.display==='block'?'none':'block'" onmouseover="this.style.background='hsl(var(--muted)/.25)'" onmouseout="this.style.background=''">
       <div style="flex:1"><div style="font-family:var(--font-mono);font-size:11px;color:hsl(var(--muted-foreground))">${s.tracking} · ${s.po}</div><div style="font-size:15px;font-weight:600;margin-top:2px;display:inline-flex;align-items:center;gap:5px;cursor:pointer" onclick="event.stopPropagation();openAccount('${s.acct.replace(/'/g,"\\'")}')" onmouseover="this.style.color='hsl(var(--accent))'" onmouseout="this.style.color=''">${s.acct}${svgi(`<path d="m9 18 6-6-6-6"/>`,13)}</div><div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px">${s.items}</div></div>
       <div style="text-align:right;flex-shrink:0"><div style="font-size:13px;color:hsl(var(--muted-foreground))">ETA</div><div style="font-size:13px;font-weight:500;margin-top:2px">${s.eta}</div></div>
       ${pill(s.st,s.sl)}
       ${svgi(`<path d="m6 9 6 6 6-6"/>`,16)}
     </div>
-    <div style="display:none;padding:16px 20px;border-top:1px solid hsl(var(--border)/.4)" class="${i<2?'open':''}">
+    <div style="display:${i<2?'block':'none'};padding:16px 20px;border-top:1px solid hsl(var(--border)/.4)">
       <div class="mini-steps">
         ${['Packed','Picked up','In transit','Delivered'].map((l,j)=>`<div class="mstep ${s.steps[j]===''?'':s.steps[j]}"><div class="mstep-dot">${s.steps[j]==='done'?svgi(IC.check,8):s.steps[j]==='cur'?'●':'○'}</div><div class="mstep-lbl">${l}</div></div>`).join('')}
       </div>
@@ -874,7 +954,14 @@ PAGES.shipments=()=>`
       </div>
     </div>
   </div>`).join('')}
+  </div>
 </div>`;
+function shipDir(dir){
+  document.querySelectorAll('.dir-btn').forEach((b,i)=>b.classList.toggle('active',(dir==='in')===(i===0)));
+  const inb=document.getElementById('ship-in'),out=document.getElementById('ship-out');
+  if(inb)inb.style.display=dir==='in'?'block':'none';
+  if(out)out.style.display=dir==='out'?'block':'none';
+}
 
 /* ── DELIVERY SCHEDULE ── */
 const SCHED=[
@@ -1124,7 +1211,7 @@ return`
           const rep=REPS.find(r=>r.id===a.rep);
           const hasRep=rep&&rep.id!=='unassigned';
           return`<tr>
-            <td style="font-weight:500">${a.n}</td>
+            <td style="font-weight:500"><span style="display:inline-flex;align-items:center;gap:5px;cursor:pointer" onclick="openAccount('${a.n.replace(/'/g,"\\'")}')" onmouseover="this.style.color='hsl(var(--accent))'" onmouseout="this.style.color=''">${a.n}${svgi(`<path d="m9 18 6-6-6-6"/>`,12)}</span></td>
             <td style="color:hsl(var(--muted-foreground))">${a.t}</td>
             <td>
               <div style="display:flex;align-items:center;gap:8px">
