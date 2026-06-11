@@ -52,7 +52,7 @@ const operationsItems: NavItem[] = [
 ];
 
 const logisticsItems: NavItem[] = [
-  { to: "/distributor/shipments", label: "Active shipments", icon: Truck, badgeTone: "green" },
+  { to: "/distributor/shipments", label: "Shipments", icon: Truck, badgeTone: "green" },
   { to: "/distributor", label: "Delivery schedule", icon: Calendar, hash: "#delivery-schedule" },
   { to: "/distributor/accounts", label: "Retail accounts", icon: Users, badgeTone: "red" },
   { to: "/distributor/crm", label: "Sales reps", icon: UserPlus },

@@ -16,6 +16,7 @@ import { resolveReceivingLocationForPo } from "@/lib/po-destination-warehouse";
 import { PurchaseOrdersSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { DistributorPurchaseOrdersView } from "@/components/distributor/DistributorPurchaseOrdersView";
 
 function shouldAddInventoryForTransition(p: PurchaseOrder, nextStatus: PurchaseOrder["status"]): boolean {
   // Production POs ADD inventory when delivered (manufacturer shipment arrives)
@@ -261,6 +262,27 @@ export default function PurchaseOrders() {
 
   if (loading) {
     return <PurchaseOrdersSkeleton />;
+  }
+
+  if (user.role === "distributor") {
+    return (
+      <>
+        <DistributorPurchaseOrdersView
+          purchaseOrders={purchaseOrders}
+          onSelectPo={(id) => setSelectedPoId(id)}
+        />
+        <PurchaseOrderDetailDialog
+          purchaseOrder={detailPo}
+          open={detailPo !== null}
+          onOpenChange={(o) => {
+            if (!o) setSelectedPoId(null);
+          }}
+          onPatch={patchPo}
+          readOnly
+          readOnlyHint="Read-only — planning reference for inbound stock; receiving lives under Shipments and Inventory."
+        />
+      </>
+    );
   }
 
   return (

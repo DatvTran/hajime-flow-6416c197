@@ -31,7 +31,7 @@ import {
   getInventoryByLocation,
   type InTransitDetails,
 } from "@/lib/inventory-movement";
-import { fetchAppData } from "@/lib/data-service";
+import { fetchAppData, mapApiInventoryRows } from "@/lib/data-service";
 import type { AppData, FinancingLedgerEntry, TeamMember, TeamMemberPortalRole } from "@/types/app-data";
 import type { ProductionStatus } from "@/data/mockData";
 import seedJson from "@/data/seed-app.json";
@@ -83,6 +83,7 @@ import {
   deleteIncentive as apiDeleteIncentive,
   getTeamMembers as apiGetTeamMembers,
   getShipments as apiGetShipments,
+  getInventory as apiGetInventory,
   getIncentives as apiGetIncentives,
   getProducts as apiGetProducts,
   createProductionStatus as apiCreateProductionStatus,
@@ -330,6 +331,8 @@ type AppDataContextValue = {
   refreshSalesOrders: () => Promise<void>;
   /** Re-fetch product catalog from the API (Brand Operator source of truth). */
   refreshProducts: () => Promise<void>;
+  /** Re-fetch inventory rows from the API and merge into app state. */
+  refreshInventory: () => Promise<void>;
 };
 
 const AppDataStateContext = createContext<AppDataContextValue | null>(null);
@@ -464,7 +467,25 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         if (!prev) return prev;
         const apiIds = new Set(shipments.map((s) => s.id));
         const localOnly = prev.shipments.filter((s) => !apiIds.has(s.id));
-        return normalizeAppData({ ...prev, shipments: [...shipments, ...localOnly] });
+        const prevById = new Map(prev.shipments.map((s) => [s.id, s]));
+        const merged = shipments.map((apiRow) => {
+          const local = prevById.get(apiRow.id);
+          if (
+            local?.status === "delivered" &&
+            apiRow.status !== "delivered" &&
+            local.type === "inbound" &&
+            /verified by/i.test(local.notes ?? "")
+          ) {
+            return {
+              ...apiRow,
+              status: "delivered" as const,
+              eta: local.eta || apiRow.eta,
+              notes: local.notes || apiRow.notes,
+            };
+          }
+          return apiRow;
+        });
+        return normalizeAppData({ ...prev, shipments: [...merged, ...localOnly] });
       });
     } catch (err) {
       console.warn("[refreshShipments] API list failed; keeping local shipments:", err);
@@ -501,6 +522,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const refreshInventory = useCallback(async () => {
+    try {
+      const res = (await apiGetInventory({ limit: 500 })) as { data?: unknown[] };
+      const rows = Array.isArray(res.data) ? res.data : [];
+      const inventory = mapApiInventoryRows(rows);
+      setData((prev) => {
+        if (!prev) return prev;
+        return normalizeAppData({ ...prev, inventory });
+      });
+    } catch (err) {
+      console.warn("[refreshInventory] API list failed; keeping local inventory:", err);
+    }
+  }, []);
+
   // Stage 4: Removed auto-save useEffect — writes now use granular API mutations
   // Local changes are persisted via saveLocalAppData only
   useEffect(() => {
@@ -519,8 +554,19 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       refreshShipments,
       refreshSalesOrders,
       refreshProducts,
+      refreshInventory,
     };
-  }, [data, loading, error, updateData, refreshTeamMembers, refreshShipments, refreshSalesOrders, refreshProducts]);
+  }, [
+    data,
+    loading,
+    error,
+    updateData,
+    refreshTeamMembers,
+    refreshShipments,
+    refreshSalesOrders,
+    refreshProducts,
+    refreshInventory,
+  ]);
 
   if (!user) {
     return <>{children}</>;
@@ -903,10 +949,10 @@ export function useInventory() {
       // Call granular API to adjust inventory (positive adjustment = receive)
       const result = await apiAdjustInventory({
         product_id: product.id,
-        location: line.location,
+        location: line.warehouse,
         quantity: line.quantityBottles,
         reason: "receipt",
-        notes: `Received inventory: ${line.batchId || "manual entry"}`,
+        notes: `Received inventory: ${line.batchLot || "manual entry"}`,
       });
       
       // Update local state with the returned inventory item

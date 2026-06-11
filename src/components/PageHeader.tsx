@@ -7,12 +7,12 @@ interface PageHeaderProps {
   actions?: ReactNode;
   titleAddon?: ReactNode;
   /** Retail store shell, sales rep field shell — same display title / description scale. */
-  variant?: "default" | "retail" | "sales_rep";
+  variant?: "default" | "retail" | "sales_rep" | "distributor";
 }
 
 export function PageHeader({ title, description, actions, titleAddon, variant = "default" }: PageHeaderProps) {
   const { t, language } = useLanguage();
-  const useKitTypography = variant === "retail" || variant === "sales_rep";
+  const useKitTypography = variant === "retail" || variant === "sales_rep" || variant === "distributor";
   const titleClass = useKitTypography
     ? "font-display text-[26px] font-semibold tracking-[-0.02em] text-foreground"
     : "font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl";

@@ -9,6 +9,17 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/StatusBadge";
 import { DistributorPartnerHero } from "@/components/distributor/DistributorPartnerHero";
+import {
+  DistributorAlertBar,
+  DistributorCard,
+  DistributorCardHead,
+  DistributorKpiCard,
+  DistributorKpiGrid,
+  DistributorPage,
+  DistributorPageHeader,
+  DistributorSectionHead,
+  DistributorTwoCol,
+} from "@/components/distributor/DistributorUi";
 import { useAppData, usePurchaseOrders, useSalesOrders } from "@/contexts/AppDataContext";
 import { useShipmentsAutoRefresh } from "@/hooks/useShipmentsAutoRefresh";
 import { useAuth } from "@/contexts/AuthContext";
@@ -215,120 +226,91 @@ export default function DistributorHomePage() {
   ].filter(Boolean);
 
   return (
-    <div key={language} className="animate-enter space-y-7">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-display text-[30px] font-semibold tracking-[-0.02em] text-foreground">
-            {portalTimeGreeting(t)}, {greetingName(user?.displayName ?? "there")}.
-          </h1>
-          <p className="mt-1 max-w-[56ch] text-[13px] text-muted-foreground">
-            {subtitleParts.length > 0
-              ? subtitleParts.join(" · ")
-              : t("Floor is clear — inventory, fulfillment, and shipments are in good shape.")}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Button variant="outline" size="sm" className="h-9" asChild>
-            <Link to="/distributor/reports">{t("Q2 report")}</Link>
-          </Button>
-          <Button size="sm" className="h-9 bg-primary text-primary-foreground hover:bg-[hsl(24_10%_16%)]" asChild>
-            <Link to="/distributor/inventory">{t("Inventory check")}</Link>
-          </Button>
-        </div>
-      </div>
+    <DistributorPage key={language} className="space-y-7">
+      <DistributorPageHeader
+        rawTitle
+        rawDescription
+        title={`${portalTimeGreeting(t)}, ${greetingName(user?.displayName ?? "there")}.`}
+        description={
+          subtitleParts.length > 0
+            ? subtitleParts.join(" · ")
+            : t("Floor is clear — inventory, fulfillment, and shipments are in good shape.")
+        }
+        actions={
+          <>
+            <Link to="/distributor/reports" className="dist-btn dist-btn-outline dist-btn-sm no-underline">
+              {t("Q2 report")}
+            </Link>
+            <Link to="/distributor/inventory" className="dist-btn dist-btn-ink dist-btn-sm no-underline">
+              {t("Inventory check")}
+            </Link>
+          </>
+        }
+      />
 
       {!urgentDismissed && (urgentOrder || urgentAlert) ? (
-        <div className="flex flex-col gap-3 rounded-xl border border-[hsl(0_68%_48%/0.2)] bg-[hsl(0_68%_48%/0.06)] px-4 py-3.5 sm:flex-row sm:items-start">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[hsl(0_68%_44%)]" strokeWidth={1.75} />
-          <p className="flex-1 text-[13px]">
-            {urgentOrder ? (
-              <>
-                {t("Urgent — {{id}} for {{account}} requires pick while status is {{status}}.", {
-                  id: urgentOrder.id,
-                  account: urgentOrder.account,
-                  status: t(
-                    urgentOrder.status === "confirmed"
-                      ? "confirmed"
-                      : urgentOrder.status.replace(/-/g, " "),
-                  ),
-                })}
-              </>
-            ) : (
-              <>
-                <strong className="text-[hsl(0_68%_36%)]">{t("Attention")}</strong> — {urgentAlert?.message}
-              </>
-            )}
-          </p>
-          <div className="flex shrink-0 gap-2">
-            <Button variant="outline" size="sm" className="h-8" onClick={() => setUrgentDismissed(true)}>
-              {t("Dismiss")}
-            </Button>
-            <Button size="sm" className="h-8 bg-accent text-accent-foreground hover:bg-[hsl(32_78%_48%)]" asChild>
-              <Link to="/distributor/pick-pack">{t("Start pick")}</Link>
-            </Button>
-          </div>
-        </div>
+        <DistributorAlertBar
+          variant="error"
+          actions={
+            <>
+              <button type="button" className="dist-btn dist-btn-outline dist-btn-sm" onClick={() => setUrgentDismissed(true)}>
+                {t("Dismiss")}
+              </button>
+              <Link to="/distributor/pick-pack" className="dist-btn dist-btn-accent dist-btn-sm no-underline">
+                {t("Start pick")}
+              </Link>
+            </>
+          }
+        >
+          <AlertTriangle className="mb-1 inline size-4 text-[hsl(0_68%_44%)]" strokeWidth={1.75} />
+          {urgentOrder ? (
+            t("Urgent — {{id}} for {{account}} requires pick while status is {{status}}.", {
+              id: urgentOrder.id,
+              account: urgentOrder.account,
+              status: t(urgentOrder.status === "confirmed" ? "confirmed" : urgentOrder.status.replace(/-/g, " ")),
+            })
+          ) : (
+            <>
+              <strong className="text-[hsl(0_68%_36%)]">{t("Attention")}</strong> — {urgentAlert?.message}
+            </>
+          )}
+        </DistributorAlertBar>
       ) : null}
 
-      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          {
-            icon: FileText,
-            tone: "ic-gold",
-            label: t("Open POs"),
-            value: String(openPurchaseOrders.length),
-            sub: openPurchaseOrders.length ? t("Inbound from Hajime HQ") : t("No open production requests"),
-            to: "/distributor/purchase-orders",
-          },
-          {
-            icon: Truck,
-            tone: "ic-green",
-            label: t("In motion"),
-            value: String(activeShipments.length),
-            sub: t("Active shipments"),
-            to: "/distributor/shipments",
-          },
-          {
-            icon: BarChart3,
-            tone: "ic-blue",
-            label: t("Available stock"),
-            value: inv.available.toLocaleString(),
-            sub: t("bottles ready to allocate"),
-            to: "/distributor/inventory",
-          },
-          {
-            icon: Star,
-            tone: "ic-ink",
-            label: t("Pick queue"),
-            value: String(awaitingFulfillment.length),
-            sub: awaitingFulfillment.length ? t("Confirmed / packed orders") : t("Nothing awaiting pick"),
-            to: "/distributor/pick-pack",
-          },
-        ].map((kpi) => (
-          <Link
-            key={kpi.label}
-            to={kpi.to}
-            className="card-interactive flex flex-col gap-1 p-[18px] no-underline"
-          >
-            <div
-              className={cn(
-                "mb-2 flex size-[34px] items-center justify-center rounded-lg",
-                kpi.tone === "ic-gold" && "bg-[hsl(40_88%_42%/0.1)] text-[hsl(40_88%_36%)]",
-                kpi.tone === "ic-green" && "bg-[hsl(158_56%_36%/0.1)] text-[hsl(158_56%_30%)]",
-                kpi.tone === "ic-blue" && "bg-[hsl(215_72%_50%/0.1)] text-[hsl(215_72%_42%)]",
-                kpi.tone === "ic-ink" && "bg-[hsl(24_10%_10%/0.07)] text-[hsl(24_10%_18%)]",
-              )}
-            >
-              <kpi.icon className="size-[17px]" strokeWidth={1.75} />
-            </div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">{kpi.label}</p>
-            <p className="font-display text-[26px] font-semibold tabular-nums leading-none tracking-[-0.02em]">
-              {kpi.value}
-            </p>
-            <p className="text-xs text-muted-foreground">{kpi.sub}</p>
-          </Link>
-        ))}
-      </div>
+      <DistributorKpiGrid>
+        <DistributorKpiCard
+          icon={FileText}
+          tone="gold"
+          label="Open POs"
+          value={String(openPurchaseOrders.length)}
+          sub={openPurchaseOrders.length ? "Inbound from Hajime HQ" : "No open production requests"}
+          to="/distributor/purchase-orders"
+        />
+        <DistributorKpiCard
+          icon={Truck}
+          tone="green"
+          label="In motion"
+          value={String(activeShipments.length)}
+          sub="Active shipments"
+          to="/distributor/shipments"
+        />
+        <DistributorKpiCard
+          icon={BarChart3}
+          tone="blue"
+          label="Available stock"
+          value={inv.available.toLocaleString()}
+          sub="bottles ready to allocate"
+          to="/distributor/inventory"
+        />
+        <DistributorKpiCard
+          icon={Star}
+          tone="ink"
+          label="Pick queue"
+          value={String(awaitingFulfillment.length)}
+          sub={awaitingFulfillment.length ? "Confirmed / packed orders" : "Nothing awaiting pick"}
+          to="/distributor/pick-pack"
+        />
+      </DistributorKpiGrid>
 
       <div id="partner-program">
         <DistributorPartnerHero />
@@ -366,17 +348,17 @@ export default function DistributorHomePage() {
         </div>
       ) : null}
 
-      <div className="grid gap-[18px] lg:grid-cols-[1.3fr_1fr]">
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[var(--shadow-soft)]">
-          <div className="flex items-center justify-between border-b border-border/50 px-5 py-4">
-            <div>
-              <h3 className="text-sm font-semibold">{t("Open purchase orders")}</h3>
-              <p className="text-xs text-muted-foreground">{t("Received from Hajime HQ")}</p>
-            </div>
-            <Button variant="outline" size="sm" className="h-8" asChild>
-              <Link to="/distributor/purchase-orders">{t("All POs")}</Link>
-            </Button>
-          </div>
+      <DistributorTwoCol>
+        <DistributorCard>
+          <DistributorCardHead
+            title="Open purchase orders"
+            subtitle="Received from Hajime HQ"
+            actions={
+              <Link to="/distributor/purchase-orders" className="dist-btn dist-btn-outline dist-btn-sm no-underline">
+                {t("All POs")}
+              </Link>
+            }
+          />
           {openPurchaseOrders.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-muted-foreground">{t("No open purchase orders")}</p>
           ) : (
@@ -402,18 +384,18 @@ export default function DistributorHomePage() {
               </Link>
             ))
           )}
-        </div>
+        </DistributorCard>
 
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[var(--shadow-soft)]">
-          <div className="flex items-center justify-between border-b border-border/50 px-5 py-4">
-            <div>
-              <h3 className="text-sm font-semibold">{t("Inventory snapshot")}</h3>
-              <p className="text-xs text-muted-foreground">{t("Critical SKUs at your warehouse")}</p>
-            </div>
-            <Button variant="outline" size="sm" className="h-8" asChild>
-              <Link to="/distributor/inventory">{t("Full inventory")}</Link>
-            </Button>
-          </div>
+        <DistributorCard>
+          <DistributorCardHead
+            title="Inventory snapshot"
+            subtitle="Critical SKUs at your warehouse"
+            actions={
+              <Link to="/distributor/inventory" className="dist-btn dist-btn-outline dist-btn-sm no-underline">
+                {t("Full inventory")}
+              </Link>
+            }
+          />
           {stockSnapshot.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-muted-foreground">{t("No distributor warehouse stock rows")}</p>
           ) : (
@@ -436,19 +418,14 @@ export default function DistributorHomePage() {
               </Link>
             ))
           )}
-        </div>
-      </div>
+        </DistributorCard>
+      </DistributorTwoCol>
 
-      <div id="delivery-schedule" className="space-y-3.5 scroll-mt-6">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="font-display text-[19px] font-medium tracking-[-0.01em]">{t("Active shipments")}</h2>
-          <Link to="/distributor/shipments" className="text-xs font-medium text-accent hover:underline">
-            {t("All shipments →")}
-          </Link>
-        </div>
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[var(--shadow-soft)]">
+      <div id="delivery-schedule" className="scroll-mt-6 space-y-3.5">
+        <DistributorSectionHead title="Active shipments" linkLabel="All shipments →" linkTo="/distributor/shipments" />
+        <DistributorCard>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-sm">
+            <table className="dist-data-table w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-border/50 bg-muted/50">
                   {["Tracking", "Route", "Contents", "ETA", "Status"].map((h) => (
@@ -487,14 +464,9 @@ export default function DistributorHomePage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </DistributorCard>
 
-        <div className="flex items-baseline justify-between gap-3 pt-2">
-          <h2 className="font-display text-[19px] font-medium tracking-[-0.01em]">{t("Delivery schedule")}</h2>
-          <Link to="/distributor/shipments" className="text-xs font-medium text-accent hover:underline">
-            {t("Full tracker →")}
-          </Link>
-        </div>
+        <DistributorSectionHead title="Delivery schedule" linkLabel="Full tracker →" linkTo="/distributor/shipments" />
         <div className="space-y-2">
           {activeShipments.slice(0, 6).map((s) => (
             <Link
@@ -582,6 +554,6 @@ export default function DistributorHomePage() {
           </div>
         )}
       </div>
-    </div>
+    </DistributorPage>
   );
 }

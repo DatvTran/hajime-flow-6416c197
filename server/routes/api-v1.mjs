@@ -4766,6 +4766,161 @@ router.patch('/shipments/:id/status', shipmentWriteMiddleware, async (req, res) 
   }
 });
 
+// POST /api/v1/shipments/:id/receive - Distributor receives inbound stock at DC
+router.post('/shipments/:id/receive', shipmentWriteMiddleware, async (req, res) => {
+  const trx = await db.transaction();
+
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) {
+      await trx.rollback();
+      return;
+    }
+    const { id } = req.params;
+    const verifiedBy = String(req.body?.verified_by ?? req.body?.verifiedBy ?? '').trim();
+    const notesIn = String(req.body?.notes ?? '').trim();
+
+    const existing = await trx('shipments')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .first();
+
+    if (!existing) {
+      await trx.rollback();
+      return res.status(404).json({ error: 'Shipment not found' });
+    }
+
+    if (existing.order_type !== 'purchase_order') {
+      await trx.rollback();
+      return res.status(400).json({
+        error: 'Only inbound purchase-order shipments can be received at the warehouse.',
+      });
+    }
+
+    if (existing.status === 'delivered') {
+      await trx.rollback();
+      return res.status(400).json({ error: 'Shipment already received.' });
+    }
+
+    if (req.user.role === Role.MANUFACTURER) {
+      const denied = manufacturerShipmentScopeDenied(existing);
+      if (denied) {
+        await trx.rollback();
+        return res.status(denied.status).json({ error: denied.error });
+      }
+    }
+
+    if (req.user.role === Role.DISTRIBUTOR) {
+      const whIds = await distributorReceivingWarehouseIdsForUser(tenantId, req.user.email);
+      if (!distributorHasShipmentAccess(existing, whIds, req.user?.userId)) {
+        await trx.rollback();
+        return res.status(403).json({
+          error: 'You can only receive shipments routed to your receiving warehouse.',
+        });
+      }
+    }
+
+    const itemsRaw = await trx('shipment_items').where({ shipment_id: id, tenant_id: tenantId });
+    const location = String(existing.to_location ?? 'Main Warehouse').trim() || 'Main Warehouse';
+    const now = new Date();
+
+    for (const item of itemsRaw) {
+      let productId = item.product_id;
+      if (!productId && item.sku) {
+        const product = await trx('products')
+          .where({ tenant_id: tenantId, sku: item.sku })
+          .whereNull('deleted_at')
+          .first();
+        productId = product?.id ?? null;
+      }
+      if (!productId) continue;
+
+      const delta = Number(item.quantity ?? 0);
+      if (!Number.isFinite(delta) || delta <= 0) continue;
+
+      let inventory = await trx('inventory')
+        .where({ tenant_id: tenantId, product_id: productId, location })
+        .first();
+
+      const quantityBefore = inventory ? Number(inventory.quantity_on_hand ?? 0) : 0;
+      const quantityAfter = quantityBefore + delta;
+
+      if (inventory) {
+        await trx('inventory')
+          .where({ id: inventory.id })
+          .update({
+            quantity_on_hand: quantityAfter,
+            available_quantity: quantityAfter - Number(inventory.reserved_quantity ?? 0),
+            updated_at: now,
+          });
+      } else {
+        [inventory] = await trx('inventory')
+          .insert({
+            tenant_id: tenantId,
+            product_id: productId,
+            location,
+            quantity_on_hand: quantityAfter,
+            available_quantity: quantityAfter,
+            reorder_point: 100,
+            created_at: now,
+            updated_at: now,
+          })
+          .returning('*');
+      }
+
+      await trx('inventory_adjustments').insert({
+        tenant_id: tenantId,
+        inventory_id: inventory?.id,
+        product_id: productId,
+        location,
+        adjustment_type: 'inbound_receipt',
+        quantity_before: quantityBefore,
+        quantity_after: quantityAfter,
+        quantity_changed: delta,
+        notes: `Inbound receipt · shipment ${id}`,
+        created_by: req.user?.userId,
+        created_at: now,
+      });
+
+      if (existing.order_id) {
+        await trx('purchase_order_items')
+          .where({ tenant_id: tenantId, purchase_order_id: existing.order_id, product_id: productId })
+          .increment('quantity_received', delta);
+      }
+    }
+
+    const totalCases = itemsRaw.reduce((sum, row) => {
+      const qty = Number(row.quantity ?? 0);
+      return sum + (qty > 0 ? qty : 0);
+    }, 0);
+    const verifierLabel = verifiedBy || 'Operations';
+    const receiptNotes =
+      notesIn ||
+      `Verified by ${verifierLabel} · Operations Lead · ${totalCases} cs verified`;
+
+    const [shipment] = await trx('shipments')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .update({
+        status: 'delivered',
+        delivered_at: now,
+        notes: receiptNotes,
+        updated_at: now,
+      })
+      .returning('*');
+
+    await trx.commit();
+
+    const [hydrated] = await hydrateShipmentDestinationWarehouseNames(tenantId, [shipment]);
+    const [withItems] = await hydrateShipmentLineItems(tenantId, [hydrated]);
+    res.json({ data: withItems });
+  } catch (err) {
+    await trx.rollback();
+    console.error('[API v1] Error receiving shipment:', err);
+    res.status(500).json({ error: 'Failed to receive shipment' });
+  }
+});
+
 // DELETE /api/v1/shipments/:id - Soft delete shipment
 router.delete('/shipments/:id', shipmentWriteMiddleware, async (req, res) => {
   try {

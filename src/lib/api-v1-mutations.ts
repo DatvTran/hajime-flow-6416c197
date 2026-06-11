@@ -462,6 +462,10 @@ export async function getShipments(params?: {
   return apiFetch(`/api/v1/shipments?${queryParams.toString()}`);
 }
 
+export async function getShipment(id: string) {
+  return apiFetch(`/api/v1/shipments/${encodeURIComponent(id)}`);
+}
+
 export async function getInvoices(params?: {
   order_id?: string;
   status?: string;
@@ -715,7 +719,7 @@ export async function createInventoryAdjustmentRequest(requestData: {
   quantity_actual: number;
   reason: string;
 }) {
-  return apiFetch("/api/v1/inventory-adjustments", {
+  return apiFetch("/api/v1/inventory-adjustment-requests", {
     method: "POST",
     body: JSON.stringify(requestData),
   });
@@ -732,14 +736,14 @@ export async function getInventoryAdjustmentRequests(params?: {
   if (params?.account_id) queryParams.set("account_id", params.account_id);
   if (params?.page) queryParams.set("page", String(params.page));
   if (params?.limit) queryParams.set("limit", String(params.limit));
-  return apiFetch(`/api/v1/inventory-adjustments?${queryParams.toString()}`);
+  return apiFetch(`/api/v1/inventory-adjustment-requests?${queryParams.toString()}`);
 }
 
 export async function approveInventoryAdjustmentRequest(
   id: string,
   data: { approved_quantity?: number; notes?: string }
 ) {
-  return apiFetch(`/api/v1/inventory-adjustments/${id}/approve`, {
+  return apiFetch(`/api/v1/inventory-adjustment-requests/${id}/approve`, {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -1298,6 +1302,16 @@ export async function updateShipmentStatus(id: string, status: string) {
   return apiFetch(`/api/v1/shipments/${id}/status`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
+  });
+}
+
+export async function receiveInboundShipment(
+  id: string,
+  body: { verified_by?: string; notes?: string },
+) {
+  return apiFetch(`/api/v1/shipments/${id}/receive`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 

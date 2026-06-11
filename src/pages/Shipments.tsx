@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useShipments, useAppData, useSalesOrders } from "@/contexts/AppDataContext";
+import { useShipments, useAppData, useSalesOrders, useAccounts } from "@/contexts/AppDataContext";
 import {
   distributorFulfillmentEditPath,
   distributorOrdersDetailPath,
@@ -22,6 +22,7 @@ import type { Shipment } from "@/data/mockData";
 import { shipmentLineContentsLabel } from "@/lib/order-lines";
 import RetailDeliveriesPage from "@/pages/RetailDeliveriesPage";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { DistributorShipmentsView } from "@/components/distributor/DistributorShipmentsView";
 
 function formatDepartureTimestamp(s: Shipment): string {
   if (s.shippedAt) {
@@ -69,6 +70,7 @@ export default function Shipments() {
   const { user } = useAuth();
   const { shipments } = useShipments();
   const { salesOrders } = useSalesOrders();
+  const { accounts } = useAccounts();
   const { loading, refreshShipments } = useAppData();
   const isDistributor = user?.role === "distributor";
 
@@ -149,6 +151,10 @@ export default function Shipments() {
 
   if (user?.role === "retail") {
     return <RetailDeliveriesPage />;
+  }
+
+  if (isDistributor) {
+    return <DistributorShipmentsView shipments={shipments} salesOrders={salesOrders} accounts={accounts} />;
   }
 
   const shipmentKindLabel = (s: Shipment) => {

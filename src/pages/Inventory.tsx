@@ -210,7 +210,11 @@ export default function Inventory() {
       <PageHeader
         title="Inventory"
         variant={pageHeaderVariantForRole(user.role)}
-        description="SKU-level positions by market hub — available, allocated, reserved, and incoming pipeline with health vs safety stock."
+        description={
+          user.role === "distributor"
+            ? "Your warehouse stock — on hand, allocated, and available by SKU with reorder health."
+            : "SKU-level positions by market hub — available, allocated, reserved, and incoming pipeline with health vs safety stock."
+        }
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <CSVImportButton
