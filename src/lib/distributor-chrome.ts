@@ -21,6 +21,9 @@ export function distributorRouteChrome(pathname: string, _search: string): { sec
   if (pathname.startsWith("/distributor/shipments")) {
     return { section: "Logistics", page: "Shipments" };
   }
+  if (pathname.startsWith("/distributor/schedule")) {
+    return { section: "Logistics", page: "Delivery schedule" };
+  }
   if (pathname.startsWith("/distributor/accounts")) {
     return { section: "Logistics", page: "Retail accounts" };
   }

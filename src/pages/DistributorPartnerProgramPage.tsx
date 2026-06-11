@@ -1,26 +1,24 @@
-import { Link } from "react-router-dom";
-import { IncentiveProgressDashboardCard } from "@/components/incentives/IncentiveProgressDashboardCard";
-import { DistributorPage, DistributorPageHeader } from "@/components/distributor/DistributorUi";
+import { DistributorPartnerProgramView } from "@/components/distributor/DistributorPartnerProgramView";
 import { DistributorSkeleton } from "@/components/skeletons";
 import { useAppData } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function DistributorPartnerProgramPage() {
-  const { loading } = useAppData();
+  const { loading, data } = useAppData();
+  const { user } = useAuth();
+
+  const distAccount = data.accounts.find(
+    (a) => a.type === "distributor" && String(a.managedByDistributorUserId ?? "") === String(user?.id ?? ""),
+  );
+  const accountName = distAccount?.tradingName || distAccount?.legalName || "Empire Wines";
 
   if (loading) return <DistributorSkeleton />;
 
   return (
-    <DistributorPage className="space-y-6 pb-8">
-      <DistributorPageHeader
-        title="Partner program"
-        description="Hajime Distribution Partners — tiers, rebates, co-op, and quarterly performance vs HQ targets."
-        actions={
-          <Link to="/distributor" className="dist-btn dist-btn-outline dist-btn-sm no-underline">
-            Back to dashboard
-          </Link>
-        }
-      />
-      <IncentiveProgressDashboardCard />
-    </DistributorPage>
+    <DistributorPartnerProgramView
+      accountName={accountName}
+      shipments={data.shipments}
+      salesOrders={data.salesOrders}
+    />
   );
 }

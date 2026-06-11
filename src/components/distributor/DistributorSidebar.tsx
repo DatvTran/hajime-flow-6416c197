@@ -53,7 +53,7 @@ const operationsItems: NavItem[] = [
 
 const logisticsItems: NavItem[] = [
   { to: "/distributor/shipments", label: "Shipments", icon: Truck, badgeTone: "green" },
-  { to: "/distributor", label: "Delivery schedule", icon: Calendar, hash: "#delivery-schedule" },
+  { to: "/distributor/schedule", label: "Delivery schedule", icon: Calendar },
   { to: "/distributor/accounts", label: "Retail accounts", icon: Users, badgeTone: "red" },
   { to: "/distributor/crm", label: "Sales reps", icon: UserPlus },
 ];
@@ -194,8 +194,8 @@ function NavSection({
         const end = navPathEndFlag(item.to, ALL_DIST_NAV_URLS);
         let active = isSidebarNavItemActive(item.to, location.pathname, location.search, end);
 
-        if (item.hash === "#delivery-schedule") {
-          active = location.pathname === "/distributor" && location.hash === "#delivery-schedule";
+        if (item.to === "/distributor/schedule") {
+          active = location.pathname.startsWith("/distributor/schedule");
         } else if (item.to === "/distributor/partner-program") {
           active = location.pathname.startsWith("/distributor/partner-program");
         } else if (item.to === "/distributor" && !item.hash) {

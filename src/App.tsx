@@ -59,6 +59,9 @@ const DistributorHomePage = lazyWithChunkReload(() => import("./pages/Distributo
 const DistributorPartnerProgramPage = lazyWithChunkReload(() => import("./pages/DistributorPartnerProgramPage"));
 const DistributorPickPackPage = lazyWithChunkReload(() => import("./pages/DistributorPickPackPage"));
 const DistributorLogShipmentPage = lazyWithChunkReload(() => import("./pages/DistributorLogShipmentPage"));
+const DistributorDeliverySchedulePage = lazyWithChunkReload(
+  () => import("./pages/DistributorDeliverySchedulePage"),
+);
 const SalesRepCrmPage = lazyWithChunkReload(() => import("./pages/SalesRepCrmPage"));
 
 // Sales routes
@@ -172,6 +175,7 @@ const App = () => {
                     <Route path="/distributor/crm" element={<DistributorCrmPage />} />
                     <Route path="/distributor/purchase-orders" element={<PurchaseOrders />} />
                     <Route path="/distributor/shipments" element={<Shipments />} />
+                    <Route path="/distributor/schedule" element={<DistributorDeliverySchedulePage />} />
                     <Route path="/distributor/backorders" element={<BackordersPage />} />
                     <Route path="/distributor/depletions" element={<DistributorDepletionsPage />} />
                     <Route path="/distributor/adjustments" element={<DistributorInventoryAdjustmentsPage />} />

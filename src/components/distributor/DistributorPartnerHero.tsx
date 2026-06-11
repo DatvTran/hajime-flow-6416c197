@@ -1,42 +1,15 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { PartnerRingCluster, type PartnerRingStat } from "@/components/distributor/DistributorPartnerRings";
 import { getMySupplyChainIncentiveProgress, type MyIncentiveProgressData } from "@/lib/api-v1-mutations";
+import {
+  computeDistributorPartnerMetrics,
+  currentQuarterLabel,
+  formatMoney,
+} from "@/lib/distributor-partner-metrics";
 import { cn } from "@/lib/utils";
+import { useAppData } from "@/contexts/AppDataContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-
-function formatMoney(n: number): string {
-  return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-}
-
-type RingStat = { value: string; label: string; pct: number; stroke: string };
-
-function ProgressRing({ stat, size = 64 }: { stat: RingStat; size?: number }) {
-  const r = size * 0.40625;
-  const c = 2 * Math.PI * r;
-  const dash = (stat.pct / 100) * c;
-  return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none" className="-rotate-90" aria-hidden>
-        <circle cx={size / 2} cy={size / 2} r={r} stroke="hsl(35 12% 18%)" strokeWidth={5} />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          stroke={stat.stroke}
-          strokeWidth={5}
-          strokeLinecap="round"
-          strokeDasharray={`${dash} ${c}`}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-mono text-[11px] font-semibold leading-none text-[hsl(40_80%_66%)]">{stat.value}</span>
-        <span className="mt-0.5 text-[7px] font-medium uppercase tracking-[0.06em] text-[hsl(35_12%_42%)]">
-          {stat.label}
-        </span>
-      </div>
-    </div>
-  );
-}
 
 type Props = {
   className?: string;
@@ -44,7 +17,8 @@ type Props = {
 
 export function DistributorPartnerHero({ className }: Props) {
   const { t, language } = useLanguage();
-  const [data, setData] = useState<MyIncentiveProgressData | null>(null);
+  const { data } = useAppData();
+  const [incentive, setIncentive] = useState<MyIncentiveProgressData | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -52,9 +26,9 @@ export function DistributorPartnerHero({ className }: Props) {
     (async () => {
       try {
         const res = await getMySupplyChainIncentiveProgress();
-        if (!cancelled) setData(res.data);
+        if (!cancelled) setIncentive(res.data);
       } catch {
-        if (!cancelled) setData(null);
+        if (!cancelled) setIncentive(null);
       } finally {
         if (!cancelled) setLoaded(true);
       }
@@ -64,45 +38,55 @@ export function DistributorPartnerHero({ className }: Props) {
     };
   }, []);
 
-  const partner = data?.scope === "distributor" ? data.partner : null;
+  const partner = incentive?.scope === "distributor" ? incentive.partner : null;
   const tier = partner?.quarterlyPerformanceTier ?? partner?.tier ?? "Partner";
-  const cases = partner?.quarterlyCasesSold ?? 0;
-  const rebate = data?.totals?.payoutTotal ?? 0;
-  const goldGoal = data?.program?.volumeBonusesUsd?.gold ?? 2500;
-  const casesPct = Math.min(100, Math.round((cases / Math.max(goldGoal, 1)) * 100));
-  const repCount = data?.network?.repCount ?? 0;
-  const retailCount = data?.network?.retailAccountCount ?? 0;
+  const quarter = currentQuarterLabel();
+  const rebate = incentive?.totals?.payoutTotal ?? 0;
+  const repCount = incentive?.network?.repCount ?? 0;
+  const retailCount = incentive?.network?.retailAccountCount ?? 0;
 
-  const rings: RingStat[] = [
+  const metrics = useMemo(
+    () =>
+      computeDistributorPartnerMetrics(
+        data.shipments,
+        data.salesOrders,
+        partner?.quarterlyCasesSold ?? 0,
+      ),
+    [data.shipments, data.salesOrders, partner?.quarterlyCasesSold],
+  );
+
+  const casesPct = Math.min(100, (metrics.casesQ / metrics.platinumCasesTarget) * 100);
+
+  const rings: PartnerRingStat[] = [
     {
-      value: partner ? String(partner.accountsOpened) : "—",
-      label: t("new doors"),
-      pct: Math.min(100, (partner?.accountsOpened ?? 0) * 8),
+      value: `${metrics.fillRate}%`,
+      label: t("fill rate"),
+      pct: metrics.fillRate,
       stroke: "hsl(158 56% 36%)",
     },
     {
-      value: partner ? String(partner.reorders) : "—",
-      label: t("reorders"),
-      pct: Math.min(100, (partner?.reorders ?? 0) * 2),
+      value: `${metrics.onTime}%`,
+      label: t("on-time"),
+      pct: metrics.onTime,
       stroke: "hsl(38 90% 50%)",
     },
     {
-      value: cases > 0 ? cases.toLocaleString() : "—",
-      label: t("cases Q"),
+      value: metrics.casesQ > 0 ? metrics.casesQ.toLocaleString() : "—",
+      label: t("cases {{q}}", { q: quarter.split(" ")[0] }),
       pct: casesPct,
       stroke: "hsl(40 88% 42%)",
     },
   ];
 
   const subtitle =
-    loaded && data?.matched && partner
+    loaded && incentive?.matched && partner
       ? t("{{market}} · {{reps}} reps · {{retail}} retail accounts in HQ SPIFs", {
           market: partner.market,
           reps: repCount,
           retail: retailCount,
         })
-      : loaded && data?.matchHint
-        ? data.matchHint
+      : loaded && incentive?.matchHint
+        ? incentive.matchHint
         : t("Loading program from Hajime HQ…");
 
   return (
@@ -123,19 +107,8 @@ export function DistributorPartnerHero({ className }: Props) {
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_100%_at_100%_50%,hsl(40_88%_42%/0.09),transparent)]"
             aria-hidden
           />
-          <div className="relative z-[1] flex items-center gap-2.5">
-            {rings.map((ring, i) => (
-              <span key={ring.label} className="flex items-center gap-2.5">
-                {i > 0 ? (
-                  <span className="flex flex-col justify-center gap-1 px-0.5" aria-hidden>
-                    {[0, 1, 2].map((d) => (
-                      <span key={d} className="size-[3px] rounded-full bg-[hsl(35_12%_28%)]" />
-                    ))}
-                  </span>
-                ) : null}
-                <ProgressRing stat={ring} />
-              </span>
-            ))}
+          <div className="relative z-[1]">
+            <PartnerRingCluster rings={rings} size={64} />
           </div>
           <div className="relative z-[1] min-w-0 flex-1">
             <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(35_12%_40%)]">

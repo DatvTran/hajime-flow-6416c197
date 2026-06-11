@@ -30,6 +30,7 @@ const RULES: { prefix: string; section: string; page: string }[] = [
   { prefix: "/distributor/log-shipment", section: "Operations", page: "Log shipment" },
   { prefix: "/distributor/orders", section: "Operations", page: "Orders to fulfill" },
   { prefix: "/distributor/shipments", section: "Operations", page: "Deliveries" },
+  { prefix: "/distributor/schedule", section: "Logistics", page: "Delivery schedule" },
   { prefix: "/distributor", section: "Operations", page: "Floor · today" },
 
   { prefix: "/sales/opportunities", section: "Field", page: "Opportunities" },

@@ -365,7 +365,7 @@ export function DistributorScheduleRow({
 }) {
   return (
     <div className="dist-sched-row flex flex-col gap-3 rounded-[10px] border border-border/60 bg-card px-4 py-3 shadow-[var(--shadow-soft)] transition-shadow hover:shadow-[var(--shadow-lifted)] sm:flex-row sm:items-center sm:gap-3.5">
-      <div className="dist-sched-time w-20 shrink-0 font-mono text-xs font-medium">{time}</div>
+      <div className="dist-sched-time w-[80px] shrink-0 font-mono text-xs font-medium">{time}</div>
       <div className="dist-sched-body min-w-0 flex-1">
         <div className="dist-sched-acct text-[13px] font-medium">{account}</div>
         <div className="dist-sched-items mt-0.5 text-xs text-muted-foreground">{items}</div>
