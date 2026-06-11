@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { PageHeader } from "@/components/PageHeader";
+import { DistributorPage, DistributorPageHeader } from "@/components/distributor/DistributorUi";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -267,10 +267,10 @@ export default function DistributorCrmPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Partner CRM"
-        description="Add field sales reps on behalf of your territory. Approve retail store CRM submissions from reps before portal invites go out."
+    <DistributorPage className="space-y-6">
+      <DistributorPageHeader
+        title="Sales reps"
+        description="Territory reps, account assignments, and pending retail onboarding from the field."
       />
 
       <Card>
@@ -505,6 +505,6 @@ export default function DistributorCrmPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </DistributorPage>
   );
 }

@@ -73,12 +73,10 @@ export function DistributorLayout() {
             </SheetContent>
           </Sheet>
           <div className="crumbs min-w-0 flex-1 truncate font-display text-sm font-medium text-foreground/80">{orgLabel}</div>
-          <Button size="sm" className="btn-accent h-8 shrink-0 bg-accent px-3 text-accent-foreground hover:bg-[hsl(32_78%_48%)]" asChild>
-            <Link to="/distributor/shipments">
-              <Truck className="mr-1 size-4" strokeWidth={1.75} />
-              {t("Log shipment")}
-            </Link>
-          </Button>
+          <Link to="/distributor/shipments" className="dist-btn dist-btn-accent dist-btn-sm shrink-0 no-underline">
+            <Truck className="size-3.5" strokeWidth={1.75} />
+            {t("Log shipment")}
+          </Link>
         </header>
 
         <header className="topbar glass-header sticky top-0 z-30 hidden h-[54px] shrink-0 items-center justify-between gap-4 px-8 lg:flex">
@@ -86,15 +84,13 @@ export function DistributorLayout() {
             {orgLabel} › <strong className="font-medium text-foreground">{t(page)}</strong>
           </div>
           <div className="topbar-right flex items-center gap-2.5">
-            <Button variant="outline" size="sm" className="btn-outline btn-sm h-[30px] text-xs" asChild>
-              <Link to="/distributor/pick-pack">{t("Start pick & pack")}</Link>
-            </Button>
-            <Button size="sm" className="btn-accent h-9 gap-1 bg-accent px-4 text-accent-foreground hover:bg-[hsl(32_78%_48%)]" asChild>
-              <Link to="/distributor/shipments">
-                <Truck className="size-4" strokeWidth={1.75} />
-                {t("Log shipment")}
-              </Link>
-            </Button>
+            <Link to="/distributor/pick-pack" className="dist-btn dist-btn-outline dist-btn-sm no-underline">
+              {t("Start pick & pack")}
+            </Link>
+            <Link to="/distributor/shipments" className="dist-btn dist-btn-accent no-underline">
+              <Truck className="size-3.5" strokeWidth={1.75} />
+              {t("Log shipment")}
+            </Link>
           </div>
         </header>
 

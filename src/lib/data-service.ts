@@ -15,7 +15,7 @@ import {
 } from "./api-v1";
 import { getOperationalSettings, getTeamMembers, getWarehouses, getAppBootstrap } from "@/lib/api-v1-mutations";
 import type { AppData, OperationalSettings, TeamMember, TeamMemberPortalRole, Warehouse } from "@/types/app-data";
-import type { NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
+import type { InventoryItem, NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
 import { isSeedStyleSalesOrderId } from "@/lib/sales-order-utils";
 
 // Feature flag to control granular API usage - Stage 3: Always use granular
@@ -292,7 +292,7 @@ export function mapRowToShipment(s: Record<string, unknown>): Shipment {
       ? (orderTypeRaw as Shipment["orderType"])
       : undefined;
 
-  const lineRaw = s.line_items ?? s.lineItems;
+  const lineRaw = s.line_items ?? s.lineItems ?? s.items;
   const lineItems: Shipment["lineItems"] | undefined = Array.isArray(lineRaw)
     ? (lineRaw as Record<string, unknown>[]).map((row) => {
         const caseSizeRaw = row.case_size ?? row.caseSize;
@@ -332,8 +332,15 @@ export function mapRowToShipment(s: Record<string, unknown>): Shipment {
       ? String(trackingRaw).trim()
       : undefined;
 
+  const rawPk = s.id != null ? String(s.id) : "";
+  const displayId =
+    s.shipment_number != null && String(s.shipment_number).trim() !== ""
+      ? String(s.shipment_number).trim()
+      : rawPk;
+
   return {
-    id: s.shipment_number != null ? String(s.shipment_number) : String(s.id ?? ""),
+    id: displayId,
+    ...(rawPk && /^\d+$/.test(rawPk) ? { databaseId: rawPk } : {}),
     origin: String(s.from_location ?? s.fromLocation ?? "—"),
     destination: String(s.to_location ?? s.toLocation ?? "—"),
     ...(destWhId ? { destinationWarehouseId: destWhId } : {}),
@@ -341,7 +348,7 @@ export function mapRowToShipment(s: Record<string, unknown>): Shipment {
     carrier: String(s.carrier ?? ""),
     shipDate: shipTs ? String(shipTs).slice(0, 10) : "",
     eta: etaTs ? String(etaTs).slice(0, 10) : "",
-    actualDelivery: delTs ? String(delTs).slice(0, 10) : "",
+    actualDelivery: delTs ? String(delTs) : "",
     linkedOrder: orderNumber ?? orderDbId ?? "",
     ...(orderDbId ? { linkedOrderDbId: orderDbId } : {}),
     type,
@@ -353,6 +360,37 @@ export function mapRowToShipment(s: Record<string, unknown>): Shipment {
     ...(waybillNumber || tracking ? { waybillNumber: waybillNumber ?? tracking } : {}),
     ...(shippedAtIso ? { shippedAt: shippedAtIso } : {}),
   };
+}
+
+/** Map `/api/v1/inventory` rows → client `InventoryItem`. */
+export function mapApiInventoryRows(inventory: unknown[]): InventoryItem[] {
+  return (inventory || []).map((row) => {
+    const i = row as Record<string, unknown>;
+    const meta = i.metadata as Record<string, unknown> | undefined;
+    const qty = Number(i.quantity_on_hand ?? 0);
+    const reserved = Number(i.reserved_quantity ?? 0);
+    const available = Number(i.available_quantity ?? qty - reserved);
+    const warehouse = String(i.location ?? i.warehouse ?? "Main Warehouse");
+    const caseSize = Number(i.case_size ?? meta?.caseSize ?? 12) || 12;
+    const invStatus =
+      available <= 0 ? "reserved" : available <= (Number(i.reorder_point) || 0) ? "low" : "available";
+    return {
+      id: String(i.id),
+      sku: String(i.sku ?? ""),
+      productName: String(i.product_name ?? i.name ?? i.sku ?? ""),
+      batchLot: String(i.batch_lot ?? `B${new Date().getFullYear()}-${String(i.id).padStart(3, "0")}`),
+      productionDate: i.production_date
+        ? String(i.production_date).slice(0, 10)
+        : new Date().toISOString().slice(0, 10),
+      quantityBottles: qty,
+      quantityCases: caseSize > 0 ? Math.round((qty / caseSize) * 10) / 10 : qty,
+      warehouse,
+      locationType: "distributor_warehouse" as const,
+      status: invStatus === "low" ? ("available" as const) : (invStatus as "available" | "reserved"),
+      labelVersion: String(i.label_version ?? "v1.0"),
+      notes: String(i.notes ?? ""),
+    };
+  });
 }
 
 function parseMaybeJson<T>(value: unknown, fallback: T): T {

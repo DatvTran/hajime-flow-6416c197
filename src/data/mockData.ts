@@ -455,6 +455,8 @@ export const productionStatuses: ProductionStatus[] = [
 
 export type Shipment = {
   id: string;
+  /** Numeric API primary key when `id` is a display number (e.g. `SH-1042`). */
+  databaseId?: string;
   origin: string;
   destination: string;
   carrier: string;

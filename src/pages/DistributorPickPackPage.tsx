@@ -26,6 +26,7 @@ import {
   formatActivePoMetaI18n,
   formatQueueDueI18n,
 } from "@/lib/i18n-portal";
+import { DistributorPage, DistributorPageHeader } from "@/components/distributor/DistributorUi";
 export default function DistributorPickPackPage() {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -200,15 +201,11 @@ export default function DistributorPickPackPage() {
   if (loading) return <DistributorSkeleton />;
 
   return (
-    <div className="animate-enter">
-      <div className="dist-ph-row">
-        <div>
-          <h1 className="mb-1 font-display text-[26px] font-semibold tracking-[-0.02em]">{t("Pick & pack")}</h1>
-          <p className="text-[13px] text-muted-foreground">
-            {t("Start a pick session, then check off each item as you pull it from its aisle.")}
-          </p>
-        </div>
-      </div>
+    <DistributorPage>
+      <DistributorPageHeader
+        title="Pick & pack"
+        description="Start a pick session, then check off each item as you pull it from its aisle."
+      />
 
       {activeOrder ? (
         <>
@@ -456,6 +453,6 @@ export default function DistributorPickPackPage() {
           </Link>
         </div>
       )}
-    </div>
+    </DistributorPage>
   );
 }
