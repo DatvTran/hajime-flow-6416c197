@@ -148,8 +148,22 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
-    | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
+  LOG_TMP=$(mktemp /tmp/hajime_logs_XXXXX)
+  fly logs -a "$APP_NAME" --since 24h 2>/dev/null > "$LOG_TMP" || true
+
+  # STOP condition: RouteErrorBoundary means a render crash reached a real user
+  REB_COUNT=$(grep -ciE "RouteErrorBoundary" "$LOG_TMP" 2>/dev/null || true)
+  if [[ "$REB_COUNT" -gt 0 ]]; then
+    fail "$REB_COUNT RouteErrorBoundary hit(s) in last 24h — render crash(es) reached users:"
+    grep -iE "RouteErrorBoundary" "$LOG_TMP" | tail -5 | sed 's/^/       /'
+    rm -f "$LOG_TMP"
+    stop "RouteErrorBoundary detected in logs. A render crash reached real users — fix before continuing."
+  else
+    pass "No RouteErrorBoundary hits in last 24h"
+  fi
+
+  LOG_ERRORS=$(grep -ciE "error|unhandled|ECONN|5[0-9]{2}" "$LOG_TMP" 2>/dev/null || true)
+  rm -f "$LOG_TMP"
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
   elif [[ "$LOG_ERRORS" -le 5 ]]; then
@@ -332,6 +346,52 @@ else
     (( T3_FAILS++ )) || true
   fi
 fi
+
+# ── 3g. Cross-tenant isolation smoke (optional) ───────────────────────────────
+step "3g. Cross-tenant isolation smoke (optional)"
+if [[ -n "$SKIP_PROD" ]]; then
+  warn "SKIP_PROD set — skipping cross-tenant smoke"
+elif [[ -z "${TENANT_A_TOKEN:-}" ]] || [[ -z "${TENANT_B_UUID:-}" ]]; then
+  warn "TENANT_A_TOKEN / TENANT_B_UUID not set — skipping (set both env vars to enable)"
+elif ! has_cmd curl; then
+  warn "curl not found — skipping cross-tenant smoke"
+else
+  CROSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+    -H "Authorization: Bearer $TENANT_A_TOKEN" \
+    "${BASE_URL}/api/products?tenantId=${TENANT_B_UUID}" 2>/dev/null || echo "000")
+  if [[ "$CROSS_CODE" == "403" ]]; then
+    pass "Cross-tenant isolation: tenant A token → tenant B resource → 403  ✓"
+  elif [[ "$CROSS_CODE" == "404" ]]; then
+    pass "Cross-tenant isolation: tenant A token → tenant B resource → 404  ✓ (not found, not leaked)"
+  else
+    fail "Cross-tenant isolation: expected 403/404, got $CROSS_CODE — possible data leak"
+    stop "Cross-tenant request returned HTTP $CROSS_CODE instead of 403/404. Possible tenant isolation failure."
+  fi
+fi
+
+# ── 3h. DB auth_events — privileged-registration check (optional) ────────────
+step "3h. DB auth_events — privileged registration in last 24h (optional)"
+_DB_URL="${HAJIME_DB_URL:-${DATABASE_URL:-}}"
+if [[ -z "$_DB_URL" ]]; then
+  warn "HAJIME_DB_URL / DATABASE_URL not set — skipping DB auth_events check"
+elif ! has_cmd psql; then
+  warn "psql not found — skipping DB auth_events check"
+else
+  PRIV_REG=$(psql "$_DB_URL" -tAc \
+    "SELECT COUNT(*) FROM auth_events
+     WHERE event_type = 'register'
+       AND details->>'role' IN ('founder_admin','brand_operator')
+       AND created_at > NOW() - INTERVAL '24 hours';" 2>/dev/null || echo "-1")
+  if [[ "$PRIV_REG" == "-1" ]]; then
+    warn "auth_events query failed — verify HAJIME_DB_URL and table schema"
+  elif [[ "$PRIV_REG" -eq 0 ]]; then
+    pass "auth_events: no privileged self-registrations in last 24h"
+  else
+    fail "auth_events: $PRIV_REG privileged registration(s) in last 24h"
+    stop "auth_events shows $PRIV_REG registration(s) with founder_admin or brand_operator role in the last 24h."
+  fi
+fi
+
 fi  # end START_TIER <= 3
 
 # =============================================================================
