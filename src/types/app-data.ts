@@ -63,6 +63,11 @@ export type TeamMember = {
   /** Sales-rep-submitted retail row awaiting wholesaler approval (`POST /team-members/:id/approve-retail`). */
   pendingDistributorApproval?: boolean;
   crmRequestedByUserId?: string;
+  /** On-premise account this retail portal login belongs to. */
+  linkedAccountId?: string;
+  retailTradingName?: string;
+  /** Owning distributor portal user id (`users.id`). */
+  managedByUserId?: string;
 };
 
 /** Brand HQ warehouse / depot locations for inventory and transfers. */

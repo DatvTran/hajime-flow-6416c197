@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hajime — Supply Chain OS</title>
+<meta name="ext-resource-dependency" content="assets/hajime-logo.png" data-resource-id="logo" />
+<template id="__bundler_thumbnail">
+<svg viewBox="0 0 80 56" xmlns="http://www.w3.org/2000/svg">
+  <rect width="80" height="56" fill="hsl(24,12%,8%)"/>
+  <circle cx="40" cy="26" r="14" fill="none" stroke="hsl(40,88%,42%)" stroke-width="1.5"/>
+  <text x="40" y="31" text-anchor="middle" fill="hsl(40,88%,42%)" font-size="12" font-family="Georgia,serif" font-weight="600">一</text>
+  <text x="40" y="48" text-anchor="middle" fill="hsl(35,12%,55%)" font-size="6" font-family="Georgia,serif" letter-spacing="2">はじめ</text>
+</svg>
+</template>
+<link rel="stylesheet" href="colors_and_type.css">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:hsl(40 18% 97%)}
+  button{font-family:inherit}
+  input,select,textarea{font-family:inherit}
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- Load order matters: data → ui → shell → pages -->
+<script type="text/babel" src="app/data.jsx"></script>
+<script type="text/babel" src="app/ui.jsx"></script>
+<script type="text/babel" src="app/shell.jsx"></script>
+<script type="text/babel" src="app/pages-hq.jsx"></script>
+<script type="text/babel" src="app/pages-manuf.jsx"></script>
+<script type="text/babel" src="app/pages-dist.jsx"></script>
+<script type="text/babel" src="app/pages-rep.jsx"></script>
+<script type="text/babel" src="app/pages-retail.jsx"></script>
+<script type="text/babel" src="app/pages-polish.jsx"></script>
+<script type="text/babel" src="app/pages-modules.jsx"></script>
+<script type="text/babel" src="app/pages-incentives.jsx"></script>
+
+<script type="text/babel">
+// ─── Route table ─────────────────────────────────────────────
+const ROUTES = {
+  login: LoginPage,
+
+  // HQ
+  'hq/dashboard':       HQDashboard,
+  'hq/orders':          HQOrders,
+  'hq/orders/*':        HQOrderDetail,
+  'hq/inventory':       HQInventory,
+  'hq/accounts':        HQAccounts,
+  'hq/purchase-orders': HQPurchaseOrders,
+  'hq/shipments':       HQShipments,
+  'hq/markets':         HQMarkets,
+  'hq/reports':         HQReports,
+  'hq/alerts':          HQAlerts,
+  'hq/finance':         HQFinance,
+  'hq/settings':        SettingsRBAC,
+  'hq/finance':         FinanceARPage,
+  'hq/incentives':      IncentiveManager,
+  'dist/incentives':    DistIncentives,
+  'rep/incentives':     RepIncentives,
+  'retail/incentives':  RetailIncentives,
+  'hq/product-development': ProductDevelopment,
+  'hq/accounts/*':      AccountDetail,
+  'hq/inventory/*':     InventoryDetail,
+  'hq/purchase-orders/*': PODetail,
+  'hq/orders/new':      NewOrderFlow,
+
+  // Manufacturer
+  'manuf/dashboard':  ManufDashboard,
+  'manuf/production': ManufDashboard,
+  'manuf/po-in':      ManufPOsIn,
+  'manuf/ship-out':   ManufDashboard,
+  'manuf/specs':      ManufSpecs,
+  'manuf/profile':    ManufProfile,
+
+  // Distributor
+  'dist/dashboard':   DistDashboard,
+  'dist/floor':       DistDashboard,
+  'dist/inbound':     DistInbound,
+  'dist/inventory':   DistInventory,
+  'dist/depletion':   DistDepletion,
+  'dist/sell-through':DistSellThrough,
+  'dist/alerts':      DistAlerts,
+
+  // Sales Rep
+  'rep/dashboard':     RepDashboard,
+  'rep/accounts':      RepAccounts,
+  'rep/accounts/*':    RepAccounts,
+  'rep/inventory':     RepInventory,
+  'rep/drafts':        RepDrafts,
+  'rep/orders/*':      RepDrafts,
+  'rep/visits':        RepVisits,
+  'rep/opportunities': RepOpportunities,
+  'rep/targets':       RepTargets,
+  'rep/reports':       RepReports,
+  'rep/accounts/*':    AccountDetail,
+
+  // Retail
+  'retail/dashboard': RetailHome,
+  'retail/catalog':   RetailCatalog,
+  'retail/orders':    RetailOrders,
+  'retail/orders/*':  RetailOrderDetail,
+  'retail/reorder':   RetailReorder,
+  'retail/shipments': RetailShipments,
+  'retail/account':   RetailAccount,
+  'retail/support':   RetailSupport,
+};
+
+function resolve(parts) {
+  const full = parts.join('/');
+  // exact match
+  if (ROUTES[full]) return ROUTES[full];
+  // wildcard match (e.g. hq/orders/*)
+  const withWild = parts.slice(0,2).join('/') + '/*';
+  if (ROUTES[withWild]) return ROUTES[withWild];
+  // role/dashboard fallback
+  const fallback = parts[0] + '/dashboard';
+  if (ROUTES[fallback]) return ROUTES[fallback];
+  return null;
+}
+
+// ─── Not found ───────────────────────────────────────────────
+function NotFound() {
+  const { navigate, hash } = useRouter();
+  return (
+    <div style={{display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                 height:'100vh', gap:16, fontFamily:'var(--font-body)', background:'hsl(40 18%97%)'}}>
+      <div style={{fontFamily:'var(--font-display)', fontSize:64, fontWeight:600, letterSpacing:'-.025em',
+                   color:'hsl(24 10%10%)'}}>404</div>
+      <div style={{fontSize:16, color:'hsl(24 6%50%)'}}>Page not found: <code style={{fontFamily:'var(--font-mono)', fontSize:13}}>{hash}</code></div>
+      <button onClick={()=>navigate('/login')} style={{padding:'10px 20px', background:'hsl(40 88%42%)', color:'white',
+                                                        border:'none', borderRadius:8, cursor:'pointer', fontSize:14}}>
+        Back to login
+      </button>
+    </div>
+  );
+}
+
+// ─── Root app ────────────────────────────────────────────────
+function App() {
+  const { parts, hash, role, page } = useRouter();
+  const { toasts } = useStore();
+
+  // Redirect / to /login
+  React.useEffect(() => {
+    if (!hash || hash === '/' || hash === '') window.location.hash = '#/login';
+  }, [hash]);
+
+  // Resolve component
+  const isLogin = parts[0] === 'login' || !parts[0];
+  const Page = isLogin ? LoginPage : resolve(parts);
+
+  return (
+    <>
+      {Page ? <Page/> : <NotFound/>}
+      <Toasts items={toasts}/>
+    </>
+  );
+}
+
+// ─── Mount ───────────────────────────────────────────────────
+function Root() {
+  return (
+    <RouterProvider>
+      <AppStoreProvider>
+        <App/>
+      </AppStoreProvider>
+    </RouterProvider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
+</script>
+</body>
+</html>

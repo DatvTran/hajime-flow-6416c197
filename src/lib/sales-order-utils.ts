@@ -1,5 +1,37 @@
 import type { Account, Product, SalesOrder, SalesOrderLine } from "@/data/mockData";
 
+/** True when `id` is a Postgres PK or UUID from `/api/v1/orders` (not seed refs like SO-2025-001). */
+export function isPersistedApiOrderId(id: string): boolean {
+  const t = id.trim();
+  if (!t) return false;
+  if (/^\d+$/.test(t)) return true;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(t)) {
+    return true;
+  }
+  return false;
+}
+
+/** Human order numbers the API accepts in `/orders/:id/status` (resolved server-side). */
+export function isServerOrderNumberRef(id: string): boolean {
+  return /^SO-\d{4}-/i.test(String(id ?? "").trim());
+}
+
+/** Client ref can be synced to the server (numeric PK, UUID, or order_number). */
+export function canSyncOrderStatusToApi(id: string): boolean {
+  const t = id.trim();
+  return isPersistedApiOrderId(t) || isServerOrderNumberRef(t);
+}
+
+/** Demo/seed ids (SO-2025-001) that must not block fulfillment after API bootstrap. */
+export function isSeedStyleSalesOrderId(id: string): boolean {
+  return isServerOrderNumberRef(id);
+}
+
+export function isOrderStatusApiFailureRecoverable(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /not found|HTTP 404|Failed to update order status/i.test(msg);
+}
+
 export function nextSalesOrderId(existing: Pick<SalesOrder, "id">[]): string {
   let maxSeq = 0;
   const year = new Date().getFullYear();

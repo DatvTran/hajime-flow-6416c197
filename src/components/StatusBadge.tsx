@@ -1,4 +1,33 @@
+import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
+
+const STATUS_I18N_KEY: Record<string, string> = {
+  available: "Available",
+  reserved: "Reserved",
+  damaged: "Damaged",
+  "in-transit": "In Transit",
+  "in-production": "In Production",
+  draft: "Draft",
+  confirmed: "Confirmed",
+  packed: "Packed",
+  shipped: "Shipped",
+  delivered: "Delivered",
+  cancelled: "Cancelled",
+  approved: "Approved",
+  completed: "Completed",
+  delayed: "Delayed",
+  pending: "Pending",
+  paid: "Paid",
+  overdue: "Overdue",
+  active: "Active",
+  prospect: "Prospect",
+  inactive: "Inactive",
+  preparing: "Preparing",
+  development: "Development",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
 
 const STATUS_THEME: Record<string, { dot: string; pill: string }> = {
   available: { dot: "bg-emerald-500", pill: "bg-emerald-500/8 text-emerald-700 dark:text-emerald-400 ring-emerald-500/20" },
@@ -30,8 +59,21 @@ const STATUS_THEME: Record<string, { dot: string; pill: string }> = {
 
 const FALLBACK = { dot: "bg-stone-400", pill: "bg-stone-400/10 text-stone-600 dark:text-stone-400 ring-stone-400/20" };
 
-export function StatusBadge({ status, size = "sm" }: { status: string; size?: "sm" | "xs" }) {
+export function StatusBadge({
+  status,
+  size = "sm",
+  label,
+  className,
+}: {
+  status: string;
+  size?: "sm" | "xs";
+  label?: string;
+  className?: string;
+}) {
+  const { t } = useLanguage();
   const theme = STATUS_THEME[status] || FALLBACK;
+  const key = label ?? STATUS_I18N_KEY[status] ?? status.replace(/-/g, " ");
+  const text = t(key);
 
   return (
     <span
@@ -39,10 +81,11 @@ export function StatusBadge({ status, size = "sm" }: { status: string; size?: "s
         "inline-flex items-center gap-1.5 rounded-full font-medium capitalize ring-1 ring-inset",
         theme.pill,
         size === "xs" ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-0.5 text-[11px]",
+        className,
       )}
     >
       <span className={cn("status-dot", theme.dot)} />
-      {status.replace(/-/g, " ")}
+      {text}
     </span>
   );
 }

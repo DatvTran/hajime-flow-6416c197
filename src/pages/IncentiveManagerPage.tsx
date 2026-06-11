@@ -1,12 +1,18 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { PageHeader } from "@/components/PageHeader";
+import { useAuth } from "@/contexts/AuthContext";
+import { useAppData } from "@/contexts/AppDataContext";
+import {
+  getSupplyChainIncentivesState,
+  putSupplyChainIncentivesState,
+  type SupplyChainIncentiveStatePayload,
+} from "@/lib/api-v1-mutations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -24,6 +30,11 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import {
+  dismissIncentivesLoadFallbackNotice,
+  isIncentivesLoadFallbackNoticeDismissed,
+} from "@/lib/incentives-notice";
+import RetailPartnerProgramPage from "@/pages/RetailPartnerProgramPage";
+import {
   TrendingUp,
   Users,
   Package,
@@ -34,13 +45,11 @@ import {
   Trash2,
   Calculator,
   Award,
-  Target,
   BarChart3,
   Store,
   Calendar,
   RefreshCw,
   MapPin,
-  AlertCircle,
 } from "lucide-react";
 
 // ===== TYPES =====
@@ -63,6 +72,8 @@ interface SPIFEntry {
   partnerId: string;
   partnerName: string;
   repName: string;
+  /** Retail store trading name — links SPIF to retail portal & HQ reporting */
+  retailAccountName?: string;
   type: "new_on_premise" | "new_off_premise" | "reorder" | "tasting";
   date: string;
   quantity: number;
@@ -84,13 +95,46 @@ interface MarginScenario {
 
 // ===== CONSTANTS =====
 
-const GROSS_MARGIN_PER_CASE = 216; // $48 wholesale - $30 landed = $18/bottle × 12
-const SPIF_RATES = {
+/** Bottles per case for wholesale margin math (pricing inputs are per bottle). */
+const BOTTLES_PER_CASE = 12;
+
+const DEFAULT_SUPPLY_CHAIN_PRICING = {
+  landed: 30,
+  wholesale: 48,
+  retail: 60,
+  shelf: 93,
+} as const;
+
+type SupplyChainPricing = {
+  landed: number;
+  wholesale: number;
+  retail: number;
+  shelf: number;
+};
+
+const DEFAULT_SPIF_RATES = {
   new_on_premise: 150,
   new_off_premise: 100,
   reorder: 5,
   tasting: 25,
+} as const;
+
+type SpifRateKey = keyof typeof DEFAULT_SPIF_RATES;
+type SpifRates = Record<SpifRateKey, number>;
+
+const SPIF_RATE_FIELD_LABELS: Record<SpifRateKey, string> = {
+  new_on_premise: "New on-premise (per account)",
+  new_off_premise: "New off-premise (per account)",
+  reorder: "Reorder (per case)",
+  tasting: "Buyer tasting (per event)",
 };
+
+const DEFAULT_VOLUME_BONUSES_USD = {
+  gold: 2500,
+  silver: 1200,
+} as const;
+
+type VolumeBonusesUsd = { gold: number; silver: number };
 
 const QUARTERLY_THRESHOLDS = {
   Gold: { cases: 500, accounts: 15, reorders: 100, tastings: 20 },
@@ -102,6 +146,63 @@ const QUARTERLY_THRESHOLDS = {
 
 const STORAGE_KEY_PARTNERS = "hajime_incentive_partners";
 const STORAGE_KEY_SPIFS = "hajime_incentive_spifs";
+const STORAGE_KEY_SUPPLY_CHAIN = "hajime_supply_chain_pricing";
+const STORAGE_KEY_SPIF_RATES = "hajime_spif_rates";
+const STORAGE_KEY_VOLUME_BONUSES = "hajime_incentive_volume_bonuses_usd";
+
+function clampUsdPrice(n: number): number {
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(n, 1_000_000);
+}
+
+function loadSpifRates(): SpifRates {
+  if (typeof window === "undefined") return { ...DEFAULT_SPIF_RATES };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SPIF_RATES);
+    if (!raw) return { ...DEFAULT_SPIF_RATES };
+    const p = JSON.parse(raw) as Partial<SpifRates>;
+    return {
+      new_on_premise: clampUsdPrice(Number(p.new_on_premise ?? DEFAULT_SPIF_RATES.new_on_premise)),
+      new_off_premise: clampUsdPrice(Number(p.new_off_premise ?? DEFAULT_SPIF_RATES.new_off_premise)),
+      reorder: clampUsdPrice(Number(p.reorder ?? DEFAULT_SPIF_RATES.reorder)),
+      tasting: clampUsdPrice(Number(p.tasting ?? DEFAULT_SPIF_RATES.tasting)),
+    };
+  } catch {
+    return { ...DEFAULT_SPIF_RATES };
+  }
+}
+
+function loadVolumeBonusesUsd(): VolumeBonusesUsd {
+  if (typeof window === "undefined") return { ...DEFAULT_VOLUME_BONUSES_USD };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_VOLUME_BONUSES);
+    if (!raw) return { ...DEFAULT_VOLUME_BONUSES_USD };
+    const p = JSON.parse(raw) as Partial<VolumeBonusesUsd>;
+    return {
+      gold: clampUsdPrice(Number(p.gold ?? DEFAULT_VOLUME_BONUSES_USD.gold)),
+      silver: clampUsdPrice(Number(p.silver ?? DEFAULT_VOLUME_BONUSES_USD.silver)),
+    };
+  } catch {
+    return { ...DEFAULT_VOLUME_BONUSES_USD };
+  }
+}
+
+function loadSupplyChainPricing(): SupplyChainPricing {
+  if (typeof window === "undefined") return { ...DEFAULT_SUPPLY_CHAIN_PRICING };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SUPPLY_CHAIN);
+    if (!raw) return { ...DEFAULT_SUPPLY_CHAIN_PRICING };
+    const p = JSON.parse(raw) as Partial<SupplyChainPricing>;
+    return {
+      landed: clampUsdPrice(Number(p.landed ?? DEFAULT_SUPPLY_CHAIN_PRICING.landed)),
+      wholesale: clampUsdPrice(Number(p.wholesale ?? DEFAULT_SUPPLY_CHAIN_PRICING.wholesale)),
+      retail: clampUsdPrice(Number(p.retail ?? DEFAULT_SUPPLY_CHAIN_PRICING.retail)),
+      shelf: clampUsdPrice(Number(p.shelf ?? DEFAULT_SUPPLY_CHAIN_PRICING.shelf)),
+    };
+  } catch {
+    return { ...DEFAULT_SUPPLY_CHAIN_PRICING };
+  }
+}
 
 // ===== HELPER FUNCTIONS =====
 
@@ -164,104 +265,366 @@ function getHealthBadgeVariant(percentage: number): "default" | "secondary" | "d
   return "destructive";
 }
 
+// ===== SEED DATA (first-time tenant or empty server row) =====
+
+const SEED_PARTNERS: Partner[] = [
+  {
+    id: "1",
+    name: "Convoy Supply Ontario",
+    market: "Ontario",
+    tier: "Growth",
+    quarterlyCasesSold: 420,
+    accountsOpened: 12,
+    reorders: 85,
+    tastingsCompleted: 18,
+    adfSpend: 2500,
+    quarterlyPerformanceTier: "Silver",
+  },
+  {
+    id: "2",
+    name: "Liberty Wine Merchants",
+    market: "British Columbia",
+    tier: "Premier",
+    quarterlyCasesSold: 680,
+    accountsOpened: 22,
+    reorders: 145,
+    tastingsCompleted: 28,
+    adfSpend: 4200,
+    quarterlyPerformanceTier: "Gold",
+  },
+  {
+    id: "3",
+    name: "Saq Distributions",
+    market: "Quebec",
+    tier: "Foundation",
+    quarterlyCasesSold: 180,
+    accountsOpened: 6,
+    reorders: 32,
+    tastingsCompleted: 8,
+    adfSpend: 1200,
+    quarterlyPerformanceTier: "Bronze",
+  },
+];
+
+const SEED_SPIFS: SPIFEntry[] = [
+  {
+    id: "s1",
+    partnerId: "1",
+    partnerName: "Convoy Supply Ontario",
+    repName: "Sarah Mitchell",
+    type: "new_on_premise",
+    date: "2026-04-05",
+    quantity: 2,
+    payout: 300,
+    notes: "The Drake Hotel - new cocktail menu",
+    retailAccountName: "The Drake Hotel",
+  },
+  {
+    id: "s2",
+    partnerId: "1",
+    partnerName: "Convoy Supply Ontario",
+    repName: "Mike Chen",
+    type: "reorder",
+    date: "2026-04-08",
+    quantity: 10,
+    payout: 50,
+  },
+  {
+    id: "s3",
+    partnerId: "2",
+    partnerName: "Liberty Wine Merchants",
+    repName: "Jessica Park",
+    type: "tasting",
+    date: "2026-04-10",
+    quantity: 3,
+    payout: 75,
+    notes: "Private buyer event",
+  },
+];
+
+function mergeLegacyOrSeed(): SupplyChainIncentiveStatePayload {
+  let partners: Partner[] = [...SEED_PARTNERS];
+  let spifs: SPIFEntry[] = [...SEED_SPIFS];
+  if (typeof window !== "undefined") {
+    try {
+      const rawP = localStorage.getItem(STORAGE_KEY_PARTNERS);
+      if (rawP) {
+        const p = JSON.parse(rawP) as unknown;
+        if (Array.isArray(p) && p.length > 0) partners = p as Partner[];
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      const rawS = localStorage.getItem(STORAGE_KEY_SPIFS);
+      if (rawS) {
+        const s = JSON.parse(rawS) as unknown;
+        if (Array.isArray(s) && s.length > 0) spifs = s as SPIFEntry[];
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return {
+    partners,
+    spifs,
+    supplyChainPricing: loadSupplyChainPricing(),
+    spifRates: loadSpifRates(),
+    volumeBonusesUsd: loadVolumeBonusesUsd(),
+  };
+}
+
+function clearLegacyIncentiveLocalKeys() {
+  if (typeof window === "undefined") return;
+  try {
+    [
+      STORAGE_KEY_PARTNERS,
+      STORAGE_KEY_SPIFS,
+      STORAGE_KEY_SUPPLY_CHAIN,
+      STORAGE_KEY_SPIF_RATES,
+      STORAGE_KEY_VOLUME_BONUSES,
+    ].forEach((k) => localStorage.removeItem(k));
+  } catch {
+    /* ignore */
+  }
+}
+
+function coerceServerPayload(data: SupplyChainIncentiveStatePayload): {
+  partners: Partner[];
+  spifs: SPIFEntry[];
+  supplyChainPricing: SupplyChainPricing;
+  spifRates: SpifRates;
+  volumeBonusesUsd: VolumeBonusesUsd;
+} {
+  const rawPartners = (data.partners ?? []) as Partner[];
+  const partners = rawPartners.map((p) => {
+    const { quarterlyPerformanceTier: existing, ...rest } = p;
+    const tier = existing ?? calculateQuarterlyTier(rest);
+    return { ...p, quarterlyPerformanceTier: tier };
+  });
+  return {
+    partners,
+    spifs: (data.spifs ?? []) as SPIFEntry[],
+    supplyChainPricing: data.supplyChainPricing as SupplyChainPricing,
+    spifRates: data.spifRates as SpifRates,
+    volumeBonusesUsd: data.volumeBonusesUsd as VolumeBonusesUsd,
+  };
+}
+
 // ===== MAIN COMPONENT =====
 
+const RETAIL_ACCOUNT_TYPES = new Set(["retail", "bar", "restaurant", "hotel", "lifestyle"]);
+
 export default function IncentiveManagerPage() {
-  // Load from localStorage on mount
-  const [partners, setPartners] = useState<Partner[]>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem(STORAGE_KEY_PARTNERS);
-      if (saved) return JSON.parse(saved);
-    }
-    return [
-      {
-        id: "1",
-        name: "Convoy Supply Ontario",
-        market: "Ontario",
-        tier: "Growth",
-        quarterlyCasesSold: 420,
-        accountsOpened: 12,
-        reorders: 85,
-        tastingsCompleted: 18,
-        adfSpend: 2500,
-        quarterlyPerformanceTier: "Silver",
-      },
-      {
-        id: "2",
-        name: "Liberty Wine Merchants",
-        market: "British Columbia",
-        tier: "Premier",
-        quarterlyCasesSold: 680,
-        accountsOpened: 22,
-        reorders: 145,
-        tastingsCompleted: 28,
-        adfSpend: 4200,
-        quarterlyPerformanceTier: "Gold",
-      },
-      {
-        id: "3",
-        name: "Saq Distributions",
-        market: "Quebec",
-        tier: "Foundation",
-        quarterlyCasesSold: 180,
-        accountsOpened: 6,
-        reorders: 32,
-        tastingsCompleted: 8,
-        adfSpend: 1200,
-        quarterlyPerformanceTier: "Bronze",
-      },
-    ];
-  });
+  const { user, isLoading } = useAuth();
+  const { data: appData } = useAppData();
+  const [bootstrapped, setBootstrapped] = useState(false);
+  const skipNextRemoteSave = useRef(true);
+  const [lastRemoteSaveAt, setLastRemoteSaveAt] = useState<string | null>(null);
+  const [remoteSaveError, setRemoteSaveError] = useState<string | null>(null);
 
-  const [spifs, setSpifs] = useState<SPIFEntry[]>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem(STORAGE_KEY_SPIFS);
-      if (saved) return JSON.parse(saved);
-    }
-    return [
-      {
-        id: "s1",
-        partnerId: "1",
-        partnerName: "Convoy Supply Ontario",
-        repName: "Sarah Mitchell",
-        type: "new_on_premise",
-        date: "2026-04-05",
-        quantity: 2,
-        payout: 300,
-        notes: "The Drake Hotel - new cocktail menu",
-      },
-      {
-        id: "s2",
-        partnerId: "1",
-        partnerName: "Convoy Supply Ontario",
-        repName: "Mike Chen",
-        type: "reorder",
-        date: "2026-04-08",
-        quantity: 10,
-        payout: 50,
-      },
-      {
-        id: "s3",
-        partnerId: "2",
-        partnerName: "Liberty Wine Merchants",
-        repName: "Jessica Park",
-        type: "tasting",
-        date: "2026-04-10",
-        quantity: 3,
-        payout: 75,
-        notes: "Private buyer event",
-      },
-    ];
-  });
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [spifs, setSpifs] = useState<SPIFEntry[]>([]);
+  const [supplyChainPricing, setSupplyChainPricing] = useState<SupplyChainPricing>(() => ({
+    ...DEFAULT_SUPPLY_CHAIN_PRICING,
+  }));
+  const [spifRates, setSpifRates] = useState<SpifRates>(() => ({ ...DEFAULT_SPIF_RATES }));
+  const [volumeBonusesUsd, setVolumeBonusesUsd] = useState<VolumeBonusesUsd>(() => ({
+    ...DEFAULT_VOLUME_BONUSES_USD,
+  }));
 
-  // Save to localStorage when data changes
+  // Load from server (tenant-scoped); migrate legacy localStorage once if server has no row
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_PARTNERS, JSON.stringify(partners));
-  }, [partners]);
+    if (isLoading) return;
+
+    if (!user) {
+      const local = mergeLegacyOrSeed();
+      const c = coerceServerPayload(local);
+      setPartners(c.partners);
+      setSpifs(c.spifs);
+      setSupplyChainPricing(c.supplyChainPricing);
+      setSpifRates(c.spifRates);
+      setVolumeBonusesUsd(c.volumeBonusesUsd);
+      setBootstrapped(true);
+      skipNextRemoteSave.current = true;
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getSupplyChainIncentivesState();
+        if (cancelled) return;
+
+        if (res.data == null) {
+          const merged = mergeLegacyOrSeed();
+          const c = coerceServerPayload(merged);
+          setPartners(c.partners);
+          setSpifs(c.spifs);
+          setSupplyChainPricing(c.supplyChainPricing);
+          setSpifRates(c.spifRates);
+          setVolumeBonusesUsd(c.volumeBonusesUsd);
+          try {
+            await putSupplyChainIncentivesState(merged);
+            clearLegacyIncentiveLocalKeys();
+            setLastRemoteSaveAt(new Date().toISOString());
+            setRemoteSaveError(null);
+          } catch (e) {
+            console.error(e);
+            setRemoteSaveError(e instanceof Error ? e.message : "Save failed");
+            toast.error("Could not save incentives to server", {
+              description: e instanceof Error ? e.message : undefined,
+            });
+          }
+        } else {
+          const c = coerceServerPayload(res.data);
+          setPartners(c.partners);
+          setSpifs(c.spifs);
+          setSupplyChainPricing(c.supplyChainPricing);
+          setSpifRates(c.spifRates);
+          setVolumeBonusesUsd(c.volumeBonusesUsd);
+          setRemoteSaveError(null);
+          if (res.updatedAt != null) setLastRemoteSaveAt(String(res.updatedAt));
+        }
+      } catch (e) {
+        if (!cancelled) {
+          const merged = mergeLegacyOrSeed();
+          const c = coerceServerPayload(merged);
+          setPartners(c.partners);
+          setSpifs(c.spifs);
+          setSupplyChainPricing(c.supplyChainPricing);
+          setSpifRates(c.spifRates);
+          setVolumeBonusesUsd(c.volumeBonusesUsd);
+          setRemoteSaveError(e instanceof Error ? e.message : "Load failed");
+          if (!isIncentivesLoadFallbackNoticeDismissed()) {
+            toast.error("Could not load incentives from server", {
+              id: "incentives-load-fallback",
+              description: "Using this browser’s cached copy until the API is available.",
+              action: {
+                label: "Don't show again",
+                onClick: () => dismissIncentivesLoadFallbackNotice(),
+              },
+            });
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setBootstrapped(true);
+          skipNextRemoteSave.current = true;
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoading, user?.tenantId]);
+
+  // Debounced save to server when logged in
+  useEffect(() => {
+    if (!bootstrapped || !user || isLoading) return;
+    if (skipNextRemoteSave.current) {
+      skipNextRemoteSave.current = false;
+      return;
+    }
+
+    const payload: SupplyChainIncentiveStatePayload = {
+      partners,
+      spifs,
+      supplyChainPricing,
+      spifRates,
+      volumeBonusesUsd,
+    };
+
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const out = await putSupplyChainIncentivesState(payload);
+          setRemoteSaveError(null);
+          if (out.updatedAt != null) setLastRemoteSaveAt(String(out.updatedAt));
+        } catch (e) {
+          console.error(e);
+          setRemoteSaveError(e instanceof Error ? e.message : "Save failed");
+          toast.error("Could not save incentives to server", {
+            description: e instanceof Error ? e.message : undefined,
+          });
+        }
+      })();
+    }, 900);
+
+    return () => window.clearTimeout(handle);
+  }, [
+    bootstrapped,
+    user,
+    isLoading,
+    partners,
+    spifs,
+    supplyChainPricing,
+    spifRates,
+    volumeBonusesUsd,
+  ]);
+
+  // Offline / no-account: keep legacy localStorage behaviour
+  useEffect(() => {
+    if (user) return;
+    if (!bootstrapped) return;
+    try {
+      localStorage.setItem(STORAGE_KEY_PARTNERS, JSON.stringify(partners));
+    } catch {
+      /* ignore */
+    }
+  }, [partners, user, bootstrapped]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_SPIFS, JSON.stringify(spifs));
-  }, [spifs]);
+    if (user) return;
+    if (!bootstrapped) return;
+    try {
+      localStorage.setItem(STORAGE_KEY_SPIFS, JSON.stringify(spifs));
+    } catch {
+      /* ignore */
+    }
+  }, [spifs, user, bootstrapped]);
+
+  useEffect(() => {
+    if (user) return;
+    if (!bootstrapped) return;
+    try {
+      localStorage.setItem(STORAGE_KEY_SUPPLY_CHAIN, JSON.stringify(supplyChainPricing));
+    } catch {
+      /* ignore */
+    }
+  }, [supplyChainPricing, user, bootstrapped]);
+
+  useEffect(() => {
+    if (user) return;
+    if (!bootstrapped) return;
+    try {
+      localStorage.setItem(STORAGE_KEY_SPIF_RATES, JSON.stringify(spifRates));
+    } catch {
+      /* ignore */
+    }
+  }, [spifRates, user, bootstrapped]);
+
+  useEffect(() => {
+    if (user) return;
+    if (!bootstrapped) return;
+    try {
+      localStorage.setItem(STORAGE_KEY_VOLUME_BONUSES, JSON.stringify(volumeBonusesUsd));
+    } catch {
+      /* ignore */
+    }
+  }, [volumeBonusesUsd, user, bootstrapped]);
+
+  const grossMarginPerCase = useMemo(() => {
+    const spread = supplyChainPricing.wholesale - supplyChainPricing.landed;
+    return Math.max(0, spread * BOTTLES_PER_CASE);
+  }, [supplyChainPricing.landed, supplyChainPricing.wholesale]);
+
+  const wholesaleMarginPercent = useMemo(() => {
+    const revenueCase = supplyChainPricing.wholesale * BOTTLES_PER_CASE;
+    if (revenueCase <= 0) return 0;
+    return (grossMarginPerCase / revenueCase) * 100;
+  }, [grossMarginPerCase, supplyChainPricing.wholesale]);
 
   // ===== CALCULATED METRICS =====
 
@@ -272,14 +635,13 @@ export default function IncentiveManagerPage() {
     const totalTastings = partners.reduce((sum, p) => sum + p.tastingsCompleted, 0);
     const totalADFSpend = partners.reduce((sum, p) => sum + p.adfSpend, 0);
     const totalSPIFs = spifs.reduce((sum, s) => sum + s.payout, 0);
-    const totalGrossMargin = totalCases * GROSS_MARGIN_PER_CASE;
+    const totalGrossMargin = totalCases * grossMarginPerCase;
     
     // Estimate volume bonuses (simplified)
-    const volumeBonuses = partners
-      .filter(p => p.quarterlyPerformanceTier === "Gold")
-      .length * 2500 +
-      partners.filter(p => p.quarterlyPerformanceTier === "Silver").length * 1200;
-    
+    const volumeBonuses =
+      partners.filter((p) => p.quarterlyPerformanceTier === "Gold").length * volumeBonusesUsd.gold +
+      partners.filter((p) => p.quarterlyPerformanceTier === "Silver").length * volumeBonusesUsd.silver;
+
     const totalIncentiveCost = totalSPIFs + totalADFSpend + volumeBonuses;
     const netMargin = totalGrossMargin - totalIncentiveCost;
     const costPercentage = totalGrossMargin > 0 ? (totalIncentiveCost / totalGrossMargin) * 100 : 0;
@@ -297,7 +659,7 @@ export default function IncentiveManagerPage() {
       netMargin,
       costPercentage,
     };
-  }, [partners, spifs]);
+  }, [partners, spifs, grossMarginPerCase, volumeBonusesUsd.gold, volumeBonusesUsd.silver]);
 
   // ===== PARTNER MANAGEMENT =====
 
@@ -367,14 +729,27 @@ export default function IncentiveManagerPage() {
   const [spifForm, setSpifForm] = useState({
     partnerId: "",
     repName: "",
+    retailAccountName: "",
     type: "new_on_premise" as SPIFEntry["type"],
     date: new Date().toISOString().split("T")[0],
     quantity: 1,
     notes: "",
   });
 
+  const retailAccountOptions = useMemo(
+    () =>
+      [...appData.accounts]
+        .filter((a) => RETAIL_ACCOUNT_TYPES.has(a.type))
+        .map((a) => a.tradingName)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b)),
+    [appData.accounts],
+  );
+
   const calculateSPIFPayout = (type: string, quantity: number): number => {
-    return SPIF_RATES[type as keyof typeof SPIF_RATES] * quantity;
+    const rate = spifRates[type as SpifRateKey];
+    if (rate === undefined) return 0;
+    return rate * quantity;
   };
 
   const handleSaveSPIF = () => {
@@ -386,11 +761,13 @@ export default function IncentiveManagerPage() {
     const partner = partners.find(p => p.id === spifForm.partnerId);
     const payout = calculateSPIFPayout(spifForm.type, spifForm.quantity);
 
+    const retailAccountName = spifForm.retailAccountName.trim();
     const newSPIF: SPIFEntry = {
       id: generateId(),
       partnerId: spifForm.partnerId,
       partnerName: partner?.name || "",
       repName: spifForm.repName,
+      ...(retailAccountName ? { retailAccountName } : {}),
       type: spifForm.type,
       date: spifForm.date,
       quantity: spifForm.quantity,
@@ -404,6 +781,7 @@ export default function IncentiveManagerPage() {
     setSpifForm({
       partnerId: "",
       repName: "",
+      retailAccountName: "",
       type: "new_on_premise",
       date: new Date().toISOString().split("T")[0],
       quantity: 1,
@@ -423,10 +801,11 @@ export default function IncentiveManagerPage() {
   // ===== MARGIN CALCULATOR =====
 
   const marginScenarios: MarginScenario[] = useMemo(() => {
+    const goldPerCaseShare = volumeBonusesUsd.gold / 120;
     const base = {
       name: "New Account",
       description: "Standard new on-premise account opening",
-      spifs: 150,
+      spifs: spifRates.new_on_premise,
       volumeBonus: 0,
       adfSpend: 25,
       quarterlyBonus: 0,
@@ -435,7 +814,7 @@ export default function IncentiveManagerPage() {
     const reorder = {
       name: "Reorder",
       description: "Follow-up order from existing account",
-      spifs: 5,
+      spifs: spifRates.reorder,
       volumeBonus: 0,
       adfSpend: 0,
       quarterlyBonus: 0,
@@ -444,23 +823,23 @@ export default function IncentiveManagerPage() {
     const maxLoad = {
       name: "Max Incentive Load",
       description: "Gold-tier partner with full program engagement",
-      spifs: 150 + 75 + 25, // new + off-premise + tasting
-      volumeBonus: 21, // $2500 / 120 cases average
+      spifs: spifRates.new_on_premise + spifRates.tasting * 4,
+      volumeBonus: goldPerCaseShare,
       adfSpend: 35,
-      quarterlyBonus: 21, // $2500 / 120 cases
+      quarterlyBonus: goldPerCaseShare,
     };
 
-    return [base, reorder, maxLoad].map(s => {
+    return [base, reorder, maxLoad].map((s) => {
       const totalIncentiveCost = s.spifs + s.volumeBonus + s.adfSpend + s.quarterlyBonus;
-      const netMargin = GROSS_MARGIN_PER_CASE - totalIncentiveCost;
+      const netMargin = grossMarginPerCase - totalIncentiveCost;
       return {
         ...s,
         totalIncentiveCost,
         netMargin,
-        costPercentage: (totalIncentiveCost / GROSS_MARGIN_PER_CASE) * 100,
+        costPercentage: grossMarginPerCase > 0 ? (totalIncentiveCost / grossMarginPerCase) * 100 : 0,
       };
     });
-  }, []);
+  }, [grossMarginPerCase, spifRates, volumeBonusesUsd.gold]);
 
   const marginBreakdown = useMemo(() => {
     const gross = Math.max(0, dashboardMetrics.totalGrossMargin);
@@ -497,29 +876,54 @@ export default function IncentiveManagerPage() {
     return { widths, rounded };
   }, [dashboardMetrics]);
 
+  const showRemoteLoading = isLoading || (!!user && !bootstrapped);
+
+  if (user?.role === "retail") {
+    return <RetailPartnerProgramPage />;
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Supply Chain Incentive Manager"
-        description="Track partner performance, SPIF payouts, and margin optimization across your distribution network."
+        description="Track partner performance, SPIF payouts, and margin optimization. Log SPIFs with distributor, sales rep, and retail account so each portal sees the same data. Changes sync to the server for your organization (HQ source of truth for distributor, rep, and retail views)."
+        variant={user.role === "retail" ? "retail" : "default"}
+        titleAddon={
+          <span className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs font-normal tabular-nums text-muted-foreground">
+            {user
+              ? !bootstrapped || isLoading
+                ? "Loading from server…"
+                : remoteSaveError
+                  ? "Save error — check connection"
+                  : lastRemoteSaveAt
+                    ? `Server: ${new Date(lastRemoteSaveAt).toLocaleString()}`
+                    : "Synced to server"
+              : "Browser only (not signed in)"}
+          </span>
+        }
       />
 
+      {showRemoteLoading ? (
+        <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-border/80 bg-muted/20">
+          <p className="text-sm text-muted-foreground">Loading incentives from server…</p>
+        </div>
+      ) : (
       <Tabs defaultValue="dashboard" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="dashboard">
-            <BarChart3 className="h-4 w-4 mr-2" />
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg bg-muted/50 p-1 text-sm sm:grid-cols-4">
+          <TabsTrigger value="dashboard" className="touch-manipulation">
+            <BarChart3 className="mr-1.5 h-3.5 w-3.5 shrink-0 sm:mr-2 sm:h-4 sm:w-4" />
             Dashboard
           </TabsTrigger>
-          <TabsTrigger value="partners">
-            <Users className="h-4 w-4 mr-2" />
+          <TabsTrigger value="partners" className="touch-manipulation">
+            <Users className="mr-1.5 h-3.5 w-3.5 shrink-0 sm:mr-2 sm:h-4 sm:w-4" />
             Partners
           </TabsTrigger>
-          <TabsTrigger value="spifs">
-            <DollarSign className="h-4 w-4 mr-2" />
+          <TabsTrigger value="spifs" className="touch-manipulation">
+            <DollarSign className="mr-1.5 h-3.5 w-3.5 shrink-0 sm:mr-2 sm:h-4 sm:w-4" />
             SPIF Tracker
           </TabsTrigger>
-          <TabsTrigger value="margin">
-            <Calculator className="h-4 w-4 mr-2" />
+          <TabsTrigger value="margin" className="touch-manipulation">
+            <Calculator className="mr-1.5 h-3.5 w-3.5 shrink-0 sm:mr-2 sm:h-4 sm:w-4" />
             Margin Calculator
           </TabsTrigger>
         </TabsList>
@@ -532,7 +936,7 @@ export default function IncentiveManagerPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 space-y-1">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Total Cases</p>
-                  <p className="font-display text-2xl font-semibold tabular-nums">
+                  <p className="font-display text-xl font-semibold tabular-nums tracking-tight text-foreground">
                     {dashboardMetrics.totalCases.toLocaleString()}
                   </p>
                 </div>
@@ -546,7 +950,7 @@ export default function IncentiveManagerPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 space-y-1">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Accounts Opened</p>
-                  <p className="font-display text-2xl font-semibold tabular-nums">{dashboardMetrics.totalAccounts}</p>
+                  <p className="font-display text-xl font-semibold tabular-nums tracking-tight text-foreground">{dashboardMetrics.totalAccounts}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-muted/40 p-2 text-muted-foreground">
                   <Store className="h-4 w-4" />
@@ -558,7 +962,7 @@ export default function IncentiveManagerPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 space-y-1">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Reorders</p>
-                  <p className="font-display text-2xl font-semibold tabular-nums">{dashboardMetrics.totalReorders}</p>
+                  <p className="font-display text-xl font-semibold tabular-nums tracking-tight text-foreground">{dashboardMetrics.totalReorders}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-muted/40 p-2 text-muted-foreground">
                   <RefreshCw className="h-4 w-4" />
@@ -570,7 +974,7 @@ export default function IncentiveManagerPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 space-y-1">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Tastings</p>
-                  <p className="font-display text-2xl font-semibold tabular-nums">{dashboardMetrics.totalTastings}</p>
+                  <p className="font-display text-xl font-semibold tabular-nums tracking-tight text-foreground">{dashboardMetrics.totalTastings}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-muted/40 p-2 text-muted-foreground">
                   <Wine className="h-4 w-4" />
@@ -582,9 +986,9 @@ export default function IncentiveManagerPage() {
           {/* Margin Breakdown */}
           <Card className="border-border/80">
             <CardHeader>
-              <CardTitle className="font-display flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Gross Margin Breakdown (per case: ${GROSS_MARGIN_PER_CASE})
+              <CardTitle className="font-display flex items-center gap-2 text-lg font-semibold leading-snug tracking-tight">
+                <TrendingUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+                Gross Margin Breakdown (per case: ${grossMarginPerCase.toLocaleString()})
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -652,15 +1056,15 @@ export default function IncentiveManagerPage() {
               <div className="grid gap-3 border-t pt-4 sm:grid-cols-3">
                 <div className="card-interactive p-4 space-y-1">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Total Gross Margin</p>
-                  <p className="font-display text-2xl font-semibold tabular-nums">${dashboardMetrics.totalGrossMargin.toLocaleString()}</p>
+                  <p className="font-display text-xl font-semibold tabular-nums tracking-tight text-foreground">${dashboardMetrics.totalGrossMargin.toLocaleString()}</p>
                 </div>
                 <div className="card-interactive p-4 space-y-1">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Total Incentive Cost</p>
-                  <p className="font-display text-2xl font-semibold tabular-nums text-destructive">${dashboardMetrics.totalIncentiveCost.toLocaleString()}</p>
+                  <p className="font-display text-xl font-semibold tabular-nums tracking-tight text-destructive">${dashboardMetrics.totalIncentiveCost.toLocaleString()}</p>
                 </div>
                 <div className="card-interactive p-4 space-y-1">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Net Margin</p>
-                  <p className={`font-display text-2xl font-semibold tabular-nums ${getHealthScoreColor(dashboardMetrics.costPercentage)}`}>
+                  <p className={`font-display text-xl font-semibold tabular-nums tracking-tight ${getHealthScoreColor(dashboardMetrics.costPercentage)}`}>
                     ${dashboardMetrics.netMargin.toLocaleString()}
                   </p>
                 </div>
@@ -671,9 +1075,9 @@ export default function IncentiveManagerPage() {
           {/* Partner Health Scores */}
           <Card className="border-border/80">
             <CardHeader>
-              <CardTitle className="font-display">Partner Health Scores</CardTitle>
+              <CardTitle className="font-display text-lg font-semibold leading-snug tracking-tight">Partner Health Scores</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Incentive cost as % of gross margin. {"&gt;"}15% flags red.
+                Incentive cost as % of gross margin. Above 15% flags red.
               </p>
             </CardHeader>
             <CardContent>
@@ -688,12 +1092,12 @@ export default function IncentiveManagerPage() {
                     const partnerSPIFs = spifsByPartner[partner.id]?.reduce((sum, s) => sum + s.payout, 0) || 0;
                     const partnerVolumeBonus =
                       partner.quarterlyPerformanceTier === "Gold"
-                        ? 2500
+                        ? volumeBonusesUsd.gold
                         : partner.quarterlyPerformanceTier === "Silver"
-                          ? 1200
+                          ? volumeBonusesUsd.silver
                           : 0;
                     const partnerTotalCost = partnerSPIFs + partnerVolumeBonus + partner.adfSpend;
-                    const partnerGrossMargin = partner.quarterlyCasesSold * GROSS_MARGIN_PER_CASE;
+                    const partnerGrossMargin = partner.quarterlyCasesSold * grossMarginPerCase;
                     const healthPercentage = partnerGrossMargin > 0 ? (partnerTotalCost / partnerGrossMargin) * 100 : 0;
 
                     return (
@@ -733,7 +1137,9 @@ export default function IncentiveManagerPage() {
         {/* ===== PARTNERS TAB ===== */}
         <TabsContent value="partners" className="space-y-6">
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-medium">Distributors & Importers ({partners.length})</h3>
+            <h3 className="font-display text-base font-semibold tracking-tight text-foreground">
+              Distributors & Importers ({partners.length})
+            </h3>
             <Dialog open={isPartnerDialogOpen} onOpenChange={setIsPartnerDialogOpen}>
               <DialogTrigger asChild>
                 <Button onClick={() => {
@@ -862,11 +1268,11 @@ export default function IncentiveManagerPage() {
           <div className="grid gap-4">
             {partners.map(partner => (
               <Card key={partner.id}>
-                <CardContent className="p-6">
+                <CardContent className="p-4 sm:p-6">
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-lg font-semibold">{partner.name}</h4>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="font-display text-base font-semibold tracking-tight text-foreground">{partner.name}</h4>
                         <Badge variant="outline">{partner.tier}</Badge>
                         {partner.quarterlyPerformanceTier && (
                           <Badge className={getTierColor(partner.quarterlyPerformanceTier)}>
@@ -954,7 +1360,7 @@ export default function IncentiveManagerPage() {
         <TabsContent value="spifs" className="space-y-6">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-lg font-medium">SPIF Payouts</h3>
+              <h3 className="font-display text-base font-semibold tracking-tight text-foreground">SPIF Payouts</h3>
               <p className="text-sm text-muted-foreground">Total logged: ${spifs.reduce((sum, s) => sum + s.payout, 0).toLocaleString()}</p>
             </div>
             <Dialog open={isSPIFDialogOpen} onOpenChange={setIsSPIFDialogOpen}>
@@ -962,6 +1368,7 @@ export default function IncentiveManagerPage() {
                 <Button onClick={() => setSpifForm({
                   partnerId: "",
                   repName: "",
+                  retailAccountName: "",
                   type: "new_on_premise",
                   date: new Date().toISOString().split("T")[0],
                   quantity: 1,
@@ -1002,6 +1409,24 @@ export default function IncentiveManagerPage() {
                     />
                   </div>
 
+                  <div className="space-y-2">
+                    <Label>Retail account</Label>
+                    <Input
+                      list="hq-spif-retail-accounts"
+                      value={spifForm.retailAccountName}
+                      onChange={(e) => setSpifForm((prev) => ({ ...prev, retailAccountName: e.target.value }))}
+                      placeholder="e.g., The Drake Hotel"
+                    />
+                    <datalist id="hq-spif-retail-accounts">
+                      {retailAccountOptions.map((name) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                    <p className="text-xs text-muted-foreground">
+                      Links this SPIF to the retail store portal and distributor rollup in HQ reporting.
+                    </p>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>SPIF Type</Label>
@@ -1013,10 +1438,14 @@ export default function IncentiveManagerPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="new_on_premise">New On-Premise ($150)</SelectItem>
-                          <SelectItem value="new_off_premise">New Off-Premise ($100)</SelectItem>
-                          <SelectItem value="reorder">Reorder Case ($5)</SelectItem>
-                          <SelectItem value="tasting">Buyer Tasting ($25)</SelectItem>
+                          <SelectItem value="new_on_premise">
+                            New On-Premise (${spifRates.new_on_premise})
+                          </SelectItem>
+                          <SelectItem value="new_off_premise">
+                            New Off-Premise (${spifRates.new_off_premise})
+                          </SelectItem>
+                          <SelectItem value="reorder">Reorder Case (${spifRates.reorder})</SelectItem>
+                          <SelectItem value="tasting">Buyer Tasting (${spifRates.tasting})</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1100,7 +1529,7 @@ export default function IncentiveManagerPage() {
                       </div>
                       
                       <div className="text-right">
-                        <p className="text-xl font-bold text-green-600">${spif.payout}</p>
+                        <p className="font-display text-lg font-semibold tabular-nums text-green-600">${spif.payout}</p>
                         <Button 
                           variant="ghost" 
                           size="sm"
@@ -1120,7 +1549,7 @@ export default function IncentiveManagerPage() {
           {spifs.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="font-display">Running Totals by Partner</CardTitle>
+                <CardTitle className="font-display text-lg font-semibold leading-snug tracking-tight">Running Totals by Partner</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -1129,9 +1558,9 @@ export default function IncentiveManagerPage() {
                     const total = partnerSpifs.reduce((sum, s) => sum + s.payout, 0);
                     if (total === 0) return null;
                     return (
-                      <div key={partner.id} className="flex justify-between items-center py-2 border-b last:border-0">
-                        <span>{partner.name}</span>
-                        <span className="font-semibold">${total.toLocaleString()}</span>
+                      <div key={partner.id} className="flex justify-between items-center border-b py-2 text-sm last:border-0">
+                        <span className="text-foreground">{partner.name}</span>
+                        <span className="font-display font-semibold tabular-nums text-foreground">${total.toLocaleString()}</span>
                       </div>
                     );
                   })}
@@ -1145,41 +1574,84 @@ export default function IncentiveManagerPage() {
         <TabsContent value="margin" className="space-y-6">
           {/* Pricing Chain */}
           <Card>
-            <CardHeader>
-              <CardTitle className="font-display">Supply Chain Pricing Breakdown</CardTitle>
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="font-display text-lg font-semibold leading-snug tracking-tight">
+                  Supply Chain Pricing Breakdown
+                </CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Per-bottle CAD · Edit values to model margin;{" "}
+                  {user ? "changes save to the server for your team." : "saved in this browser only."}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="touch-manipulation shrink-0"
+                onClick={() => {
+                  setSupplyChainPricing({ ...DEFAULT_SUPPLY_CHAIN_PRICING });
+                  toast.success("Pricing reset to defaults");
+                }}
+              >
+                Reset defaults
+              </Button>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between">
-                {[
-                  { label: "Landed Cost", value: 30, color: "bg-slate-500" },
-                  { label: "Wholesale", value: 48, color: "bg-blue-500" },
-                  { label: "Retail", value: 60, color: "bg-indigo-500" },
-                  { label: "Shelf", value: 93, color: "bg-purple-500" },
-                ].map((step, i, arr) => (
-                  <>
-                    <div key={step.label} className="text-center">
-                      <div className={`${step.color} text-white rounded-lg p-4 w-24`}>
-                        <p className="text-2xl font-bold">${step.value}</p>
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-2">{step.label}</p>
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                {(
+                  [
+                    { key: "landed" as const, label: "Landed Cost", color: "bg-slate-500" },
+                    { key: "wholesale" as const, label: "Wholesale", color: "bg-blue-500" },
+                    { key: "retail" as const, label: "Retail", color: "bg-indigo-500" },
+                    { key: "shelf" as const, label: "Shelf", color: "bg-purple-500" },
+                  ] as const
+                ).map((step) => (
+                  <div key={step.key} className="flex flex-col items-center text-center">
+                    <div className={`${step.color} w-full max-w-[11rem] rounded-lg px-3 py-4 text-white`}>
+                      <p className="font-display text-lg font-semibold tabular-nums tracking-tight">
+                        ${supplyChainPricing[step.key].toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </p>
                     </div>
-                    {i < arr.length - 1 && (
-                      <div className="flex-1 h-0.5 bg-border mx-4" />
-                    )}
-                  </>
+                    <Label htmlFor={`price-${step.key}`} className="mt-2 text-sm text-muted-foreground">
+                      {step.label}
+                    </Label>
+                    <Input
+                      id={`price-${step.key}`}
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step={0.01}
+                      className="mt-2 h-9 w-full max-w-[11rem] touch-manipulation tabular-nums"
+                      value={Number.isFinite(supplyChainPricing[step.key]) ? supplyChainPricing[step.key] : 0}
+                      onChange={(e) => {
+                        const v = clampUsdPrice(parseFloat(e.target.value));
+                        setSupplyChainPricing((prev) => ({ ...prev, [step.key]: v }));
+                      }}
+                    />
+                  </div>
                 ))}
               </div>
-              
-              <div className="mt-6 p-4 bg-muted rounded-lg">
-                <div className="flex justify-between items-center">
+
+              <div className="mt-6 rounded-lg bg-muted p-4">
+                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                   <div>
                     <p className="text-sm text-muted-foreground">Gross Margin per Case</p>
-                    <p className="text-3xl font-bold">${GROSS_MARGIN_PER_CASE}</p>
-                    <p className="text-sm text-muted-foreground">$48 wholesale − $30 landed = $18/bottle × 12</p>
+                    <p className="font-display text-xl font-semibold tabular-nums tracking-tight text-foreground">
+                      ${grossMarginPerCase.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      ${supplyChainPricing.wholesale.toFixed(2)} wholesale − ${supplyChainPricing.landed.toFixed(2)} landed = $
+                      {(supplyChainPricing.wholesale - supplyChainPricing.landed).toFixed(2)}
+                      /bottle × {BOTTLES_PER_CASE}
+                    </p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-left sm:text-right">
                     <p className="text-sm text-muted-foreground">Margin %</p>
-                    <p className="text-3xl font-bold">{((GROSS_MARGIN_PER_CASE / (48 * 12)) * 100).toFixed(1)}%</p>
+                    <p className="font-display text-xl font-semibold tabular-nums tracking-tight text-foreground">
+                      {wholesaleMarginPercent.toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-muted-foreground">Of wholesale case revenue</p>
                   </div>
                 </div>
               </div>
@@ -1191,7 +1663,7 @@ export default function IncentiveManagerPage() {
             {marginScenarios.map(scenario => (
               <div key={scenario.name} className="card-elevated">
                 <div className="border-b border-border/50 p-5 pb-3">
-                  <h3 className="font-display text-base font-semibold">{scenario.name}</h3>
+                  <h3 className="font-display text-base font-semibold tracking-tight text-foreground">{scenario.name}</h3>
                   <p className="text-xs text-muted-foreground">{scenario.description}</p>
                 </div>
                 <div className="space-y-4 p-5">
@@ -1239,24 +1711,124 @@ export default function IncentiveManagerPage() {
             ))}
           </div>
 
-          {/* SPIF Rate Reference */}
+          {/* SPIF rates & volume bonuses — editable, persisted */}
           <Card>
-            <CardHeader>
-              <CardTitle className="font-display">SPIF Rate Reference</CardTitle>
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="font-display text-lg font-semibold leading-snug tracking-tight">
+                  SPIF rates & quarterly bonuses
+                </CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Adjust when list pricing or rep incentives change. Values apply to new SPIF entries, dashboard totals,
+                  partner health, and margin scenarios.{" "}
+                  {user ? "Saved automatically to the server." : "Saved automatically in this browser only."}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="touch-manipulation shrink-0"
+                onClick={() => {
+                  setSpifRates({ ...DEFAULT_SPIF_RATES });
+                  setVolumeBonusesUsd({ ...DEFAULT_VOLUME_BONUSES_USD });
+                  toast.success("SPIF rates and volume bonuses reset to defaults");
+                }}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Reset incentives to defaults
+              </Button>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {Object.entries(SPIF_RATES).map(([type, rate]) => (
-                  <div key={type} className="p-4 border rounded-lg text-center">
-                    <p className="text-2xl font-bold">${rate}</p>
-                    <p className="text-sm text-muted-foreground capitalize">{type.replace("_", " ")}</p>
+            <CardContent className="space-y-8">
+              <div>
+                <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">SPIF payout (USD)</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {(Object.keys(DEFAULT_SPIF_RATES) as SpifRateKey[]).map((key) => (
+                    <div key={key} className="space-y-2">
+                      <Label htmlFor={`spif-rate-${key}`} className="text-muted-foreground">
+                        {SPIF_RATE_FIELD_LABELS[key]}
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground" aria-hidden>
+                          $
+                        </span>
+                        <Input
+                          id={`spif-rate-${key}`}
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          step={1}
+                          className="h-9 max-w-[10rem] touch-manipulation tabular-nums"
+                          value={Number.isFinite(spifRates[key]) ? spifRates[key] : 0}
+                          onChange={(e) => {
+                            const v = clampUsdPrice(parseFloat(e.target.value));
+                            setSpifRates((prev) => ({ ...prev, [key]: v }));
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t pt-6">
+                <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Quarterly performance volume bonus (USD)
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="vol-bonus-gold" className="text-muted-foreground">
+                      Gold tier (per qualifying partner / quarter)
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground" aria-hidden>
+                        $
+                      </span>
+                      <Input
+                        id="vol-bonus-gold"
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        step={100}
+                        className="h-9 max-w-[10rem] touch-manipulation tabular-nums"
+                        value={Number.isFinite(volumeBonusesUsd.gold) ? volumeBonusesUsd.gold : 0}
+                        onChange={(e) => {
+                          const v = clampUsdPrice(parseFloat(e.target.value));
+                          setVolumeBonusesUsd((prev) => ({ ...prev, gold: v }));
+                        }}
+                      />
+                    </div>
                   </div>
-                ))}
+                  <div className="space-y-2">
+                    <Label htmlFor="vol-bonus-silver" className="text-muted-foreground">
+                      Silver tier (per qualifying partner / quarter)
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground" aria-hidden>
+                        $
+                      </span>
+                      <Input
+                        id="vol-bonus-silver"
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        step={100}
+                        className="h-9 max-w-[10rem] touch-manipulation tabular-nums"
+                        value={Number.isFinite(volumeBonusesUsd.silver) ? volumeBonusesUsd.silver : 0}
+                        onChange={(e) => {
+                          const v = clampUsdPrice(parseFloat(e.target.value));
+                          setVolumeBonusesUsd((prev) => ({ ...prev, silver: v }));
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+      )}
     </div>
   );
 }

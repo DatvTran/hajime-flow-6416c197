@@ -69,6 +69,12 @@ export const Permission = {
   // CSV Import/Export
   CSV_EXPORT: 'csv:export',
   CSV_IMPORT: 'csv:import',
+
+  /** Supply Chain Incentive Manager (/incentives) — persisted tenant snapshot */
+  INCENTIVES_READ: 'incentives:read',
+  INCENTIVES_WRITE: 'incentives:write',
+  /** Read-only: own incentive / SPIF progress (dashboard card for distributor, sales rep, retail) */
+  INCENTIVES_SELF_READ: 'incentives:self_read',
 };
 
 /**
@@ -93,6 +99,9 @@ export const ROLE_PERMISSIONS = {
     'reports:*',
     'forecasts:*',
     'csv:*',
+    Permission.INCENTIVES_READ,
+    Permission.INCENTIVES_WRITE,
+    Permission.INCENTIVES_SELF_READ,
   ],
 
   [Role.SALES]: [
@@ -103,6 +112,7 @@ export const ROLE_PERMISSIONS = {
     Permission.INVENTORY_READ,
     Permission.FORECASTS_READ,
     Permission.SHIPMENTS_READ,
+    Permission.INCENTIVES_SELF_READ,
   ],
 
   [Role.SALES_REP]: [
@@ -113,6 +123,7 @@ export const ROLE_PERMISSIONS = {
     Permission.INVENTORY_READ,
     Permission.FORECASTS_READ,
     Permission.SHIPMENTS_READ,
+    Permission.INCENTIVES_SELF_READ,
   ],
 
   [Role.OPERATIONS]: [
@@ -128,6 +139,9 @@ export const ROLE_PERMISSIONS = {
     Permission.SHIPMENTS_WRITE,
     Permission.CSV_EXPORT,
     Permission.CSV_IMPORT,
+    Permission.INCENTIVES_READ,
+    Permission.INCENTIVES_WRITE,
+    Permission.INCENTIVES_SELF_READ,
   ],
 
   [Role.MANUFACTURER]: [
@@ -151,6 +165,7 @@ export const ROLE_PERMISSIONS = {
     Permission.SHIPMENTS_READ,
     Permission.SHIPMENTS_WRITE,
     Permission.ACCOUNTS_READ,
+    Permission.INCENTIVES_SELF_READ,
   ],
 
   [Role.FINANCE]: [
@@ -166,6 +181,7 @@ export const ROLE_PERMISSIONS = {
     Permission.ORDERS_WRITE,
     Permission.SHIPMENTS_READ,
     Permission.INVENTORY_READ,
+    Permission.INCENTIVES_SELF_READ,
   ],
 };
 

@@ -1,0 +1,27 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css">
+<style>body{margin:0;padding:24px;background:hsl(var(--background))}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--font-body);font-size:14px;font-weight:500;border-radius:8px;padding:0 16px;height:40px;border:1px solid transparent;cursor:pointer;transition:all .2s}
+.default{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
+.default:hover{background:hsl(24 10% 10% / .9)}
+.outline{background:hsl(var(--background));border-color:hsl(var(--border));color:hsl(var(--foreground))}
+.outline:hover{background:hsl(var(--muted))}
+.secondary{background:hsl(var(--secondary));color:hsl(var(--secondary-foreground))}
+.ghost{background:transparent;color:hsl(var(--foreground))}
+.ghost:hover{background:hsl(var(--muted))}
+.destructive{background:hsl(var(--destructive));color:#fff}
+.accent-btn{background:hsl(var(--accent));color:hsl(var(--accent-foreground))}
+.accent-btn:hover{background:hsl(32 78% 48%)}
+.sm{height:36px;padding:0 12px;font-size:13px}
+.lg{height:44px;padding:0 24px}
+</style></head><body>
+<div class="row">
+  <button class="btn default">Approve</button>
+  <button class="btn outline">Hold</button>
+  <button class="btn secondary">Reallocate</button>
+  <button class="btn ghost">Cancel</button>
+  <button class="btn destructive">Reject</button>
+  <button class="btn accent-btn">Continue as Brand Operator</button>
+  <button class="btn default sm">Small</button>
+  <button class="btn default lg">Large CTA</button>
+</div></body></html>

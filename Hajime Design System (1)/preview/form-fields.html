@@ -1,0 +1,19 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css">
+<style>body{margin:0;padding:24px;background:hsl(var(--background))}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:680px}
+.f{display:flex;flex-direction:column;gap:6px}
+label{font-size:11px;color:hsl(var(--muted-foreground));font-weight:500}
+input,select,.tarea{font-family:var(--font-body);font-size:14px;height:40px;padding:0 12px;border:1px solid hsl(var(--input));border-radius:8px;background:hsl(var(--background));color:hsl(var(--foreground));outline:none}
+input:focus{border-color:hsl(var(--accent));box-shadow:0 0 0 3px hsl(var(--accent) / .15)}
+.tarea{height:72px;padding:10px 12px;line-height:1.5}
+.select::after{content:"▾";position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:10px;color:hsl(var(--muted-foreground));pointer-events:none}
+.select{position:relative}
+select{appearance:none;width:100%}
+</style></head><body>
+<div class="row">
+  <div class="f"><label>Account</label><input placeholder="Search accounts…" value="The Drake Hotel"></div>
+  <div class="f"><label>Market</label><div class="select"><select><option>Toronto</option><option>Milan</option></select></div></div>
+  <div class="f"><label>Password</label><input type="password" value="secret-pass"></div>
+  <div class="f"><label>Quantity (cases)</label><input type="number" value="24" style="font-family:var(--font-mono);font-feature-settings:'tnum'"></div>
+  <div class="f" style="grid-column:1 / -1"><label>Visit note</label><div class="tarea" contenteditable="true">Checked depletion velocity at the bar — 6 bottles moved this week, backbar still showing FP-750.</div></div>
+</div></body></html>

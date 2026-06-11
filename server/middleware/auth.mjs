@@ -1,6 +1,6 @@
 import { authService } from '../services/auth.mjs';
 import { hasPermission, normalizeRole } from '../rbac/permissions.mjs';
-import { db } from '../config/database.mjs';
+import { platformDb } from '../config/database.mjs';
 
 /**
  * Extract token from Authorization header
@@ -41,7 +41,7 @@ export async function authenticateToken(req, res, next) {
   }
 
   // Verify user still exists and is active
-  const user = await db('users')
+  const user = await platformDb('users')
     .where({
       id: decoded.userId,
       is_active: true,
@@ -72,6 +72,8 @@ export async function authenticateToken(req, res, next) {
     role: normalizeRole(user.role),
     tenantId: user.tenant_id,
     displayName: user.display_name,
+    distributorOrgId: user.distributor_org_id ?? null,
+    managedByDistributorUserId: user.managed_by_distributor_user_id ?? null,
   };
 
   next();
@@ -88,7 +90,7 @@ export async function optionalAuth(req, res, next) {
     const decoded = authService.verifyAccessToken(token);
 
     if (decoded) {
-      const user = await db('users')
+      const user = await platformDb('users')
         .where({
           id: decoded.userId,
           is_active: true,

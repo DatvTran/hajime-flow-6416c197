@@ -14,6 +14,21 @@ import {
 
 const router = express.Router();
 
+function isDbConnectionError(err) {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return /connection terminated|ECONNREFUSED|ECONNRESET|database unavailable|timeout exceeded|connect ETIMEDOUT/i.test(
+    msg,
+  );
+}
+
+function respondDbUnavailable(res, err, label) {
+  console.error(`${label}:`, err);
+  return res.status(503).json({
+    error: 'Database temporarily unavailable. Please try again in a minute.',
+    code: 'DATABASE_UNAVAILABLE',
+  });
+}
+
 /**
  * GET /api/auth/invite-preview
  * Public: validate invite token and return safe fields for the accept-invite UI.
@@ -345,6 +360,22 @@ router.post('/login', async (req, res) => {
       userAgent: req.headers['user-agent'],
     });
 
+    let retailAccountTradingName = null;
+    const normalizedRole = user.role;
+    if (normalizedRole === 'retail' || normalizedRole === 'retail_account') {
+      const tm = await db('team_members')
+        .where({
+          tenant_id: user.tenant_id,
+          email: String(user.email || '').trim().toLowerCase(),
+          role: 'retail',
+        })
+        .where('is_active', true)
+        .first();
+      if (tm?.retail_trading_name) {
+        retailAccountTradingName = String(tm.retail_trading_name).trim();
+      }
+    }
+
     res.json({
       user: {
         id: user.id,
@@ -352,11 +383,15 @@ router.post('/login', async (req, res) => {
         role: user.role,
         displayName: user.display_name,
         tenantId: user.tenant_id,
+        ...(retailAccountTradingName ? { retailAccountTradingName } : {}),
       },
       accessToken,
       refreshToken,
     });
   } catch (err) {
+    if (isDbConnectionError(err)) {
+      return respondDbUnavailable(res, err, 'Login error');
+    }
     console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed' });
   }

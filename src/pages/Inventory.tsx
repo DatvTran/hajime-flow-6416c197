@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/PageHeader";
+import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
 import { ReceiveStockDialog } from "@/components/ReceiveStockDialog";
 import { StatCard } from "@/components/StatCard";
 import type { InventoryItem } from "@/data/mockData";
@@ -32,6 +33,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Download, FileSpreadsheet } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const STATUS_VALUES: InventoryItem["status"][] = ["available", "reserved", "damaged"];
 
@@ -106,6 +108,7 @@ function parseLocationTypeParam(raw: string | null): InventoryItem["locationType
 }
 
 export default function Inventory() {
+  const { t } = useLanguage();
   const { data, loading } = useAppData();
   const { 
     items, 
@@ -206,6 +209,7 @@ export default function Inventory() {
 
       <PageHeader
         title="Inventory"
+        variant={pageHeaderVariantForRole(user.role)}
         description="SKU-level positions by market hub — available, allocated, reserved, and incoming pipeline with health vs safety stock."
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
@@ -219,26 +223,26 @@ export default function Inventory() {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
                   <Download className="mr-2 h-4 w-4" />
-                  Export CSV
+                  {t("Export CSV")}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Export Options</DropdownMenuLabel>
+                <DropdownMenuLabel>{t("Export Options")}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => downloadInventoryCsv(items)}>
                   <FileSpreadsheet className="mr-2 h-4 w-4" />
-                  All Inventory
+                  {t("All Inventory")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => downloadLowStockCsv(items)}>
                   <FileSpreadsheet className="mr-2 h-4 w-4 text-warning" />
-                  Low Stock Only
+                  {t("Low Stock Only")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             {canReceiveStock ? (
               <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setReceiveOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
-                Receive Stock
+                {t("Receive Stock")}
               </Button>
             ) : null}
           </div>
@@ -248,8 +252,12 @@ export default function Inventory() {
       {/* Role-based view indicator */}
       {isShowingFilteredView && (
         <div className="mb-4 rounded-lg border bg-info/10 p-3 text-sm text-info-foreground">
-          <p className="font-medium">Role-based view</p>
-          <p>Showing inventory visible to {user?.role?.replace(/_/g, " ")} role. Some locations may be hidden based on permissions.</p>
+          <p className="font-medium">{t("Role-based view")}</p>
+          <p>
+            {t("Showing inventory visible to {{role}} role. Some locations may be hidden based on permissions.", {
+              role: user?.role?.replace(/_/g, " ") ?? "",
+            })}
+          </p>
         </div>
       )}
 
@@ -343,7 +351,7 @@ export default function Inventory() {
               )}
             >
               <Icon className="h-3.5 w-3.5" />
-              {chip.label}
+              {t(chip.label)}
             </button>
           );
         })}
@@ -367,7 +375,7 @@ export default function Inventory() {
                   : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
-              {chip.label}
+              {t(chip.label)}
             </button>
           );
         })}
@@ -382,7 +390,9 @@ export default function Inventory() {
                   Filter: {" "}
                   {statusFilter && <strong className="capitalize text-foreground">{statusFilter}</strong>}
                   {statusFilter && locationTypeFilter && " · "}
-                  {locationTypeFilter && <strong className="capitalize text-foreground">{LOCATION_TYPE_LABELS[locationTypeFilter]}</strong>}
+                  {locationTypeFilter && (
+                    <strong className="capitalize text-foreground">{t(LOCATION_TYPE_LABELS[locationTypeFilter])}</strong>
+                  )}
                 </>
               ) : (
                 <>
@@ -393,7 +403,7 @@ export default function Inventory() {
             </span>
             {(statusFilter || locationTypeFilter) ? (
               <Button type="button" variant="ghost" size="sm" className="h-8 shrink-0 touch-manipulation" onClick={clearFilters}>
-                Clear filters
+                {t("Clear filters")}
               </Button>
             ) : null}
           </div>
@@ -401,7 +411,12 @@ export default function Inventory() {
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative w-full sm:max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search SKU, product, batch, or warehouse..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Input
+                placeholder={t("Search SKU, product, batch, or warehouse...")}
+                className="pl-9"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
           </div>
           

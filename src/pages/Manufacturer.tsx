@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -35,7 +35,12 @@ function formatInboundDeparted(s: Shipment): string {
 export default function Manufacturer() {
   const { purchaseOrders } = usePurchaseOrders();
   const { productionStatuses, addProductionStatus } = useProductionStatuses();
-  const { data, loading, refreshShipments } = useAppData();
+  const { data, loading, refreshShipments, refreshProducts } = useAppData();
+
+  useEffect(() => {
+    if (loading) return;
+    void refreshProducts();
+  }, [loading, refreshProducts]);
 
   const { user } = useAuth();
   const logAudit = useAuditLog();

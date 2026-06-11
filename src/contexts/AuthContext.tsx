@@ -1,7 +1,34 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL } from "@/data/team-roster";
 
 // Use relative URL in production (same origin), or fallback to localhost for dev
 const API_URL = import.meta.env.VITE_API_URL || "";
+
+/** Persists retail “Ordering as” venue per login email (survives refresh; cleared on sign-out). */
+const RETAIL_TRADING_OVERRIDE_KEY = "hajime_retail_trading_by_email";
+
+function readRetailTradingOverride(email: string): string | undefined {
+  try {
+    const raw = localStorage.getItem(RETAIL_TRADING_OVERRIDE_KEY);
+    if (!raw) return undefined;
+    const map = JSON.parse(raw) as Record<string, string>;
+    const v = map[email.trim().toLowerCase()];
+    return typeof v === "string" && v.trim() ? v.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function persistRetailTradingOverride(email: string, tradingName: string) {
+  try {
+    const raw = localStorage.getItem(RETAIL_TRADING_OVERRIDE_KEY);
+    const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    map[email.trim().toLowerCase()] = tradingName.trim();
+    localStorage.setItem(RETAIL_TRADING_OVERRIDE_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
  * App roles (API / DB naming: manufacturer, brand_operator, distributor, retail_account, sales_rep).
@@ -34,13 +61,51 @@ function isRole(v: unknown): v is HajimeRole {
   return typeof v === "string" && (ROLES as string[]).includes(v);
 }
 
+function resolveRetailTradingName(
+  email: string,
+  role: HajimeRole,
+  fromApi?: string | null,
+): string | undefined {
+  if (role !== "retail") return undefined;
+  if (typeof fromApi === "string" && fromApi.trim()) return fromApi.trim();
+  return RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL[email.trim().toLowerCase()];
+}
+
+function userFromAuthPayload(payload: {
+  id: string;
+  email: string;
+  displayName: string;
+  role: unknown;
+  tenantId: string;
+  retailAccountTradingName?: string | null;
+}): HajimeUser {
+  const validatedRole = normalizeStoredRole(payload.role);
+  if (!validatedRole) {
+    console.error(`[Auth] Invalid role from server: ${payload.role}, defaulting to brand_operator`);
+  }
+  const role = validatedRole || "brand_operator";
+  return {
+    id: payload.id,
+    email: payload.email,
+    displayName: payload.displayName,
+    role,
+    tenantId: payload.tenantId,
+    retailAccountTradingName: resolveRetailTradingName(
+      payload.email,
+      role,
+      payload.retailAccountTradingName ?? readRetailTradingOverride(payload.email),
+    ),
+  };
+}
+
 /** Map pre–5-role sessions so users are not logged out on deploy */
 function normalizeStoredRole(role: unknown): HajimeRole | null {
   if (isRole(role)) return role;
   if (typeof role !== "string") return null;
   // Legacy mappings for old role names (pre-9-role system)
   const legacy: Record<string, HajimeRole> = {
-    founder: "brand_operator",        // Old 'founder' -> brand_operator
+    founder: "brand_operator", // Old 'founder' -> brand_operator
+    retail_account: "retail", // API / DB alias used beside canonical `retail`
   };
   return legacy[role] ?? null;
 }
@@ -60,11 +125,16 @@ type AuthTokens = {
   refreshToken: string;
 };
 
+/** Optional retail venue chosen at login when seed/demo maps multiple storefronts to one login email. */
+export type SignInOptions = {
+  retailTradingName?: string;
+};
+
 type AuthContextValue = {
   user: HajimeUser | null;
   isLoading: boolean;
   error: string | null;
-  signIn: (email: string, password: string) => Promise<HajimeUser>;
+  signIn: (email: string, password: string, opts?: SignInOptions) => Promise<HajimeUser>;
   signOut: () => void;
   clearError: () => void;
 };
@@ -135,41 +205,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Check for existing session on mount
+  // Check for existing session on mount (timeout so HQ login never hangs on a dead API)
   useEffect(() => {
+    let cancelled = false;
+
     const checkSession = async () => {
       const tokens = getStoredTokens();
       if (!tokens) {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
         return;
       }
 
+      const timeoutMs = 10_000;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+
       try {
-        const response = await apiFetch("/api/auth/me");
+        const response = await Promise.race([
+          apiFetch("/api/auth/me"),
+          new Promise<Response>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error("Session check timed out")),
+              timeoutMs,
+            );
+          }),
+        ]);
         const userData = await response.json();
-        const validatedRole = normalizeStoredRole(userData.role);
-        if (!validatedRole) {
-          console.error(`[Auth] Invalid role from server: ${userData.role}, defaulting to brand_operator`);
-        }
-        setUser({
-          id: userData.id,
-          email: userData.email,
-          displayName: userData.displayName,
-          role: validatedRole || "brand_operator",
-          tenantId: userData.tenantId,
-        });
+        if (!cancelled) setUser(userFromAuthPayload(userData));
       } catch (err) {
-        // Session invalid, clear tokens
+        console.warn("[Auth] Session check failed:", err);
         storeTokens(null);
       } finally {
-        setIsLoading(false);
+        if (timer) clearTimeout(timer);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
-    checkSession();
+    void checkSession();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string) => {
+  const signIn = useCallback(async (email: string, password: string, opts?: SignInOptions) => {
     setIsLoading(true);
     setError(null);
 
@@ -189,7 +266,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: "Login failed" }));
-        throw new Error(error.error || "Invalid email or password");
+        const fallback =
+          response.status === 503
+            ? "The server database is temporarily unavailable. Try again in a minute."
+            : response.status === 401
+              ? "Invalid email or password"
+              : "Login failed";
+        throw new Error(error.error || fallback);
       }
 
       const data = await response.json();
@@ -199,17 +282,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshToken: data.refreshToken,
       });
 
-      const validatedRole = normalizeStoredRole(data.user.role);
-      if (!validatedRole) {
-        console.error(`[Auth] Invalid role from server: ${data.user.role}, defaulting to brand_operator`);
+      let nextUser = userFromAuthPayload(data.user);
+      const venue = opts?.retailTradingName?.trim();
+      if (venue && nextUser.role === "retail") {
+        persistRetailTradingOverride(nextUser.email, venue);
+        nextUser = { ...nextUser, retailAccountTradingName: venue };
       }
-      const nextUser: HajimeUser = {
-        id: data.user.id,
-        email: data.user.email,
-        displayName: data.user.displayName,
-        role: validatedRole || "brand_operator",
-        tenantId: data.user.tenantId,
-      };
       setUser(nextUser);
       return nextUser;
     } catch (err) {
@@ -336,12 +414,13 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
   }
 
   if (role === "retail") {
-    const allowed = (
+    const allowed =
       p === "/" ||
       pathMatches(p, "/shipments") ||
       pathMatches(p, "/retail") ||
-      p === "/alerts"
-    );
+      p === "/alerts" ||
+      pathMatches(p, "/reports") ||
+      pathMatches(p, "/incentives");
     return allowed;
   }
 
@@ -359,6 +438,7 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
   if (role === "distributor") {
     if (
       pathMatches(p, "/settings") ||
+      pathMatches(p, "/crm") ||
       pathMatches(p, "/manufacturer") ||
       pathMatches(p, "/markets") ||
       pathMatches(p, "/global-markets") ||
@@ -373,6 +453,7 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
   if (role === "sales_rep" || role === "sales") {
     if (
       pathMatches(p, "/settings") ||
+      pathMatches(p, "/crm") ||
       pathMatches(p, "/manufacturer") ||
       pathMatches(p, "/purchase-orders") ||
       pathMatches(p, "/markets") ||
@@ -385,15 +466,15 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
   }
 
   if (role === "finance") {
-    // Finance has read access to most areas except settings
-    if (pathMatches(p, "/settings")) {
+    // Finance has read access to most areas except HQ settings / CRM
+    if (pathMatches(p, "/settings") || pathMatches(p, "/crm")) {
       return false;
     }
     return true;
   }
 
   if (role === "operations") {
-    // Operations has access to everything except settings
+    // Operations has access to everything except HQ settings (CRM remains available for onboarding)
     if (pathMatches(p, "/settings")) {
       return false;
     }

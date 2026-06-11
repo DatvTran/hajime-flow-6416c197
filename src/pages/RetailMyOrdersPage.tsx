@@ -1,42 +1,46 @@
-import { useMemo } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Search } from "lucide-react";
 import { useAppData } from "@/contexts/AppDataContext";
 import { RetailSkeleton } from "@/components/skeletons";
 import { useRetailAccountTradingName } from "@/contexts/AuthContext";
 import { retailOrderDisplayId, orderLineEntries } from "@/lib/order-lines";
-import { RetailStatusChip, retailBucketFromStatus, type RetailOrderFilter } from "@/components/retail/RetailStatusChip";
+import { RetailPageHeader } from "@/components/retail/RetailPageHeader";
+import { RetailFilterPills } from "@/components/retail/RetailFilterPills";
+import { RetailStatusPill } from "@/components/retail/RetailStatusPill";
+import { retailBucketFromStatus, type RetailOrderFilter } from "@/components/retail/RetailStatusChip";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Product, SalesOrder } from "@/data/mockData";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function filterKey(raw: string | null): RetailOrderFilter {
   if (raw === "pending" || raw === "in_transit" || raw === "delivered") return raw;
   return "all";
 }
 
-function casesSummary(o: SalesOrder, products: Product[]): string {
-  const parts: string[] = [];
-  for (const line of orderLineEntries(o)) {
-    const p = products.find((x) => x.sku === line.sku);
-    const cs = p ? Math.round(line.quantityBottles / p.caseSize) : 0;
-    parts.push(`${cs} cs ${p?.name ?? line.sku}`);
-  }
-  return parts.join(" · ") || `${o.quantity} bottles`;
+function lineSummary(o: SalesOrder, products: Product[]): string {
+  return orderLineEntries(o)
+    .map((l) => {
+      const p = products.find((x) => x.sku === l.sku);
+      return `${l.quantityBottles}× ${p?.name ?? l.sku}`;
+    })
+    .join(", ");
 }
 
-function etaForOrder(o: SalesOrder, shipments: { linkedOrder: string; eta: string; status: string }[]): string {
-  const sh = shipments.find((s) => s.linkedOrder === o.id);
-  if (o.status === "delivered") return o.actualDeliveryDate ?? "Delivered";
-  if (sh && sh.status !== "delivered") return sh.eta;
-  return o.requestedDelivery;
+function formatMoney(n: number): string {
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export default function RetailMyOrdersPage() {
+  const { t } = useLanguage();
+  const navigate = useNavigate();
   const { data, loading } = useAppData();
-
   const accountName = useRetailAccountTradingName();
   const [searchParams, setSearchParams] = useSearchParams();
   const filter = filterKey(searchParams.get("filter"));
+  const [q, setQ] = useState("");
 
   const myOrders = useMemo(
     () => data.salesOrders.filter((o) => o.account === accountName).sort((a, b) => Date.parse(b.orderDate) - Date.parse(a.orderDate)),
@@ -44,9 +48,16 @@ export default function RetailMyOrdersPage() {
   );
 
   const filtered = useMemo(() => {
-    if (filter === "all") return myOrders.filter((o) => o.status !== "cancelled");
-    return myOrders.filter((o) => retailBucketFromStatus(o.status) === filter);
-  }, [myOrders, filter]);
+    const needle = q.trim().toLowerCase();
+    return myOrders
+      .filter((o) => o.status !== "cancelled")
+      .filter((o) => (filter === "all" ? true : retailBucketFromStatus(o.status) === filter))
+      .filter((o) => {
+        if (!needle) return true;
+        const id = retailOrderDisplayId(o.id).toLowerCase();
+        return id.includes(needle) || lineSummary(o, data.products).toLowerCase().includes(needle);
+      });
+  }, [myOrders, filter, q, data.products]);
 
   const setFilter = (f: RetailOrderFilter) => {
     const next = new URLSearchParams(searchParams);
@@ -55,68 +66,79 @@ export default function RetailMyOrdersPage() {
     setSearchParams(next, { replace: true });
   };
 
-  const chips: { id: RetailOrderFilter; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "pending", label: "Pending" },
-    { id: "in_transit", label: "In transit" },
-    { id: "delivered", label: "Delivered" },
-  ];
-
-  if (loading) {
-    return <RetailSkeleton />;
-  }
+  if (loading) return <RetailSkeleton />;
 
   return (
-    <div>
-      <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">My orders</h1>
-      <p className="mt-1 text-sm text-muted-foreground">History and status for {accountName}.</p>
+    <div className="space-y-6 pb-8">
+      <RetailPageHeader
+        title="My orders"
+        description={t("Full order history for {{name}}.", { name: accountName ?? "your venue" })}
+        actions={
+          <Button variant="outline" size="sm" className="h-[30px] text-xs">
+            Export CSV
+          </Button>
+        }
+      />
 
-      <div className="mt-6 flex flex-wrap gap-2">
-        {chips.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => setFilter(c.id)}
-            className={cn(
-              "min-h-11 rounded-full border px-4 py-2 text-sm font-medium touch-manipulation transition-colors",
-              filter === c.id ? "border-foreground bg-foreground text-background" : "border-border bg-card text-muted-foreground hover:bg-muted",
-            )}
-          >
-            {c.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <RetailFilterPills
+          className="mb-0"
+          options={[
+            { id: "all", label: "All orders" },
+            { id: "pending", label: "Pending" },
+            { id: "in_transit", label: "In transit" },
+            { id: "delivered", label: "Delivered" },
+          ]}
+          value={filter}
+          onChange={setFilter}
+        />
+        <div className="relative ml-auto w-full max-w-xs sm:w-auto">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-[15px] -translate-y-1/2 text-muted-foreground" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search orders…" className="h-9 pl-9 text-[13px]" />
+        </div>
       </div>
 
-      <ul className="mt-6 space-y-3">
+      <div className="overflow-hidden rounded-[14px] border border-border/70 bg-card shadow-[var(--shadow-soft)]">
         {filtered.length === 0 ? (
-          <li className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No orders in this view.</li>
+          <p className="px-4 py-10 text-center text-[13px] text-muted-foreground">No orders in this view.</p>
         ) : (
-          filtered.map((o) => (
-            <li key={o.id} className="rounded-xl border border-border/80 bg-card p-4 shadow-sm">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-sm font-semibold">{retailOrderDisplayId(o.id)}</span>
-                    <RetailStatusChip status={o.status} />
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {o.orderDate} · {casesSummary(o, data.products)}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">ETA {etaForOrder(o, data.shipments)}</p>
-                </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  <Button variant="secondary" size="sm" className="touch-manipulation" asChild>
-                    <Link to={`/retail/orders/${encodeURIComponent(o.id)}`}>View</Link>
-                  </Button>
-                  <Button variant="outline" size="sm" className="touch-manipulation" asChild>
-                    <Link to={`/retail/reorder?from=${encodeURIComponent(o.id)}`}>Reorder</Link>
-                  </Button>
-                </div>
-              </div>
-            </li>
-          ))
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                {["Order", "Items", "Total", "Status", ""].map((h) => (
+                  <TableHead key={h || "actions"} className="bg-muted/50 text-[10px] font-semibold uppercase tracking-[0.1em]">
+                    {h}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((o) => (
+                <TableRow
+                  key={o.id}
+                  className="cursor-pointer border-border/40 hover:bg-muted/30"
+                  onClick={() => navigate(`/retail/orders/${encodeURIComponent(o.id)}`)}
+                >
+                  <TableCell>
+                    <div className="font-mono text-xs font-medium">{retailOrderDisplayId(o.id)}</div>
+                    <div className="text-[11px] text-muted-foreground">Placed {o.orderDate}</div>
+                  </TableCell>
+                  <TableCell className="max-w-[240px] text-xs text-muted-foreground">{lineSummary(o, data.products)}</TableCell>
+                  <TableCell className="font-mono text-[13px] font-medium tabular-nums">${formatMoney(o.price)}</TableCell>
+                  <TableCell>
+                    <RetailStatusPill status={o.status} />
+                  </TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Button variant="outline" size="sm" className="h-[30px] text-xs" asChild>
+                      <Link to="/shipments">Track</Link>
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
-      </ul>
+      </div>
     </div>
   );
 }

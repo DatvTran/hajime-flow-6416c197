@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hajime — Sales Rep · Mike Tan</title>
+<link rel="stylesheet" href="colors_and_type.css">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--font-body);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.shell{display:grid;grid-template-columns:256px 1fr;height:100vh;overflow:hidden}
+.side{background:hsl(var(--sidebar-background));color:hsl(var(--sidebar-foreground));display:flex;flex-direction:column;border-right:1px solid hsl(var(--sidebar-border));overflow-y:auto}
+.logo-row{display:flex;align-items:center;gap:10px;padding:20px 16px 16px;border-bottom:1px solid hsl(var(--sidebar-border))}
+.logo-mark{width:34px;height:34px;border-radius:8px;background:hsl(var(--sidebar-accent));display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
+.logo-mark img{height:26px;filter:brightness(0) invert(1)}
+.logo-name{font-family:var(--font-display);font-weight:600;font-size:16px;color:hsl(35 14%90%);line-height:1.2}
+.logo-sub{font-size:10px;color:hsl(35 12%42%);letter-spacing:.08em;margin-top:1px}
+.quota-pill{margin:14px 10px 0;background:linear-gradient(135deg,hsl(40 88%42%/.1),hsl(40 60%50%/.06));border:1px solid hsl(40 88%42%/.22);border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px}
+.q-ring{position:relative;width:44px;height:44px;flex-shrink:0}
+.q-ring svg{width:44px;height:44px}
+.q-ring-lbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:600;color:hsl(40 80%62%)}
+.q-info .qt{font-size:12px;font-weight:600;color:hsl(40 80%60%)}
+.q-info .qs{font-size:11px;color:hsl(35 12%42%);margin-top:1px}
+.nav-section{padding:14px 10px 6px;display:flex;flex-direction:column;gap:2px}
+.nav-label{padding:4px 8px 6px;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.14em;color:hsl(var(--sidebar-foreground)/.32)}
+.navitem{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:6px;color:hsl(var(--sidebar-foreground)/.68);font-size:13px;cursor:pointer;transition:background 140ms,color 140ms}
+.navitem:hover{background:hsl(var(--sidebar-accent));color:hsl(35 14%90%)}
+.navitem.active{background:hsl(var(--sidebar-accent));color:hsl(var(--sidebar-primary));font-weight:500}
+.navitem svg{width:15px;height:15px;flex-shrink:0}
+.nb{margin-left:auto;font-size:10px;font-weight:600;padding:1px 6px;border-radius:999px;font-family:var(--font-mono)}
+.nb-gold{background:hsl(40 88%42%/.18);color:hsl(40 88%42%)}
+.nb-green{background:hsl(158 56%36%/.15);color:hsl(158 56%32%)}
+.nb-red{background:hsl(0 68%48%/.14);color:hsl(0 68%42%)}
+.side-div{height:1px;background:hsl(var(--sidebar-border));margin:4px 10px 10px}
+.side-footer{margin-top:auto;padding:12px 10px;border-top:1px solid hsl(var(--sidebar-border));display:flex;align-items:center;gap:10px}
+.avatar{width:30px;height:30px;border-radius:999px;background:hsl(var(--sidebar-accent));color:hsl(35 14%82%);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0}
+.main{display:flex;flex-direction:column;min-width:0;height:100vh;overflow:hidden}
+.topbar{height:54px;display:flex;align-items:center;padding:0 32px;gap:14px;background:hsl(var(--glass-bg));backdrop-filter:blur(12px);border-bottom:1px solid hsl(var(--border)/.6);flex-shrink:0;z-index:10}
+.crumbs{font-size:13px;color:hsl(var(--muted-foreground))}
+.crumbs strong{color:hsl(var(--foreground));font-weight:500}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+#pg{overflow-y:auto;flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:500;border-radius:8px;padding:0 16px;height:36px;border:1px solid transparent;cursor:pointer;transition:background 140ms,transform 100ms;font-family:var(--font-body)}
+.btn:active{transform:scale(.98)}
+.btn-accent{background:hsl(var(--accent));color:hsl(var(--accent-foreground))}
+.btn-accent:hover{background:hsl(var(--accent-hover))}
+.btn-outline{background:hsl(var(--background));border-color:hsl(var(--border));color:hsl(var(--foreground))}
+.btn-outline:hover{background:hsl(var(--muted))}
+.btn-ink{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
+.btn-ink:hover{background:hsl(24 10%16%)}
+.btn-green{background:hsl(158 56%36%);color:white}
+.btn-green:hover{background:hsl(158 56%30%)}
+.btn-sm{height:30px;font-size:12px;padding:0 12px}
+.btn svg{width:14px;height:14px}
+.pw{padding:30px 40px 80px;max-width:1260px}
+.ph-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px}
+.sec-title{font-family:var(--font-display);font-size:19px;font-weight:500;letter-spacing:-.01em}
+.sec-link{font-size:12px;color:hsl(var(--accent));cursor:pointer;font-weight:500}
+.sec-link:hover{text-decoration:underline}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
+.kpi{background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:4px;box-shadow:var(--shadow-soft);transition:box-shadow 200ms,transform 200ms}
+.kpi:hover{box-shadow:var(--shadow-lifted);transform:translateY(-1px)}
+.kpi-ic{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.kpi-ic svg{width:17px;height:17px}
+.ic-gold{background:hsl(40 88%42%/.1);color:hsl(40 88%36%)}
+.ic-green{background:hsl(158 56%36%/.1);color:hsl(158 56%30%)}
+.ic-blue{background:hsl(215 72%50%/.1);color:hsl(215 72%42%)}
+.ic-ink{background:hsl(24 10%10%/.07);color:hsl(24 10%18%)}
+.kpi-lab{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:hsl(var(--muted-foreground));font-weight:500}
+.kpi-val{font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.1;font-feature-settings:'tnum'}
+.kpi-sub{font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px}
+.kpi-delta{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:500;margin-top:2px}
+.delta-up{color:hsl(158 56%32%)}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:500;border:1px solid;white-space:nowrap}
+.pdot{width:6px;height:6px;border-radius:999px}
+.p-green{background:hsl(158 56%36%/.08);color:hsl(158 56%26%);border-color:hsl(158 56%36%/.2)}
+.p-blue{background:hsl(215 72%50%/.08);color:hsl(215 72%38%);border-color:hsl(215 72%50%/.2)}
+.p-amber{background:hsl(38 90%50%/.1);color:hsl(30 80%30%);border-color:hsl(38 90%50%/.25)}
+.p-red{background:hsl(0 68%48%/.08);color:hsl(0 68%38%);border-color:hsl(0 68%48%/.2)}
+.p-neutral{background:hsl(var(--muted));color:hsl(var(--muted-foreground));border-color:hsl(var(--border))}
+.card{background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-soft)}
+.card-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid hsl(var(--border)/.5)}
+.card-title{font-size:14px;font-weight:600}
+.card-sub{font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px}
+.filter-bar{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap;align-items:center}
+.filter-btn{padding:6px 14px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid hsl(var(--border));background:hsl(var(--background));color:hsl(var(--muted-foreground));cursor:pointer;transition:all 140ms;font-family:var(--font-body)}
+.filter-btn.active{background:hsl(var(--primary));color:hsl(var(--primary-foreground));border-color:hsl(var(--primary))}
+.filter-btn:hover:not(.active){background:hsl(var(--muted));color:hsl(var(--foreground))}
+.search-wrap{position:relative;flex:1;max-width:320px;margin-left:auto}
+.search-wrap input{width:100%;height:36px;padding:0 12px 0 36px;border-radius:8px;border:1px solid hsl(var(--border));background:hsl(var(--background));font-size:13px;font-family:var(--font-body);color:hsl(var(--foreground));outline:none}
+.search-wrap input:focus{border-color:hsl(var(--ring))}
+.search-wrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:hsl(var(--muted-foreground));pointer-events:none}
+.data-table{width:100%;border-collapse:collapse}
+.data-table th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:hsl(var(--muted-foreground));font-weight:600;padding:10px 16px;background:hsl(var(--muted)/.5);border-bottom:1px solid hsl(var(--border)/.5)}
+.data-table td{padding:12px 16px;border-bottom:1px solid hsl(var(--border)/.4);font-size:13px;vertical-align:middle}
+.data-table tr:last-child td{border-bottom:none}
+.data-table tbody tr{cursor:pointer;transition:background 120ms}
+.data-table tbody tr:hover td{background:hsl(var(--muted)/.3)}
+.two-col{display:grid;grid-template-columns:1.3fr 1fr;gap:18px;margin-bottom:28px}
+/* Accounts */
+.signal-dot{width:8px;height:8px;border-radius:999px;flex-shrink:0}
+.sp-amber{background:hsl(38 90%50%/.1);color:hsl(30 80%30%);border:1px solid hsl(38 90%50%/.25)}
+.sp-green{background:hsl(158 56%36%/.08);color:hsl(158 56%26%);border:1px solid hsl(158 56%36%/.2)}
+.sp-blue{background:hsl(215 72%50%/.08);color:hsl(215 72%38%);border:1px solid hsl(215 72%50%/.2)}
+.sp-neutral{background:hsl(var(--muted));color:hsl(var(--muted-foreground));border:1px solid hsl(var(--border))}
+.signal-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:500}
+/* Kanban */
+.kanban-board{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:28px}
+.kanban-col{display:flex;flex-direction:column;gap:8px;min-width:0}
+.kanban-head{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));padding:8px 12px;display:flex;align-items:center;justify-content:space-between}
+.kh-count{background:hsl(var(--muted));color:hsl(var(--muted-foreground));font-size:10px;padding:1px 6px;border-radius:999px;font-family:var(--font-mono)}
+.kcard{background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:10px;padding:14px;cursor:pointer;transition:box-shadow 150ms,transform 150ms}
+.kcard:hover{box-shadow:var(--shadow-lifted);transform:translateY(-1px)}
+.kcard-acct{font-size:13px;font-weight:600;margin-bottom:4px}
+.kcard-val{font-family:var(--font-mono);font-size:12px;font-weight:500;color:hsl(var(--accent))}
+.kcard-next{font-size:11px;color:hsl(var(--muted-foreground));margin-top:6px;line-height:1.5}
+.kcard-age{font-size:10px;margin-top:8px;padding:2px 7px;border-radius:999px;display:inline-flex}
+.age-ok{background:hsl(158 56%36%/.1);color:hsl(158 56%28%)}
+.age-warn{background:hsl(38 90%50%/.1);color:hsl(30 80%30%)}
+.age-late{background:hsl(0 68%48%/.1);color:hsl(0 68%38%)}
+/* Route */
+.route-stop{display:flex;gap:16px;padding:18px 0;border-bottom:1px solid hsl(var(--border)/.5);position:relative}
+.stop-num{width:34px;height:34px;border-radius:999px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;margin-top:2px}
+.stop-num.done{background:hsl(158 56%36%)}
+.stop-body{flex:1;min-width:0}
+.stop-name{font-size:15px;font-weight:600}
+.stop-meta{font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px}
+.stop-actions{display:flex;gap:8px;margin-top:10px}
+/* Draft cards */
+.draft-card{background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;padding:20px;box-shadow:var(--shadow-soft);margin-bottom:14px;transition:box-shadow 200ms}
+.draft-card:hover{box-shadow:var(--shadow-lifted)}
+.draft-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.draft-acct{font-family:var(--font-display);font-size:18px;font-weight:500;letter-spacing:-.01em}
+.draft-meta{font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px}
+.draft-items{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.draft-tag{font-size:12px;padding:4px 10px;border-radius:999px;background:hsl(var(--muted));border:1px solid hsl(var(--border)/.6)}
+.draft-footer{display:flex;align-items:center;justify-content:space-between;padding-top:14px;border-top:1px solid hsl(var(--border)/.5)}
+.draft-total{font-family:var(--font-display);font-size:20px;font-weight:600}
+/* Incentive */
+.inc-header{background:linear-gradient(135deg,hsl(24 12%9%),hsl(24 14%13%));padding:26px 30px;display:grid;grid-template-columns:auto 1fr auto;gap:28px;align-items:center;position:relative;overflow:hidden}
+.inc-header::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 70%100% at 100%50%,hsl(40 88%42%/.1),transparent);pointer-events:none}
+.quota-ring-wrap{position:relative;width:100px;height:100px;flex-shrink:0;z-index:1}
+.quota-ring-wrap svg{width:100px;height:100px}
+.qrl{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
+.qrl .pct{font-family:var(--font-display);font-size:22px;font-weight:600;color:hsl(40 80%68%);letter-spacing:-.02em;line-height:1}
+.qrl .psub{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:hsl(35 12%44%);font-weight:500}
+.inc-meta{z-index:1}
+.inc-meta .ey{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:hsl(35 12%40%);font-weight:500;margin-bottom:5px}
+.inc-meta .tname{font-family:var(--font-display);font-size:24px;font-weight:600;color:hsl(35 14%90%);letter-spacing:-.01em;line-height:1.15}
+.inc-meta .tsub{font-size:13px;color:hsl(35 12%48%);margin-top:4px}
+.rank-pills{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.rp{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:500;border:1px solid}
+.rp-gold{background:hsl(40 88%42%/.14);color:hsl(40 80%60%);border-color:hsl(40 88%42%/.28)}
+.rp-green{background:hsl(158 56%36%/.12);color:hsl(158 56%54%);border-color:hsl(158 56%36%/.24)}
+.rp-blue{background:hsl(215 72%50%/.12);color:hsl(215 72%64%);border-color:hsl(215 72%50%/.24)}
+.inc-stats{display:flex;gap:22px;z-index:1}
+.inc-stat{text-align:right}
+.is-lab{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:hsl(35 12%38%);font-weight:500}
+.is-val{font-family:var(--font-display);font-size:22px;font-weight:600;color:hsl(35 14%90%);font-feature-settings:'tnum';letter-spacing:-.01em}
+.is-sub{font-size:11px;color:hsl(35 12%44%)}
+.vdiv{width:1px;height:46px;background:hsl(35 12%20%)}
+.inc-body{padding:24px 30px}
+/* Progress */
+.prog-track{width:100%;height:12px;border-radius:999px;background:hsl(var(--muted));position:relative;overflow:visible;margin-bottom:8px}
+.prog-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,hsl(40 88%38%),hsl(40 80%54%));overflow:hidden;position:relative}
+.prog-pace{position:absolute;top:-3px;width:3px;height:18px;border-radius:999px;background:hsl(215 72%60%)}
+.acc-bands{display:flex;justify-content:flex-end;gap:6px;margin-top:22px}
+.acc-band{display:flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;border:1px solid;font-size:10px;font-weight:500}
+.ab-base{background:hsl(var(--muted));color:hsl(var(--muted-foreground));border-color:hsl(var(--border))}
+.ab-active{background:hsl(40 88%42%);color:white;border-color:hsl(40 88%42%)}
+.ab-lock{background:transparent;color:hsl(var(--muted-foreground));border-color:hsl(var(--border))}
+/* Bonus rows */
+.bonus-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;border:1px solid;margin-bottom:8px;transition:transform 150ms}
+.bonus-row:hover{transform:translateX(2px)}
+.br-earned{background:hsl(158 56%36%/.06);border-color:hsl(158 56%36%/.2)}
+.br-active{background:hsl(40 88%42%/.06);border-color:hsl(40 88%42%/.25)}
+.br-locked{background:transparent;border-color:hsl(var(--border)/.5);border-style:dashed;opacity:.6}
+.bonus-icon{width:32px;height:32px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.bonus-icon svg{width:15px;height:15px}
+.bi-green{background:hsl(158 56%36%/.1);color:hsl(158 56%30%)}
+.bi-gold{background:hsl(40 88%42%/.1);color:hsl(40 88%34%)}
+.bi-lock{background:hsl(var(--muted));color:hsl(var(--muted-foreground))}
+.bonus-text{flex:1;min-width:0}
+.bt-label{font-size:13px;font-weight:500}
+.bt-sub{font-size:11px;color:hsl(var(--muted-foreground));margin-top:1px}
+.bonus-amt{font-family:var(--font-display);font-size:18px;font-weight:600;font-feature-settings:'tnum';white-space:nowrap}
+.ba-earn{color:hsl(158 56%30%)}
+.ba-active{color:hsl(var(--accent))}
+.ba-lock{color:hsl(var(--muted-foreground))}
+/* Comm log */
+.comm-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid hsl(var(--border)/.5)}
+.comm-row:last-child{border-bottom:none}
+.comm-ic{width:30px;height:30px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.comm-ic svg{width:14px;height:14px}
+.ci-g{background:hsl(40 88%42%/.1);color:hsl(40 88%36%)}
+.ci-gr{background:hsl(158 56%36%/.1);color:hsl(158 56%30%)}
+.ci-b{background:hsl(215 72%50%/.1);color:hsl(215 72%42%)}
+.comm-body{flex:1;min-width:0}
+.cb-label{font-size:13px;font-weight:500}
+.cb-sub{font-size:11px;color:hsl(var(--muted-foreground));margin-top:1px}
+.comm-amt{font-family:var(--font-mono);font-size:13px;font-weight:500;white-space:nowrap}
+.ca-pos{color:hsl(var(--accent))}
+.ca-paid{color:hsl(158 56%32%)}
+/* Bar chart */
+.chart-wrap{background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;padding:20px;margin-bottom:20px}
+/* Visit log */
+.visit-row{padding:16px 0;border-bottom:1px solid hsl(var(--border)/.5);display:flex;gap:14px;align-items:flex-start}
+.visit-row:last-child{border-bottom:none}
+.visit-date-col{font-family:var(--font-mono);font-size:11px;color:hsl(var(--muted-foreground));width:80px;flex-shrink:0;padding-top:2px}
+.visit-body{flex:1;min-width:0}
+.visit-acct{font-size:13px;font-weight:600;margin-bottom:3px}
+.visit-note{font-size:13px;color:hsl(var(--muted-foreground));line-height:1.6}
+.visit-tags{display:flex;gap:6px;margin-top:8px}
+/* Form */
+.form-group{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.form-group label{font-size:11px;font-weight:500;color:hsl(var(--muted-foreground));text-transform:uppercase;letter-spacing:.08em}
+.form-group input,.form-group select,.form-group textarea{padding:0 12px;border-radius:8px;border:1px solid hsl(var(--border));background:hsl(var(--background));font-size:13px;font-family:var(--font-body);color:hsl(var(--foreground));outline:none;height:38px}
+.form-group textarea{height:auto;padding:10px 12px;resize:none}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:hsl(var(--ring))}
+.form-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid hsl(var(--border)/.4)}
+.toggle-row:last-child{border-bottom:none}
+.ti-label{font-size:13px;font-weight:500}
+.ti-sub{font-size:12px;color:hsl(var(--muted-foreground));margin-top:1px}
+.toggle-sw{width:40px;height:22px;border-radius:999px;background:hsl(var(--muted));position:relative;cursor:pointer;transition:background 200ms;flex-shrink:0}
+.toggle-sw::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:999px;background:white;box-shadow:0 1px 3px hsl(24 10%10%/.2);transition:transform 200ms}
+.toggle-sw.on{background:hsl(var(--accent))}
+.toggle-sw.on::after{transform:translateX(18px)}
+/* Inc grid */
+.inc-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.panel-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));margin-bottom:12px}
+@keyframes enterUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.enter{animation:enterUp 400ms var(--ease-out-expo) both}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="side">
+  <div class="logo-row">
+    <div class="logo-mark"><img src="assets/hajime-logo.png" alt="Hajime"></div>
+    <div><div class="logo-name">Hajime</div><div class="logo-sub">Sales Rep · NYC</div></div>
+  </div>
+  <div style="padding:14px 10px 0">
+    <div class="quota-pill">
+      <div class="q-ring">
+        <svg viewBox="0 0 44 44" fill="none"><circle cx="22" cy="22" r="18" stroke="hsl(35 12%20%)" stroke-width="4"/><circle cx="22" cy="22" r="18" stroke="url(#qg1)" stroke-width="4" stroke-linecap="round" stroke-dasharray="69.2 113.1" transform="rotate(-90 22 22)"/><defs><linearGradient id="qg1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="hsl(40,88%,42%)"/><stop offset="100%" stop-color="hsl(32,78%,58%)"/></linearGradient></defs></svg>
+        <div class="q-ring-lbl">61%</div>
+      </div>
+      <div class="q-info"><div class="qt">Q2 attainment</div><div class="qs">$51,400 of $84,000</div></div>
+    </div>
+  </div>
+  <nav class="nav-section">
+    <div class="nav-label">Territory</div>
+    <div class="navitem active" data-nav="overview"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Overview</div>
+    <div class="navitem" data-nav="accounts"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Accounts<span class="nb nb-gold" id="accts-badge">24</span></div>
+    <div class="navitem" data-nav="pipeline"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>Pipeline<span class="nb nb-green">6</span></div>
+    <div class="navitem" data-nav="route"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M12 22s-8-4.5-8-12a8 8 0 0 1 16 0c0 7.5-8 12-8 12z"/><circle cx="12" cy="10" r="3"/></svg>Route planner</div>
+  </nav>
+  <div class="side-div"></div>
+  <nav class="nav-section" style="padding-top:4px">
+    <div class="nav-label">Orders</div>
+    <div class="navitem" data-nav="drafts"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Draft orders<span class="nb nb-gold">3</span></div>
+    <div class="navitem" data-nav="orders"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Submitted orders</div>
+    <div class="navitem" data-nav="catalog"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Product catalog</div>
+    <div class="navitem" data-nav="stock"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35a2 2 0 0 1 1.26-1.86l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35z"/><path d="M6 18h12M6 14h12"/></svg>Distributor stock</div>
+  </nav>
+  <div class="side-div"></div>
+  <nav class="nav-section" style="padding-top:4px">
+    <div class="nav-label">Performance</div>
+    <div class="navitem" data-nav="incentive"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Incentive program</div>
+    <div class="navitem" data-nav="analytics"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Territory analytics</div>
+    <div class="navitem" data-nav="visits"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Visit log</div>
+  </nav>
+  <div class="side-footer">
+    <div class="avatar">MT</div>
+    <div><div style="font-size:12px;color:hsl(35 14%88%);font-weight:500">Mike Tan</div><div style="font-size:10px;color:hsl(35 12%44%)">NYC Territory · Gold Performer</div></div>
+  </div>
+</aside>
+<main class="main">
+  <header class="topbar">
+    <div class="crumbs">Territory › <strong id="page-title">Overview</strong></div>
+    <div class="topbar-right">
+      <button class="btn btn-outline btn-sm" onclick="nav('visits')">Log visit</button>
+      <button class="btn btn-accent" onclick="nav('drafts')"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New draft order</button>
+    </div>
+  </header>
+  <div id="pg"></div>
+</main>
+</div>
+<script>
+const LABELS={overview:'Overview',accounts:'Accounts',pipeline:'Pipeline',route:'Route planner',drafts:'Draft orders',orders:'Submitted orders',catalog:'Product catalog',stock:'Distributor stock',incentive:'Incentive program',analytics:'Territory analytics',visits:'Visit log'};
+
+/* ── Shared pending-accounts state (localStorage) ── */
+function getPending(){try{return JSON.parse(localStorage.getItem('hajime_pending_accts')||'[]');}catch{return[];}}
+function setPending(arr){localStorage.setItem('hajime_pending_accts',JSON.stringify(arr));}
+
+function submitAccountRequest(){
+  const name=document.getElementById('req-name').value.trim();
+  const type=document.getElementById('req-type').value;
+  const addr=document.getElementById('req-addr').value.trim();
+  const contact=document.getElementById('req-contact').value.trim();
+  const notes=document.getElementById('req-notes').value.trim();
+  if(!name){alert('Account name is required.');return;}
+  const pending=getPending();
+  if(pending.find(p=>p.name===name&&p.status!=='rejected')){alert('"'+name+'" is already submitted and awaiting approval.');return;}
+  pending.push({
+    id:'pr'+Date.now().toString(36),
+    name,type,address:addr,contact,notes,
+    submittedBy:'Mike Tan',
+    submittedAt:new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}),
+    status:'pending'
+  });
+  setPending(pending);
+  nav('accounts');
+}
+
+function cancelRequest(id){
+  if(!confirm('Withdraw this account request?'))return;
+  setPending(getPending().filter(p=>p.id!==id));
+  nav('accounts');
+}
+
+function updateRepNavBadges(){
+  const myPending=getPending().filter(p=>p.submittedBy==='Mike Tan');
+  const badge=document.getElementById('accts-badge');
+  if(badge){
+    const approved=myPending.filter(p=>p.status==='approved').length;
+    const rejected=myPending.filter(p=>p.status==='rejected').length;
+    if(approved>0){badge.textContent=approved+' approved';badge.className='nb nb-green';}
+    else if(rejected>0){badge.textContent=rejected+' rejected';badge.className='nb nb-red';}
+    else{badge.textContent=ACCTS.length;badge.className='nb nb-gold';}
+  }
+}
+function nav(id){
+  document.querySelectorAll('[data-nav]').forEach(el=>el.classList.toggle('active',el.dataset.nav===id));
+  document.getElementById('page-title').textContent=LABELS[id]||id;
+  const pg=document.getElementById('pg');
+  pg.innerHTML=(PAGES[id]||PAGES.overview)();
+  pg.scrollTop=0;
+  bind();
+  updateRepNavBadges();
+}
+function pill(type,label){
+  const cls={green:'p-green',blue:'p-blue',amber:'p-amber',red:'p-red',neutral:'p-neutral'};
+  const dots={green:'hsl(158 56%36%)',blue:'hsl(215 72%50%)',amber:'hsl(38 90%50%)',red:'hsl(0 68%48%)',neutral:'hsl(var(--muted-foreground))'};
+  return`<span class="pill ${cls[type]||'p-neutral'}"><span class="pdot" style="background:${dots[type]||'grey'}"></span>${label}</span>`;
+}
+function sig(type){
+  const cls={slipping:'sp-amber',prospect:'sp-neutral',opportunity:'sp-blue','on cadence':'sp-green'};
+  const dots={slipping:'hsl(38 90%50%)',prospect:'hsl(var(--muted-foreground))',opportunity:'hsl(215 72%50%)','on cadence':'hsl(158 56%36%)'};
+  return`<span class="signal-tag ${cls[type]||'sp-neutral'}"><span class="signal-dot" style="background:${dots[type]||'grey'}"></span>${type}</span>`;
+}
+function svgi(d,s=14){return`<svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" style="width:${s}px;height:${s}px">${d}</svg>`;}
+const IC={
+  users:`<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>`,
+  cart:`<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>`,
+  star:`<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`,
+  target:`<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>`,
+  check:`<polyline points="20 6 9 17 4 12"/>`,
+  lock:`<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>`,
+  up:`<polyline points="18 15 12 9 6 15"/>`,
+  note:`<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>`,
+  pin:`<path d="M12 22s-8-4.5-8-12a8 8 0 0 1 16 0c0 7.5-8 12-8 12z"/><circle cx="12" cy="10" r="3"/>`,
+};
+function kpi(icPath,icCls,lab,val,sub,delta,deltaClass){
+  return`<div class="kpi"><div class="kpi-ic ${icCls}">${svgi(icPath,17)}</div><div class="kpi-lab">${lab}</div><div class="kpi-val">${val}</div>${sub?`<div class="kpi-sub">${sub}</div>`:''}${delta?`<div class="kpi-delta ${deltaClass}">${delta}</div>`:''}</div>`;
+}
+
+const ACCTS=[
+  {n:'Dante',t:'Restaurant',sig:'slipping',last:'22d',rev:'$3,840',listed:'2 SKUs',addr:'Greenwich Village'},
+  {n:'Katana Kitten',t:'Bar',sig:'on cadence',last:'17d',rev:'$2,100',listed:'1 SKU',addr:'Midtown'},
+  {n:'Mace',t:'Bar',sig:'opportunity',last:'30d',rev:'$1,680',listed:'1 SKU',addr:'Williamsburg'},
+  {n:'Bar Suntory',t:'Bar',sig:'slipping',last:'45d',rev:'$1,440',listed:'1 SKU',addr:'DUMBO'},
+  {n:'The Aviary',t:'Bar',sig:'on cadence',last:'7d',rev:'$5,760',listed:'2 SKUs',addr:'SoHo'},
+  {n:'NoMad Library',t:'Bar',sig:'prospect',last:'—',rev:'—',listed:'0',addr:'NoMad'},
+  {n:'Eleven Madison',t:'Restaurant',sig:'prospect',last:'—',rev:'—',listed:'0',addr:'Flatiron'},
+  {n:'Gramercy Tavern',t:'Restaurant',sig:'on cadence',last:'12d',rev:'$2,880',listed:'3 SKUs',addr:'Gramercy'},
+  {n:'Le Bernardin',t:'Restaurant',sig:'prospect',last:'—',rev:'—',listed:'0',addr:'Midtown'},
+  {n:'Balthazar',t:'Restaurant',sig:'slipping',last:'38d',rev:'$2,200',listed:'1 SKU',addr:'SoHo'},
+  {n:'Per Se',t:'Restaurant',sig:'opportunity',last:'25d',rev:'$3,120',listed:'2 SKUs',addr:'Columbus Circle'},
+  {n:'The Modern',t:'Restaurant',sig:'on cadence',last:'9d',rev:'$1,920',listed:'1 SKU',addr:'Midtown'},
+];
+
+const PAGES={};
+
+/* ── OVERVIEW ── */
+PAGES.overview=()=>`
+<div class="pw enter">
+  <div class="ph-row">
+    <div><h1 style="font-family:var(--font-display);font-size:30px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Morning, Mike.</h1><p style="font-size:13px;color:hsl(var(--muted-foreground));max-width:52ch">5 accounts on today's route. Dante and Bar Suntory are slipping. You're running 23% ahead of Q2 pace.</p></div>
+    <div style="display:flex;gap:8px;flex-shrink:0;margin-top:4px">
+      <button class="btn btn-outline" onclick="nav('route')">Open route</button>
+      <button class="btn btn-ink" onclick="nav('analytics')">Analytics</button>
+    </div>
+  </div>
+  <div class="kpi-row">
+    ${kpi(IC.users,'ic-gold','Accounts managed','24','Manhattan + Brooklyn','','')}
+    ${kpi(IC.cart,'ic-green','Q2 attained','$51,400','',`${svgi(IC.up,11)} 123% of expected pace`,'kpi-delta delta-up')}
+    ${kpi(IC.target,'ic-blue','Active pipeline','$22,400','6 opportunities open','','')}
+    ${kpi(IC.star,'ic-ink','Commission earned Q2','$4,370','+$5,000 bonus in reach','','')}
+  </div>
+  <div class="sec-head"><div class="sec-title">Incentive program</div><a class="sec-link" onclick="nav('incentive')">Full program →</a></div>
+  <div style="background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:16px;overflow:hidden;box-shadow:var(--shadow-soft);margin-bottom:28px;cursor:pointer" onclick="nav('incentive')">
+    <div class="inc-header">
+      <svg width="72" height="72" viewBox="0 0 72 72" fill="none"><circle cx="36" cy="36" r="30" stroke="hsl(35 12%18%)" stroke-width="6"/><circle cx="36" cy="36" r="30" stroke="url(#og1)" stroke-width="6" stroke-linecap="round" stroke-dasharray="115.6 188.5" transform="rotate(-90 36 36)"/><defs><linearGradient id="og1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="hsl(40,88%,40%)"/><stop offset="100%" stop-color="hsl(32,78%,56%)"/></linearGradient></defs></svg>
+      <div><div class="ey">Hajime Territory Rewards · Q2 2026</div><div class="tname">Gold Performer</div><div class="tsub">$32,600 remaining to Q2 target · running 23% ahead of pace</div><div class="rank-pills"><span class="rp rp-gold">${svgi(IC.star,10)} Gold Performer</span><span class="rp rp-green">#2 of 12 · NYC</span><span class="rp rp-blue">#8 of 47 · National</span></div></div>
+      <div class="inc-stats"><div class="inc-stat"><div class="is-lab">Q2 commission</div><div class="is-val">$4,370</div><div class="is-sub">8% base + 4% accelerator</div></div><div class="vdiv"></div><div class="inc-stat"><div class="is-lab">Bonus projected</div><div class="is-val">$5,000</div><div class="is-sub">100% attainment · Jun 30</div></div></div>
+    </div>
+    <div style="padding:14px 30px;display:flex;align-items:center;gap:12px">
+      <div style="flex:1;height:8px;border-radius:999px;background:hsl(var(--muted));overflow:hidden;position:relative"><div class="prog-pace" style="left:49.5%"></div><div class="prog-fill" style="width:61.2%"></div></div>
+      <div style="font-size:12px;color:hsl(var(--muted-foreground))">61% of Q2 · $32,600 to target</div>
+      <div style="font-size:12px;color:hsl(var(--accent));font-weight:500">View full program →</div>
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Today's route</div><div class="card-sub">Thu 15 May · 5 stops</div></div><button class="btn btn-outline btn-sm" onclick="nav('route')">Open map</button></div>
+      ${ACCTS.slice(0,5).map((a,i)=>`<div style="display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid hsl(var(--border)/.4);cursor:pointer;transition:background 120ms" onmouseover="this.style.background='hsl(var(--muted)/.4)'" onmouseout="this.style.background=''" onclick="nav('accounts')"><div style="width:22px;height:22px;border-radius:999px;background:${i<2?'hsl(24 10%10%)':'hsl(158 56%36%)'};color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${i+1}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${a.n}</div><div style="font-size:11px;color:hsl(var(--muted-foreground))">${a.t} · ${a.addr} · last ${a.last}</div></div>${sig(a.sig)}<svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="width:14px;height:14px;color:hsl(var(--muted-foreground))"><path d="m9 18 6-6-6-6"/></svg></div>`).join('')}
+    </div>
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Open pipeline</div><div class="card-sub">$22,400 · 6 opportunities</div></div><button class="btn btn-outline btn-sm" onclick="nav('pipeline')">All opps</button></div>
+      ${[{a:'Dante',d:'Ryusui Reserve expansion',v:'$4,920',s:'green',sl:'proposal sent'},{a:'Mace',d:'Florin Peaks listing · tasting today',v:'$5,760',s:'amber',sl:'tasting booked'},{a:'Bar Suntory',d:'Reactivation · 45d lapsed',v:'$2,880',s:'amber',sl:'outreach needed'},{a:'NoMad Library',d:'New prospect · intro 20 May',v:'$3,840',s:'blue',sl:'prospect'},{a:'Eleven Madison',d:'Referral from Dante',v:'$3,200',s:'blue',sl:'referral'},{a:'Le Bernardin',d:'Cold outreach · no reply',v:'$1,800',s:'neutral',sl:'outreach'}].map(p=>`
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:12px 20px;border-bottom:1px solid hsl(var(--border)/.4);cursor:pointer;transition:background 120ms" onmouseover="this.style.background='hsl(var(--muted)/.4)'" onmouseout="this.style.background=''" onclick="nav('pipeline')">
+        <div class="signal-dot" style="background:${p.s==='green'?'hsl(158 56%36%)':p.s==='amber'?'hsl(38 90%50%)':p.s==='blue'?'hsl(215 72%50%)':'hsl(var(--muted-foreground))'};margin-top:5px"></div>
+        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${p.a}</div><div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:1px">${p.d}</div></div>
+        <div style="text-align:right;flex-shrink:0"><div style="font-family:var(--font-mono);font-size:12px;font-weight:500">${p.v}</div><div style="font-size:10px;color:hsl(var(--muted-foreground));margin-top:2px">${p.sl}</div></div>
+      </div>`).join('')}
+    </div>
+  </div>
+  <div class="sec-head"><div class="sec-title">Recent submitted orders</div><a class="sec-link" onclick="nav('orders')">All orders →</a></div>
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>Order</th><th>Account</th><th>Items</th><th>Total</th><th>Commission</th><th>Status</th></tr></thead>
+      <tbody>
+        ${[{po:'PO-2026-0418',a:'Dante',i:'100× Florin Peaks, 12× Junmai Shiro',t:'$4,584',c:'$550',s:'blue',sl:'in-transit'},{po:'PO-2026-0408',a:'The Aviary',i:'48× Florin Peaks, 24× Ryusui Reserve',t:'$5,760',c:'$691+$500',s:'green',sl:'delivered'},{po:'PO-2026-0403',a:'Katana Kitten',i:'24× Florin Peaks 750ml',t:'$3,360',c:'$336',s:'green',sl:'delivered'},{po:'PO-2026-0399',a:'Mace',i:'12× Ryusui, 12× Junmai Shiro',t:'$1,824',c:'$219',s:'amber',sl:'pending HQ'}].map(o=>`
+        <tr onclick="nav('orders')"><td><div style="font-family:var(--font-mono);font-size:12px;font-weight:500">${o.po}</div></td><td style="font-weight:500">${o.a}</td><td style="color:hsl(var(--muted-foreground));font-size:12px">${o.i}</td><td style="font-family:var(--font-mono);font-weight:500">${o.t}</td><td style="font-family:var(--font-mono);color:hsl(var(--accent));font-weight:500">${o.c}</td><td>${pill(o.s,o.sl)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>`;
+
+/* ── ACCOUNTS ── */
+PAGES.accounts=()=>{
+const myPending=getPending().filter(p=>p.submittedBy==='Mike Tan');
+const pendingNew=myPending.filter(p=>p.status==='pending');
+const pendingApproved=myPending.filter(p=>p.status==='approved'&&!ACCTS.find(a=>a.n===p.name));
+const pendingRejected=myPending.filter(p=>p.status==='rejected');
+const FG2='display:flex;flex-direction:column;gap:6px';
+const FI2='height:38px;padding:0 12px;border-radius:8px;border:1px solid hsl(var(--border));background:hsl(var(--background));font-size:13px;font-family:var(--font-body);color:hsl(var(--foreground));outline:none';
+const FL2='font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground))';
+return`
+<div class="pw enter">
+  <div class="ph-row">
+    <div>
+      <h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Accounts</h1>
+      <p style="font-size:13px;color:hsl(var(--muted-foreground))">24 accounts · Manhattan + Brooklyn territory${pendingNew.length>0?' · <strong style="color:hsl(40 80%34%)">'+pendingNew.length+' request pending distributor approval</strong>':''}</p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-accent btn-sm" onclick="var p=document.getElementById('req-panel');p.style.display=p.style.display==='block'?'none':'block'">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Request new account
+      </button>
+    </div>
+  </div>
+
+  <!-- Request new account form -->
+  <div id="req-panel" style="display:none;background:hsl(var(--card));border:1px solid hsl(40 88%42%/.3);border-left:3px solid hsl(40 88%42%);border-radius:12px;padding:22px 24px;margin-bottom:24px;box-shadow:var(--shadow-soft)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <div style="font-size:15px;font-weight:600">Request new retail account</div>
+        <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px">Submitted to Empire Wines for approval · you'll see the status here once reviewed</div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('req-panel').style.display='none'">Cancel</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+      <div style="${FG2}"><label style="${FL2}">Account name *</label><input id="req-name" type="text" placeholder="e.g. Eleven Madison Park" style="${FI2}"></div>
+      <div style="${FG2}"><label style="${FL2}">Type</label>
+        <select id="req-type" style="${FI2}">
+          <option>Restaurant</option><option>Bar</option><option>Hotel</option><option>Other</option>
+        </select>
+      </div>
+      <div style="${FG2}"><label style="${FL2}">Address</label><input id="req-addr" type="text" placeholder="Street address" style="${FI2}"></div>
+      <div style="${FG2}"><label style="${FL2}">Key contact</label><input id="req-contact" type="text" placeholder="Buyer or beverage manager" style="${FI2}"></div>
+      <div style="${FG2};grid-column:1/-1"><label style="${FL2}">Notes for distributor</label><textarea id="req-notes" rows="3" placeholder="Why this account? Any relationship context, expected volume, or special notes for Empire Wines…" style="padding:10px 12px;border-radius:8px;border:1px solid hsl(var(--border));background:hsl(var(--background));font-size:13px;font-family:var(--font-body);color:hsl(var(--foreground));outline:none;resize:none;width:100%"></textarea></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-accent" onclick="submitAccountRequest()">Submit to Empire Wines</button>
+      <button class="btn btn-outline" onclick="document.getElementById('req-panel').style.display='none'">Cancel</button>
+      <span style="font-size:12px;color:hsl(var(--muted-foreground));margin-left:8px">Empire Wines typically responds within 1 business day</span>
+    </div>
+  </div>
+
+  <!-- Pending submissions -->
+  ${pendingNew.length>0||pendingRejected.length>0?`
+  <div style="margin-bottom:24px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:hsl(var(--muted-foreground));text-transform:uppercase;letter-spacing:.08em">Your submissions</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${pendingNew.map(r=>`
+      <div style="background:hsl(var(--card));border:1px solid hsl(40 88%42%/.3);border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow-soft)">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <div style="font-size:14px;font-weight:600">${r.name}</div>
+            <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;background:hsl(40 88%42%/.12);color:hsl(40 80%34%);border:1px solid hsl(40 88%42%/.25)">Pending distributor approval</span>
+          </div>
+          <div style="font-size:12px;color:hsl(var(--muted-foreground));display:flex;gap:14px;flex-wrap:wrap">
+            <span>${r.type}${r.address?' · '+r.address:''}</span>
+            <span>Submitted ${r.submittedAt}</span>
+            ${r.notes?`<span>Note: ${r.notes.slice(0,60)}${r.notes.length>60?'…':''}</span>`:''}
+          </div>
+        </div>
+        <button class="btn btn-outline btn-sm" style="color:hsl(0 68%40%);border-color:hsl(0 68%48%/.3);flex-shrink:0" onclick="cancelRequest('${r.id}')">Withdraw</button>
+      </div>`).join('')}
+      ${pendingRejected.map(r=>`
+      <div style="background:hsl(var(--card));border:1px solid hsl(0 68%48%/.2);border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:14px;opacity:.75">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <div style="font-size:14px;font-weight:600">${r.name}</div>
+            <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;background:hsl(0 68%48%/.1);color:hsl(0 68%40%);border:1px solid hsl(0 68%48%/.2)">Rejected by distributor</span>
+          </div>
+          <div style="font-size:12px;color:hsl(var(--muted-foreground))">Submitted ${r.submittedAt} · Contact Empire Wines for more information</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="cancelRequest('${r.id}')">Dismiss</button>
+      </div>`).join('')}
+    </div>
+  </div>`:''}
+
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <button class="filter-btn active">All (24)</button>
+    <button class="filter-btn">Slipping</button>
+    <button class="filter-btn">On cadence</button>
+    <button class="filter-btn">Opportunity</button>
+    <button class="filter-btn">Prospect</button>
+    <div class="search-wrap"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" placeholder="Search accounts…"></div>
+  </div>
+
+  <!-- Accounts table -->
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>Account</th><th>Type</th><th>Signal</th><th>Last order</th><th>30d revenue</th><th>Listings</th><th></th></tr></thead>
+      <tbody>
+        ${ACCTS.map(a=>`
+        <tr>
+          <td><div style="font-weight:500">${a.n}</div><div style="font-size:11px;color:hsl(var(--muted-foreground))">${a.addr}</div></td>
+          <td style="color:hsl(var(--muted-foreground))">${a.t}</td>
+          <td>${sig(a.sig)}</td>
+          <td style="font-family:var(--font-mono);font-size:12px">${a.last}</td>
+          <td style="font-family:var(--font-mono);font-weight:500">${a.rev}</td>
+          <td style="font-size:12px;color:hsl(var(--muted-foreground))">${a.listed}</td>
+          <td><button class="btn btn-outline btn-sm">View</button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>`;};
+
+/* ── PIPELINE ── */
+const KANBAN=[
+  {stage:'Prospect',color:'hsl(var(--muted-foreground))',cards:[{a:'NoMad Library',v:'$3,840',next:'Intro meeting 20 May',age:'New',ageCls:'age-ok'},{a:'Le Bernardin',v:'$1,800',next:'Cold outreach sent · awaiting reply',age:'5d',ageCls:'age-ok'}]},
+  {stage:'Contacted',color:'hsl(215 72%50%)',cards:[{a:'Eleven Madison',v:'$3,200',next:'Referral from Dante · follow up Jun',age:'3d',ageCls:'age-ok'}]},
+  {stage:'Tasting',color:'hsl(38 90%50%)',cards:[{a:'Mace',v:'$5,760',next:'Florin Peaks tasting today 2pm',age:'Today',ageCls:'age-warn'},{a:'Per Se',v:'$4,800',next:'Virtual tasting scheduled 22 May',age:'2d',ageCls:'age-ok'}]},
+  {stage:'Proposal',color:'hsl(40 88%42%)',cards:[{a:'Dante',v:'$4,920',next:'Ryusui expansion · awaiting response',age:'8d',ageCls:'age-warn'}]},
+  {stage:'Closing',color:'hsl(158 56%36%)',cards:[{a:'Bar Suntory',v:'$2,880',next:'Reactivation · counter-proposal sent',age:'12d',ageCls:'age-late'}]},
+];
+PAGES.pipeline=()=>`
+<div class="pw enter" style="max-width:1440px">
+  <div class="ph-row">
+    <div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Pipeline</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">$22,400 across 6 open opportunities · NYC territory</p></div>
+    <button class="btn btn-accent btn-sm">+ Add opportunity</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:28px">
+    ${KANBAN.map(col=>`
+    <div>
+      <div class="kanban-head" style="color:${col.color}"><span>${col.stage}</span><span class="kh-count">${col.cards.length}</span></div>
+      ${col.cards.map(c=>`
+      <div class="kcard">
+        <div class="kcard-acct">${c.a}</div>
+        <div class="kcard-val">${c.v}</div>
+        <div class="kcard-next">${c.next}</div>
+        <span class="kcard-age ${c.ageCls}">${c.age}</span>
+      </div>`).join('')}
+      <div style="padding:12px;border:1px dashed hsl(var(--border)/.6);border-radius:10px;text-align:center;cursor:pointer;color:hsl(var(--muted-foreground));font-size:12px;margin-top:8px" onmouseover="this.style.background='hsl(var(--muted)/.3)'" onmouseout="this.style.background=''">+ Add</div>
+    </div>`).join('')}
+  </div>
+  <div class="card">
+    <div class="card-head"><div class="card-title">Pipeline summary</div></div>
+    <table class="data-table">
+      <thead><tr><th>Account</th><th>Opportunity</th><th>Value</th><th>Stage</th><th>Next action</th><th>Commission</th></tr></thead>
+      <tbody>
+        ${KANBAN.flatMap(col=>col.cards.map(c=>`<tr><td style="font-weight:500">${c.a}</td><td style="color:hsl(var(--muted-foreground));font-size:12px">${c.next.split('·')[0].trim()}</td><td style="font-family:var(--font-mono);font-weight:500">${c.v}</td><td><span style="font-size:11px;font-weight:500;color:${col.color}">${col.stage}</span></td><td style="font-size:12px;color:hsl(var(--muted-foreground))">${c.next}</td><td style="font-family:var(--font-mono);color:hsl(var(--accent));font-size:12px">${Math.round(parseInt(c.v.replace(/\D/g,''))*0.1/100)*100 > 0 ? '$'+Math.round(parseInt(c.v.replace(/\D/g,''))*0.1/100)*100 : '—'}</td></tr>`)).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>`;
+
+/* ── ROUTE ── */
+const ROUTE=[
+  {n:'Dante',t:'Restaurant',addr:'568 Broadway, SoHo',sig:'slipping',dist:'0.4 mi',last:'22d ago',visited:false},
+  {n:'Katana Kitten',t:'Bar',addr:'531 Hudson St, West Village',sig:'on cadence',dist:'1.2 mi',last:'17d ago',visited:false},
+  {n:'Mace',t:'Bar',addr:'649 E 9th St, Williamsburg',sig:'opportunity',dist:'3.1 mi',last:'30d ago',visited:false},
+  {n:'Bar Suntory',t:'Bar',addr:'36 Water St, DUMBO',sig:'slipping',dist:'4.2 mi',last:'45d ago',visited:false},
+  {n:'The Aviary',t:'Bar',addr:'137 E 13th St, SoHo',sig:'on cadence',dist:'0.8 mi',last:'7d ago',visited:false},
+];
+PAGES.route=()=>`
+<div class="pw enter">
+  <div class="ph-row">
+    <div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Route planner</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Thu 15 May · 5 stops · optimized route · est. 2h 40min drive</p></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm">Open in Maps</button>
+      <button class="btn btn-accent btn-sm">Start navigation</button>
+    </div>
+  </div>
+  <div style="background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;padding:16px 20px;margin-bottom:24px;display:flex;gap:20px">
+    ${[{l:'Stops today',v:'5'},{l:'Total distance',v:'9.7 mi'},{l:'Est. drive time',v:'2h 40min'},{l:'Slipping accounts',v:'2'},{l:'Opportunities',v:'1'}].map(s=>`<div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:hsl(var(--muted-foreground));font-weight:500">${s.l}</div><div style="font-family:var(--font-display);font-size:22px;font-weight:600;margin-top:4px">${s.v}</div></div>`).join('<div style="width:1px;background:hsl(var(--border))"></div>')}
+  </div>
+  ${ROUTE.map((s,i)=>`
+  <div class="route-stop">
+    <div class="stop-num ${s.visited?'done':''}"><span>${s.visited?'✓':i+1}</span></div>
+    <div class="stop-body">
+      <div class="stop-name">${s.n}</div>
+      <div class="stop-meta">${s.t} · ${s.addr} · ${s.dist} · last order ${s.last}</div>
+      <div style="margin-top:6px">${sig(s.sig)}</div>
+      <div class="stop-actions">
+        <button class="btn btn-ink btn-sm" onclick="nav('visits')">Log visit</button>
+        <button class="btn btn-outline btn-sm" onclick="nav('drafts')">Draft order</button>
+        <button class="btn btn-outline btn-sm" onclick="nav('accounts')">View account</button>
+        ${!s.visited?`<button class="btn btn-green btn-sm">Mark visited</button>`:''}
+      </div>
+    </div>
+    <div style="text-align:right;flex-shrink:0"><div style="font-family:var(--font-mono);font-size:13px;font-weight:500">${s.dist}</div><div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:2px">${s.visited?'Visited':'Upcoming'}</div></div>
+  </div>`).join('')}
+</div>`;
+
+/* ── DRAFTS ── */
+const DRAFTS=[
+  {a:'Dante',created:'Thu 15 May · 9:04am',items:['100× Florin Peaks 750ml','12× Junmai Shiro 720ml'],total:'$4,584.00',note:'Chef event May 28 — need extra Ryusui if possible'},
+  {a:'Mace',created:'Wed 14 May · 4:12pm',items:['24× Florin Peaks 750ml'],total:'$1,152.00',note:'Pending tasting outcome today'},
+  {a:'Bar Suntory',created:'Mon 12 May · 11:30am',items:['12× Junmai Shiro 720ml','12× Florin Peaks 750ml'],total:'$960.00',note:'Reactivation order — bar manager approved'},
+];
+PAGES.drafts=()=>`
+<div class="pw enter">
+  <div class="ph-row">
+    <div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Draft orders</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">3 drafts pending — submit to send to HQ approval queue.</p></div>
+    <button class="btn btn-accent btn-sm" onclick="nav('accounts')">+ New draft</button>
+  </div>
+  ${DRAFTS.map(d=>`
+  <div class="draft-card">
+    <div class="draft-head">
+      <div><div class="draft-acct">${d.a}</div><div class="draft-meta">${d.created} · draft saved locally</div></div>
+      ${pill('neutral','draft')}
+    </div>
+    <div class="draft-items">${d.items.map(i=>`<span class="draft-tag">${i}</span>`).join('')}</div>
+    ${d.note?`<div style="padding:10px 12px;background:hsl(var(--muted)/.5);border-radius:8px;font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:12px">Note: ${d.note}</div>`:''}
+    <div class="draft-footer">
+      <div class="draft-total">${d.total}</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm">Edit</button>
+        <button class="btn btn-outline btn-sm" style="color:hsl(0 68%44%);border-color:hsl(0 68%48%/.3)">Delete</button>
+        <button class="btn btn-accent btn-sm">Submit to HQ →</button>
+      </div>
+    </div>
+  </div>`).join('')}
+  <div style="padding:24px;text-align:center;border:1px dashed hsl(var(--border));border-radius:14px;color:hsl(var(--muted-foreground))">
+    ${svgi(IC.note,28)} <div style="font-size:13px;margin:12px 0">Offline safe — drafts sync when back online</div>
+  </div>
+</div>`;
+
+/* ── SUBMITTED ORDERS ── */
+const SORDERS=[
+  {po:'PO-2026-0418',a:'Dante',i:'100× Florin Peaks, 12× Junmai Shiro',t:'$4,584',c:'$550',s:'blue',sl:'in-transit',d:'Fri 11 Apr'},
+  {po:'PO-2026-0408',a:'The Aviary',i:'48× FP, 24× Ryusui Reserve',t:'$5,760',c:'$691+$500',s:'green',sl:'delivered',d:'Tue 8 Apr'},
+  {po:'PO-2026-0403',a:'Katana Kitten',i:'24× Florin Peaks 750ml',t:'$3,360',c:'$336',s:'green',sl:'delivered',d:'Thu 3 Apr'},
+  {po:'PO-2026-0399',a:'Mace',i:'12× Ryusui, 12× Junmai Shiro',t:'$1,824',c:'$219',s:'amber',sl:'pending HQ',d:'Wed 28 Mar'},
+  {po:'PO-2026-0391',a:'The Drake Hotel',i:'24× Ryusui, 24× Junmai Shiro',t:'$2,736',c:'$328',s:'green',sl:'delivered',d:'Fri 21 Mar'},
+  {po:'PO-2026-0382',a:'Gramercy Tavern',i:'36× Florin Peaks 750ml',t:'$1,728',c:'$207',s:'green',sl:'delivered',d:'Mon 10 Mar'},
+];
+PAGES.orders=()=>`
+<div class="pw enter">
+  <div class="ph-row">
+    <div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Submitted orders</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">All orders submitted to HQ from your accounts · Q2 2026</p></div>
+    <button class="btn btn-outline btn-sm">Export CSV</button>
+  </div>
+  <div class="filter-bar"><button class="filter-btn active">All</button><button class="filter-btn">Pending HQ</button><button class="filter-btn">In transit</button><button class="filter-btn">Delivered</button>
+    <div class="search-wrap"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" placeholder="Search orders…"></div>
+  </div>
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>Order</th><th>Account</th><th>Items</th><th>Total</th><th>Commission</th><th>Status</th></tr></thead>
+      <tbody>${SORDERS.map(o=>`<tr><td><div style="font-family:var(--font-mono);font-size:12px;font-weight:500">${o.po}</div><div style="font-size:11px;color:hsl(var(--muted-foreground))">${o.d}</div></td><td style="font-weight:500">${o.a}</td><td style="color:hsl(var(--muted-foreground));font-size:12px">${o.i}</td><td style="font-family:var(--font-mono);font-weight:500">${o.t}</td><td style="font-family:var(--font-mono);color:hsl(var(--accent));font-weight:500">${o.c}</td><td>${pill(o.s,o.sl)}</td></tr>`).join('')}</tbody>
+    </table>
+  </div>
+</div>`;
+
+/* ── CATALOG ── */
+const SKUS=[
+  {sku:'HJM-FP-750',name:'Florin Peaks',type:'Junmai Daiginjo',size:'750ml',price:48,wp:38,cs:12,avail:240},
+  {sku:'HJM-JN-720',name:'Junmai Shiro',type:'Junmai',size:'720ml',price:32,wp:26,cs:12,avail:144},
+  {sku:'HJM-RY-500',name:'Ryusui Reserve',type:'Genshu',size:'500ml',price:82,wp:65,cs:6,avail:38},
+  {sku:'EU-FP-750',name:'First Press',type:'Coffee Rice',size:'750ml',price:52,wp:42,cs:12,avail:218},
+  {sku:'HJM-NG-720',name:'Shirogane Nigori',type:'Nigori',size:'720ml',price:28,wp:22,cs:12,avail:92},
+  {sku:'HJM-HJ-500',name:'Hana Junmai',type:'Junmai',size:'500ml',price:38,wp:30,cs:6,avail:56},
+];
+PAGES.catalog=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Product catalog</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Full SKU reference · retail and wholesale pricing · case sizes</p></div></div>
+  <div class="filter-bar"><button class="filter-btn active">All SKUs</button><button class="filter-btn">Junmai Daiginjo</button><button class="filter-btn">Junmai</button><button class="filter-btn">Genshu</button><button class="filter-btn">Limited</button>
+    <div class="search-wrap"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" placeholder="Search SKUs…"></div>
+  </div>
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>SKU</th><th>Product</th><th>Type</th><th>Size</th><th>Retail price</th><th>Wholesale</th><th>Case size</th><th>Available</th></tr></thead>
+      <tbody>${SKUS.map(s=>`<tr><td style="font-family:var(--font-mono);font-size:11px;color:hsl(var(--muted-foreground))">${s.sku}</td><td style="font-weight:500">${s.name}</td><td style="color:hsl(var(--muted-foreground))">${s.type}</td><td style="font-family:var(--font-mono)">${s.size}</td><td style="font-family:var(--font-mono);font-weight:500">$${s.price}</td><td style="font-family:var(--font-mono);color:hsl(var(--accent));font-weight:500">$${s.wp}</td><td style="font-family:var(--font-mono)">${s.cs} btl</td><td style="font-family:var(--font-mono);font-weight:500;color:${s.avail<50?'hsl(0 68%44%)':s.avail<100?'hsl(38 90%40%)':'hsl(158 56%32%)'}">${s.avail} cs</td></tr>`).join('')}</tbody>
+    </table>
+  </div>
+</div>`;
+
+/* ── DISTRIBUTOR STOCK ── */
+PAGES.stock=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Distributor stock</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Empire Wines & Spirits · Brooklyn · live stock · updated with every fulfillment</p></div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:hsl(var(--muted-foreground))">Last updated 09:32am</span><span class="pill p-green"><span class="pdot" style="background:hsl(158 56%36%)"></span>live</span></div></div>
+  <div style="background:hsl(40 88%42%/.08);border:1px solid hsl(40 88%42%/.2);border-radius:12px;padding:14px 16px;margin-bottom:24px;font-size:13px"><strong style="color:hsl(40 80%34%)">Check before committing product.</strong> <span style="color:hsl(40 72%38%)">If stock is short, note a split allocation in your draft order and confirm with Jordan at Empire Wines.</span></div>
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>SKU</th><th>Product</th><th>Cases on hand</th><th>Allocated</th><th>Available to promise</th><th>Status</th></tr></thead>
+      <tbody>
+        ${[{sku:'HJM-FP-750',n:'Florin Peaks 750ml',oh:142,alloc:100,st:'low'},{sku:'HJM-JN-720',n:'Junmai Shiro 720ml',oh:218,alloc:36,st:'med'},{sku:'HJM-RY-500',n:'Ryusui Reserve 500ml',oh:38,alloc:6,st:'ok'},{sku:'EU-FP-750',n:'First Press 750ml',oh:96,alloc:0,st:'ok'},{sku:'HJM-NG-720',n:'Shirogane Nigori',oh:48,alloc:12,st:'ok'},{sku:'HJM-HJ-500',n:'Hana Junmai',oh:24,alloc:0,st:'med'}].map(s=>`
+        <tr>
+          <td style="font-family:var(--font-mono);font-size:11px;color:hsl(var(--muted-foreground))">${s.sku}</td>
+          <td style="font-weight:500">${s.n}</td>
+          <td style="font-family:var(--font-mono);font-weight:500">${s.oh} cs</td>
+          <td style="font-family:var(--font-mono);color:hsl(var(--muted-foreground))">${s.alloc} cs</td>
+          <td style="font-family:var(--font-mono);font-weight:600;color:${s.st==='low'?'hsl(0 68%44%)':s.st==='med'?'hsl(38 90%40%)':'hsl(158 56%32%)'}">${s.oh-s.alloc} cs</td>
+          <td>${s.st==='low'?pill('red','below reorder point'):s.st==='med'?pill('amber','monitor'):pill('green','available')}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>`;
+
+/* ── INCENTIVE ── */
+PAGES.incentive=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Incentive program</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Hajime Territory Rewards · Mike Tan · NYC territory · Q2 2026</p></div><button class="btn btn-outline btn-sm">Download statement</button></div>
+  <div class="card" style="overflow:visible;margin-bottom:24px">
+    <div class="inc-header">
+      <div class="quota-ring-wrap">
+        <svg viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="42" stroke="hsl(35 12%18%)" stroke-width="7"/><circle cx="50" cy="50" r="42" stroke="hsl(35 12%26%)" stroke-width="7" stroke-linecap="round" stroke-dasharray="2 263.9" stroke-dashoffset="-232" transform="rotate(-90 50 50)"/><circle cx="50" cy="50" r="42" stroke="url(#incg2)" stroke-width="7" stroke-linecap="round" stroke-dasharray="161.6 263.9" transform="rotate(-90 50 50)"/><circle cx="50" cy="50" r="42" stroke="hsl(215 72%60%)" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 263.9" stroke-dashoffset="-129" transform="rotate(-90 50 50)"/><defs><linearGradient id="incg2" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="hsl(40,88%,40%)"/><stop offset="100%" stop-color="hsl(32,78%,56%)"/></linearGradient></defs></svg>
+        <div class="qrl"><span class="pct">61%</span><span class="psub">of quota</span></div>
+      </div>
+      <div class="inc-meta"><div class="ey">Hajime Territory Rewards · Q2 2026</div><div class="tname">Gold Performer</div><div class="tsub">Running at 123% of quarterly pace · $32,600 remaining to Q2 target</div><div class="rank-pills"><span class="rp rp-gold">${svgi(IC.star,10)} Gold Performer</span><span class="rp rp-green">#2 of 12 · NYC</span><span class="rp rp-blue">#8 of 47 · National</span></div></div>
+      <div class="inc-stats"><div class="inc-stat"><div class="is-lab">Q2 commission</div><div class="is-val">$4,370</div><div class="is-sub">8% base + 4% accelerator</div></div><div class="vdiv"></div><div class="inc-stat"><div class="is-lab">YTD commission</div><div class="is-val">$11,840</div><div class="is-sub">incl. Q1 payout $7,470</div></div><div class="vdiv"></div><div class="inc-stat"><div class="is-lab">Bonus projected</div><div class="is-val">$5,000</div><div class="is-sub">100% attainment · Jun 30</div></div></div>
+    </div>
+    <div class="inc-body">
+      <div style="margin-bottom:22px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px"><span style="font-weight:500">Q2 quota · $51,400 of $84,000</span><span style="color:hsl(var(--accent));font-weight:600">$32,600 to target</span></div>
+        <div class="prog-track"><div class="prog-pace" style="left:49.5%"></div><div class="prog-fill" style="width:61.2%"></div></div>
+        <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:16px">
+          <span class="acc-band ab-base">Base 6% · &lt;90%</span>
+          <span class="acc-band ab-base">+2% · 90–100%</span>
+          <span class="acc-band ab-active">+4% · 100–120% — active</span>
+          <span class="acc-band ab-lock">+6% · 120%+</span>
+        </div>
+      </div>
+      <div class="inc-grid">
+        <div>
+          <div class="panel-title">Milestone bonuses</div>
+          ${[{r:'Q1 attainment bonus',s:'103% Q1 · paid 1 Apr 2026',a:'+$5,000',ac:'ba-earn',c:'br-earned',ic:'bi-green',ico:IC.check},{r:'New account — The Aviary',s:'First order placed · credited 22 Apr',a:'+$500',ac:'ba-earn',c:'br-earned',ic:'bi-green',ico:IC.check},{r:'Q2 quota bonus · 100% attainment',s:'On track · closes 30 Jun 2026',a:'$5,000',ac:'ba-active',c:'br-active',ic:'bi-gold',ico:IC.star},{r:"President's Club · 120% annual",s:'3-night trip + $2,500 cash · annual',a:'+$2,500',ac:'ba-lock',c:'br-locked',ic:'bi-lock',ico:IC.lock},{r:'Top territory · NYC #1 ranking',s:'End of Q2 leaderboard · currently #2',a:'+$1,000',ac:'ba-lock',c:'br-locked',ic:'bi-lock',ico:IC.lock}].map(b=>`
+          <div class="bonus-row ${b.c}"><div class="bonus-icon ${b.ic}">${svgi(b.ico,15)}</div><div class="bonus-text"><div class="bt-label">${b.r}</div><div class="bt-sub">${b.s}</div></div><div class="bonus-amt ${b.ac}">${b.a}</div></div>`).join('')}
+        </div>
+        <div>
+          <div class="panel-title">Commission activity · Q2</div>
+          ${[{l:'Dante · PO-2026-0418',s:'$4,200 order · 12% rate · Fri 11 Apr',a:'+$504',ac:'ca-pos',ic:'ci-g',ico:IC.cart},{l:'The Aviary · PO-2026-0408',s:'$5,760 order + new account bonus',a:'+$1,191',ac:'ca-pos',ic:'ci-g',ico:IC.cart},{l:'Q1 commission payout',s:'$7,470 total Q1 · paid 1 Apr 2026',a:'Paid',ac:'ca-paid',ic:'ci-gr',ico:IC.check},{l:'Katana Kitten · PO-2026-0403',s:'$3,360 order · 10% rate · 3 Apr',a:'+$336',ac:'ca-pos',ic:'ci-g',ico:IC.cart},{l:'Mace · PO-2026-0399',s:'$1,824 order · pending HQ',a:'+$219',ac:'ca-pos',ic:'ci-b',ico:IC.note}].map(c=>`
+          <div class="comm-row"><div class="comm-ic ${c.ic}">${svgi(c.ico,14)}</div><div class="comm-body"><div class="cb-label">${c.l}</div><div class="cb-sub">${c.s}</div></div><div class="comm-amt ${c.ac}">${c.a}</div></div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>`;
+
+/* ── ANALYTICS ── */
+const months=['Nov','Dec','Jan','Feb','Mar','Apr','May'];
+const rev=[18400,22100,19800,24600,28200,31400,19800];
+const maxRev=Math.max(...rev);
+PAGES.analytics=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Territory analytics</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">NYC territory · Mike Tan · rolling 7-month view</p></div><div style="display:flex;gap:8px"><button class="btn btn-outline btn-sm">Export</button></div></div>
+  <div class="kpi-row">
+    ${[{l:'YTD revenue',v:'$164,300',sub:'Jan–May 15',cl:'ic-gold'},{l:'Q2 attainment',v:'61%',sub:'$51,400 of $84,000',cl:'ic-green'},{l:'Active accounts',v:'12',sub:'of 24 placed order in 30d',cl:'ic-blue'},{l:'Avg order size',v:'$3,840',sub:'vs $3,200 prior period',cl:'ic-ink'}].map(k=>`<div class="kpi"><div class="kpi-ic ${k.cl}">${svgi(IC.target,17)}</div><div class="kpi-lab">${k.l}</div><div class="kpi-val">${k.v}</div><div class="kpi-sub">${k.sub}</div></div>`).join('')}
+  </div>
+  <div class="chart-wrap" style="margin-bottom:20px">
+    <div style="font-size:14px;font-weight:600;margin-bottom:4px">Monthly revenue</div>
+    <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:20px">Last 7 months · all accounts</div>
+    <div style="display:flex;gap:10px;align-items:flex-end;height:140px">
+      ${months.map((m,i)=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="font-size:10px;font-family:var(--font-mono);color:hsl(var(--foreground));font-weight:600">$${Math.round(rev[i]/1000)}K</div><div style="width:100%;border-radius:4px 4px 0 0;background:${i===months.length-1?'hsl(40 88%52%/.4)':'linear-gradient(180deg,hsl(40 88%52%),hsl(40 88%42%))' };height:${rev[i]/maxRev*120}px;transition:opacity 200ms"></div><div style="font-size:10px;color:hsl(var(--muted-foreground));font-family:var(--font-mono)">${m}</div></div>`).join('')}
+    </div>
+    <div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:12px">May is partial (15 days) · shown lighter</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:20px">
+    <div class="card">
+      <div class="card-head"><div class="card-title">Top accounts by revenue</div><div class="card-sub">Last 30 days</div></div>
+      <table class="data-table">
+        <thead><tr><th>Account</th><th>30d revenue</th><th>Signal</th></tr></thead>
+        <tbody>${[{n:'The Aviary',r:'$5,760',s:'on cadence'},{n:'Dante',r:'$3,840',s:'slipping'},{n:'Gramercy Tavern',r:'$2,880',s:'on cadence'},{n:'Katana Kitten',r:'$2,100',s:'on cadence'},{n:'Per Se',r:'$1,920',s:'opportunity'}].map(a=>`<tr><td style="font-weight:500">${a.n}</td><td style="font-family:var(--font-mono);font-weight:500">${a.r}</td><td>${sig(a.s)}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title">Account health</div><div class="card-sub">Signal distribution</div></div>
+      <div style="padding:20px">
+        ${[{s:'On cadence',n:8,c:'hsl(158 56%36%)',pct:33},{s:'Slipping',n:6,c:'hsl(38 90%50%)',pct:25},{s:'Opportunity',n:4,c:'hsl(215 72%50%)',pct:17},{s:'Prospect',n:6,c:'hsl(var(--muted-foreground))',pct:25}].map(h=>`
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+          <div style="width:10px;height:10px;border-radius:999px;background:${h.c};flex-shrink:0"></div>
+          <div style="flex:1;font-size:13px">${h.s}</div>
+          <div style="font-family:var(--font-mono);font-size:12px;color:hsl(var(--muted-foreground))">${h.n} accounts</div>
+          <div style="width:80px;height:6px;border-radius:999px;background:hsl(var(--muted));overflow:hidden"><div style="width:${h.pct*3}px;height:100%;border-radius:999px;background:${h.c}"></div></div>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>
+</div>`;
+
+/* ── VISIT LOG ── */
+const VISITS=[
+  {date:'15 May',a:'Mace',note:'Florin Peaks tasting went well — bar manager impressed with food pairing notes. Expressed interest in adding to cocktail menu as a base spirit. Follow up 22 May.',outcome:'opportunity',type:'tasting'},
+  {date:'14 May',a:'Katana Kitten',note:'Routine reorder conversation. Backbar tracking shows strong sell-through on Florin Peaks — suggest upsizing next order. Rep connection strong.',outcome:'reorder',type:'visit'},
+  {date:'12 May',a:'Bar Suntory',note:'45-day lapse addressed. Manager explained they were trialing a competitor SKU. Proposed reactivation order with co-branded menu insert. Counter-proposal sent.',outcome:'slipping',type:'visit'},
+  {date:'8 May',a:'The Aviary',note:'New account first visit post onboarding. Team very engaged. Chef wants to build seasonal sake program around Ryusui Reserve. Huge opportunity for expanded listing.',outcome:'opportunity',type:'followup'},
+  {date:'30 Apr',a:'Dante',note:'Discussed JP-2024 sell-through — running 30% ahead of prior quarter. Chef confirmed interest in sake dinner event on May 28. Draft proposal for Ryusui Reserve event case sent.',outcome:'opportunity',type:'event'},
+  {date:'25 Apr',a:'Gramercy Tavern',note:'Quarterly check-in. Pleased with allocations. Asked about Shirogane Nigori for summer menu — will confirm availability with Jordan at Empire.',outcome:'reorder',type:'visit'},
+];
+const vcols={opportunity:'hsl(158 56%36%)',reorder:'hsl(215 72%50%)',slipping:'hsl(38 90%50%)'};
+PAGES.visits=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Visit log</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">All account visits and tasting notes · NYC territory</p></div>
+    <div style="display:flex;gap:8px"><button class="btn btn-outline btn-sm">Filter by account</button><button class="btn btn-accent btn-sm" onclick="nav('route')">+ Log visit</button></div>
+  </div>
+  <div class="filter-bar"><button class="filter-btn active">All visits</button><button class="filter-btn">Opportunities</button><button class="filter-btn">Tastings</button><button class="filter-btn">Reorders</button></div>
+  <div style="background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;padding:0 24px">
+    ${VISITS.map(v=>`
+    <div class="visit-row">
+      <div class="visit-date-col">${v.date}</div>
+      <div class="visit-body">
+        <div class="visit-acct">${v.a} <span style="font-size:11px;font-weight:400;color:hsl(var(--muted-foreground));margin-left:4px">${v.type}</span></div>
+        <div class="visit-note">${v.note}</div>
+        <div class="visit-tags"><span style="font-size:10px;font-weight:600;color:${vcols[v.outcome]||'hsl(var(--muted-foreground))'};background:${vcols[v.outcome]||'hsl(var(--muted))'}18;padding:2px 8px;border-radius:999px;border:1px solid ${vcols[v.outcome]||'hsl(var(--border))'}30">${v.outcome}</span></div>
+      </div>
+      <div style="flex-shrink:0"><button class="btn btn-outline btn-sm">Edit</button></div>
+    </div>`).join('')}
+  </div>
+</div>`;
+
+function bind(){
+  document.querySelectorAll('.filter-btn').forEach(btn=>{
+    btn.addEventListener('click',function(){
+      this.closest('.filter-bar').querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+      this.classList.add('active');
+    });
+  });
+  document.querySelectorAll('.toggle-sw').forEach(t=>t.addEventListener('click',function(){this.classList.toggle('on')}));
+}
+
+document.querySelectorAll('[data-nav]').forEach(el=>el.addEventListener('click',()=>nav(el.dataset.nav)));
+nav('overview');
+</script>
+</body>
+</html>

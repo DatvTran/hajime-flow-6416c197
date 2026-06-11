@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useShipments, useAppData } from "@/contexts/AppDataContext";
+import { useShipments, useAppData, useSalesOrders } from "@/contexts/AppDataContext";
+import {
+  distributorFulfillmentEditPath,
+  distributorOrdersDetailPath,
+  distributorShipmentEditPath,
+  resolveSalesOrderIdFromShipmentLink,
+} from "@/lib/distributor-fulfillment-links";
+import { cn } from "@/lib/utils";
 import { useShipmentsAutoRefresh } from "@/hooks/useShipmentsAutoRefresh";
 import { useAuth } from "@/contexts/AuthContext";
 import { ShipmentsSkeleton } from "@/components/skeletons";
@@ -13,6 +20,8 @@ import { RecordDistributorOutboundShipmentDialog } from "@/components/RecordDist
 import { Truck, Package, Search, ArrowRight, Clock, CheckCircle2, AlertTriangle, Navigation } from "lucide-react";
 import type { Shipment } from "@/data/mockData";
 import { shipmentLineContentsLabel } from "@/lib/order-lines";
+import RetailDeliveriesPage from "@/pages/RetailDeliveriesPage";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function formatDepartureTimestamp(s: Shipment): string {
   if (s.shippedAt) {
@@ -28,10 +37,62 @@ function formatDepartureTimestamp(s: Shipment): string {
   return s.shipDate ? s.shipDate : "—";
 }
 
+type ShipmentCardShellProps = {
+  shipment: Shipment;
+  to?: string;
+  dimmed?: boolean;
+  children: ReactNode;
+};
+
+function ShipmentCardShell({ shipment, to, dimmed, children }: ShipmentCardShellProps) {
+  const className = cn(
+    "card-interactive flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between",
+    dimmed && "opacity-70",
+    to && "cursor-pointer no-underline text-inherit transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+  );
+  if (to) {
+    return (
+      <Link
+        to={to}
+        className={className}
+        aria-label={`Open shipment ${shipment.id} for ${shipment.destination}`}
+      >
+        {children}
+      </Link>
+    );
+  }
+  return <div className={className}>{children}</div>;
+}
+
 export default function Shipments() {
+  const { t } = useLanguage();
   const { user } = useAuth();
   const { shipments } = useShipments();
+  const { salesOrders } = useSalesOrders();
   const { loading, refreshShipments } = useAppData();
+  const isDistributor = user?.role === "distributor";
+
+  const shipmentEditPath = useCallback(
+    (s: Shipment) => (isDistributor ? distributorShipmentEditPath(s, salesOrders) : undefined),
+    [isDistributor, salesOrders],
+  );
+
+  const linkedOrderEditPath = useCallback(
+    (linkedOrder: string, linkedOrderDbId?: string) => {
+      if (!isDistributor) return undefined;
+      const orderId = resolveSalesOrderIdFromShipmentLink(
+        linkedOrder,
+        salesOrders,
+        linkedOrderDbId,
+      );
+      if (!orderId) return undefined;
+      const order = salesOrders.find((o) => o.id === orderId);
+      return order
+        ? distributorFulfillmentEditPath(order)
+        : distributorOrdersDetailPath(orderId);
+    },
+    [isDistributor, salesOrders],
+  );
   const [inboundOpen, setInboundOpen] = useState(false);
   const [outboundDistOpen, setOutboundDistOpen] = useState(false);
 
@@ -86,6 +147,10 @@ export default function Shipments() {
     return <ShipmentsSkeleton />;
   }
 
+  if (user?.role === "retail") {
+    return <RetailDeliveriesPage />;
+  }
+
   const shipmentKindLabel = (s: Shipment) => {
     if (s.type === "inbound") return "Inbound (production / PO)";
     if (s.orderType === "sales_order") return "Outbound (to distributor)";
@@ -97,17 +162,18 @@ export default function Shipments() {
       <PageHeader
         title="Shipments"
         description="Inbound production freight and outbound deliveries in one view. HQ can ship from a Hajime depot to a distributor DC (sales-order linked); inbound PO legs can be filed by HQ or manufacturers. Lists refresh periodically while this page is visible."
+        variant={user.role === "retail" ? "retail" : "default"}
         actions={
           canRecordInbound || canRecordOutboundToDistributor ? (
             <div className="flex flex-wrap gap-2">
               {canRecordInbound ? (
                 <Button type="button" className="touch-manipulation" onClick={() => setInboundOpen(true)}>
-                  Record inbound (PO → warehouse)
+                  {t("Record inbound (PO → warehouse)")}
                 </Button>
               ) : null}
               {canRecordOutboundToDistributor ? (
                 <Button type="button" variant="secondary" className="touch-manipulation" onClick={() => setOutboundDistOpen(true)}>
-                  Ship to distributor (warehouse → DC)
+                  {t("Ship to distributor (warehouse → DC)")}
                 </Button>
               ) : null}
             </div>
@@ -126,9 +192,11 @@ export default function Shipments() {
             <Truck className="h-5 w-5" strokeWidth={1.5} />
           </div>
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Active shipments</p>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Active shipments")}</p>
             <p className="font-display text-2xl font-semibold tabular-nums text-foreground">{stats.active}</p>
-            <p className="text-[11px] text-muted-foreground">{stats.inTransit} in transit</p>
+            <p className="text-[11px] text-muted-foreground">
+              {stats.inTransit} {t("in transit")}
+            </p>
           </div>
         </div>
         {/* Delayed */}
@@ -137,9 +205,9 @@ export default function Shipments() {
             <AlertTriangle className="h-5 w-5" strokeWidth={1.5} />
           </div>
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Delayed / at risk</p>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Delayed / at risk")}</p>
             <p className="font-display text-2xl font-semibold tabular-nums text-foreground">{stats.delayed}</p>
-            <p className="text-[11px] text-muted-foreground">needs follow-up</p>
+            <p className="text-[11px] text-muted-foreground">{t("needs follow-up")}</p>
           </div>
         </div>
         {/* Completed */}
@@ -148,9 +216,11 @@ export default function Shipments() {
             <CheckCircle2 className="h-5 w-5" strokeWidth={1.5} />
           </div>
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Completed</p>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Completed")}</p>
             <p className="font-display text-2xl font-semibold tabular-nums text-foreground">{completedShipments.length}</p>
-            <p className="text-[11px] text-muted-foreground">total {stats.total} shipments</p>
+            <p className="text-[11px] text-muted-foreground">
+              {t("total {{count}} shipments", { count: stats.total })}
+            </p>
           </div>
         </div>
       </div>
@@ -158,7 +228,7 @@ export default function Shipments() {
       <div className="relative mb-4 w-full sm:max-w-sm">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.5} />
         <Input
-          placeholder="Filter shipments by ID, origin, destination, carrier…"
+          placeholder={t("Filter shipments by ID, origin, destination, carrier…")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           className="pl-9"
@@ -167,17 +237,21 @@ export default function Shipments() {
 
       {/* Active shipments */}
       <div className="mb-8">
-        <h2 className="mb-3 font-display text-lg font-semibold tracking-tight">In transit &amp; pending</h2>
+        <h2 className="mb-3 font-display text-lg font-semibold tracking-tight">{t("In transit & pending")}</h2>
         {activeShipments.length === 0 ? (
           <div className="card-elevated flex flex-col items-center gap-2 py-12 text-center">
             <Navigation className="h-8 w-8 text-muted-foreground/20" strokeWidth={1} />
-            <p className="text-sm text-muted-foreground">No active shipments</p>
-            <p className="text-[11px] text-muted-foreground/60">All deliveries completed or nothing assigned yet.</p>
+            <p className="text-sm text-muted-foreground">{t("No active shipments")}</p>
+            <p className="text-[11px] text-muted-foreground/60">{t("All deliveries completed or nothing assigned yet.")}</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {activeShipments.map((s) => (
-              <div key={s.id} className="card-interactive flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            {activeShipments.map((s) => {
+              const orderTo = s.linkedOrder
+                ? linkedOrderEditPath(s.linkedOrder, s.linkedOrderDbId)
+                : undefined;
+              return (
+              <ShipmentCardShell key={s.id} shipment={s} to={shipmentEditPath(s)}>
                 <div className="flex items-start gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
                     <Package className="h-4 w-4" strokeWidth={1.5} />
@@ -235,10 +309,23 @@ export default function Shipments() {
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.5} />
                     <span className="font-medium">ETA {s.eta}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">Order {s.linkedOrder}</p>
+                  {s.linkedOrder ? (
+                    orderTo ? (
+                      <Link
+                        to={orderTo}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-xs text-accent hover:underline"
+                      >
+                        Order {s.linkedOrder}
+                      </Link>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Order {s.linkedOrder}</p>
+                    )
+                  ) : null}
                 </div>
-              </div>
-            ))}
+              </ShipmentCardShell>
+            );
+            })}
           </div>
         )}
       </div>
@@ -248,8 +335,12 @@ export default function Shipments() {
         <div>
           <h2 className="mb-3 font-display text-lg font-semibold tracking-tight">Delivered</h2>
           <div className="space-y-3">
-            {completedShipments.map((s) => (
-              <div key={s.id} className="card-interactive flex flex-col gap-3 p-4 opacity-70 sm:flex-row sm:items-center sm:justify-between">
+            {completedShipments.map((s) => {
+              const orderTo = s.linkedOrder
+                ? linkedOrderEditPath(s.linkedOrder, s.linkedOrderDbId)
+                : undefined;
+              return (
+              <ShipmentCardShell key={s.id} shipment={s} to={shipmentEditPath(s)} dimmed>
                 <div className="flex items-start gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground">
                     <CheckCircle2 className="h-4 w-4" strokeWidth={1.5} />
@@ -302,10 +393,23 @@ export default function Shipments() {
                     <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.5} />
                     <span className="font-medium">Delivered</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">Order {s.linkedOrder}</p>
+                  {s.linkedOrder ? (
+                    orderTo ? (
+                      <Link
+                        to={orderTo}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-xs text-accent hover:underline"
+                      >
+                        Order {s.linkedOrder}
+                      </Link>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Order {s.linkedOrder}</p>
+                    )
+                  ) : null}
                 </div>
-              </div>
-            ))}
+              </ShipmentCardShell>
+            );
+            })}
           </div>
         </div>
       )}

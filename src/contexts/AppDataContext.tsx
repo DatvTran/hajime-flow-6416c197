@@ -3,11 +3,14 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
+import { Skeleton } from "@/components/ui/skeleton";
 import type {
   Account,
   DepletionReport,
@@ -34,12 +37,23 @@ import type { ProductionStatus } from "@/data/mockData";
 import seedJson from "@/data/seed-app.json";
 import { toast } from "@/components/ui/sonner";
 import { normalizeAppData } from "@/lib/normalize-app-data";
+import { applyCatalogToAppData, mapApiRowToProduct } from "@/lib/product-catalog-sync";
+import {
+  mapNewProductRequestApiResponse,
+  mapNewProductRequestPatchToApi,
+  newProductRequestApiId,
+} from "@/lib/new-product-request-api";
 import { loadLocalAppData, saveLocalAppData } from "@/lib/local-app-data";
-import { resolveAccountForSalesOrder } from "@/lib/sales-order-utils";
+import {
+  canSyncOrderStatusToApi,
+  isPersistedApiOrderId,
+  resolveAccountForSalesOrder,
+} from "@/lib/sales-order-utils";
 import { useAuth } from "./AuthContext";
 import {
   createProduct as apiCreateProduct,
   updateProduct as apiUpdateProduct,
+  updateProductBySku as apiUpdateProductBySku,
   deleteProductBySku as apiDeleteProductBySku,
   createAccount as apiCreateAccount,
   updateAccount as apiUpdateAccount,
@@ -70,12 +84,15 @@ import {
   getTeamMembers as apiGetTeamMembers,
   getShipments as apiGetShipments,
   getIncentives as apiGetIncentives,
+  getProducts as apiGetProducts,
   createProductionStatus as apiCreateProductionStatus,
   updateProductionStatus as apiUpdateProductionStatus,
   deleteProductionStatus as apiDeleteProductionStatus,
   getProductionStatuses as apiGetProductionStatuses,
 } from "@/lib/api-v1-mutations";
-import { mapRowToShipment } from "@/lib/data-service";
+import { mapApiOrdersToSalesOrders, mapRowToShipment, mergeSalesOrdersFromApi } from "@/lib/data-service";
+import { getOrders } from "@/lib/api-v1";
+import { resolveOrderIdForApiUpdate } from "@/lib/sales-order-api-id";
 import {
   getNewProductRequests,
   createNewProductRequest as apiCreateNewProductRequest,
@@ -85,12 +102,39 @@ import {
 
 const FALLBACK_SEED = normalizeAppData(seedJson as AppData);
 
+/** Build API payload aligned with `products` table + JSONB metadata (see data-service transformToAppData). */
+function catalogProductApiPayload(merged: Product): {
+  name: string;
+  description?: string;
+  category?: string;
+  unit_size: string;
+  metadata: Record<string, unknown>;
+} {
+  const wholesale = merged.wholesaleCasePrice ?? 0;
+  return {
+    name: merged.name,
+    ...(merged.shortDescription != null ? { description: merged.shortDescription } : {}),
+    unit_size: merged.size,
+    metadata: {
+      size: merged.size,
+      caseSize: merged.caseSize,
+      wholesalePriceCase: wholesale,
+      wholesaleCasePrice: wholesale,
+      retailPriceCase: 0,
+      minOrderCases: merged.minOrderCases ?? 1,
+      status: merged.status,
+      ...(merged.abv != null ? { abv: merged.abv } : {}),
+      ...(merged.imageUrl != null ? { imageUrl: merged.imageUrl, image: merged.imageUrl } : {}),
+    },
+  };
+}
+
 /**
  * Merge server data with local data - local changes take precedence.
  * Preserves new features (financing ledger, shelf stock, onboarding) when API doesn't have them yet.
  */
 function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
-  if (!local) return server;
+  if (!local) return applyCatalogToAppData(server);
   
   // Start with server data as base
   const merged: AppData = { ...server };
@@ -136,12 +180,9 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
     merged.accounts = [...merged.accounts, ...localOnlyAccounts];
   }
   
-  // For orders: preserve local-only orders (created while offline).
-  // Same rule: don't require server array length, just require the array to exist.
-  if (local.salesOrders?.length && Array.isArray(server.salesOrders)) {
-    const serverIds = new Set((server.salesOrders ?? []).map((o) => o.id));
-    const localOnlyOrders = local.salesOrders.filter((o) => !serverIds.has(o.id));
-    merged.salesOrders = [...(server.salesOrders ?? []), ...localOnlyOrders];
+  // Orders: server is source of truth; keep offline drafts only (see mergeSalesOrdersFromApi).
+  if (Array.isArray(server.salesOrders)) {
+    merged.salesOrders = mergeSalesOrdersFromApi(local.salesOrders ?? [], server.salesOrders);
   }
 
   // CRM contacts: always prefer the server's list when it has data so Settings → team members
@@ -151,7 +192,20 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
     merged.teamMembers = server.teamMembers;
   }
 
-  return merged;
+  // Catalog: server is the shared source of truth (Brand Operator → all roles on same tenant).
+  if (Array.isArray(server.products) && server.products.length > 0) {
+    merged.products = server.products;
+  } else if (local.products?.length && (!server.products || server.products.length === 0)) {
+    merged.products = local.products;
+  }
+
+  if (Array.isArray(server.purchaseOrders) && server.purchaseOrders.length > 0 && local.purchaseOrders?.length) {
+    const serverPoIds = new Set(server.purchaseOrders.map((p) => p.id).filter(Boolean));
+    const localOnlyPos = local.purchaseOrders.filter((p) => p.id && !serverPoIds.has(p.id));
+    merged.purchaseOrders = [...server.purchaseOrders, ...localOnlyPos];
+  }
+
+  return applyCatalogToAppData(merged);
 }
 
 const CRM_PORTAL_ROLES = new Set<TeamMemberPortalRole>([
@@ -186,6 +240,10 @@ function mapApiRowToTeamMember(row: Record<string, unknown>): TeamMember {
     crmReqRaw != null && String(crmReqRaw).trim() !== ""
       ? String(crmReqRaw).trim()
       : undefined;
+  const managedByUserId =
+    row.managed_by_user_id != null && String(row.managed_by_user_id).trim() !== ""
+      ? String(row.managed_by_user_id).trim()
+      : undefined;
 
   return {
     id: String(row.id ?? ""),
@@ -197,6 +255,7 @@ function mapApiRowToTeamMember(row: Record<string, unknown>): TeamMember {
     ...(primaryWarehouseId ? { primaryWarehouseId } : {}),
     ...(pendingDistributorApproval === true ? { pendingDistributorApproval: true } : {}),
     ...(crmRequestedByUserId ? { crmRequestedByUserId } : {}),
+    ...(managedByUserId ? { managedByUserId } : {}),
   };
 }
 
@@ -267,9 +326,39 @@ type AppDataContextValue = {
   refreshTeamMembers: () => Promise<void>;
   /** Re-fetch shipments from the API and merge into app state. */
   refreshShipments: () => Promise<void>;
+  /** Re-fetch sales orders (role-scoped) and merge into app state. */
+  refreshSalesOrders: () => Promise<void>;
+  /** Re-fetch product catalog from the API (Brand Operator source of truth). */
+  refreshProducts: () => Promise<void>;
 };
 
 const AppDataStateContext = createContext<AppDataContextValue | null>(null);
+
+function AppDataLoadingScreen({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  return (
+    <div className="flex min-h-svh items-center justify-center bg-background p-4">
+      <div className="w-full max-w-md space-y-4">
+        <Skeleton className="h-8 w-3/4" />
+        <Skeleton className="h-4 w-1/2" />
+        <div className="space-y-2">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+        <p className="text-center text-sm text-muted-foreground">Loading your store data…</p>
+        {error ? <p className="text-center text-xs text-destructive">{error}</p> : null}
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/60"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -277,65 +366,51 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const skipSaveRef = useRef(true);
-  const hasAttemptedFetch = useRef(false);
+  const [fetchEpoch, setFetchEpoch] = useState(0);
 
-  useEffect(() => {
-    const withTimeout = async <T,>(p: Promise<T>, ms: number): Promise<T> => {
-      let t: ReturnType<typeof setTimeout> | undefined;
-      const timeout = new Promise<never>((_, reject) => {
-        t = setTimeout(() => reject(new Error(`App data fetch timed out after ${ms}ms`)), ms);
-      });
-      try {
-        return await Promise.race([p, timeout]);
-      } finally {
-        if (t) clearTimeout(t);
-      }
-    };
-
-    // Only fetch when user is authenticated
+  // Hydrate from localStorage or seed synchronously so dashboards render immediately (stale-while-revalidate).
+  useLayoutEffect(() => {
     if (!user) {
-      // Allow a fresh fetch when a user logs in again.
-      hasAttemptedFetch.current = false;
       setData(null);
       setError(null);
       setLoading(false);
       return;
     }
 
-    // Prevent duplicate fetches
-    if (hasAttemptedFetch.current) return;
-    hasAttemptedFetch.current = true;
+    const local = loadLocalAppData();
+    if (local) {
+      setData(normalizeAppData(applyCatalogToAppData(local)));
+    } else {
+      setData(FALLBACK_SEED);
+    }
+    setLoading(false);
+    setError(null);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user) return;
 
     let cancelled = false;
-    
-    // STEP 1: Load from localStorage FIRST for instant UI (prevents data loss on refresh)
-    const local = loadLocalAppData();
-    if (local && !cancelled) {
-      setData(normalizeAppData(local));
-      setLoading(false); // Show UI immediately with local data
-    }
-    
-    // STEP 2: Try to fetch from API in background
+    const hadLocalOnStart = Boolean(loadLocalAppData());
+
+    const applyServer = (serverData: AppData) => {
+      const merged = mergeServerWithLocal(serverData, loadLocalAppData());
+      setData(normalizeAppData(applyCatalogToAppData(merged)));
+      setError(null);
+      saveLocalAppData(merged);
+    };
+
     (async () => {
       try {
-        // Protect against hanging network requests (keeps users from being stuck on "Loading…").
-        const serverData = await withTimeout(fetchAppData(), 15_000);
-        if (!cancelled) {
-          // Merge server data with local data - local changes take precedence
-          const merged = mergeServerWithLocal(serverData as AppData, loadLocalAppData());
-          setData(normalizeAppData(merged));
-          setError(null);
-          // Save merged data back to localStorage
-          saveLocalAppData(merged);
-        }
+        const platformData = await fetchAppData({ scope: "platform" });
+        if (!cancelled) applyServer(platformData as AppData);
       } catch (e) {
-        console.error("[AppDataContext] Fetch error:", e);
+        console.error("[AppDataContext] Platform sync error:", e);
         if (!cancelled) {
-          setError(String(e));
-          // If we already loaded local data, just show the API error toast
-          // If no local data was loaded, fall back to seed
-          if (!local) {
-            setData(FALLBACK_SEED);
+          const message = e instanceof Error ? e.message : String(e);
+          setError(message);
+          if (!hadLocalOnStart) {
+            setData((prev) => prev ?? FALLBACK_SEED);
             toast.info("API unavailable — using local seed data", {
               description: "Start the server (npm run dev:api) to load and save persisted data. Edits save in-browser until then.",
             });
@@ -345,18 +420,23 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             });
           }
         }
-      } finally {
-        // Without this, first-time visitors (no localStorage) never leave loading: true after a successful fetch.
-        if (!cancelled) {
-          setLoading(false);
-        }
+        return;
+      }
+
+      if (cancelled) return;
+
+      try {
+        const fullData = await fetchAppData({ scope: "full" });
+        if (!cancelled) applyServer(fullData as AppData);
+      } catch (e) {
+        console.warn("[AppDataContext] Full distributor sync skipped:", e);
       }
     })();
-    
+
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user?.id, fetchEpoch]);
 
   const updateData = useCallback((fn: (prev: AppData) => AppData) => {
     setData((prev) => {
@@ -376,12 +456,48 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshShipments = useCallback(async () => {
-    const res = (await apiGetShipments({ limit: 200 })) as { data?: unknown[] };
+    try {
+      const res = (await apiGetShipments({ limit: 200 })) as { data?: unknown[] };
+      const rows = Array.isArray(res.data) ? res.data : [];
+      const shipments = rows.map((r) => mapRowToShipment(r as Record<string, unknown>));
+      setData((prev) => {
+        if (!prev) return prev;
+        const apiIds = new Set(shipments.map((s) => s.id));
+        const localOnly = prev.shipments.filter((s) => !apiIds.has(s.id));
+        return normalizeAppData({ ...prev, shipments: [...shipments, ...localOnly] });
+      });
+    } catch (err) {
+      console.warn("[refreshShipments] API list failed; keeping local shipments:", err);
+    }
+  }, []);
+
+  const refreshSalesOrders = useCallback(async () => {
+    try {
+      const res = await getOrders({ limit: 200 });
+      const rows = Array.isArray(res.data) ? res.data : [];
+      setData((prev) => {
+        if (!prev) return prev;
+        const fromApi = mapApiOrdersToSalesOrders(
+          rows as Record<string, unknown>[],
+          prev.accounts.map((a) => ({ id: a.id, market: a.market })),
+        );
+        return normalizeAppData({
+          ...prev,
+          salesOrders: mergeSalesOrdersFromApi(prev.salesOrders, fromApi),
+        });
+      });
+    } catch (err) {
+      console.warn("[refreshSalesOrders] API list failed; keeping local orders:", err);
+    }
+  }, []);
+
+  const refreshProducts = useCallback(async () => {
+    const res = (await apiGetProducts({ limit: 500 })) as { data?: unknown[] };
     const rows = Array.isArray(res.data) ? res.data : [];
-    const shipments = rows.map((r) => mapRowToShipment(r as Record<string, unknown>));
+    const products = rows.map((r) => mapApiRowToProduct(r as Record<string, unknown>));
     setData((prev) => {
       if (!prev) return prev;
-      return normalizeAppData({ ...prev, shipments });
+      return normalizeAppData(applyCatalogToAppData({ ...prev, products }));
     });
   }, []);
 
@@ -394,46 +510,31 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo((): AppDataContextValue | null => {
     if (!data) return null;
-    return { data, loading, error, updateData, refreshTeamMembers, refreshShipments };
-  }, [data, loading, error, updateData, refreshTeamMembers, refreshShipments]);
+    return {
+      data,
+      loading,
+      error,
+      updateData,
+      refreshTeamMembers,
+      refreshShipments,
+      refreshSalesOrders,
+      refreshProducts,
+    };
+  }, [data, loading, error, updateData, refreshTeamMembers, refreshShipments, refreshSalesOrders, refreshProducts]);
+
+  if (!user) {
+    return <>{children}</>;
+  }
 
   if (!data || !value) {
     return (
-      <div style={{ 
-        position: 'fixed', 
-        top: 0, 
-        left: 0, 
-        right: 0, 
-        bottom: 0, 
-        background: '#1a1a2e', 
-        color: '#fff', 
-        display: 'flex', 
-        flexDirection: 'column',
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        zIndex: 99999,
-        fontFamily: 'system-ui, sans-serif',
-        padding: '20px'
-      }}>
-        <div style={{ fontSize: '24px', marginBottom: '20px' }}>⏳ Hajime Loading...</div>
-        <div style={{ fontSize: '16px', opacity: 0.8, marginBottom: '10px' }}>
-          {loading ? "Loading data…" : error ? "Error loading data" : "Waiting for data..."}
-        </div>
-        {error && (
-          <div style={{ fontSize: '12px', opacity: 0.7, maxWidth: '500px', wordBreak: 'break-word', textAlign: 'center', marginBottom: '10px' }}>
-            {error}
-          </div>
-        )}
-        <div style={{ fontSize: '12px', opacity: 0.6, marginTop: '10px' }}>
-          user: {user?.email ?? 'none'} | role: {user?.role ?? 'none'} | loading: {String(loading)}
-        </div>
-        <button 
-          onClick={() => window.location.reload()} 
-          style={{ marginTop: '20px', padding: '8px 16px', background: '#333', border: '1px solid #555', color: '#fff', borderRadius: '4px', cursor: 'pointer' }}
-        >
-          Reload Page
-        </button>
-      </div>
+      <AppDataLoadingScreen
+        error={error}
+        onRetry={() => {
+          setFetchEpoch((n) => n + 1);
+          setLoading(true);
+        }}
+      />
     );
   }
 
@@ -447,7 +548,7 @@ export function useAppData(): AppDataContextValue {
 }
 
 export function useProducts() {
-  const { data, updateData } = useAppData();
+  const { data, updateData, refreshProducts } = useAppData();
   
   const addProduct = useCallback(async (p: Product) => {
     // Check for duplicate SKU locally first
@@ -457,30 +558,19 @@ export function useProducts() {
     }
     
     try {
-      // Call granular API
+      const payload = catalogProductApiPayload(p);
       const result = await apiCreateProduct({
         sku: p.sku,
-        name: p.name,
-        description: p.description,
-        category: p.category,
-        unit_size: p.unitSize,
-        metadata: {
-          caseSize: p.caseSize,
-          bottleSizeMl: p.bottleSizeMl,
-          abv: p.abv,
-          wholesalePriceCase: p.wholesalePriceCase,
-          retailPriceCase: p.retailPriceCase,
-          launchDate: p.launchDate,
-          status: p.status,
-          image: p.image,
-        },
+        ...payload,
       });
       
       // Update local state with server response (includes id, timestamps)
-      updateData((d) => ({
-        ...d,
-        products: [...d.products, { ...p, id: result.data.id }],
-      }));
+      updateData((d) =>
+        applyCatalogToAppData({
+          ...d,
+          products: [...d.products, { ...p, id: result.data.id }],
+        }),
+      );
       
       toast.success("Product created", { description: `${p.name} (${p.sku})` });
       return { success: true, data: result.data };
@@ -497,32 +587,29 @@ export function useProducts() {
       toast.error("Product not found");
       return { success: false, error: "Product not found" };
     }
-    
+
+    const merged: Product = { ...product, ...patch };
+    const payload = catalogProductApiPayload(merged);
+    const idRaw = product.id;
+    const hasNumericId =
+      idRaw != null && String(idRaw).trim() !== "" && String(idRaw) !== "undefined";
+
     try {
-      // Call granular API
-      const result = await apiUpdateProduct(product.id, {
-        name: patch.name,
-        description: patch.description,
-        category: patch.category,
-        unit_size: patch.unitSize,
-        metadata: patch.caseSize !== undefined ? {
-          caseSize: patch.caseSize,
-          bottleSizeMl: patch.bottleSizeMl,
-          abv: patch.abv,
-          wholesalePriceCase: patch.wholesalePriceCase,
-          retailPriceCase: patch.retailPriceCase,
-          launchDate: patch.launchDate,
-          status: patch.status,
-          image: patch.image,
-        } : undefined,
-      });
-      
-      // Update local state
-      updateData((d) => ({
-        ...d,
-        products: d.products.map((x) => (x.sku === sku ? { ...x, ...patch } : x)),
-      }));
-      
+      const result = hasNumericId
+        ? await apiUpdateProduct(String(idRaw), payload)
+        : await apiUpdateProductBySku(sku, payload);
+
+      const rid = (result as { data?: { id?: string | number } }).data?.id;
+
+      updateData((d) =>
+        applyCatalogToAppData({
+          ...d,
+          products: d.products.map((x) =>
+            x.sku === sku ? { ...merged, id: rid ?? idRaw } : x,
+          ),
+        }),
+      );
+
       toast.success("Product updated");
       return { success: true, data: result.data };
     } catch (err) {
@@ -539,10 +626,12 @@ export function useProducts() {
     }
 
     const dropLocal = () => {
-      updateData((d) => ({
-        ...d,
-        products: d.products.filter((x) => x.sku !== sku),
-      }));
+      updateData((d) =>
+        applyCatalogToAppData({
+          ...d,
+          products: d.products.filter((x) => x.sku !== sku),
+        }),
+      );
     };
 
     try {
@@ -576,8 +665,9 @@ export function useProducts() {
       addProduct,
       patchProduct,
       removeProduct,
+      refreshProducts,
     }),
-    [data.products, addProduct, patchProduct, removeProduct],
+    [data.products, addProduct, patchProduct, removeProduct, refreshProducts],
   );
 }
 
@@ -632,30 +722,44 @@ export function useAccounts() {
   
   const addAccount = useCallback(async (a: Account) => {
     try {
-      // Call granular API
+      const market =
+        a.city && a.country ? `${a.city}, ${a.country}` : a.city || a.country || "—";
       const result = await apiCreateAccount({
-        name: a.name,
+        name: a.legalName || a.tradingName,
         tradingName: a.tradingName,
+        legalName: a.legalName,
         type: a.type,
-        market: a.market,
+        market,
+        city: a.city,
+        country: a.country,
         email: a.email,
         phone: a.phone,
         billingAddress: a.billingAddress,
-        shippingAddress: a.shippingAddress,
+        shippingAddress: a.deliveryAddress || a.shippingAddress,
         paymentTerms: a.paymentTerms,
-        creditLimit: a.creditLimit,
+        creditLimit: a.creditLimitCad ?? a.creditLimit,
         salesOwner: a.salesOwner,
-        notes: a.notes,
+        notes: a.internalNotes ?? a.notes,
+        status: a.status,
       });
-      
-      // Update local state with server response
+
+      const serverId = String(result.data?.id ?? a.id);
+      const saved: Account = { ...a, id: serverId };
+
       updateData((d) => ({
         ...d,
-        accounts: [...d.accounts, { ...a, id: result.data.id }],
+        accounts: [...d.accounts, saved],
       }));
-      
-      toast.success("Account created", { description: a.name });
-      return { success: true, data: result.data };
+
+      const depot = (result as { depotLink?: { linked?: boolean } }).depotLink;
+      if (depot?.linked === false) {
+        toast.success("Account created", {
+          description: `${saved.tradingName} — link this account to your depot in Settings → Warehouses to manage portal users.`,
+        });
+      } else {
+        toast.success("Account created", { description: `${saved.id} · ${saved.tradingName}` });
+      }
+      return { success: true, data: { ...result.data, id: serverId } };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create account";
       toast.error("Failed to create account", { description: message });
@@ -1273,24 +1377,76 @@ export function useSalesOrders() {
     }
   }, [data.accounts, data.products, updateData]);
   
-  const patchSalesOrder = useCallback(async (id: string, patch: Partial<SalesOrder>) => {
-    // If only status is being updated, use the status endpoint
-    if (patch.status && Object.keys(patch).length === 1) {
-      try {
-        const result = await apiUpdateOrderStatus(id, patch.status);
-        
+  const patchSalesOrder = useCallback(async (
+    id: string,
+    patch: Partial<SalesOrder>,
+    options?: { requireSync?: boolean },
+  ) => {
+    const applyLocalStatus = (apiId: string) => {
+      flushSync(() => {
         updateData((d) => ({
           ...d,
-          salesOrders: d.salesOrders.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+          salesOrders: d.salesOrders.map((x) =>
+            x.id === id || x.id === apiId || x.orderNumber === id ? { ...x, ...patch } : x,
+          ),
         }));
-        
-        toast.success("Order status updated");
-        return { success: true, data: result.data };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to update order";
-        toast.error("Failed to update order", { description: message });
-        return { success: false, error: message };
+      });
+    };
+
+    // Status-only updates (pick & pack, log shipment, HQ order workflow).
+    if (patch.status && Object.keys(patch).length === 1) {
+      const exists = data.salesOrders.some(
+        (x) => x.id === id || x.orderNumber === id,
+      );
+      if (!exists) {
+        return { success: false, synced: false, error: "Order not found in session" };
       }
+
+      const apiId = await resolveOrderIdForApiUpdate(id, data.salesOrders);
+      const requireSync = options?.requireSync === true;
+
+      if (requireSync && !canSyncOrderStatusToApi(apiId)) {
+        return {
+          success: false,
+          synced: false,
+          error:
+            "This order is not saved on the server yet. Refresh the page or recreate the order before fulfillment.",
+        };
+      }
+
+      if (requireSync && canSyncOrderStatusToApi(apiId)) {
+        try {
+          const result = await apiUpdateOrderStatus(apiId, patch.status);
+          applyLocalStatus(apiId);
+          return { success: true, synced: true, data: result.data };
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : "Failed to update order status on server";
+          console.warn("[patchSalesOrder] API status sync failed:", err);
+          const notOnServer = /not found|HTTP 404|404/i.test(message);
+          return {
+            success: false,
+            synced: false,
+            error: notOnServer
+              ? "This order is not saved on the server yet. Refresh the page or recreate the order before fulfillment."
+              : message,
+          };
+        }
+      }
+
+      applyLocalStatus(apiId);
+
+      if (canSyncOrderStatusToApi(apiId)) {
+        try {
+          const result = await apiUpdateOrderStatus(apiId, patch.status);
+          return { success: true, synced: true, data: result.data };
+        } catch (err) {
+          console.warn("[patchSalesOrder] API status sync failed; local state updated:", err);
+          return { success: true, synced: false };
+        }
+      }
+
+      return { success: true, synced: false };
     }
     
     // For other updates, just update local state (full update API not yet implemented)
@@ -1300,7 +1456,7 @@ export function useSalesOrders() {
     }));
     
     return { success: true };
-  }, [updateData]);
+  }, [data.salesOrders, updateData]);
   
   return useMemo(
     () => ({
@@ -1312,57 +1468,106 @@ export function useSalesOrders() {
   );
 }
 
+function purchaseOrderStatusToApi(status: PurchaseOrder["status"]): string {
+  switch (status) {
+    case "approved":
+      return "acknowledged";
+    case "in-production":
+      return "in_production";
+    case "completed":
+      return "ready_for_shipment";
+    case "delayed":
+      return "in_production";
+    default:
+      return String(status).replace(/-/g, "_");
+  }
+}
+
+function purchaseOrderApiId(orders: PurchaseOrder[], clientId: string): string {
+  const po = orders.find((p) => p.id === clientId);
+  if (po?.databaseId != null && Number.isFinite(Number(po.databaseId))) {
+    return String(po.databaseId);
+  }
+  return clientId;
+}
+
 export function usePurchaseOrders() {
   const { data, updateData } = useAppData();
 
   const addPurchaseOrder = useCallback(async (po: PurchaseOrder) => {
     try {
+      const product = data.products.find((p) => p.sku === po.sku);
+      const productName = product ? `${product.name} ${product.size}`.trim() : po.sku;
+
       const result = await apiCreatePurchaseOrder({
-        po_number: po.poNumber || po.id,
-        supplier_id: po.supplierId,
-        supplier_name: po.supplierName,
+        po_number: po.id,
+        supplier_name: po.manufacturer,
+        manufacturer_id: po.manufacturerId,
         po_type: po.poType || "production",
-        status: po.status,
-        order_date: po.orderDate,
-        expected_delivery_date: po.expectedDeliveryDate,
-        items: po.lines?.map((l) => ({
-          sku: l.sku,
-          product_name: l.productName,
-          quantity: l.quantity,
-          unit_price: l.unitPrice,
-        })),
-        total_amount: po.totalAmount,
-        notes: po.notes,
+        status: purchaseOrderStatusToApi(po.status),
+        order_date: po.issueDate,
+        expected_delivery_date: po.requiredDate,
+        delivery_date: po.requiredDate,
+        market_destination: po.marketDestination,
+        total_bottles: po.quantity,
+        total_amount: 0,
+        notes: po.notes || "",
+        distributor_account_id: po.distributorAccountId,
+        metadata: {
+          packagingInstructions: po.packagingInstructions,
+          labelVersion: po.labelVersion,
+          requestedShipDate: po.requestedShipDate,
+        },
+        items: [
+          {
+            sku: po.sku,
+            product_name: productName,
+            quantity: po.quantity,
+            unit_price: 0,
+            product_id: product?.id != null ? String(product.id) : undefined,
+          },
+        ],
       });
+
+      const row = result.data as {
+        id?: string | number;
+        po_number?: string;
+      };
 
       updateData((d) => ({
         ...d,
-        purchaseOrders: [{
-          ...po,
-          id: String(result.data.id),
-          poNumber: result.data.po_number,
-        }, ...d.purchaseOrders],
+        purchaseOrders: [
+          {
+            ...po,
+            id: String(row.po_number ?? po.id),
+            databaseId: row.id != null ? Number(row.id) : po.databaseId,
+          },
+          ...d.purchaseOrders,
+        ],
       }));
-      toast.success("Purchase order created", { description: result.data.po_number });
+      toast.success("Purchase order created", { description: String(row.po_number ?? po.id) });
       return { success: true, data: result.data };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create purchase order";
       toast.error("Failed to create purchase order", { description: message });
       return { success: false, error: message };
     }
-  }, [updateData]);
+  }, [data.products, updateData]);
 
   const patchPurchaseOrder = useCallback(async (id: string, patch: Partial<PurchaseOrder>) => {
     try {
+      const apiId = purchaseOrderApiId(data.purchaseOrders, id);
       if (patch.status && Object.keys(patch).length === 1) {
-        await apiUpdatePurchaseOrderStatus(id, patch.status);
+        await apiUpdatePurchaseOrderStatus(apiId, purchaseOrderStatusToApi(patch.status));
       } else {
-        await apiUpdatePurchaseOrder(id, {
+        await apiUpdatePurchaseOrder(apiId, {
           po_number: patch.poNumber,
-          status: patch.status,
-          expected_delivery_date: patch.expectedDeliveryDate,
+          status: patch.status ? purchaseOrderStatusToApi(patch.status) : undefined,
+          expected_delivery_date: patch.requiredDate,
           total_amount: patch.totalAmount,
           notes: patch.notes,
+          supplier_name: patch.manufacturer,
+          market_destination: patch.marketDestination,
         });
       }
 
@@ -1377,11 +1582,11 @@ export function usePurchaseOrders() {
       toast.error("Failed to update purchase order", { description: message });
       return { success: false, error: message };
     }
-  }, [updateData]);
+  }, [data.purchaseOrders, updateData]);
 
   const removePurchaseOrder = useCallback(async (id: string) => {
     try {
-      await apiDeletePurchaseOrder(id);
+      await apiDeletePurchaseOrder(purchaseOrderApiId(data.purchaseOrders, id));
       updateData((d) => ({
         ...d,
         purchaseOrders: d.purchaseOrders.filter((p) => p.id !== id),
@@ -1393,7 +1598,7 @@ export function usePurchaseOrders() {
       toast.error("Failed to delete purchase order", { description: message });
       return { success: false, error: message };
     }
-  }, [updateData]);
+  }, [data.purchaseOrders, updateData]);
 
   return useMemo(
     () => ({
@@ -1436,7 +1641,7 @@ function nextNprId(existing: NewProductRequest[]): string {
 }
 
 export function useNewProductRequests() {
-  const { data, updateData } = useAppData();
+  const { data, updateData, refreshProducts } = useAppData();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1445,7 +1650,11 @@ export function useNewProductRequests() {
     setError(null);
     try {
       const response = await getNewProductRequests({ limit: 100 });
-      updateData((d) => ({ ...d, newProductRequests: response.data }));
+      const rows = Array.isArray(response.data) ? response.data : [];
+      const mapped = rows.map((row) =>
+        mapNewProductRequestApiResponse(row as Record<string, unknown>),
+      );
+      updateData((d) => ({ ...d, newProductRequests: mapped }));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to fetch new product requests";
       setError(message);
@@ -1469,8 +1678,12 @@ export function useNewProductRequests() {
       });
       updateData((d) => ({
         ...d,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        newProductRequests: [response.data as any, ...(d.newProductRequests ?? [])],
+        newProductRequests: [
+          mapNewProductRequestApiResponse(
+            (response as { data: Record<string, unknown> }).data,
+          ),
+          ...(d.newProductRequests ?? []),
+        ],
       }));
       toast.success("New product request created", { description: response.data.title });
       return { success: true, data: response.data };
@@ -1483,23 +1696,32 @@ export function useNewProductRequests() {
 
   const patchNewProductRequest = useCallback(async (id: string, patch: Partial<NewProductRequest>) => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await apiUpdateNewProductRequest(id, patch as any);
+      const existing = (data.newProductRequests ?? []).find((n) => n.id === id);
+      const apiId = existing ? newProductRequestApiId(existing) : id;
+      const response = await apiUpdateNewProductRequest(
+        apiId,
+        mapNewProductRequestPatchToApi(patch),
+      );
+      const mapped = mapNewProductRequestApiResponse(
+        (response as { data: Record<string, unknown> }).data,
+      );
       updateData((d) => ({
         ...d,
         newProductRequests: (d.newProductRequests ?? []).map((n) =>
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          n.id === id ? { ...n, ...response.data } as any : n
+          n.id === id ? { ...n, ...mapped } : n,
         ),
       }));
+      if (patch.status === "approved") {
+        await refreshProducts();
+      }
       toast.success("New product request updated");
-      return { success: true, data: response.data };
+      return { success: true, data: mapped };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update new product request";
       toast.error("Failed to update new product request", { description: message });
       return { success: false, error: message };
     }
-  }, [updateData]);
+  }, [data.newProductRequests, refreshProducts, updateData]);
 
   return useMemo(
     () => ({

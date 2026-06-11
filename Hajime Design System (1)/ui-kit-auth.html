@@ -1,0 +1,104 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8"><title>Hajime UI Kit — Sign in</title>
+<link rel="stylesheet" href="colors_and_type.css">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;background:hsl(24 12% 8%);color:hsl(35 14% 88%);font-family:var(--font-body);position:relative;overflow-x:hidden}
+  body::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 50% at 50% -10%, hsl(40 88% 42% / .08), transparent);pointer-events:none}
+  body::after{content:'';position:absolute;inset:0;background-image:radial-gradient(circle,hsl(35 14% 88% / .04) 1px,transparent 1px);background-size:20px 20px;opacity:.3;pointer-events:none}
+
+  .wrap{position:relative;z-index:1;display:flex;gap:48px;align-items:stretch;max-width:1240px;width:100%}
+  .brand-col{flex:1;display:flex;flex-direction:column;justify-content:space-between;padding:32px 0}
+  .brand-logo{display:flex;flex-direction:column;align-items:flex-start;gap:20px}
+  .brand-logo img{height:140px;width:auto;filter:brightness(0) invert(1);opacity:.96}
+  .brand-logo .eyebrow{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.35em;color:hsl(35 12% 45%)}
+  .brand-body h2{font-family:var(--font-display);font-weight:500;font-size:42px;letter-spacing:-.02em;line-height:1.1;margin:0 0 14px;color:hsl(35 14% 92%);max-width:15ch}
+  .brand-body p{font-size:14px;color:hsl(35 12% 60%);margin:0;max-width:44ch;line-height:1.6}
+  .brand-foot{font-size:11px;color:hsl(35 12% 40%);font-family:var(--font-mono)}
+
+  .right-col{flex:1;max-width:520px;display:flex;flex-direction:column;gap:18px}
+  .step-title{font-size:13px;color:hsl(35 12% 55%);text-align:center}
+
+  .role-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .role{display:flex;align-items:center;gap:12px;padding:14px;border-radius:12px;background:hsl(0 0% 100% / .03);border:1px solid hsl(0 0% 100% / .08);text-align:left;cursor:pointer;transition:all .25s}
+  .role:hover{background:hsl(0 0% 100% / .06);border-color:hsl(0 0% 100% / .14)}
+  .role.on{background:hsl(40 88% 42% / .08);border-color:hsl(40 88% 42% / .35);box-shadow:0 0 0 3px hsl(40 88% 42% / .08)}
+  .role .ic{width:40px;height:40px;border-radius:10px;background:hsl(0 0% 100% / .06);display:flex;align-items:center;justify-content:center;color:hsl(35 14% 70%);font-size:18px;flex-shrink:0}
+  .role.on .ic{background:hsl(40 88% 42% / .2);color:hsl(40 88% 55%)}
+  .role .t{font-size:13px;font-weight:500;color:hsl(35 14% 88%)}
+  .role .s{font-size:11px;color:hsl(35 12% 45%);margin-top:2px}
+  .role .arrow{margin-left:auto;color:hsl(35 12% 30%);font-size:14px}
+  .role.on .arrow{color:hsl(40 88% 55%)}
+
+  /* Credentials panel */
+  .creds{background:hsl(0 0% 100% / .03);border:1px solid hsl(0 0% 100% / .08);border-radius:16px;padding:24px;backdrop-filter:blur(4px)}
+  .creds-head{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+  .creds-head .ic{width:40px;height:40px;border-radius:10px;background:hsl(0 0% 100% / .06);display:flex;align-items:center;justify-content:center;color:hsl(40 88% 55%);font-size:18px}
+  .creds-head .t{font-size:13px;font-weight:500;color:hsl(35 14% 88%)}
+  .creds-head .s{font-size:11px;color:hsl(35 12% 45%)}
+  .back{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:hsl(35 12% 50%);background:none;border:0;cursor:pointer;margin-bottom:4px;padding:0}
+  .back:hover{color:hsl(35 14% 75%)}
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:11px;color:hsl(35 12% 55%);margin-bottom:6px}
+  .field input, .field select{width:100%;height:40px;padding:0 12px;border-radius:8px;background:hsl(0 0% 100% / .04);border:1px solid hsl(0 0% 100% / .1);color:hsl(35 14% 88%);font-family:var(--font-body);font-size:13px;outline:none}
+  .field input:focus, .field select:focus{border-color:hsl(40 88% 42% / .5);box-shadow:0 0 0 3px hsl(40 88% 42% / .15)}
+  .field input::placeholder{color:hsl(35 12% 30%)}
+  .cta{width:100%;height:44px;background:hsl(40 88% 42%);color:#fff;border:0;border-radius:8px;font-weight:600;font-size:13px;letter-spacing:.02em;cursor:pointer;margin-top:10px}
+  .cta:hover{background:hsl(40 88% 46%)}
+  .foot{text-align:center;font-size:10px;color:hsl(35 12% 35%);margin-top:14px}
+
+  .versus{font-size:10px;font-weight:500;color:hsl(35 12% 35%);text-transform:uppercase;letter-spacing:.2em;text-align:center;padding:24px 0 8px}
+  .divider{height:1px;background:hsl(35 12% 18%);margin:8px 0}
+</style></head><body>
+
+<div class="wrap">
+  <!-- Brand column -->
+  <div class="brand-col">
+    <div class="brand-logo">
+      <img src="assets/hajime-logo.png" alt="Hajime">
+      <div class="eyebrow">B2B Supply Chain OS</div>
+    </div>
+    <div class="brand-body">
+      <h2>Five portals — one shared dataset.</h2>
+      <p>Every change propagates in real time. Brand HQ, the manufacturer in Niigata, distributors in Milan, sales reps on the floor, and the bar director at The Drake all see the same truth.</p>
+    </div>
+    <div class="brand-foot">はじめ · v4.2 · © Hajime Brewing Co.</div>
+  </div>
+
+  <!-- Sign-in column: shows both states side-by-side for the kit -->
+  <div class="right-col">
+    <!-- Step 1: role picker (left state) -->
+    <div>
+      <p class="step-title">Choose your role to see that portal view</p>
+      <div class="role-grid" style="margin-top:14px">
+        <div class="role on"><span class="ic">◉</span><div><div class="t">Brand Operator</div><div class="s">Hajime HQ — command center</div></div><span class="arrow">›</span></div>
+        <div class="role"><span class="ic">⚙</span><div><div class="t">Manufacturer</div><div class="s">Production & export</div></div><span class="arrow">›</span></div>
+        <div class="role"><span class="ic">◫</span><div><div class="t">Distributor</div><div class="s">Warehouse & fulfillment</div></div><span class="arrow">›</span></div>
+        <div class="role"><span class="ic">◈</span><div><div class="t">Sales Rep</div><div class="s">Field accounts & drafts</div></div><span class="arrow">›</span></div>
+        <div class="role" style="grid-column:1 / -1"><span class="ic">◻</span><div><div class="t">Retail Store</div><div class="s">Order & track deliveries</div></div><span class="arrow">›</span></div>
+      </div>
+    </div>
+
+    <div class="versus">— or sign in directly —</div>
+
+    <!-- Step 2: credentials (right state) -->
+    <div class="creds">
+      <button class="back">‹ Change role</button>
+      <div class="creds-head">
+        <div class="ic">◉</div>
+        <div>
+          <div class="t">Brand Operator</div>
+          <div class="s">Hajime HQ — command center</div>
+        </div>
+      </div>
+      <div class="field"><label>Team persona</label><select><option>Aiko Nakamura · aiko@hajime.jp</option></select></div>
+      <div class="field"><label>Display name</label><input value="Aiko Nakamura"></div>
+      <div class="field"><label>Email</label><input value="aiko@hajime.jp" type="email"></div>
+      <div class="field"><label>Password</label><input type="password" value="••••••••"></div>
+      <button class="cta">Continue as Brand Operator</button>
+      <p class="foot">Five portals — one shared dataset. Every change propagates in real time.</p>
+    </div>
+  </div>
+</div>
+
+</body></html>

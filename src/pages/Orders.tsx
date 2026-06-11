@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/PageHeader";
+import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
 import { StatusBadge } from "@/components/StatusBadge";
 import { NewSalesOrderDialog } from "@/components/NewSalesOrderDialog";
 import { SalesOrderDetailDialog } from "@/components/SalesOrderDetailDialog";
@@ -21,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { mapRoleToSalesOrderFormVariant } from "@/lib/sales-order-form-variants";
 import { toast } from "@/components/ui/sonner";
@@ -29,9 +30,13 @@ import { apiListCardLast4s, apiVerifyCheckoutSession } from "@/lib/stripe-api";
 import { setStoredCardLast4, setStoredCustomerId } from "@/lib/stripe-local";
 import { buildOutboundShipmentForOrder } from "@/lib/order-shipment";
 import { downloadSalesOrdersCsv } from "@/lib/export-orders-csv";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function Orders() {
+  const { t } = useLanguage();
   const { user } = useAuth();
+  const location = useLocation();
+  const isDistributorPortal = location.pathname.startsWith("/distributor/orders");
   const { salesOrders: orders, addSalesOrder, patchSalesOrder } = useSalesOrders();
   const { accounts } = useAccounts();
   const { appendEntry } = useFinancingLedger();
@@ -43,6 +48,11 @@ export default function Orders() {
   const newOrderVariant = useMemo(() => mapRoleToSalesOrderFormVariant(user.role), [user.role]);
   const [searchParams, setSearchParams] = useSearchParams();
   const accountFromUrl = searchParams.get("account");
+
+  const distributorPickRedirect =
+    user?.role === "distributor" &&
+    location.pathname.startsWith("/distributor/orders") &&
+    searchParams.get("tab") === "approved";
 
   const orderTab: OrderTabId = isOrderTabId(searchParams.get("tab"))
     ? searchParams.get("tab")!
@@ -287,10 +297,21 @@ export default function Orders() {
     return <OrdersSkeleton />;
   }
 
+  if (distributorPickRedirect) {
+    const order = searchParams.get("order");
+    return (
+      <Navigate
+        to={order ? `/distributor/pick-pack?order=${encodeURIComponent(order)}` : "/distributor/pick-pack"}
+        replace
+      />
+    );
+  }
+
   return (
     <div>
       <PageHeader
         title="Orders"
+        variant={pageHeaderVariantForRole(user.role)}
         description={
           user.role === "brand_operator"
             ? "Brand HQ — monitor every pathway (manufacturer, wholesaler, rep, retail) and all payment states in one list."
@@ -298,7 +319,7 @@ export default function Orders() {
               ? "Wholesaler — after retail pays, create delivery and process shipping (confirmed + paid orders)."
               : user.role === "manufacturer"
                 ? "Sell-in visibility — mirror lines for planning alongside Production orders."
-                : user.role === "sales_rep"
+                : user.role === "sales_rep" || user.role === "sales"
                   ? "Approve retail drafts, then payment releases the order to the wholesaler for delivery."
                   : "Order lifecycle and fulfillment."
         }
@@ -314,7 +335,7 @@ export default function Orders() {
               }}
             >
               <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              {t("Export CSV")}
             </Button>
             <Button
               type="button"
@@ -323,7 +344,7 @@ export default function Orders() {
               onClick={() => setNewOrderOpen(true)}
             >
               <Plus className="mr-2 h-4 w-4" />
-              New Order
+              {t("New Order")}
             </Button>
           </div>
         }
@@ -355,7 +376,7 @@ export default function Orders() {
             <div className="mb-4 rounded-lg border border-accent/25 bg-accent/5 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="font-medium text-foreground">Order approval queue</p>
+                  <p className="font-medium text-foreground">{t("Order approval queue")}</p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {pendingDraftOrders.length} draft order{pendingDraftOrders.length !== 1 ? "s" : ""} awaiting HQ allocation — same list as Command center.
                   </p>
@@ -418,24 +439,24 @@ export default function Orders() {
             </div>
           )}
           <div role="tablist" aria-label="Order lifecycle" className="mb-4 flex h-auto w-full flex-wrap justify-start gap-1 rounded-lg bg-muted/40 p-1">
-            {ORDER_TABS.map((t) => {
-              const selected = orderTab === t.id;
+            {ORDER_TABS.map((tab) => {
+              const selected = orderTab === tab.id;
               return (
                 <button
-                  key={t.id}
+                  key={tab.id}
                   type="button"
                   role="tab"
                   aria-selected={selected}
-                  id={`orders-tab-${t.id}`}
+                  id={`orders-tab-${tab.id}`}
                   tabIndex={selected ? 0 : -1}
                   className={cn(
                     "touch-manipulation rounded-md px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                     selected ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
                   )}
-                  onClick={() => setOrderTab(t.id)}
+                  onClick={() => setOrderTab(tab.id)}
                 >
-                  {t.label}
-                  <span className="ml-1.5 tabular-nums text-muted-foreground">({tabCounts[t.id]})</span>
+                  {t(tab.label)}
+                  <span className="ml-1.5 tabular-nums text-muted-foreground">({tabCounts[tab.id]})</span>
                 </button>
               );
             })}
@@ -443,7 +464,12 @@ export default function Orders() {
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative w-full sm:max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search order or account..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Input
+                placeholder={t("Search order or account...")}
+                className="pl-9"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
           </div>
           <div className="-mx-4 overflow-x-auto touch-pan-x px-4 sm:mx-0 sm:px-0">
@@ -473,12 +499,34 @@ export default function Orders() {
                   </tr>
                 ) : null}
                 {filtered.map((order) => (
-                  <tr key={order.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                  <tr
+                    key={order.id}
+                    className={cn(
+                      "border-b last:border-0 hover:bg-muted/30 transition-colors",
+                      isDistributorPortal && "cursor-pointer",
+                    )}
+                    onClick={isDistributorPortal ? () => setSelectedOrderId(order.id) : undefined}
+                    onKeyDown={
+                      isDistributorPortal
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedOrderId(order.id);
+                            }
+                          }
+                        : undefined
+                    }
+                    tabIndex={isDistributorPortal ? 0 : undefined}
+                    role={isDistributorPortal ? "button" : undefined}
+                  >
                     <td className="py-3">
                       <button
                         type="button"
                         className="font-mono text-xs font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm touch-manipulation text-left"
-                        onClick={() => setSelectedOrderId(order.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedOrderId(order.id);
+                        }}
                       >
                         {order.id}
                       </button>

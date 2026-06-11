@@ -15,15 +15,20 @@ export default defineConfig({
           return `assets/[name]-[hash][extname]`;
         },
         manualChunks: {
-          // Core vendor libraries (loaded on every page)
+          // Keep React + router in one chunk — function-based splitting caused
+          // vendor → charts → ui → vendor circular imports and a blank boot screen.
           vendor: ["react", "react-dom", "react-router-dom"],
-          // UI component libraries
-          ui: ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-tabs", "lucide-react", "class-variance-authority", "clsx", "tailwind-merge"],
-          // Data & forms
+          ui: [
+            "@radix-ui/react-dialog",
+            "@radix-ui/react-dropdown-menu",
+            "@radix-ui/react-tabs",
+            "lucide-react",
+            "class-variance-authority",
+            "clsx",
+            "tailwind-merge",
+          ],
           data: ["@tanstack/react-query", "react-hook-form", "@hookform/resolvers", "zod"],
-          // Charts (only loaded when needed)
           charts: ["recharts"],
-          // Vendor-specific (Stripe - only on checkout pages)
           stripe: ["@stripe/react-stripe-js", "@stripe/stripe-js"],
         },
       },

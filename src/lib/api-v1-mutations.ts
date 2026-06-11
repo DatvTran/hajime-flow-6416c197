@@ -35,19 +35,14 @@ export async function apiFetch(url: string, options: RequestInit = {}) {
 
 // ===== PRODUCTS =====
 
+/** POST /api/v1/products — aligns with server body (sku, name, unit_size, metadata JSONB). */
 export async function createProduct(productData: {
-  name: string;
   sku: string;
-  category: string;
-  abv: string;
-  caseSize: string;
-  unitPrice: string;
-  bottlesPerCase: string;
-  unit: string;
-  status?: string;
+  name: string;
   description?: string;
-  tastingNotes?: string;
-  pairingSuggestions?: string;
+  category?: string;
+  unit_size?: string;
+  metadata?: Record<string, unknown>;
 }) {
   return apiFetch("/api/v1/products", {
     method: "POST",
@@ -68,8 +63,25 @@ export async function updateProduct(id: string, productData: Partial<{
   description: string;
   tastingNotes: string;
   pairingSuggestions: string;
+  unit_size: string;
+  metadata: Record<string, unknown>;
 }>) {
   return apiFetch(`/api/v1/products/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(productData),
+  });
+}
+
+/** Update catalog row when the client only knows SKU (e.g. seed-only rows without DB id yet). */
+export async function updateProductBySku(sku: string, productData: Partial<{
+  name: string;
+  description?: string;
+  category?: string;
+  unit_size?: string;
+  metadata?: Record<string, unknown>;
+}>) {
+  const enc = encodeURIComponent(sku);
+  return apiFetch(`/api/v1/products/by-sku/${enc}`, {
     method: "PUT",
     body: JSON.stringify(productData),
   });
@@ -91,11 +103,50 @@ export async function deleteProductBySku(sku: string) {
 
 // ===== ACCOUNTS =====
 
+export type SendStoreInvitationBody = {
+  storeName: string;
+  email: string;
+  message?: string;
+  type?: string;
+  salesOwner?: string;
+  /** Distributor invite: assign territory rep by CRM email (resolved to users.id on server). */
+  assignedSalesRepEmail?: string;
+  assignedSalesRepUserId?: string | number;
+  contactName?: string;
+  legalName?: string;
+  phone?: string;
+  city?: string;
+  country?: string;
+};
+
+export async function sendStoreInvitation(body: SendStoreInvitationBody): Promise<{
+  data: { account: Record<string, unknown>; portalUser: Record<string, unknown> };
+  invite?: {
+    status: string;
+    reason?: string;
+    emailDispatched?: boolean;
+    inviteUrl?: string;
+    expiresAt?: string;
+  };
+  pendingApproval?: boolean;
+  depotLink?: { linked?: boolean };
+  invitationResent?: boolean;
+  message?: string;
+}> {
+  return apiFetch("/api/v1/accounts/send-store-invitation", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function createAccount(accountData: {
   name: string;
   tradingName?: string;
+  legalName?: string;
   type: string;
-  market: string;
+  market?: string;
+  city?: string;
+  country?: string;
   email?: string;
   phone?: string;
   billingAddress?: string;
@@ -104,6 +155,7 @@ export async function createAccount(accountData: {
   creditLimit?: number;
   salesOwner?: string;
   notes?: string;
+  status?: string;
 }) {
   return apiFetch("/api/v1/accounts", {
     method: "POST",
@@ -347,6 +399,13 @@ export async function getAccounts(params?: {
   return apiFetch(`/api/v1/accounts?${queryParams.toString()}`);
 }
 
+export async function getAppBootstrap(params?: { scope?: "platform" | "full" }) {
+  const queryParams = new URLSearchParams();
+  if (params?.scope) queryParams.set("scope", params.scope);
+  const q = queryParams.toString();
+  return apiFetch(`/api/v1/app-bootstrap${q ? `?${q}` : ""}`);
+}
+
 export async function getProducts(params?: {
   category?: string;
   status?: string;
@@ -421,17 +480,22 @@ export async function getInvoices(params?: {
 
 export async function createPurchaseOrder(orderData: {
   po_number: string;
-  supplier_id?: string;
-  supplier_name?: string;
+  supplier_name: string;
+  manufacturer_id?: string;
   po_type?: "sales" | "production";
   status?: string;
   order_date?: string;
   expected_delivery_date?: string;
+  delivery_date?: string;
+  market_destination?: string;
+  total_bottles?: number;
+  metadata?: Record<string, unknown>;
   items?: Array<{
     sku: string;
     product_name?: string;
     quantity: number;
     unit_price?: number;
+    product_id?: string;
   }>;
   total_amount?: number;
   notes?: string;
@@ -453,6 +517,7 @@ export async function updatePurchaseOrder(
     status: string;
     order_date: string;
     expected_delivery_date: string;
+    market_destination: string;
     total_amount: number;
     notes: string;
     distributor_account_id: string;
@@ -1166,6 +1231,8 @@ export async function createShipment(shipmentData: {
   shipment_number?: string;
   /** Purchase order PK in `purchase_orders`; optional if `po_number` sent. */
   order_id?: number;
+  /** Sales order human number (e.g. SO-2025-001) when `order_id` is not the DB PK. */
+  order_number?: string;
   po_number?: string;
   order_type: "purchase_order" | "sales_order" | "transfer_order";
   carrier?: string;
@@ -1372,6 +1439,104 @@ export async function deleteIncentive(id: string) {
   });
 }
 
+// ===== SUPPLY CHAIN INCENTIVE MANAGER (/incentives) — tenant JSON snapshot =====
+
+export type SupplyChainIncentiveStatePayload = {
+  partners: unknown[];
+  spifs: unknown[];
+  supplyChainPricing: {
+    landed: number;
+    wholesale: number;
+    retail: number;
+    shelf: number;
+  };
+  spifRates: {
+    new_on_premise: number;
+    new_off_premise: number;
+    reorder: number;
+    tasting: number;
+  };
+  volumeBonusesUsd: { gold: number; silver: number };
+};
+
+export async function getSupplyChainIncentivesState(): Promise<{
+  data: SupplyChainIncentiveStatePayload | null;
+  updatedAt?: string;
+  updatedBy?: string | number | null;
+}> {
+  return apiFetch("/api/v1/supply-chain-incentives");
+}
+
+export async function putSupplyChainIncentivesState(
+  body: SupplyChainIncentiveStatePayload,
+): Promise<{
+  data: SupplyChainIncentiveStatePayload;
+  updatedAt?: string;
+  updatedBy?: string | number | null;
+}> {
+  return apiFetch("/api/v1/supply-chain-incentives", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export type MyIncentiveProgressData = {
+  scope: "distributor" | "sales_rep" | "retail" | "unsupported";
+  matched: boolean;
+  matchHint?: string | null;
+  hqSource?: "incentive_manager";
+  retailTradingName?: string | null;
+  servicingDistributor?: string | null;
+  assignedRep?: string | null;
+  network?: {
+    distributorCount: number;
+    repCount: number;
+    retailAccountCount: number;
+    distributors: string[];
+    reps: string[];
+    retailAccounts: string[];
+  };
+  partner?: {
+    id: string;
+    name: string;
+    market: string;
+    tier: string;
+    quarterlyPerformanceTier: string | null;
+    quarterlyCasesSold: number;
+    accountsOpened: number;
+    reorders: number;
+    tastingsCompleted: number;
+    adfSpend: number;
+  } | null;
+  spifs: Array<{
+    id: string;
+    type: string;
+    date: string;
+    quantity: number;
+    payout: number;
+    repName?: string;
+    partnerName?: string;
+    retailAccountName?: string;
+    notes?: string;
+  }>;
+  totals: { payoutTotal: number; spifCount: number };
+  program: {
+    spifRates: Record<string, number>;
+    volumeBonusesUsd: { gold: number; silver: number };
+  };
+};
+
+export async function getMySupplyChainIncentiveProgress(tradingName?: string | null): Promise<{
+  data: MyIncentiveProgressData;
+  updatedAt?: string | null;
+}> {
+  const q =
+    tradingName && String(tradingName).trim()
+      ? `?tradingName=${encodeURIComponent(String(tradingName).trim().slice(0, 200))}`
+      : "";
+  return apiFetch(`/api/v1/supply-chain-incentives/me${q}`);
+}
+
 // ===== PRODUCTION STATUSES =====
 
 export async function getProductionStatuses(params?: {
@@ -1418,5 +1583,71 @@ export async function updateProductionStatus(
 export async function deleteProductionStatus(id: string) {
   return apiFetch(`/api/v1/production-statuses/${id}`, {
     method: "DELETE",
+  });
+}
+
+// ===== RETAIL PORTAL USERS & ACCOUNT SETTINGS =====
+
+export type RetailPortalUser = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  isActive: boolean;
+  pendingDistributorApproval: boolean;
+  linkedAccountId: string | null;
+  retailTradingName: string | null;
+  managedByUserId: string | null;
+  createdAt: string;
+};
+
+export type RetailAccountSettings = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  linkedAccountId: string | null;
+  retailTradingName: string | null;
+  notificationPrefs: Record<string, boolean>;
+  updatedAt: string | null;
+};
+
+export async function getRetailPortalUsers(accountId: string): Promise<{ data: RetailPortalUser[] }> {
+  return apiFetch(`/api/v1/accounts/${encodeURIComponent(accountId)}/portal-users`);
+}
+
+export async function createRetailPortalUser(
+  accountId: string,
+  body: { name: string; email: string; phone?: string },
+): Promise<{
+  data: RetailPortalUser;
+  invite?: { status: string; reason?: string; emailDispatched?: boolean; inviteUrl?: string };
+}> {
+  return apiFetch(`/api/v1/accounts/${encodeURIComponent(accountId)}/portal-users`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteRetailPortalUser(accountId: string, memberId: string) {
+  return apiFetch(
+    `/api/v1/accounts/${encodeURIComponent(accountId)}/portal-users/${encodeURIComponent(memberId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function getRetailAccountSettings(): Promise<{ data: RetailAccountSettings }> {
+  return apiFetch("/api/v1/me/retail-account-settings");
+}
+
+export async function patchRetailAccountSettings(body: {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  notificationPrefs?: Record<string, boolean>;
+}): Promise<{ data: RetailAccountSettings }> {
+  return apiFetch("/api/v1/me/retail-account-settings", {
+    method: "PATCH",
+    body: JSON.stringify(body),
   });
 }

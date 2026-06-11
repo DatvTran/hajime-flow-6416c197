@@ -79,7 +79,7 @@ export function ProductRequestDetailDialog({ open, onOpenChange, request, onPatc
       },
     });
     toast.success("Proposal approved", {
-      description: `${request.id} approved. Create a production PO to begin manufacturing.`,
+      description: `${request.id} approved — SKU will be added to the shared product catalog.`,
     });
   };
 
@@ -97,11 +97,13 @@ export function ProductRequestDetailDialog({ open, onOpenChange, request, onPatc
     toast.info("Proposal rejected", { description: `${request.id} rejected.` });
   };
 
-  const handleCreatePo = (po: PurchaseOrder) => {
-    addPurchaseOrder(po);
+  const handleCreatePo = async (po: PurchaseOrder) => {
+    const r = await addPurchaseOrder(po);
+    if (!r.success) return false;
     onPatch(request.id, { productionPoId: po.id });
     toast.success("Production PO created", { description: `${po.id} linked to ${request.id}` });
     setPoDialogOpen(false);
+    return true;
   };
 
   const proposalQty = request.manufacturerProposal?.production.batchSize ?? request.specs.minimumOrderQuantity;
@@ -334,7 +336,7 @@ export function ProductRequestDetailDialog({ open, onOpenChange, request, onPatc
         onOpenChange={setPoDialogOpen}
         existing={purchaseOrders}
         onCreate={handleCreatePo}
-        prefill={{ sku: undefined, quantity: String(proposalQty) }}
+        prefill={{ sku: request.resultingSku, quantity: String(proposalQty) }}
         variant="production"
         userRole={user?.role ?? "brand_operator"}
       />

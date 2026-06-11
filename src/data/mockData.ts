@@ -326,6 +326,10 @@ export type Account = {
   applicationSubmittedAt?: string;
   /** Portal login email communicated on approval (demo). */
   portalLoginEmail?: string;
+  /** Owning distributor portal user id (`users.id`). */
+  managedByDistributorUserId?: string;
+  /** Assigned field sales rep portal user id. */
+  assignedSalesRepUserId?: string;
 };
 
 export const accounts: Account[] = accountsJson as Account[];
@@ -349,6 +353,8 @@ export type PurchaseOrder = {
   inventoryConsumed?: boolean;
   /** PO Type: sales (distributor ordering from manufacturer) vs production (brand op ordering directly) */
   poType?: "sales" | "production";
+  /** CRM team_members.id when manufacturer was picked from CRM */
+  manufacturerId?: string;
   /** For sales POs: the distributor account that placed the order */
   distributorAccountId?: string;
   /** For sales POs: brand operator who approved (visibility, not mandatory gate) */
@@ -456,6 +462,8 @@ export type Shipment = {
   eta: string;
   actualDelivery: string;
   linkedOrder: string;
+  /** Numeric API `sales_orders.id` when `linkedOrder` is an order number. */
+  linkedOrderDbId?: string;
   type: "inbound" | "outbound";
   status: "preparing" | "in-transit" | "delivered" | "delayed";
   notes: string;
@@ -499,6 +507,7 @@ export const shipments: Shipment[] = [
     type: "outbound",
     status: "in-transit",
     notes: "",
+    waybillNumber: "ML-8842910",
   },
   {
     id: "SH-1047",
@@ -516,6 +525,8 @@ export const shipments: Shipment[] = [
 ];
 
 export type Product = {
+  /** Postgres row id when loaded from API (required for updates unless server finds by SKU). */
+  id?: string | number;
   sku: string;
   name: string;
   size: string;
@@ -690,6 +701,8 @@ export type NewProductRequest = {
   sampleShipmentId?: string;
   productionPoId?: string;
   resultingSku?: string;
+  /** Postgres uuid — use for API mutations when present. */
+  databaseId?: string;
 };
 
 export const newProductRequests: NewProductRequest[] = [

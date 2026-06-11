@@ -202,6 +202,7 @@ export default function SalesVisitNotesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Visit Notes"
+        variant="sales_rep"
         description="Log and review field visits with your accounts."
         actions={
           <Button onClick={() => setShowForm(!showForm)} size="sm">
