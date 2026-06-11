@@ -43,7 +43,11 @@ const DEMO_RETAIL_PASSWORD = "retail123!";
 /** Demo sales rep personas — migration `026_demo_sales_rep_users` + seed. */
 const DEMO_SALES_REP_PASSWORD = "admin123!";
 
+/** Demo distributor — migration `026_demo_sales_rep_users` (Metro Logistics). */
+const DEMO_DISTRIBUTOR_PASSWORD = "admin123!";
+
 const DEFAULT_SALES_REP_PERSONA_ID = "tm-seed-2";
+const DEFAULT_DISTRIBUTOR_PERSONA_ID = "tm-seed-7";
 
 function authRoleToTeamRole(r: HajimeRole): TeamMemberPortalRole | null {
   if (r === "sales_rep" || r === "retail" || r === "distributor" || r === "manufacturer") return r;
@@ -51,7 +55,7 @@ function authRoleToTeamRole(r: HajimeRole): TeamMemberPortalRole | null {
 }
 
 export default function Login() {
-  const { user, signIn, isLoading, error, clearError } = useAuth();
+  const { user, signIn, signOut, isLoading, error, clearError } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("admin@hajime.jp");
@@ -108,6 +112,18 @@ export default function Login() {
       }
       setPassword(DEMO_SALES_REP_PASSWORD);
     }
+    if (r === "distributor") {
+      const m = TEAM_ROSTER.find((x) => x.id === DEFAULT_DISTRIBUTOR_PERSONA_ID);
+      if (m) {
+        setPersonaId(m.id);
+        setEmail(m.email);
+        setDisplayName(m.displayName);
+      } else {
+        setEmail("fulfillment@metrologistics.example");
+        setDisplayName("Metro Logistics Ops");
+      }
+      setPassword(DEMO_DISTRIBUTOR_PASSWORD);
+    }
     setStep("credentials");
   };
 
@@ -121,6 +137,14 @@ export default function Login() {
     }
     try {
       const signedIn = await signIn(email.trim(), password.trim(), role === "retail" ? { retailTradingName: retailAccount } : undefined);
+      const portalRole = authRoleToTeamRole(role);
+      if (portalRole && signedIn.role !== portalRole) {
+        await signOut();
+        setLocalError(
+          `This account is registered as ${signedIn.role.replace(/_/g, " ")}, not ${portalRole.replace(/_/g, " ")}. Pick the matching role tile or use the demo email for this portal.`,
+        );
+        return;
+      }
       navigate(homePathForRole(signedIn.role), { replace: true });
     } catch {
       // handled by AuthContext
@@ -284,6 +308,9 @@ export default function Login() {
                           if (m.role === "sales_rep") {
                             setPassword(DEMO_SALES_REP_PASSWORD);
                           }
+                          if (m.role === "distributor") {
+                            setPassword(DEMO_DISTRIBUTOR_PASSWORD);
+                          }
                         }}
                       >
                         <SelectTrigger id="persona" className="h-10 touch-manipulation">
@@ -381,6 +408,13 @@ export default function Login() {
                         Use the persona email (e.g. <span className="font-mono text-foreground">marcus.chen@hajime.jp</span>), not{" "}
                         <span className="font-mono text-foreground">admin@hajime.jp</span>. Password:{" "}
                         <span className="font-mono text-foreground">{DEMO_SALES_REP_PASSWORD}</span> (created by DB seed or migration 026).
+                      </p>
+                    ) : null}
+                    {role === "distributor" ? (
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        Demo login: <span className="font-mono text-foreground">fulfillment@metrologistics.example</span> · password{" "}
+                        <span className="font-mono text-foreground">{DEMO_DISTRIBUTOR_PASSWORD}</span> (Metro Logistics — migration 026).
+                        Do not use <span className="font-mono text-foreground">admin@hajime.jp</span>; that is Brand Operator only.
                       </p>
                     ) : null}
                     <div className="flex justify-end">
