@@ -13,14 +13,18 @@
 #    bash scripts/daily-check.sh --tier 2      # start from tier N
 #
 #  Environment overrides:
-#    HAJIME_FLY_APP      fly.io app name       (default: hajime-app)
-#    HAJIME_BASE_URL     prod base URL         (default: https://hajime-app.fly.dev)
+#    HAJIME_FLY_APP         fly.io app name           (default: hajime-app)
+#    HAJIME_BASE_URL        prod base URL             (default: https://hajime-app.fly.dev)
+#    HAJIME_TEST_TOKEN      short-lived access token for tenant A (enables step 3g)
+#    HAJIME_TENANT_B_UUID   a different tenant's UUID (enables step 3g cross-tenant check)
 # =============================================================================
 set -uo pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 APP_NAME="${HAJIME_FLY_APP:-hajime-app}"
 BASE_URL="${HAJIME_BASE_URL:-https://hajime-app.fly.dev}"
+TEST_TOKEN="${HAJIME_TEST_TOKEN:-}"
+TENANT_B_UUID="${HAJIME_TENANT_B_UUID:-}"
 HEALTH_URL="${BASE_URL}/api/health"
 SKIP_FLY=""
 SKIP_PROD=""
@@ -333,6 +337,30 @@ else
   else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
+  fi
+fi
+
+# ── 3g. Cross-tenant isolation ────────────────────────────────────────────────
+step "3g. Cross-tenant isolation smoke"
+if [[ -n "$SKIP_PROD" ]]; then
+  warn "SKIP_PROD set — skipping cross-tenant check"
+elif [[ -z "$TEST_TOKEN" || -z "$TENANT_B_UUID" ]]; then
+  warn "Skipped — set HAJIME_TEST_TOKEN (tenant A token) and HAJIME_TENANT_B_UUID to enable"
+  info "Example: HAJIME_TEST_TOKEN=eyJ... HAJIME_TENANT_B_UUID=<uuid> bash scripts/daily-check.sh"
+elif ! has_cmd curl; then
+  warn "curl not found — skipping cross-tenant check"
+else
+  CROSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+    -H "Authorization: Bearer ${TEST_TOKEN}" \
+    "${BASE_URL}/api/products?tenantId=${TENANT_B_UUID}" 2>/dev/null || echo "000")
+  if [[ "$CROSS_CODE" == "403" ]]; then
+    pass "Cross-tenant /api/products (tenant B UUID, tenant A token) → 403  ✓"
+  elif [[ "$CROSS_CODE" == "401" ]]; then
+    warn "Cross-tenant check → 401 — token may be expired; refresh HAJIME_TEST_TOKEN"
+    (( T3_FAILS++ )) || true
+  else
+    fail "Cross-tenant check → $CROSS_CODE (expected 403) — possible tenant isolation leak"
+    stop "Cross-tenant request returned $CROSS_CODE instead of 403. Tenant isolation may be broken."
   fi
 fi
 fi  # end START_TIER <= 3
