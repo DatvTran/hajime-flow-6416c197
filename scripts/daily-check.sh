@@ -318,6 +318,17 @@ else
   stop "founder_admin or brand_operator is in SELF_REGISTERABLE_ROLES — anyone can self-register as admin."
 fi
 
+# Confirm the /register route uses schema validation (not raw body.role)
+SCHEMA_USED=$(grep -A 3 "router.post.*register" server/routes/auth.mjs 2>/dev/null \
+  | grep -E "Schema\.safeParse|registerSchema" || true)
+if [[ -n "$SCHEMA_USED" ]]; then
+  pass "Role guard: /register route validates role via registerSchema (not raw body.role)"
+else
+  fail "Role guard: /register may not be using registerSchema.safeParse — verify manually"
+  info "Expected: registerSchema.safeParse(req.body) in server/routes/auth.mjs"
+  (( T3_FAILS++ )) || true
+fi
+
 # ── 3f. Auth smoke tests against prod ────────────────────────────────────────
 step "3f. Auth smoke — production"
 if [[ -n "$SKIP_PROD" ]]; then
@@ -334,7 +345,24 @@ else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
   fi
+
+  # Cross-tenant check requires a valid token — run manually:
+  echo ""
+  echo -e "  ${YELLOW}Manual:${NC} Cross-tenant isolation check (needs a real access token):"
+  echo -e "  ${DIM}  TOKEN=<tenant-A-access-token>${NC}"
+  echo -e "  ${DIM}  curl -i -H \"Authorization: Bearer \$TOKEN\" \\${NC}"
+  echo -e "  ${DIM}    \"${BASE_URL}/api/products?tenantId=<tenant-B-uuid>\"${NC}"
+  echo -e "  ${DIM}  Expected: 403 Forbidden${NC}"
 fi
+
+# auth_events spot-check (requires DB access — manual)
+echo ""
+echo -e "  ${YELLOW}DB (if access):${NC} auth_events last 24h — look for spikes in:"
+echo -e "  ${DIM}  permission_denied · account_locked · unexpected register events${NC}"
+echo -e "  ${DIM}  SELECT event_type, COUNT(*) FROM auth_events${NC}"
+echo -e "  ${DIM}  WHERE created_at > NOW() - INTERVAL '24 hours'${NC}"
+echo -e "  ${DIM}  GROUP BY event_type ORDER BY count DESC;${NC}"
+
 fi  # end START_TIER <= 3
 
 # =============================================================================
@@ -357,7 +385,7 @@ else
   echo ""
   echo "    Role              Path(s) to visit"
   echo "    ─────────────     ────────────────────────────────────────────────"
-  echo "    Brand Operator    /orders · /inventory · /markets (Cartographic)"
+  echo "    Brand Operator    /orders · /inventory · /map (Cartographic)"
   echo "    Sales Rep         / · /sales/accounts · create a draft order"
   echo "    Manufacturer      /manufacturer (portal + production runs visible)"
   echo "    Retail            /retail/orders · /shipments · confirm no /settings link"
