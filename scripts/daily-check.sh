@@ -13,8 +13,10 @@
 #    bash scripts/daily-check.sh --tier 2      # start from tier N
 #
 #  Environment overrides:
-#    HAJIME_FLY_APP      fly.io app name       (default: hajime-app)
-#    HAJIME_BASE_URL     prod base URL         (default: https://hajime-app.fly.dev)
+#    HAJIME_FLY_APP            fly.io app name       (default: hajime-app)
+#    HAJIME_BASE_URL           prod base URL         (default: https://hajime-app.fly.dev)
+#    HAJIME_SMOKE_TOKEN        tenant-A access token (enables Tier 3 cross-tenant smoke)
+#    HAJIME_OTHER_TENANT_ID    tenant-B UUID         (enables Tier 3 cross-tenant smoke)
 # =============================================================================
 set -uo pipefail
 
@@ -151,8 +153,17 @@ if [[ -n "$SKIP_FLY" ]]; then
 elif ! has_cmd fly; then
   warn "fly CLI not found — skipping log scan"
 else
-  LOG_ERRORS=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null \
-    | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
+  LOGS_24H=$(fly logs -a "$APP_NAME" --since 24h 2>/dev/null || true)
+
+  # Stop condition: RouteErrorBoundary means a render crash reached a user
+  REB_COUNT=$(echo "$LOGS_24H" | grep -c "\[RouteErrorBoundary\]" || true)
+  if [[ "$REB_COUNT" -gt 0 ]]; then
+    fail "$REB_COUNT RouteErrorBoundary hit(s) in last 24h"
+    echo "$LOGS_24H" | grep "\[RouteErrorBoundary\]" | tail -5 | sed 's/^/       /'
+    stop "RouteErrorBoundary triggered $REB_COUNT time(s) in last 24h — a render crash made it to a user. Fix before proceeding."
+  fi
+
+  LOG_ERRORS=$(echo "$LOGS_24H" | grep -ciE "error|unhandled|ECONN|5[0-9]{2}" || true)
   if [[ "$LOG_ERRORS" -eq 0 ]]; then
     pass "No error-class lines in last 24h"
   elif [[ "$LOG_ERRORS" -le 5 ]]; then
@@ -333,6 +344,25 @@ else
   else
     fail "GET /api/auth/me (no token) → $ME_CODE (expected 401)"
     (( T3_FAILS++ )) || true
+  fi
+
+  # Cross-tenant isolation — requires HAJIME_SMOKE_TOKEN (tenant-A token) + HAJIME_OTHER_TENANT_ID (tenant-B UUID)
+  if [[ -n "${HAJIME_SMOKE_TOKEN:-}" && -n "${HAJIME_OTHER_TENANT_ID:-}" ]]; then
+    CROSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: Bearer ${HAJIME_SMOKE_TOKEN}" \
+      "${BASE_URL}/api/products?tenantId=${HAJIME_OTHER_TENANT_ID}" 2>/dev/null || echo "000")
+    if [[ "$CROSS_CODE" == "403" ]]; then
+      pass "Cross-tenant GET /api/products → 403  ✓"
+    elif [[ "$CROSS_CODE" == "401" ]]; then
+      warn "Cross-tenant → 401 (token invalid or expired — refresh HAJIME_SMOKE_TOKEN)"
+    else
+      fail "Cross-tenant → $CROSS_CODE (expected 403 — tenant isolation may be broken)"
+      (( T3_FAILS++ )) || true
+    fi
+  else
+    warn "Set HAJIME_SMOKE_TOKEN + HAJIME_OTHER_TENANT_ID to enable cross-tenant isolation smoke"
+    info "  export HAJIME_SMOKE_TOKEN=<tenant-A access token>"
+    info "  export HAJIME_OTHER_TENANT_ID=<tenant-B UUID>"
   fi
 fi
 fi  # end START_TIER <= 3
