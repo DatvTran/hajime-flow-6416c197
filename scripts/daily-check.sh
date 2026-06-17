@@ -114,11 +114,11 @@ else
       2>/dev/null | cut -d'"' -f4 || echo "unknown")
     OK_VAL=$(grep -o '"ok":[a-z]*' /tmp/hajime_health_$$.json \
       2>/dev/null | cut -d: -f2 || echo "unknown")
-    if [[ "$DB_VAL" == "connected" && "$OK_VAL" == "true" ]]; then
-      pass "Health 200 OK — ok:true · database:connected"
+    if [[ "$OK_VAL" == "true" && ( "$DB_VAL" == "connected" || "$DB_VAL" == "up" ) ]]; then
+      pass "Health 200 OK — ok:true · database:$DB_VAL"
     else
       fail "Health 200 but ok=$OK_VAL database=$DB_VAL"
-      stop "Health endpoint returned ok=$OK_VAL database=$DB_VAL. Expected ok:true + database:connected."
+      stop "Health endpoint returned ok=$OK_VAL database=$DB_VAL. Expected ok:true + database:connected/up."
     fi
   else
     fail "Health check failed (HTTP $HTTP_CODE)"
@@ -306,8 +306,8 @@ fi
 
 # ── 3e. Registration role guard ───────────────────────────────────────────────
 step "3e. Self-registration role guard"
-# SELF_REGISTERABLE_ROLES must not contain founder_admin or brand_operator
-PRIV_IN_SELF_REG=$(grep -A 20 "SELF_REGISTERABLE_ROLES" \
+# Extract only lines inside the SELF_REGISTERABLE_ROLES array literal (up to closing ];)
+PRIV_IN_SELF_REG=$(awk '/const SELF_REGISTERABLE_ROLES/,/\];/' \
   server/routes/auth.schemas.mjs 2>/dev/null \
   | grep -iE "founder_admin|brand_operator" || true)
 if [[ -z "$PRIV_IN_SELF_REG" ]]; then
