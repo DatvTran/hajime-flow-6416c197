@@ -1,6 +1,27 @@
 import type { NewProductRequest } from "@/data/mockData";
 import { mapRowToNewProductRequest } from "@/lib/data-service";
 
+/** Client camelCase → Postgres / API snake_case for NPR create. */
+export function mapNewProductRequestCreateToApi(
+  npr: Omit<NewProductRequest, "id">,
+): Record<string, unknown> {
+  const year = new Date().getFullYear();
+  const seq = String(Math.floor(Math.random() * 10000)).padStart(4, "0");
+  const payload: Record<string, unknown> = {
+    request_id: `NPR-${year}-${seq}`,
+    title: npr.title,
+    requested_by: npr.requestedBy,
+    specs: npr.specs,
+    notes: npr.notes || null,
+    assigned_manufacturer: npr.assignedManufacturer || null,
+    status: npr.status,
+  };
+  if (npr.status === "submitted") {
+    payload.submitted_at = npr.submittedAt || new Date().toISOString();
+  }
+  return payload;
+}
+
 /** Client camelCase → Postgres / API snake_case for NPR mutations. */
 export function mapNewProductRequestPatchToApi(
   patch: Partial<NewProductRequest>,

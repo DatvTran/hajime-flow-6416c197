@@ -13,6 +13,7 @@ import { useAppData } from "@/contexts/AppDataContext";
 import { SalesRepSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
+import { repFieldMatches } from "@/lib/sales-rep-scope";
 import { toast } from "@/components/ui/sonner";
 import { createVisitNote } from "@/lib/api-v1-mutations";
 import type { VisitNoteEntry } from "@/types/app-data";
@@ -67,7 +68,7 @@ export default function SalesVisitNotesPage() {
   const myNotes = useMemo(() => {
     const all = data.visitNotes || [];
     return all
-      .filter(n => n.authorRep.trim() === repName.trim())
+      .filter(n => repFieldMatches(n.authorRep, repName))
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   }, [data.visitNotes, repName]);
 

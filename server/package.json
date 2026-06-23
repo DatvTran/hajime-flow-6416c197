@@ -7,6 +7,7 @@
     "fly:deploy": "bash ../scripts/fly-deploy.sh",
     "start": "node index.mjs",
     "migrate": "knex migrate:latest --knexfile knexfile.mjs",
+    "migrate:release": "node scripts/migrate-release.mjs",
     "migrate:rollback": "knex migrate:rollback --knexfile knexfile.mjs",
     "migrate:make": "knex migrate:make --knexfile knexfile.mjs",
     "seed": "knex seed:run --knexfile knexfile.mjs",

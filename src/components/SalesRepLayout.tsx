@@ -6,7 +6,7 @@ import { useAccounts, useAppData, useSalesOrders } from "@/contexts/AppDataConte
 import { useFulfillmentPipelineAutoRefresh } from "@/hooks/useShipmentsAutoRefresh";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
-import { filterAccountsForSalesRep } from "@/lib/sales-rep-scope";
+import { filterAccountsForSalesRep, repFieldMatches } from "@/lib/sales-rep-scope";
 import { computeSalesRepOpportunities } from "@/lib/sales-rep-opportunities";
 import { salesRepRouteChrome } from "@/lib/sales-rep-chrome";
 import { isSidebarNavItemActive, navPathEndFlag } from "@/lib/sidebar-nav-active";
@@ -97,7 +97,7 @@ function SalesRepQuotaPill({ repName }: { repName: string }) {
     const qs = new Date(year, (quarter - 1) * 3, 1);
     const qe = new Date(year, quarter * 3, 0, 23, 59, 59, 999);
     return salesOrders
-      .filter((o) => o.salesRep === repName && o.status !== "cancelled" && o.status !== "draft")
+      .filter((o) => repFieldMatches(o.salesRep, repName) && o.status !== "cancelled" && o.status !== "draft")
       .filter((o) => {
         const d = new Date(o.orderDate);
         return d >= qs && d <= qe;
@@ -303,7 +303,7 @@ export function SalesRepLayout() {
   );
 
   const draftCount = useMemo(
-    () => salesOrders.filter((o) => o.status === "draft" && o.salesRep === rep).length,
+    () => salesOrders.filter((o) => o.status === "draft" && repFieldMatches(o.salesRep, rep)).length,
     [salesOrders, rep],
   );
 

@@ -1,6 +1,7 @@
 import type { Account, InventoryItem, OrderCreatedByRole, OrderRoutingTarget, RepApprovalStatus, SalesOrder } from "@/data/mockData";
 import type { HajimeRole } from "@/contexts/AuthContext";
 import { isRetailChannelOrder } from "@/lib/hajime-metrics";
+import { repFieldMatches } from "@/lib/sales-rep-scope";
 
 export type { OrderCreatedByRole, OrderRoutingTarget, RepApprovalStatus };
 
@@ -61,7 +62,7 @@ export function canSalesRepApproveOrder(
   if (order.status !== "draft") return false;
   if (effectiveRepApprovalStatus(order, accounts) !== "pending") return false;
   if (!isRetailChannelOrder(order, accounts)) return false;
-  return order.salesRep.trim() === sessionRepLabel.trim();
+  return repFieldMatches(order.salesRep, sessionRepLabel);
 }
 
 /** NEW: Get distributor inventory for an order (for inventory check widget) */

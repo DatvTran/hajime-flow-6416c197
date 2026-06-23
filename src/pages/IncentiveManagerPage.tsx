@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
+import { isHqOperatorRole } from "@/lib/hq-order-scope";
+import { HqIncentiveProgramsView } from "@/components/hq/HqIncentiveProgramsView";
 import { useAppData } from "@/contexts/AppDataContext";
 import {
   getSupplyChainIncentivesState,
@@ -437,6 +439,13 @@ export default function IncentiveManagerPage() {
   useEffect(() => {
     if (isLoading) return;
 
+    // HQ program catalog + retail partner page do not use the legacy supply-chain snapshot API.
+    if (user?.role === "retail" || isHqOperatorRole(user?.role)) {
+      setBootstrapped(true);
+      skipNextRemoteSave.current = true;
+      return;
+    }
+
     if (!user) {
       const local = mergeLegacyOrSeed();
       const c = coerceServerPayload(local);
@@ -520,9 +529,10 @@ export default function IncentiveManagerPage() {
     };
   }, [isLoading, user?.tenantId]);
 
-  // Debounced save to server when logged in
+  // Debounced save to server when logged in (legacy Supply Chain Incentive Manager only)
   useEffect(() => {
     if (!bootstrapped || !user || isLoading) return;
+    if (isHqOperatorRole(user.role) || user.role === "retail") return;
     if (skipNextRemoteSave.current) {
       skipNextRemoteSave.current = false;
       return;
@@ -880,6 +890,10 @@ export default function IncentiveManagerPage() {
 
   if (user?.role === "retail") {
     return <RetailPartnerProgramPage />;
+  }
+
+  if (isHqOperatorRole(user?.role)) {
+    return <HqIncentiveProgramsView />;
   }
 
   return (

@@ -29,6 +29,8 @@ import { CSVExportSalesReportButton } from "@/components/CSVExportButtons";
 import { useAppData } from "@/contexts/AppDataContext";
 import { ReportsSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
+import { isHqOperatorRole } from "@/lib/hq-order-scope";
+import { HqAnalyticsView } from "@/components/hq/HqAnalyticsView";
 import { ANALYTICS_DEMO_REP_BOOK, resolveSalesRepLabelForSession } from "@/data/team-roster";
 import {
   analyticsAsOfDateFromOrders,
@@ -217,6 +219,10 @@ export default function Reports() {
 
   if (user.role === "retail") {
     return <RetailSellThroughPage />;
+  }
+
+  if (isHqOperatorRole(user.role)) {
+    return <HqAnalyticsView />;
   }
 
   return (

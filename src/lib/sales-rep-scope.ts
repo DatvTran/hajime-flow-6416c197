@@ -8,6 +8,13 @@ export function normalizeRepLabel(label: string | undefined | null): string {
     .toLowerCase();
 }
 
+/** Safe match for order / visit rows that may omit rep labels in older local data. */
+export function repFieldMatches(field: string | undefined | null, repLabel: string): boolean {
+  const rep = normalizeRepLabel(repLabel);
+  if (!rep) return false;
+  return normalizeRepLabel(field) === rep;
+}
+
 /** Case-insensitive match for `accounts.sales_owner` vs session rep label. */
 export function salesOwnerMatches(
   accountSalesOwner: string | undefined | null,
@@ -30,6 +37,9 @@ export function accountBelongsToSalesRep(
   teamMembers: TeamMember[],
 ): boolean {
   const rep = resolveSessionRepLabel(user.email, user.displayName ?? "");
+  if (account.assignedSalesRepUserId && String(account.assignedSalesRepUserId) === String(user.id)) {
+    return true;
+  }
   if (salesOwnerMatches(account.salesOwner, rep)) return true;
 
   const trading = (account.tradingName || account.legalName || "").trim().toLowerCase();

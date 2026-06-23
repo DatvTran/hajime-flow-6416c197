@@ -36,6 +36,7 @@ if ! flyctl status --app hajime-db > /dev/null 2>&1; then
         --region nrt \
         --initial-cluster-size 1 \
         --vm-size shared-cpu-1x \
+        --vm-memory 1024 \
         --volume-size 1
     echo -e "${GREEN}✓ Database created${NC}"
 else

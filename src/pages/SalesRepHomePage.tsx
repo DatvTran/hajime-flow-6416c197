@@ -30,7 +30,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/sonner";
 import { resolveSalesRepLabelForSession } from "@/data/team-roster";
-import { filterAccountsForSalesRep } from "@/lib/sales-rep-scope";
+import { filterAccountsForSalesRep, repFieldMatches } from "@/lib/sales-rep-scope";
 import { computeSalesRepOpportunities } from "@/lib/sales-rep-opportunities";
 import { cn } from "@/lib/utils";
 import { scrollSalesRepMainToHashWhenReady } from "@/lib/scroll-sales-rep-main";
@@ -66,10 +66,11 @@ function usePendingOrdersWithInventory(
 ) {
   return useMemo(() => {
     // Get draft orders assigned to this rep that need approval
-    const pendingOrders = orders.filter(o => 
-      o.status === "draft" && 
-      o.salesRep.trim() === rep.trim() &&
-      effectiveRepApprovalStatus(o, accounts) === "pending"
+    const pendingOrders = orders.filter(
+      (o) =>
+        o.status === "draft" &&
+        repFieldMatches(o.salesRep, rep) &&
+        effectiveRepApprovalStatus(o, accounts) === "pending",
     );
     
     return pendingOrders.map(order => {
@@ -196,7 +197,7 @@ export default function SalesRepHomePage() {
   }, [data.accounts, teamMembers, user]);
 
   const myDrafts = useMemo(
-    () => data.salesOrders.filter((o) => o.status === "draft" && o.salesRep === rep),
+    () => data.salesOrders.filter((o) => o.status === "draft" && repFieldMatches(o.salesRep, rep)),
     [data.salesOrders, rep],
   );
 
@@ -218,7 +219,7 @@ export default function SalesRepHomePage() {
   const visits = useMemo(() => {
     const all = data.visitNotes ?? [];
     return all
-      .filter((v) => v.authorRep.trim() === rep.trim())
+      .filter((v) => repFieldMatches(v.authorRep, rep))
       .sort((a, b) => b.at.localeCompare(a.at));
   }, [data.visitNotes, rep]);
 
@@ -389,7 +390,7 @@ export default function SalesRepHomePage() {
     const qs = new Date(y, (q - 1) * 3, 1);
     const qe = new Date(y, q * 3, 0, 23, 59, 59, 999);
     return data.salesOrders
-      .filter((o) => o.salesRep === rep && !["cancelled", "draft"].includes(o.status))
+      .filter((o) => repFieldMatches(o.salesRep, rep) && !["cancelled", "draft"].includes(o.status))
       .filter((o) => {
         const d = new Date(o.orderDate);
         return d >= qs && d <= qe;
@@ -400,7 +401,7 @@ export default function SalesRepHomePage() {
   const recentSubmitted = useMemo(
     () =>
       [...data.salesOrders]
-        .filter((o) => o.salesRep === rep && o.status !== "draft")
+        .filter((o) => repFieldMatches(o.salesRep, rep) && o.status !== "draft")
         .sort((a, b) => Date.parse(b.orderDate) - Date.parse(a.orderDate))
         .slice(0, 5),
     [data.salesOrders, rep],

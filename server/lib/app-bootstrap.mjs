@@ -13,6 +13,11 @@ import {
   hydrateShipmentsWithOrderNumbers,
 } from './portal-data-scope.mjs';
 import { attachSalesOrderItems } from './sales-order-items.mjs';
+import { linkedAccountIdsForDistributor, salesRepUserIdsForDistributor } from './distributor-scope.mjs';
+import { normalizeRepLabel, resolveSalesRepLabelForUser } from './sales-rep-label.mjs';
+import { attachPortalUserIds } from './team-member-enrich.mjs';
+import { isHqGlobalViewer } from './hq-global-view.mjs';
+import { applyHqWholesaleOrdersScope } from './hq-order-scope.mjs';
 
 const LIMITS = {
   products: 300,
@@ -25,6 +30,7 @@ const LIMITS = {
   newProductRequests: 50,
   teamMembers: 120,
   warehouses: 50,
+  visitNotes: 100,
 };
 
 async function scopedRows(req, fetchRows, scope) {
@@ -59,11 +65,36 @@ async function fetchAccounts(req, scope) {
     req,
     async (db, tid) => {
       if (!tid) return [];
-      return db('accounts')
-        .where({ tenant_id: tid })
-        .whereNull('deleted_at')
-        .orderBy('created_at', 'desc')
-        .limit(limit);
+      let q = db('accounts').where({ tenant_id: tid }).whereNull('deleted_at');
+
+      const role = req.user?.role;
+      const isSalesRep = role === Role.SALES_REP || role === 'sales';
+      const isDistributor = role === Role.DISTRIBUTOR || role === 'distributor';
+
+      if (isSalesRep && req.user?.userId) {
+        const repNorm = normalizeRepLabel(resolveSalesRepLabelForUser(req.user));
+        const crmAccountIds = await db('team_members')
+          .where({ tenant_id: tid, crm_requested_by_user_id: req.user.userId })
+          .whereNotNull('linked_account_id')
+          .pluck('linked_account_id');
+        q = q.where(function scopeSalesRepAccounts() {
+          this.whereRaw('LOWER(TRIM(COALESCE(sales_owner, ?))) = ?', ['', repNorm]);
+          if (crmAccountIds.length > 0) {
+            this.orWhereIn('id', crmAccountIds);
+          }
+        });
+      } else if (isDistributor && req.user?.userId) {
+        const distId = Number(req.user.userId);
+        const linkedIds = await linkedAccountIdsForDistributor(db, tid, distId);
+        q = q.where(function scopeDistributorAccounts() {
+          this.where('managed_by_distributor_user_id', distId);
+          if (linkedIds.length > 0) {
+            this.orWhereIn('id', linkedIds);
+          }
+        });
+      }
+
+      return q.orderBy('created_at', 'desc').limit(limit);
     },
     scope,
   );
@@ -72,14 +103,30 @@ async function fetchAccounts(req, scope) {
 
 async function fetchOrders(req, scope) {
   const limit = LIMITS.orders;
+  const hqViewer = isHqGlobalViewer(req.user?.role) || req.hqGlobalView;
+  const effectiveScope = hqViewer ? 'platform' : scope;
+
   const rows = await scopedRows(
     req,
-    async (db, tid) => {
-      if (!tid) return [];
+    async (db, tid, org) => {
+      if (!tid || org) return [];
       let q = db('sales_orders')
         .where('sales_orders.tenant_id', tid)
         .whereNull('sales_orders.deleted_at');
-      if (req.user?.role === Role.DISTRIBUTOR) {
+
+      q = q
+        .leftJoin('accounts', 'sales_orders.account_id', 'accounts.id')
+        .select(
+          'sales_orders.*',
+          'accounts.name as account_name',
+          'accounts.account_number',
+          'accounts.trading_name as account_trading_name',
+          'accounts.type as account_type',
+        );
+
+      if (hqViewer) {
+        q = applyHqWholesaleOrdersScope(q);
+      } else if (req.user?.role === Role.DISTRIBUTOR) {
         const accountIds = await distributorManagedAccountIds(db, tid, req.user.userId);
         q =
           accountIds.length === 0
@@ -88,18 +135,10 @@ async function fetchOrders(req, scope) {
       } else {
         q = await applyPortalOrdersScope(q, db, tid, req.user);
       }
-      return q
-        .leftJoin('accounts', 'sales_orders.account_id', 'accounts.id')
-        .select(
-          'sales_orders.*',
-          'accounts.name as account_name',
-          'accounts.account_number',
-          'accounts.trading_name as account_trading_name',
-        )
-        .orderBy('sales_orders.created_at', 'desc')
-        .limit(limit);
+
+      return q.orderBy('sales_orders.created_at', 'desc').limit(limit);
     },
-    scope,
+    effectiveScope,
   );
   const sliced = rows.slice(0, limit);
   const tenantId = req.user?.tenantId ?? null;
@@ -217,10 +256,84 @@ async function fetchTeamMembers(req, scope) {
     req,
     async (db, tid) => {
       if (!tid) return [];
-      return db('team_members')
-        .where({ tenant_id: tid })
-        .orderBy('created_at', 'desc')
+      let query = db('team_members').where({ tenant_id: tid });
+
+      const isDistributor = req.user?.role === Role.DISTRIBUTOR || req.user?.role === 'distributor';
+      const isSalesRep = req.user?.role === Role.SALES_REP || req.user?.role === 'sales_rep';
+
+      if (isDistributor && req.user?.userId) {
+        const distId = Number(req.user.userId);
+        const repUserIds = await salesRepUserIdsForDistributor(db, tid, distId);
+        query = query
+          .whereIn('role', ['sales_rep', 'retail'])
+          .andWhere(function scopeDistributorCrm() {
+            this.where('managed_by_user_id', distId);
+            if (repUserIds.length > 0) {
+              this.orWhere(function pendingFromMyReps() {
+                this.where('role', 'retail')
+                  .where('pending_distributor_approval', true)
+                  .whereIn('crm_requested_by_user_id', repUserIds);
+              });
+            }
+          });
+      } else if (isSalesRep && req.user?.userId) {
+        query = query.where('role', 'retail').andWhere(function scopeRetailVisibility() {
+          this.where(function notPendingOrLegacy() {
+            this.where('pending_distributor_approval', false).orWhereNull('pending_distributor_approval');
+          }).orWhere('crm_requested_by_user_id', req.user.userId);
+        });
+      }
+
+      query = query.where(function activeOrPending() {
+        this.where('is_active', true).orWhere(function pendingRetailRow() {
+          this.where('pending_distributor_approval', true);
+        });
+      });
+
+      return query.orderBy('created_at', 'desc').limit(limit);
+    },
+    scope,
+  );
+  const enriched = req.user?.tenantId
+    ? await attachPortalUserIds(req.user.tenantId, rows)
+    : rows;
+  return enriched.slice(0, limit);
+}
+
+async function fetchVisitNotes(req, scope) {
+  const limit = LIMITS.visitNotes;
+  const rows = await scopedRows(
+    req,
+    async (db, tid) => {
+      if (!tid) return [];
+      const hasTable = await db.schema.hasTable('visit_notes');
+      if (!hasTable) return [];
+
+      let q = db('visit_notes')
+        .where('visit_notes.tenant_id', tid)
+        .leftJoin('accounts', function joinAccounts() {
+          this.on('accounts.id', '=', 'visit_notes.account_id').andOn(
+            'accounts.tenant_id',
+            '=',
+            'visit_notes.tenant_id',
+          );
+        })
+        .leftJoin('users', 'users.id', 'visit_notes.created_by')
+        .select(
+          'visit_notes.*',
+          db.raw('COALESCE(accounts.trading_name, accounts.name) as account_name'),
+          'users.email as author_email',
+          'users.display_name as author_display_name',
+        )
+        .orderBy('visit_notes.created_at', 'desc')
         .limit(limit);
+
+      const isSalesRep = req.user?.role === Role.SALES_REP || req.user?.role === 'sales_rep';
+      if (isSalesRep && req.user?.userId) {
+        q = q.where('visit_notes.created_by', req.user.userId);
+      }
+
+      return q;
     },
     scope,
   );
@@ -313,6 +426,9 @@ export async function buildAppBootstrapPayload(req, opts = {}) {
   if (hasPermission(role, Permission.USERS_READ) || hasPermission(role, Permission.ACCOUNTS_READ)) {
     tasks.push(fetchTeamMembers(req, scope).then((data) => ({ key: 'teamMembers', data })));
   }
+  if (hasPermission(role, Permission.ACCOUNTS_READ)) {
+    tasks.push(fetchVisitNotes(req, scope).then((data) => ({ key: 'visitNotes', data })));
+  }
   if (hasPermission(role, Permission.SETTINGS_READ) || hasPermission(role, Permission.INVENTORY_READ)) {
     tasks.push(fetchWarehouses(req, scope).then((data) => ({ key: 'warehouses', data })));
     tasks.push(
@@ -331,6 +447,7 @@ export async function buildAppBootstrapPayload(req, opts = {}) {
     depletionReports: [],
     newProductRequests: [],
     teamMembers: [],
+    visitNotes: [],
     warehouses: [],
     operationalSettings: null,
   };

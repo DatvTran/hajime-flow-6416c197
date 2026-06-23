@@ -56,6 +56,9 @@ import {
   resolveDistributorAssignedSalesRep,
   salesRepUserIdsForDistributor,
 } from '../lib/distributor-scope.mjs';
+import { ensureRetailAccountForTeamMember } from '../lib/retail-account-provision.mjs';
+import { attachPortalUserIds } from '../lib/team-member-enrich.mjs';
+import { applyHqWholesaleOrdersScope } from '../lib/hq-order-scope.mjs';
 import {
   loadLicenseeApplicationContext,
   submitLicenseeApplication,
@@ -846,6 +849,7 @@ router.get(
       const tenantId = getTenantId(req, res);
       if (!tenantId) return;
       const { accountId } = req.params;
+      const db = getDb();
 
       const account = await loadAccountForPortal(db, tenantId, accountId);
       if (!account) {
@@ -891,6 +895,7 @@ router.post('/accounts/:accountId/portal-users', async (req, res) => {
       if (!tenantId) return;
       const { accountId } = req.params;
       const { name, email, phone } = req.body || {};
+      const db = getDb();
 
       const canCreate =
         hasPermission(req.user.role, Permission.ACCOUNTS_WRITE) ||
@@ -987,6 +992,7 @@ router.delete('/accounts/:accountId/portal-users/:memberId', async (req, res) =>
       const tenantId = getTenantId(req, res);
       if (!tenantId) return;
       const { accountId, memberId } = req.params;
+      const db = getDb();
 
       const canRemove =
         hasPermission(req.user.role, Permission.ACCOUNTS_WRITE) ||
@@ -1106,6 +1112,13 @@ router.post('/accounts/send-store-invitation', requirePermission(Permission.ACCO
       } else {
         assignedRepUserId = null;
         salesOwner = resolveSalesRepLabelForUser(req.user);
+      }
+
+      const teamRepIds = await salesRepUserIdsForDistributor(getDb(), tenantId, distributorUserId);
+      if (teamRepIds.length > 0 && !assignedRepUserId) {
+        return res.status(400).json({
+          error: 'Assign a sales rep from your team before inviting this retail store.',
+        });
       }
     } else if (isSalesRep) {
       salesOwner = resolveSalesRepLabelForUser(req.user);
@@ -1393,6 +1406,7 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req
 
     let depotLink = null;
     if (isDistributor && account?.id) {
+      const db = getDb();
       depotLink = await linkAccountToDistributorDepot(
         db,
         tenantId,
@@ -1497,8 +1511,8 @@ router.get('/orders', requirePermission(Permission.ORDERS_READ), async (req, res
         page,
         limit,
         sortKey: 'created_at',
-        fetchRows: async (db, tid) => {
-          if (!tid) return [];
+        fetchRows: async (db, tid, org) => {
+          if (!tid || org) return [];
           let q = db('sales_orders')
             .where('sales_orders.tenant_id', tid)
             .whereNull('sales_orders.deleted_at');
@@ -1514,7 +1528,9 @@ router.get('/orders', requirePermission(Permission.ORDERS_READ), async (req, res
               'accounts.name as account_name',
               'accounts.account_number',
               'accounts.trading_name as account_trading_name',
+              'accounts.type as account_type',
             );
+          q = applyHqWholesaleOrdersScope(q);
           if (account_name) {
             q = q.where(function () {
               this.where('accounts.name', 'ilike', `%${account_name}%`).orWhere(
@@ -1917,7 +1933,7 @@ router.get(
 
 // POST /api/v1/orders - Create order
 router.post('/orders', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
-  const trx = await db.transaction();
+  const trx = await getDb().transaction();
   
   try {
     const tenantId = getTenantId(req, res);
@@ -1973,7 +1989,7 @@ router.post('/orders', requirePermission(Permission.ORDERS_WRITE), async (req, r
 
 // PUT /api/v1/orders/:id - Update order (full update)
 router.put('/orders/:id', requirePermission(Permission.ORDERS_WRITE), async (req, res) => {
-  const trx = await db.transaction();
+  const trx = await getDb().transaction();
   
   try {
     const tenantId = getTenantId(req, res);
@@ -2212,7 +2228,7 @@ router.get('/inventory', requirePermission(Permission.INVENTORY_READ), async (re
 
 // POST /api/v1/inventory/adjust - Adjust inventory quantity
 router.post('/inventory/adjust', requirePermission(Permission.INVENTORY_ADJUST), async (req, res) => {
-  const trx = await db.transaction();
+  const trx = await getDb().transaction();
   
   try {
     const tenantId = getTenantId(req, res);
@@ -2299,9 +2315,9 @@ router.get('/dashboard/stats', requirePermission(Permission.REPORTS_READ), async
         .where({ tenant_id: tenantId })
         .whereNull('deleted_at')
         .select(
-          db.raw('COUNT(*) as total_orders'),
-          db.raw('COUNT(CASE WHEN status = ? THEN 1 END) as pending_orders', ['pending']),
-          db.raw('SUM(total_amount) as total_revenue')
+          getDb().raw('COUNT(*) as total_orders'),
+          getDb().raw('COUNT(CASE WHEN status = ? THEN 1 END) as pending_orders', ['pending']),
+          getDb().raw('SUM(total_amount) as total_revenue')
         )
         .first(),
       getDb('inventory')
@@ -2309,9 +2325,9 @@ router.get('/dashboard/stats', requirePermission(Permission.REPORTS_READ), async
         .join('products', 'inventory.product_id', 'products.id')
         .whereNull('products.deleted_at')
         .select(
-          db.raw('COUNT(*) as total_items'),
-          db.raw('SUM(quantity_on_hand) as total_units'),
-          db.raw('COUNT(CASE WHEN available_quantity <= reorder_point THEN 1 END) as low_stock_count')
+          getDb().raw('COUNT(*) as total_items'),
+          getDb().raw('SUM(quantity_on_hand) as total_units'),
+          getDb().raw('COUNT(CASE WHEN available_quantity <= reorder_point THEN 1 END) as low_stock_count')
         )
         .first()
     ]);
@@ -2346,18 +2362,36 @@ router.get('/visit-notes', requirePermission(Permission.ACCOUNTS_READ), async (r
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { account_id, sales_rep, page = 1, limit = 50 } = req.query;
+
+    const db = getDb();
+    const hasTable = await db.schema.hasTable('visit_notes');
+    if (!hasTable) {
+      return res.json({
+        data: [],
+        pagination: { page: Number(page), limit: Number(limit), total: 0, totalPages: 0 },
+      });
+    }
     
-    let query = getDb('visit_notes')
-      .where({ tenant_id: tenantId })
-      .orderBy('created_at', 'desc');
+    let baseQuery = db('visit_notes').where({ tenant_id: tenantId });
     
-    if (account_id) query = query.where('account_id', account_id);
-    if (sales_rep) query = query.where('created_by', sales_rep);
+    if (account_id) baseQuery = baseQuery.where('account_id', account_id);
+    if (sales_rep) baseQuery = baseQuery.where('created_by', sales_rep);
+    if (
+      !sales_rep &&
+      (req.user?.role === 'sales_rep' || req.user?.role === 'sales') &&
+      req.user?.userId
+    ) {
+      baseQuery = baseQuery.where('created_by', req.user.userId);
+    }
     
     const offset = (Number(page) - 1) * Number(limit);
     
-    const countQuery = query.clone().count('id as count').first();
-    const dataQuery = query.clone().limit(Number(limit)).offset(offset);
+    const countQuery = baseQuery.clone().count('id as count').first();
+    const dataQuery = baseQuery
+      .clone()
+      .orderBy('created_at', 'desc')
+      .limit(Number(limit))
+      .offset(offset);
     
     const [countResult, notes] = await Promise.all([countQuery, dataQuery]);
     
@@ -2407,12 +2441,20 @@ router.post('/visit-notes', requirePermission(Permission.ACCOUNTS_WRITE), async 
 
 // ===== SALES TARGETS =====
 
-// GET /api/v1/sales-targets - List sales targets
-router.get('/sales-targets', requirePermission(Permission.REPORTS_READ), async (req, res) => {
+// GET /api/v1/sales-targets - List sales targets (HQ + field reps read own quota)
+router.get(
+  '/sales-targets',
+  requireAnyPermission(Permission.REPORTS_READ, Permission.ACCOUNTS_READ),
+  async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
-    const { sales_rep, quarter, year } = req.query;
+    let { sales_rep, quarter, year } = req.query;
+
+    const role = req.user.role;
+    if (role === 'sales_rep' || role === 'sales') {
+      sales_rep = resolveSalesRepLabelForUser(req.user);
+    }
     
     let query = getDb('sales_targets')
       .where({ tenant_id: tenantId })
@@ -2429,7 +2471,8 @@ router.get('/sales-targets', requirePermission(Permission.REPORTS_READ), async (
     console.error('[API v1] Error fetching sales targets:', err);
     res.status(500).json({ error: 'Failed to fetch sales targets' });
   }
-});
+},
+);
 
 // POST /api/v1/sales-targets - Create/update sales target
 router.post('/sales-targets', requirePermission(Permission.SETTINGS_WRITE), async (req, res) => {
@@ -2719,11 +2762,11 @@ router.get('/depletion-reports/sellthrough/velocity', requirePermission(Permissi
       .select(
         'account_id',
         'sku',
-        db.raw('SUM(bottles_sold) as total_bottles_sold'),
-        db.raw('SUM(bottles_on_hand_at_end) as avg_on_hand'),
-        db.raw('COUNT(*) as report_count'),
-        db.raw('MIN(period_start) as first_period'),
-        db.raw('MAX(period_end) as last_period')
+        getDb().raw('SUM(bottles_sold) as total_bottles_sold'),
+        getDb().raw('SUM(bottles_on_hand_at_end) as avg_on_hand'),
+        getDb().raw('COUNT(*) as report_count'),
+        getDb().raw('MIN(period_start) as first_period'),
+        getDb().raw('MAX(period_end) as last_period')
       )
       .groupBy('account_id', 'sku');
     
@@ -2771,10 +2814,10 @@ router.get('/depletion-reports/sellthrough/summary', requirePermission(Permissio
       .whereNull('deleted_at')
       .where('period_end', '>=', startDate.toISOString().split('T')[0])
       .select(
-        db.raw('SUM(bottles_sold) as total_sold'),
-        db.raw('SUM(bottles_on_hand_at_end) as total_on_hand'),
-        db.raw('COUNT(DISTINCT account_id) as accounts_reporting'),
-        db.raw('COUNT(*) as total_reports')
+        getDb().raw('SUM(bottles_sold) as total_sold'),
+        getDb().raw('SUM(bottles_on_hand_at_end) as total_on_hand'),
+        getDb().raw('COUNT(DISTINCT account_id) as accounts_reporting'),
+        getDb().raw('COUNT(*) as total_reports')
       )
       .first();
     
@@ -2792,7 +2835,7 @@ router.get('/depletion-reports/sellthrough/summary', requirePermission(Permissio
       .whereNull('deleted_at')
       .where('period_end', '>=', startDate.toISOString().split('T')[0])
       .select('sku')
-      .select(db.raw('SUM(bottles_sold) as total_sold'))
+      .select(getDb().raw('SUM(bottles_sold) as total_sold'))
       .groupBy('sku')
       .orderBy('total_sold', 'desc')
       .limit(5);
@@ -3033,6 +3076,34 @@ function normalizeNewProductRequestUpdates(body) {
   return updates;
 }
 
+function auditUserIdForDb(userId) {
+  if (userId == null || userId === '') return null;
+  const n = Number(userId);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeNewProductRequestJsonb(value) {
+  if (value == null) return value;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+function prepareNewProductRequestJsonbFields(row) {
+  const out = { ...row };
+  for (const key of ['specs', 'manufacturer_proposal', 'brand_decision', 'attachments']) {
+    if (out[key] !== undefined) {
+      out[key] = normalizeNewProductRequestJsonb(out[key]);
+    }
+  }
+  return out;
+}
+
 // GET /api/v1/new-product-requests - List new product requests
 router.get('/new-product-requests', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
   try {
@@ -3139,6 +3210,7 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+    const body = normalizeNewProductRequestUpdates(req.body || {});
     const {
       request_id,
       title,
@@ -3146,40 +3218,58 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
       specs,
       notes,
       assigned_manufacturer,
-      status = 'draft'
-    } = req.body;
+      status = 'draft',
+      submitted_at,
+    } = body;
     
     if (!title || !specs) {
       return res.status(400).json({ error: 'title and specs are required' });
     }
+
+    const normalizedSpecs = normalizeNewProductRequestJsonb(specs);
+    if (!normalizedSpecs || typeof normalizedSpecs !== 'object') {
+      return res.status(400).json({ error: 'specs must be a JSON object' });
+    }
+
+    const resolvedStatus = String(status || 'draft');
+    const insertRow = {
+      tenant_id: tenantId,
+      request_id:
+        request_id ||
+        `NPR-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`,
+      title: String(title).trim(),
+      requested_by,
+      requested_at: new Date(),
+      specs: normalizedSpecs,
+      status: resolvedStatus,
+      assigned_manufacturer: assigned_manufacturer || null,
+      notes: notes || null,
+      created_by: auditUserIdForDb(req.user?.userId),
+    };
+
+    if (resolvedStatus === 'submitted') {
+      insertRow.submitted_at = submitted_at ? new Date(submitted_at) : new Date();
+    }
     
     const [request] = await getDb('new_product_requests')
-      .insert({
-        tenant_id: tenantId,
-        request_id: request_id || `NPR-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`,
-        title,
-        requested_by,
-        requested_at: new Date(),
-        specs: JSON.stringify(specs),
-        status,
-        assigned_manufacturer,
-        notes,
-        created_by: req.user?.userId
-      })
+      .insert(insertRow)
       .returning('*');
     
     res.status(201).json({ 
-      data: {
+      data: prepareNewProductRequestJsonbFields({
         ...request,
-        specs: request.specs || {},
         manufacturer_proposal: null,
         brand_decision: null,
-        attachments: []
-      }
+        attachments: request.attachments ?? [],
+      }),
     });
   } catch (err) {
     console.error('[API v1] Error creating new product request:', err);
-    res.status(500).json({ error: 'Failed to create new product request' });
+    const detail = err instanceof Error ? err.message : String(err);
+    res.status(500).json({
+      error: 'Failed to create new product request',
+      ...(process.env.NODE_ENV !== 'production' ? { detail } : {}),
+    });
   }
 });
 
@@ -3196,14 +3286,14 @@ router.put('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_
 
     const updates = normalizeNewProductRequestUpdates(req.body);
     
-    // JSONB fields need stringification
-    if (updates.specs) updates.specs = JSON.stringify(updates.specs);
-    if (updates.manufacturer_proposal) updates.manufacturer_proposal = JSON.stringify(updates.manufacturer_proposal);
-    if (updates.brand_decision) updates.brand_decision = JSON.stringify(updates.brand_decision);
-    if (updates.attachments) updates.attachments = JSON.stringify(updates.attachments);
+    for (const key of ['specs', 'manufacturer_proposal', 'brand_decision', 'attachments']) {
+      if (updates[key] !== undefined) {
+        updates[key] = normalizeNewProductRequestJsonb(updates[key]);
+      }
+    }
     
     updates.updated_at = new Date();
-    updates.updated_by = req.user?.userId;
+    updates.updated_by = auditUserIdForDb(req.user?.userId);
     
     let [updated] = await getDb('new_product_requests')
       .where({ id: existing.id, tenant_id: tenantId })
@@ -3383,7 +3473,7 @@ router.get('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_READ)
     if (!tenantId) return;
     const { id: idParam } = req.params;
 
-    const order = await resolvePurchaseOrderRow(db, tenantId, idParam);
+    const order = await resolvePurchaseOrderRow(getDb(), tenantId, idParam);
     
     if (!order) {
       return res.status(404).json({ error: 'Purchase order not found' });
@@ -3401,7 +3491,7 @@ router.get('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_READ)
 
 // POST /api/v1/purchase-orders - Create purchase order
 router.post('/purchase-orders', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
-  const trx = await db.transaction();
+  const trx = await getDb().transaction();
   
   try {
     const tenantId = getTenantId(req, res);
@@ -3541,7 +3631,7 @@ router.post('/purchase-orders', requirePermission(Permission.PRODUCTION_WRITE), 
 
 // PUT /api/v1/purchase-orders/:id - Update purchase order (id may be numeric PK or po_number)
 router.put('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
-  const trx = await db.transaction();
+  const trx = await getDb().transaction();
   
   try {
     const tenantId = getTenantId(req, res);
@@ -3660,7 +3750,7 @@ router.patch('/purchase-orders/:id/status', requirePermission(Permission.PRODUCT
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    const row = await resolvePurchaseOrderRow(db, tenantId, idParam);
+    const row = await resolvePurchaseOrderRow(getDb(), tenantId, idParam);
     if (!row) {
       return res.status(404).json({ error: 'Purchase order not found' });
     }
@@ -3698,7 +3788,7 @@ router.delete('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WR
     if (!tenantId) return;
     const { id: idParam } = req.params;
 
-    const row = await resolvePurchaseOrderRow(db, tenantId, idParam);
+    const row = await resolvePurchaseOrderRow(getDb(), tenantId, idParam);
     if (!row) {
       return res.status(404).json({ error: 'Purchase order not found' });
     }
@@ -3792,7 +3882,7 @@ router.get('/transfer-orders/:id', requirePermission(Permission.INVENTORY_READ),
 
 // POST /api/v1/transfer-orders - Create transfer order
 router.post('/transfer-orders', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
-  const trx = await db.transaction();
+  const trx = await getDb().transaction();
   
   try {
     const tenantId = getTenantId(req, res);
@@ -3848,7 +3938,7 @@ router.post('/transfer-orders', requirePermission(Permission.INVENTORY_WRITE), a
 
 // PUT /api/v1/transfer-orders/:id - Update transfer order
 router.put('/transfer-orders/:id', requirePermission(Permission.INVENTORY_WRITE), async (req, res) => {
-  const trx = await db.transaction();
+  const trx = await getDb().transaction();
   
   try {
     const tenantId = getTenantId(req, res);
@@ -4287,7 +4377,7 @@ router.get('/shipments/:id', requirePermission(Permission.INVENTORY_READ), async
 
 // POST /api/v1/shipments - Create shipment
 router.post('/shipments', shipmentWriteMiddleware, async (req, res) => {
-  const trx = await db.transaction();
+  const trx = await getDb().transaction();
 
   try {
     const tenantId = getTenantId(req, res);
@@ -4555,7 +4645,7 @@ router.post('/shipments', shipmentWriteMiddleware, async (req, res) => {
 
 // PUT /api/v1/shipments/:id - Update shipment
 router.put('/shipments/:id', shipmentWriteMiddleware, async (req, res) => {
-  const trx = await db.transaction();
+  const trx = await getDb().transaction();
 
   try {
     const tenantId = getTenantId(req, res);
@@ -4768,7 +4858,7 @@ router.patch('/shipments/:id/status', shipmentWriteMiddleware, async (req, res) 
 
 // POST /api/v1/shipments/:id/receive - Distributor receives inbound stock at DC
 router.post('/shipments/:id/receive', shipmentWriteMiddleware, async (req, res) => {
-  const trx = await db.transaction();
+  const trx = await getDb().transaction();
 
   try {
     const tenantId = getTenantId(req, res);
@@ -5243,8 +5333,9 @@ router.get('/team-members', async (req, res) => {
     }
 
     const members = await query.orderBy('created_at', 'desc');
+    const enriched = await attachPortalUserIds(tenantId, members);
 
-    res.json({ data: members });
+    res.json({ data: enriched });
   } catch (err) {
     console.error('[API v1] Error fetching team members:', err);
     res.status(500).json({ error: 'Failed to fetch team members' });
@@ -5457,6 +5548,7 @@ router.post('/team-members', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+    const db = getDb();
     const { name, email, role, phone, department } = req.body;
 
     if (!name || !email || !role) {
@@ -5552,7 +5644,7 @@ router.post('/team-members', async (req, res) => {
         const pwOpt = parseOptionalPrimaryWarehouseId(req.body);
         if (role === 'distributor' && pwOpt != null && pwOpt !== '') {
           try {
-            await db.transaction(async (trx) => {
+            await getDb().transaction(async (trx) => {
               await setDistributorReceivingWarehouse(trx, tenantId, member.id, pwOpt);
             });
             member = await getDb('team_members').where({ id: member.id, tenant_id: tenantId }).first();
@@ -5628,7 +5720,7 @@ router.post('/team-members', async (req, res) => {
     const pwOpt = parseOptionalPrimaryWarehouseId(req.body);
     if (roleToCreate === 'distributor' && pwOpt != null && pwOpt !== '') {
       try {
-        await db.transaction(async (trx) => {
+        await getDb().transaction(async (trx) => {
           await setDistributorReceivingWarehouse(trx, tenantId, member.id, pwOpt);
         });
         member = await getDb('team_members').where({ id: member.id, tenant_id: tenantId }).first();
@@ -5659,6 +5751,7 @@ router.post('/team-members/:id/approve-retail', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+    const db = getDb();
     const { id } = req.params;
 
     const actor = req.user.role;
@@ -5691,25 +5784,51 @@ router.post('/team-members/:id/approve-retail', async (req, res) => {
       });
     }
 
+    let repUserId =
+      row.crm_requested_by_user_id != null && Number.isFinite(Number(row.crm_requested_by_user_id))
+        ? Number(row.crm_requested_by_user_id)
+        : null;
+
+    const body = req.body || {};
+    if (actor === 'distributor' || hasPermission(actor, Permission.SETTINGS_WRITE)) {
+      const repPick = await resolveDistributorAssignedSalesRep({
+        tenantId,
+        distributorUserId: distId ?? row.managed_by_user_id,
+        assignedSalesRepUserId: body.assignedSalesRepUserId ?? body.assigned_sales_rep_id,
+        assignedSalesRepEmail: body.assignedSalesRepEmail ?? body.assigned_sales_rep_email,
+      });
+      if (repPick.error) {
+        return res.status(400).json({ error: repPick.error });
+      }
+      if (repPick.repUserId) {
+        repUserId = repPick.repUserId;
+      }
+    }
+
     await getDb('team_members')
       .where({ id, tenant_id: tenantId })
       .update({
         pending_distributor_approval: false,
         is_active: true,
         ...(distId && !row.managed_by_user_id ? { managed_by_user_id: distId } : {}),
+        ...(repUserId ? { crm_requested_by_user_id: repUserId } : {}),
         updated_at: new Date(),
       });
 
-    const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
+    let member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
 
-    if (distId && member?.linked_account_id) {
-      await getDb('accounts')
-        .where({ id: member.linked_account_id, tenant_id: tenantId })
-        .update({
-          managed_by_distributor_user_id: distId,
-          updated_at: new Date(),
-        });
+    const effectiveDistId =
+      distId ??
+      (member?.managed_by_user_id != null ? Number(member.managed_by_user_id) : null);
+
+    if (member) {
+      await ensureRetailAccountForTeamMember(db, tenantId, member, {
+        distributorUserId: effectiveDistId,
+        repUserId,
+      });
+      member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
     }
+
     const payload = await buildCrmContactInvitePayload(req, tenantId, member, {
       email: member.email,
       name: member.name,
@@ -5727,6 +5846,7 @@ router.post('/team-members/:id/resend-invite', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+    const db = getDb();
     const { id } = req.params;
 
     const member = await getDb('team_members')
@@ -5771,6 +5891,7 @@ router.patch('/team-members/:id', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+    const db = getDb();
     const { id } = req.params;
 
     const { name, email, role, phone, department, is_active } = req.body || {};
@@ -5823,7 +5944,7 @@ router.patch('/team-members/:id', async (req, res) => {
       }
       const wid = pwOpt === null || pwOpt === '' ? null : String(pwOpt).trim();
       try {
-        await db.transaction(async (trx) => {
+        await getDb().transaction(async (trx) => {
           if (Object.keys(updates).length > 0) {
             updates.updated_at = new Date();
             await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
@@ -5842,7 +5963,7 @@ router.patch('/team-members/:id', async (req, res) => {
     }
 
     if (clearingByRole) {
-      await db.transaction(async (trx) => {
+      await getDb().transaction(async (trx) => {
         updates.updated_at = new Date();
         await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
         await setDistributorReceivingWarehouse(trx, tenantId, id, null);
@@ -5874,6 +5995,7 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+    const db = getDb();
     const emailParam = String(req.params.email || '').trim().toLowerCase();
     if (!emailParam) return res.status(400).json({ error: 'email is required' });
 
@@ -5927,7 +6049,7 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
       }
       const wid = pwOpt === null || pwOpt === '' ? null : String(pwOpt).trim();
       try {
-        await db.transaction(async (trx) => {
+        await getDb().transaction(async (trx) => {
           if (Object.keys(updates).length > 0) {
             updates.updated_at = new Date();
             await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
@@ -5946,7 +6068,7 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
     }
 
     if (clearingByRole) {
-      await db.transaction(async (trx) => {
+      await getDb().transaction(async (trx) => {
         updates.updated_at = new Date();
         await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
         await setDistributorReceivingWarehouse(trx, tenantId, id, null);
@@ -5978,6 +6100,7 @@ router.post('/team-members/by-email/:email/resend-invite', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+    const db = getDb();
     const emailParam = String(req.params.email || '').trim().toLowerCase();
     if (!emailParam) return res.status(400).json({ error: 'email is required' });
 
@@ -6021,6 +6144,7 @@ router.delete('/team-members/:id', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+    const db = getDb();
     const { id } = req.params;
 
     const existing = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
@@ -6050,6 +6174,7 @@ router.delete('/team-members/by-email/:email', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+    const db = getDb();
     const emailParam = String(req.params.email || '').trim().toLowerCase();
     if (!emailParam) return res.status(400).json({ error: 'email is required' });
 
@@ -7001,7 +7126,7 @@ router.patch('/warehouses/:id', requirePermission(Permission.SETTINGS_WRITE), as
     let row;
 
     if (hasLinkedTeamMemberPatch) {
-      await db.transaction(async (trx) => {
+      await getDb().transaction(async (trx) => {
         const existing = await trx('warehouses').where({ id, tenant_id: tenantId }).first();
         if (!existing) {
           const e = new Error('Warehouse not found');
@@ -7096,6 +7221,7 @@ router.get('/me/retail-account-settings', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+    const db = getDb();
 
     const role = req.user.role;
     if (role !== 'retail' && role !== 'retail_account') {
@@ -7137,6 +7263,7 @@ router.patch('/me/retail-account-settings', async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+    const db = getDb();
 
     const role = req.user.role;
     if (role !== 'retail' && role !== 'retail_account') {
@@ -7244,7 +7371,7 @@ router.patch('/me/primary-warehouse', requirePermission(Permission.INVENTORY_REA
     }
 
     try {
-      await db.transaction(async (trx) => {
+      await getDb().transaction(async (trx) => {
         await setDistributorReceivingWarehouse(trx, tenantId, member.id, wid);
       });
     } catch (e) {

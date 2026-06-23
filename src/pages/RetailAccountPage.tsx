@@ -16,14 +16,18 @@ import {
 } from "@/lib/api-v1-mutations";
 
 const NOTIFICATIONS = [
-  { id: "order", title: "Order status updates", sub: "When your order is approved, packed, and shipped" },
-  { id: "delivery", title: "Delivery reminders", sub: "24 hours before scheduled delivery" },
-  { id: "backbar", title: "Backbar depletion alerts", sub: "When a SKU drops below cover threshold" },
-  { id: "partner", title: "Partner program updates", sub: "Tier changes and rebate payments" },
-  { id: "products", title: "New product announcements", sub: "New Hajime SKUs and limited releases" },
-  { id: "invoice", title: "Invoice reminders", sub: "When an invoice is due in 7 days" },
-  { id: "digest", title: "Weekly sell-through digest", sub: "Summary of backbar activity every Monday" },
+  { id: "order", title: "Order status updates", sub: "When your order is approved, packed, and shipped", defaultOn: true },
+  { id: "delivery", title: "Delivery reminders", sub: "24 hours before scheduled delivery", defaultOn: true },
+  { id: "backbar", title: "Backbar depletion alerts", sub: "When a SKU drops below cover threshold", defaultOn: true },
+  { id: "partner", title: "Partner program updates", sub: "Tier changes and rebate payments", defaultOn: true },
+  { id: "products", title: "New product announcements", sub: "New Hajime SKUs and limited releases", defaultOn: false },
+  { id: "invoice", title: "Invoice reminders", sub: "When an invoice is due in 7 days", defaultOn: true },
+  { id: "digest", title: "Weekly sell-through digest", sub: "Summary of backbar activity every Monday", defaultOn: false },
 ] as const;
+
+const DEFAULT_NOTIFICATION_PREFS = Object.fromEntries(
+  NOTIFICATIONS.map((n) => [n.id, n.defaultOn]),
+) as Record<string, boolean>;
 
 const fieldClass =
   "h-[38px] w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none transition-colors focus:border-ring focus:ring-1 focus:ring-ring";
@@ -33,17 +37,16 @@ export default function RetailAccountPage() {
   const { user } = useAuth();
   const tradingName = useRetailAccountTradingName();
   const { accounts } = useAccounts();
-  const { data, loading } = useAppData();
+  const { loading } = useAppData();
   const acc = accounts.find((a) => a.tradingName === tradingName);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState(user?.email ?? "");
   const [phone, setPhone] = useState("");
-  const [notif, setNotif] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(NOTIFICATIONS.map((n) => [n.id, n.defaultOn])),
-  );
+  const [notif, setNotif] = useState<Record<string, boolean>>(() => ({ ...DEFAULT_NOTIFICATION_PREFS }));
   const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -54,6 +57,7 @@ export default function RetailAccountPage() {
         const res = await getRetailAccountSettings();
         if (cancelled) return;
         const d = res.data;
+        setSettingsError(null);
         setFirstName(d.firstName ?? "");
         setLastName(d.lastName ?? "");
         setEmail(d.email ?? user?.email ?? "");
@@ -64,6 +68,7 @@ export default function RetailAccountPage() {
       } catch (e) {
         if (!cancelled) {
           console.error("[RetailAccount] load settings:", e);
+          setSettingsError(e instanceof Error ? e.message : "Could not load saved settings");
         }
       } finally {
         if (!cancelled) setSettingsLoading(false);
@@ -95,7 +100,7 @@ export default function RetailAccountPage() {
     }
   };
 
-  if (loading || settingsLoading) return <RetailSkeleton />;
+  if (loading) return <RetailSkeleton />;
 
   return (
     <div className="space-y-6 pb-8">
@@ -107,13 +112,19 @@ export default function RetailAccountPage() {
         actions={
           <Button
             className="h-9 bg-accent text-accent-foreground hover:bg-[hsl(32_78%_48%)]"
-            disabled={saving}
+            disabled={saving || settingsLoading}
             onClick={() => void save()}
           >
             {saving ? "Saving…" : "Save changes"}
           </Button>
         }
       />
+
+      {settingsError ? (
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
+          {settingsError}. Showing defaults — you can still edit and save.
+        </p>
+      ) : null}
 
       <div className="grid gap-5 lg:grid-cols-2">
         <div className="space-y-5">

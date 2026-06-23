@@ -15,10 +15,16 @@ import { Input } from "@/components/ui/input";
 import type { Account } from "@/data/mockData";
 import { Plus, Search, MapPin, Mail, Phone, Send, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { CSVImportButton } from "@/components/CSVImportButton";
 import { toast } from "@/components/ui/sonner";
 import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
+import { isHqOperatorRole, filterPlatformAccountsForHq, filterWholesaleOrdersForHq } from "@/lib/hq-order-scope";
+import { HqDistributorPartnerStrip } from "@/components/HqDistributorPartnerStrip";
+import { HqDistributorSalesView } from "@/components/hq/HqDistributorSalesView";
+import { HqDistributorsView } from "@/components/hq/HqDistributorsView";
+import { getDistributorOrganizations, type DistributorOrganizationRow } from "@/lib/api-v1-mutations";
+import { partnerPathForOrg, resolveDistributorOrgId } from "@/lib/hq-distributor-orgs";
 
 function channelLabel(type: Account["type"]): string {
   if (type === "distributor") return "Distributor";
@@ -47,22 +53,56 @@ export default function Accounts() {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [newAccountOpen, setNewAccountOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [distributorOrgs, setDistributorOrgs] = useState<DistributorOrganizationRow[]>([]);
+
+  useEffect(() => {
+    if (!isHqOperatorRole(user?.role)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getDistributorOrganizations();
+        if (!cancelled) setDistributorOrgs(res.data ?? []);
+      } catch {
+        /* partner links optional */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.role]);
+
+  const orgIdByAccountId = useMemo(() => {
+    const m = new Map<string, string>();
+    if (!isHqOperatorRole(user?.role)) return m;
+    for (const acc of accounts) {
+      if (acc.type !== "distributor") continue;
+      const orgId = resolveDistributorOrgId(acc, distributorOrgs);
+      if (orgId) m.set(acc.id, orgId);
+    }
+    return m;
+  }, [accounts, distributorOrgs, user?.role]);
 
   const detailAccount = useMemo(
-    () => (selectedAccountId ? accounts.find((a) => a.id === selectedAccountId) ?? null : null),
+    () =>
+      selectedAccountId
+        ? accounts.find((a) => String(a.id) === String(selectedAccountId)) ?? null
+        : null,
     [accounts, selectedAccountId],
   );
 
   const salesByAccount = useMemo(() => {
+    const orderSource = isHqOperatorRole(user?.role)
+      ? filterWholesaleOrdersForHq(salesOrders, filterPlatformAccountsForHq(accounts))
+      : salesOrders;
     const m: Record<string, { orders: number; revenue: number }> = {};
-    for (const o of salesOrders) {
+    for (const o of orderSource) {
       if (o.status === "cancelled" || o.status === "draft") continue;
       if (!m[o.account]) m[o.account] = { orders: 0, revenue: 0 };
       m[o.account].orders += 1;
       m[o.account].revenue += o.price;
     }
     return m;
-  }, [salesOrders]);
+  }, [salesOrders, accounts, user?.role]);
 
   const filtered = useMemo(() => {
     // Role-based scoping — tightened permissions
@@ -90,8 +130,9 @@ export default function Accounts() {
             a.name?.toLowerCase().includes(user.displayName.toLowerCase()));
         return emailMatch || nameMatch;
       });
+    } else if (isHqOperatorRole(user.role)) {
+      scopedAccounts = filterPlatformAccountsForHq(accounts);
     }
-    // brand_operator, founder_admin, operations, finance: full access (no filter)
 
     const q = search.toLowerCase();
     return scopedAccounts.filter((a) => {
@@ -137,7 +178,7 @@ export default function Accounts() {
 
   useEffect(() => {
     const id = searchParams.get("account");
-    if (!id || !accounts.some((a) => a.id === id)) return;
+    if (!id || !accounts.some((a) => String(a.id) === String(id))) return;
     setSelectedAccountId(id);
     setSearchParams(
       (prev) => {
@@ -151,6 +192,16 @@ export default function Accounts() {
 
   if (loading) {
     return <AccountsSkeleton />;
+  }
+
+  const hqSalesView = isHqOperatorRole(user?.role) && searchParams.get("view") === "sales";
+
+  if (hqSalesView) {
+    return <HqDistributorSalesView />;
+  }
+
+  if (isHqOperatorRole(user?.role)) {
+    return <HqDistributorsView />;
   }
 
   return (
@@ -199,6 +250,8 @@ export default function Accounts() {
           </div>
         }
       />
+
+      {isHqOperatorRole(user?.role) ? <HqDistributorPartnerStrip /> : null}
 
       {user.role === "sales_rep" || user.role === "sales" || user.role === "distributor" ? (
         <AccountSetupInviteDialog
@@ -422,6 +475,9 @@ export default function Accounts() {
                     <th className="pb-3 font-medium text-muted-foreground">Sell-in history</th>
                     <th className="pb-3 font-medium text-muted-foreground">Manager</th>
                     <th className="pb-3 font-medium text-muted-foreground">Status</th>
+                    {isHqOperatorRole(user?.role) ? (
+                      <th className="pb-3 font-medium text-muted-foreground">Network</th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -458,6 +514,21 @@ export default function Accounts() {
                       <td className="py-3">
                         <StatusBadge status={acc.status} />
                       </td>
+                      {isHqOperatorRole(user?.role) ? (
+                        <td className="py-3">
+                          {acc.type === "distributor" && orgIdByAccountId.get(acc.id) ? (
+                            <Link
+                              to={partnerPathForOrg(orgIdByAccountId.get(acc.id)!)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+                            >
+                              View network
+                            </Link>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>

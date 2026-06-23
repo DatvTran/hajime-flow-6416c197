@@ -61,6 +61,9 @@ export type InventoryItem = {
   inTransitDetails?: InTransitDetails;
   /** For retail_shelf items: which account owns this stock */
   retailAccountId?: string;
+  /** HQ merged row: source wholesaler database */
+  distributorOrgId?: string;
+  distributorOrgName?: string;
 };
 
 export const inventoryItems: InventoryItem[] = [
@@ -134,6 +137,9 @@ export type SalesOrder = {
   placedByRole?: OrderCreatedByRole;
   /** PROXY MODE: Account ID that this order was placed on behalf of */
   onBehalfOfAccount?: string;
+  /** HQ merged row: isolated wholesaler database source */
+  distributorOrgId?: string;
+  distributorOrgName?: string;
 };
 
 export const salesOrders: SalesOrder[] = [
@@ -330,6 +336,9 @@ export type Account = {
   managedByDistributorUserId?: string;
   /** Assigned field sales rep portal user id. */
   assignedSalesRepUserId?: string;
+  /** HQ merged row: source wholesaler database */
+  distributorOrgId?: string;
+  distributorOrgName?: string;
 };
 
 export const accounts: Account[] = accountsJson as Account[];
@@ -539,8 +548,12 @@ export type Product = {
   /** Placeholder image for retail cards */
   imageUrl?: string;
   minOrderCases?: number;
-  /** Estimated wholesale per case (CAD) for retail cart display */
+  /** MSRP per case (CAD) */
+  msrpCasePrice?: number;
+  /** Wholesaler sell-in price per case (CAD) */
   wholesaleCasePrice?: number;
+  /** Manufacturer / kura cost per case (CAD) */
+  manufacturerCasePrice?: number;
 };
 
 export const products: Product[] = [

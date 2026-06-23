@@ -31,18 +31,27 @@ const config = {
     },
   },
 
-  staging: {
-    ...baseConfig,
-    connection: flyDatabaseConnection({
-      ssl: { rejectUnauthorized: false },
-    }),
-  },
-
   production: {
     ...baseConfig,
     connection: flyDatabaseConnection({
       ssl: { rejectUnauthorized: false },
     }),
+    pool: {
+      min: 0,
+      max: 10,
+      acquireTimeoutMillis: 30_000,
+    },
+  },
+  staging: {
+    ...baseConfig,
+    connection: flyDatabaseConnection({
+      ssl: { rejectUnauthorized: false },
+    }),
+    pool: {
+      min: 0,
+      max: 10,
+      acquireTimeoutMillis: 30_000,
+    },
   },
 };
 

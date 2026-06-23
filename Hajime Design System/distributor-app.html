@@ -303,6 +303,12 @@ body{background:hsl(var(--background));color:hsl(var(--foreground));font-family:
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px"><button class="btn btn-outline btn-sm" onclick="closeReceipt()">Close</button><button class="btn btn-accent btn-sm" onclick="closeReceipt()">Download PDF</button></div>
     </div>
   </div>
+  <div id="track-modal" style="display:none;position:fixed;inset:0;background:hsl(24 12%8%/.5);backdrop-filter:blur(4px);z-index:100;align-items:center;justify-content:center" onclick="if(event.target===this)closeTrack()">
+    <div style="background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:18px;padding:26px;max-width:460px;width:90%;box-shadow:var(--shadow-float)">
+      <div id="track-body"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px"><button class="btn btn-outline btn-sm" onclick="closeTrack()">Close</button></div>
+    </div>
+  </div>
 </main>
 </div>
 <script>
@@ -881,6 +887,38 @@ function viewReceipt(idx){
   if(ov)ov.style.display='flex';
 }
 function closeReceipt(){const ov=document.getElementById('receipt-modal');if(ov)ov.style.display='none';}
+function trackExternal(tracking,carrier,statusLabel){
+  const delivered=/deliver/i.test(statusLabel);
+  const events=delivered?[
+    {t:'Delivered · signed for at destination',d:'Today 10:42 AM',done:true,cur:false},
+    {t:'Out for delivery',d:'Today 7:15 AM',done:true,cur:false},
+    {t:'Arrived at local depot',d:'Yesterday 9:30 PM',done:true,cur:false},
+    {t:'In transit',d:'2 days ago 4:10 PM',done:true,cur:false},
+    {t:'Picked up by carrier',d:'3 days ago 11:00 AM',done:true,cur:false},
+  ]:[
+    {t:'In transit · en route to destination',d:'Today 6:20 AM',done:false,cur:true},
+    {t:'Departed sorting facility',d:'Yesterday 8:45 PM',done:true,cur:false},
+    {t:'Arrived at sorting facility',d:'Yesterday 2:10 PM',done:true,cur:false},
+    {t:'Picked up by carrier',d:'2 days ago 11:00 AM',done:true,cur:false},
+  ];
+  document.getElementById('track-body').innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid hsl(var(--border)/.5)">
+      <div style="width:44px;height:44px;border-radius:11px;background:hsl(215 72%50%/.1);color:hsl(215 72%42%);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgi(IC.truck,22)}</div>
+      <div style="flex:1;min-width:0"><div style="font-family:var(--font-display);font-size:18px;font-weight:600;letter-spacing:-.01em">${carrier}</div><div style="font-family:var(--font-mono);font-size:12px;color:hsl(var(--muted-foreground))">${tracking}</div></div>
+      ${pill(delivered?'green':'blue',delivered?'delivered':'in-transit')}
+    </div>
+    <div style="position:relative;padding-left:8px">
+      ${events.map((e,i)=>`
+      <div style="display:flex;gap:14px;padding-bottom:${i<events.length-1?'18px':'0'};position:relative">
+        ${i<events.length-1?`<div style="position:absolute;left:6px;top:16px;bottom:0;width:2px;background:hsl(var(--border))"></div>`:''}
+        <div style="width:14px;height:14px;border-radius:999px;flex-shrink:0;margin-top:2px;z-index:1;background:${e.cur?'hsl(215 72%50%)':e.done?'hsl(158 56%36%)':'hsl(var(--muted))'};${e.cur?'box-shadow:0 0 0 4px hsl(215 72%50%/.18)':''}"></div>
+        <div style="flex:1"><div style="font-size:13px;font-weight:${e.cur?'600':'500'};color:${e.cur?'hsl(215 72%42%)':'hsl(var(--foreground))'}">${e.t}</div><div style="font-size:11px;color:hsl(var(--muted-foreground));font-family:var(--font-mono);margin-top:1px">${e.d}</div></div>
+      </div>`).join('')}
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:16px;padding:10px 14px;background:hsl(var(--muted)/.5);border-radius:10px;font-size:12px;color:hsl(var(--muted-foreground))">${svgi(IC.truck,14)} Live updates from ${carrier}. Refreshed just now.</div>`;
+  const ov=document.getElementById('track-modal');if(ov)ov.style.display='flex';
+}
+function closeTrack(){const ov=document.getElementById('track-modal');if(ov)ov.style.display='none';}
 function receiveInbound(idx){
   const s=INBOUND[idx];if(!s||s.st==='green')return;
   s.st='green';s.sl='received';s.steps=['done','done','done','done'];
@@ -950,7 +988,7 @@ PAGES.shipments=()=>`
         <div>Carrier <strong>Kentoku Logistics</strong></div>
         <div>Tracking <strong style="font-family:var(--font-mono)">${s.tracking}</strong></div>
         ${s.signed?`<div>Signed by <strong>${s.signed}</strong></div>`:''}
-        <div style="margin-left:auto"><button class="btn btn-outline btn-sm">Track externally</button></div>
+        <div style="margin-left:auto"><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();trackExternal('${s.tracking}','Kentoku Logistics','${s.sl}')">Track externally</button></div>
       </div>
     </div>
   </div>`).join('')}

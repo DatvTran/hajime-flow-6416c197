@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { NewProductDialog } from "@/components/NewProductDialog";
 import { EditProductDialog } from "@/components/EditProductDialog";
 import { useProducts, useAppData } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { SettingsSkeleton } from "@/components/skeletons";
 import type { Product } from "@/data/mockData";
 import { Pencil, Trash2, Warehouse as WarehouseIcon } from "lucide-react";
@@ -38,11 +39,14 @@ import { fetchApiHealth } from "@/lib/api-health";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Link } from "react-router-dom";
+import { isHqOperatorRole } from "@/lib/hq-order-scope";
+import { HqSettingsView } from "@/components/hq/HqSettingsView";
 
 /** Edit warehouse: no account / no CRM link */
 const WH_LINK_NONE = "__none__";
 
 export default function SettingsPage() {
+  const { user } = useAuth();
   const { products, addProduct, removeProduct, patchProduct, refreshProducts } = useProducts();
   const { data, updateData, loading } = useAppData();
 
@@ -327,6 +331,10 @@ export default function SettingsPage() {
 
   if (loading) {
     return <SettingsSkeleton />;
+  }
+
+  if (isHqOperatorRole(user?.role)) {
+    return <HqSettingsView />;
   }
 
   return (

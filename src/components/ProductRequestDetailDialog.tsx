@@ -1,5 +1,7 @@
+import { useNavigate } from "react-router-dom";
 import type { NewProductRequest } from "@/data/mockData";
 import { formatBaseSpiritLabel } from "@/lib/base-spirit-options";
+import { hqNprDisplayStatus, kuraShortName } from "@/lib/hq-product-development-display";
 import {
   Dialog,
   DialogContent,
@@ -8,37 +10,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
-import { Package, DollarSign, Calendar, Factory, CheckCircle, XCircle, FilePlus } from "lucide-react";
-import { usePurchaseOrders } from "@/contexts/AppDataContext";
-import { NewPurchaseOrderDialog } from "./NewPurchaseOrderDialog";
-import { useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import { nextPoId } from "@/lib/po-ids";
-import type { PurchaseOrder } from "@/data/mockData";
-
-const STATUS_STYLES: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground",
-  submitted: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-  under_review: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-  proposed: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
-  approved: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
-  rejected: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
-  declined: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Draft",
-  submitted: "Submitted",
-  under_review: "Under Review",
-  proposed: "Proposal Received",
-  approved: "Approved",
-  rejected: "Rejected",
-  declined: "Declined",
-};
+import { CheckCircle, Package, XCircle } from "lucide-react";
+import {
+  HqBtn,
+  HqOperatorCardHead,
+  HqOperatorPill,
+  HqOperatorSrcChip,
+} from "@/components/hq/HqOperatorUi";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type Props = {
   open: boolean;
@@ -47,14 +27,24 @@ type Props = {
   onPatch: (id: string, patch: Partial<NewProductRequest>) => void;
 };
 
+function DetailCell({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <div className="hq-detail-label">{label}</div>
+      <div className="text-[13px] font-medium text-foreground">{value}</div>
+    </div>
+  );
+}
+
 export function ProductRequestDetailDialog({ open, onOpenChange, request, onPatch }: Props) {
-  // Hooks must come before any early return (rules of hooks)
-  const { addPurchaseOrder, purchaseOrders } = usePurchaseOrders();
-  const { user } = useAuth();
-  const [poDialogOpen, setPoDialogOpen] = useState(false);
+  const { t } = useLanguage();
+  const navigate = useNavigate();
 
   if (!request) return null;
 
+  const proposalQty = request.manufacturerProposal?.production.batchSize ?? request.specs.minimumOrderQuantity;
+
+  const pill = hqNprDisplayStatus(request.status);
   const canSubmit = request.status === "draft";
   const canDecide = request.status === "proposed";
   const hasProposal = !!request.manufacturerProposal;
@@ -97,249 +87,210 @@ export function ProductRequestDetailDialog({ open, onOpenChange, request, onPatc
     toast.info("Proposal rejected", { description: `${request.id} rejected.` });
   };
 
-  const handleCreatePo = async (po: PurchaseOrder) => {
-    const r = await addPurchaseOrder(po);
-    if (!r.success) return false;
-    onPatch(request.id, { productionPoId: po.id });
-    toast.success("Production PO created", { description: `${po.id} linked to ${request.id}` });
-    setPoDialogOpen(false);
-    return true;
+  const handleCreatePoNavigate = () => {
+    if (!request) return;
+    const params = new URLSearchParams();
+    if (request.resultingSku) params.set("sku", request.resultingSku);
+    params.set("qty", String(proposalQty));
+    params.set("npr", request.id);
+    onOpenChange(false);
+    navigate(`/purchase-orders/new?${params.toString()}`);
   };
-
-  const proposalQty = request.manufacturerProposal?.production.batchSize ?? request.specs.minimumOrderQuantity;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(90vh,900px)] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <DialogTitle>{request.title}</DialogTitle>
-              <DialogDescription>
-                {request.id} · Assigned to {request.assignedManufacturer || "Unassigned"}
+      <DialogContent className="max-h-[min(90vh,900px)] gap-0 overflow-y-auto border-border/80 p-0 sm:max-w-2xl">
+        <DialogHeader className="border-b border-border/60 px-6 py-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <DialogTitle className="font-display text-xl font-semibold tracking-[-0.02em]">
+                {request.title}
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-[13px]">
+                <span className="font-mono">{request.id}</span>
+                {request.assignedManufacturer ? (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <HqOperatorSrcChip variant="kura">{kuraShortName(request.assignedManufacturer)}</HqOperatorSrcChip>
+                  </>
+                ) : null}
               </DialogDescription>
             </div>
-            <Badge className={`text-xs ${STATUS_STYLES[request.status]}`}>
-              {STATUS_LABELS[request.status]}
-            </Badge>
+            <HqOperatorPill tone={pill.tone}>{t(pill.label)}</HqOperatorPill>
           </div>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Specifications */}
-          <div className="space-y-3">
-            <h4 className="font-display text-sm font-medium">Specifications</h4>
-            <div className="grid gap-3 rounded-lg border p-3 text-sm sm:grid-cols-2">
-              <div>
-                <span className="text-muted-foreground">Base Spirit</span>
-                <p className="font-medium">{formatBaseSpiritLabel(request.specs.baseSpirit)}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Target ABV</span>
-                <p className="font-medium">{request.specs.targetAbv}%</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Flavor Profile</span>
-                <p className="font-medium">{request.specs.flavorProfile.join(", ") || "—"}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Sweetener</span>
-                <p className="font-medium capitalize">{request.specs.sweetener?.replace(/_/g, " ") || "—"}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Price Point</span>
-                <p className="font-medium capitalize">{request.specs.targetPricePoint.replace(/_/g, " ")}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Target Launch</span>
-                <p className="font-medium">{request.specs.targetLaunchDate}</p>
+        <div className="space-y-5 px-6 py-5">
+          <section>
+            <HqOperatorCardHead title="Specifications" subtitle="Brief sent to the manufacturer" />
+            <div className="hq-detail-panel grid gap-4 sm:grid-cols-2">
+              <DetailCell label="Base spirit" value={formatBaseSpiritLabel(request.specs.baseSpirit)} />
+              <DetailCell label="Target ABV" value={`${request.specs.targetAbv}%`} />
+              <DetailCell
+                label="Flavor profile"
+                value={request.specs.flavorProfile.join(", ") || "—"}
+              />
+              <DetailCell
+                label="Sweetener"
+                value={request.specs.sweetener?.replace(/_/g, " ") ?? "—"}
+              />
+              <DetailCell
+                label="Price point"
+                value={request.specs.targetPricePoint.replace(/_/g, " ")}
+              />
+              <DetailCell label="Target launch" value={request.specs.targetLaunchDate} />
+              <div className="sm:col-span-2">
+                <DetailCell label="Regulatory markets" value={request.specs.regulatoryMarkets.join(", ")} />
               </div>
               <div className="sm:col-span-2">
-                <span className="text-muted-foreground">Regulatory Markets</span>
-                <p className="font-medium">{request.specs.regulatoryMarkets.join(", ")}</p>
+                <DetailCell
+                  label="Packaging"
+                  value={`${request.specs.packaging.bottleSize} · ${request.specs.packaging.caseConfiguration}-bottle case · ${request.specs.packaging.labelStyle || "—"}`}
+                />
               </div>
-              <div className="sm:col-span-2">
-                <span className="text-muted-foreground">Packaging</span>
-                <p className="font-medium">
-                  {request.specs.packaging.bottleSize} · {request.specs.packaging.caseConfiguration}-bottle case ·{" "}
-                  {request.specs.packaging.labelStyle}
-                </p>
-              </div>
-              <div className="sm:col-span-2">
-                <span className="text-muted-foreground">Minimum Order</span>
-                <p className="font-medium">{request.specs.minimumOrderQuantity.toLocaleString()} bottles</p>
-              </div>
+              <DetailCell
+                label="Minimum order"
+                value={`${request.specs.minimumOrderQuantity.toLocaleString()} bottles`}
+              />
               {request.notes ? (
                 <div className="sm:col-span-2">
-                  <span className="text-muted-foreground">Notes</span>
-                  <p className="font-medium">{request.notes}</p>
+                  <DetailCell label="Notes" value={request.notes} />
                 </div>
               ) : null}
             </div>
-          </div>
+          </section>
 
-          <Separator />
-
-          {/* Manufacturer Proposal */}
-          {hasProposal ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Factory className="h-4 w-4 text-muted-foreground" />
-                <h4 className="font-display text-sm font-medium">Manufacturer Proposal</h4>
+          <section>
+            <div className="hq-sec-head mb-3.5">
+              <div className="hq-sec-title font-display text-[19px] font-medium tracking-[-0.01em]">
+                {t("Manufacturer proposal")}
               </div>
-              <div className="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950/20">
-                <div className="mb-3 flex items-center gap-2 text-sm font-medium text-green-800 dark:text-green-300">
-                  <CheckCircle className="h-4 w-4" />
+            </div>
+            {hasProposal ? (
+              <div className="hq-detail-panel border-[hsl(158_56%_36%/0.25)] bg-[hsl(158_56%_36%/0.06)]">
+                <div className="mb-3 flex items-center gap-2 text-[13px] font-medium text-[hsl(158_56%_32%)]">
+                  <CheckCircle className="size-4" strokeWidth={1.75} />
                   {request.manufacturerProposal?.feasible ? "Feasible — can produce" : "Not feasible"}
                 </div>
-                <div className="grid gap-3 text-sm sm:grid-cols-2">
-                  <div>
-                    <span className="text-muted-foreground">Batch Size</span>
-                    <p className="font-medium">
-                      {request.manufacturerProposal?.production.batchSize.toLocaleString()} bottles
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Min Batch</span>
-                    <p className="font-medium">
-                      {request.manufacturerProposal?.production.minimumBatchSize.toLocaleString()} bottles
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Fermentation</span>
-                    <p className="font-medium">{request.manufacturerProposal?.production.fermentationTime}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Sample Available</span>
-                    <p className="font-medium">{request.manufacturerProposal?.timeline.sampleAvailableDate}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Production Start</span>
-                    <p className="font-medium">{request.manufacturerProposal?.timeline.productionStartDate}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">First Delivery</span>
-                    <p className="font-medium">{request.manufacturerProposal?.timeline.firstDeliveryDate}</p>
-                  </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <DetailCell
+                    label="Batch size"
+                    value={`${request.manufacturerProposal?.production.batchSize.toLocaleString()} bottles`}
+                  />
+                  <DetailCell
+                    label="Min batch"
+                    value={`${request.manufacturerProposal?.production.minimumBatchSize.toLocaleString()} bottles`}
+                  />
+                  <DetailCell label="Fermentation" value={request.manufacturerProposal?.production.fermentationTime} />
+                  <DetailCell
+                    label="Sample available"
+                    value={request.manufacturerProposal?.timeline.sampleAvailableDate}
+                  />
+                  <DetailCell
+                    label="Production start"
+                    value={request.manufacturerProposal?.timeline.productionStartDate}
+                  />
+                  <DetailCell
+                    label="First delivery"
+                    value={request.manufacturerProposal?.timeline.firstDeliveryDate}
+                  />
                   <div className="sm:col-span-2">
-                    <span className="text-muted-foreground">Costing</span>
-                    <p className="font-medium">
-                      Production ${request.manufacturerProposal?.costs.perBottleProduction.toFixed(2)} +
-                      Packaging ${request.manufacturerProposal?.costs.perBottlePackaging.toFixed(2)} +
-                      Labeling ${request.manufacturerProposal?.costs.perBottleLabeling.toFixed(2)} ={" "}
-                      <strong>${request.manufacturerProposal?.costs.totalPerBottle.toFixed(2)}/bottle</strong>
-                      {request.manufacturerProposal?.costs.setupFee ? (
-                        <> · Setup fee ${request.manufacturerProposal.costs.setupFee.toLocaleString()}</>
-                      ) : null}
-                    </p>
+                    <DetailCell
+                      label="Costing"
+                      value={
+                        <>
+                          Production ${request.manufacturerProposal?.costs.perBottleProduction.toFixed(2)} + Packaging $
+                          {request.manufacturerProposal?.costs.perBottlePackaging.toFixed(2)} + Labeling $
+                          {request.manufacturerProposal?.costs.perBottleLabeling.toFixed(2)} ={" "}
+                          <strong>${request.manufacturerProposal?.costs.totalPerBottle.toFixed(2)}/bottle</strong>
+                          {request.manufacturerProposal?.costs.setupFee ? (
+                            <> · Setup ${request.manufacturerProposal.costs.setupFee.toLocaleString()}</>
+                          ) : null}
+                        </>
+                      }
+                    />
                   </div>
                   {request.manufacturerProposal?.technicalNotes ? (
                     <div className="sm:col-span-2">
-                      <span className="text-muted-foreground">Technical Notes</span>
-                      <p className="font-medium">{request.manufacturerProposal.technicalNotes}</p>
+                      <DetailCell label="Technical notes" value={request.manufacturerProposal.technicalNotes} />
                     </div>
                   ) : null}
                   {request.manufacturerProposal?.regulatoryNotes ? (
                     <div className="sm:col-span-2">
-                      <span className="text-muted-foreground">Regulatory Notes</span>
-                      <p className="font-medium">{request.manufacturerProposal.regulatoryNotes}</p>
+                      <DetailCell label="Regulatory notes" value={request.manufacturerProposal.regulatoryNotes} />
                     </div>
                   ) : null}
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Factory className="h-4 w-4 text-muted-foreground" />
-                <h4 className="font-display text-sm font-medium">Manufacturer Proposal</h4>
-                {request.requestedBy === "manufacturer" ? (
-                  <Badge variant="outline" className="text-[10px]">Manufacturer Initiated</Badge>
-                ) : null}
-              </div>
-              <p className="text-sm text-muted-foreground">
+            ) : (
+              <p className="text-[13px] text-muted-foreground">
                 {request.status === "draft"
                   ? "Submit this request to send it to the manufacturer for review."
                   : request.status === "submitted" || request.status === "under_review"
-                    ? `Awaiting proposal from ${request.assignedManufacturer}...`
+                    ? `Awaiting proposal from ${request.assignedManufacturer}…`
                     : request.requestedBy === "manufacturer"
                       ? `${request.assignedManufacturer} proposed this new SKU for your review.`
                       : "No proposal was submitted for this request."}
               </p>
-            </div>
-          )}
+            )}
+          </section>
 
-          {/* Linked PO or Create Product */}
           {request.productionPoId ? (
-            <>
-              <Separator />
-              <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
-                <Package className="h-5 w-5 text-muted-foreground" />
-                <div className="text-sm">
-                  <p className="font-medium">Production PO Created</p>
-                  <p className="text-muted-foreground">
-                    {request.productionPoId} · SKU will be generated on first shipment
-                  </p>
-                </div>
+            <div className="hq-detail-panel flex items-center gap-3">
+              <Package className="size-5 shrink-0 text-muted-foreground" strokeWidth={1.75} />
+              <div className="text-[13px]">
+                <p className="font-medium">Production PO created</p>
+                <p className="text-muted-foreground">
+                  {request.productionPoId} · SKU will be generated on first shipment
+                </p>
               </div>
-            </>
+            </div>
           ) : request.status === "approved" && request.resultingSku ? (
-            <>
-              <Separator />
-              <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-950/20">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <div className="text-sm">
-                  <p className="font-medium text-green-800 dark:text-green-300">Product Approved</p>
-                  <p className="text-green-700 dark:text-green-400">
+            <div className="hq-detail-panel border-[hsl(158_56%_36%/0.25)] bg-[hsl(158_56%_36%/0.06)]">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="size-5 shrink-0 text-[hsl(158_56%_32%)]" strokeWidth={1.75} />
+                <div className="text-[13px]">
+                  <p className="font-medium text-[hsl(158_56%_32%)]">Product approved</p>
+                  <p className="text-muted-foreground">
                     SKU {request.resultingSku} created. Create a production PO to begin manufacturing.
                   </p>
                 </div>
               </div>
-            </>
+            </div>
           ) : null}
         </div>
 
-        <DialogFooter className="flex-col gap-2 pt-4 sm:flex-row sm:justify-end">
+        <DialogFooter className="hq-appr-actions flex-col gap-2 border-t border-border/60 px-6 py-4 sm:flex-row sm:justify-end">
           {canSubmit ? (
-            <Button className="touch-manipulation" onClick={handleSubmit}>
-              Submit to Manufacturer
-            </Button>
+            <HqBtn variant="accent" size="sm" type="button" onClick={handleSubmit}>
+              Submit to manufacturer
+            </HqBtn>
           ) : null}
           {canDecide ? (
             <>
-              <Button variant="outline" className="touch-manipulation" onClick={handleReject}>
-                <XCircle className="mr-2 h-4 w-4" />
+              <HqBtn variant="outline" size="sm" type="button" onClick={handleReject}>
+                <XCircle className="size-3.5" strokeWidth={1.75} />
                 Reject
-              </Button>
-              <Button className="touch-manipulation" onClick={handleApprove}>
-                <CheckCircle className="mr-2 h-4 w-4" />
+              </HqBtn>
+              <HqBtn variant="green" size="sm" type="button" onClick={handleApprove}>
+                <CheckCircle className="size-3.5" strokeWidth={1.75} />
                 Approve
-              </Button>
+              </HqBtn>
             </>
           ) : null}
           {canCreatePo ? (
-            <Button className="touch-manipulation" onClick={() => setPoDialogOpen(true)}>
-              <FilePlus className="mr-2 h-4 w-4" />
-              Create Production PO
-            </Button>
+            <HqBtn variant="accent" size="sm" type="button" onClick={handleCreatePoNavigate}>
+              Create production PO
+            </HqBtn>
           ) : null}
           {!canSubmit && !canDecide && !canCreatePo ? (
-            <Button type="button" variant="outline" className="touch-manipulation" onClick={() => onOpenChange(false)}>
+            <HqBtn variant="outline" size="sm" type="button" onClick={() => onOpenChange(false)}>
               Close
-            </Button>
+            </HqBtn>
           ) : null}
         </DialogFooter>
       </DialogContent>
-
-      <NewPurchaseOrderDialog
-        open={poDialogOpen}
-        onOpenChange={setPoDialogOpen}
-        existing={purchaseOrders}
-        onCreate={handleCreatePo}
-        prefill={{ sku: request.resultingSku, quantity: String(proposalQty) }}
-        variant="production"
-        userRole={user?.role ?? "brand_operator"}
-      />
     </Dialog>
   );
 }

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { DistributorPage, DistributorPageHeader } from "@/components/distributor/DistributorUi";
+import { AccountSetupInviteDialog } from "@/components/AccountSetupInviteDialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +41,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 export default function DistributorCrmPage() {
   const { t } = useLanguage();
   const { user } = useAuth();
-  const { data, refreshTeamMembers } = useAppData();
+  const { data, refreshTeamMembers, updateData } = useAppData();
   const teamMembers = useMemo(
     () =>
       user?.id
@@ -50,6 +51,7 @@ export default function DistributorCrmPage() {
   );
 
   const [addOpen, setAddOpen] = useState(false);
+  const [retailInviteOpen, setRetailInviteOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [saving, setSaving] = useState(false);
@@ -81,6 +83,31 @@ export default function DistributorCrmPage() {
       return (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
     });
   }, [teamMembers]);
+
+  const repNameByPortalUserId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const rep of salesReps) {
+      if (rep.portalUserId) {
+        map.set(String(rep.portalUserId), rep.displayName);
+      }
+    }
+    return map;
+  }, [salesReps]);
+
+  const wholesalerLabel = useMemo(() => {
+    const distAccount = data.accounts.find(
+      (a) =>
+        a.type === "distributor" &&
+        user?.id &&
+        String(a.managedByDistributorUserId ?? "") === String(user.id),
+    );
+    return (
+      distAccount?.tradingName ||
+      data.operationalSettings?.companyName?.trim() ||
+      user?.displayName ||
+      "Wholesaler"
+    );
+  }, [data.accounts, data.operationalSettings?.companyName, user?.displayName, user?.id]);
 
   const addSalesRep = async () => {
     const n = name.trim();
@@ -118,7 +145,9 @@ export default function DistributorCrmPage() {
     try {
       await approveRetailCrmContact(m.id);
       await refreshTeamMembers();
-      toast.success("Retail contact approved", { description: m.email });
+      toast.success("Retail store approved", {
+        description: `${m.email} — account linked to assigned rep and portal invite sent.`,
+      });
     } catch (e) {
       toast.error("Approval failed", {
         description: e instanceof Error ? e.message : "Try again.",
@@ -269,8 +298,43 @@ export default function DistributorCrmPage() {
   return (
     <DistributorPage className="space-y-6">
       <DistributorPageHeader
-        title="Sales reps"
-        description="Territory reps, account assignments, and pending retail onboarding from the field."
+        title="Sales reps & retail"
+        description="Invite retail stores, manage territory reps, and approve field submissions before portal access."
+      />
+
+      <Card>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="font-display text-lg">{t("Retail stores")}</CardTitle>
+            <CardDescription>
+              {t(
+                "Create a prospect account and email the store a secure application link. Assign a sales rep so the store appears on their territory.",
+              )}
+            </CardDescription>
+          </div>
+          <Button type="button" className="touch-manipulation" onClick={() => setRetailInviteOpen(true)}>
+            {t("Invite retail store")}
+          </Button>
+        </CardHeader>
+      </Card>
+
+      <AccountSetupInviteDialog
+        open={retailInviteOpen}
+        onOpenChange={setRetailInviteOpen}
+        variant="distributor"
+        wholesalerLabel={wholesalerLabel}
+        onAccountCreated={(account) => {
+          updateData((d) => {
+            const idx = d.accounts.findIndex((a) => String(a.id) === String(account.id));
+            if (idx >= 0) {
+              const next = [...d.accounts];
+              next[idx] = { ...next[idx], ...account };
+              return { ...d, accounts: next };
+            }
+            return { ...d, accounts: [...d.accounts, account] };
+          });
+          void refreshTeamMembers();
+        }}
       />
 
       <Card>
@@ -287,11 +351,19 @@ export default function DistributorCrmPage() {
             <p className="text-sm text-muted-foreground">{t("No pending retail CRM requests.")}</p>
           ) : (
             <ul className="divide-y rounded-lg border border-border/80">
-              {pendingRetail.map((m) => (
+              {pendingRetail.map((m) => {
+                const repLabel =
+                  (m.crmRequestedByUserId &&
+                    repNameByPortalUserId.get(String(m.crmRequestedByUserId))) ||
+                  t("Unassigned rep");
+                return (
                 <li key={m.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="font-medium">{m.displayName}</p>
+                    <p className="font-medium">{m.retailTradingName || m.displayName}</p>
                     <p className="text-sm text-muted-foreground">{m.email}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t("Assigned rep")}: <span className="font-medium text-foreground">{repLabel}</span>
+                    </p>
                   </div>
                   <Button
                     type="button"
@@ -300,10 +372,11 @@ export default function DistributorCrmPage() {
                     disabled={approvingId === m.id}
                     onClick={() => void approve(m)}
                   >
-                    {approvingId === m.id ? t("Approving…") : t("Approve")}
+                    {approvingId === m.id ? t("Approving…") : t("Approve & send invite")}
                   </Button>
                 </li>
-              ))}
+              );
+              })}
             </ul>
           )}
         </CardContent>

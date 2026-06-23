@@ -84,6 +84,10 @@ export function accountsForSalesOrderVariant(accounts: Account[], variant: NewSa
     );
     return b2b.length > 0 ? b2b : accounts;
   }
+  if (variant === "brand") {
+    const wholesalers = accounts.filter((a) => a.type === "distributor" && !a.distributorOrgId);
+    return wholesalers.length > 0 ? wholesalers : accounts.filter((a) => a.type === "distributor");
+  }
   return accounts;
 }
 

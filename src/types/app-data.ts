@@ -68,6 +68,11 @@ export type TeamMember = {
   retailTradingName?: string;
   /** Owning distributor portal user id (`users.id`). */
   managedByUserId?: string;
+  /** Platform login id for this CRM email (`users.id`). */
+  portalUserId?: string;
+  /** HQ merged row: source wholesaler database */
+  distributorOrgId?: string;
+  distributorOrgName?: string;
 };
 
 /** Brand HQ warehouse / depot locations for inventory and transfers. */

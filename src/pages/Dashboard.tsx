@@ -82,6 +82,8 @@ import {
   type MarketPanelRow,
 } from "@/lib/brand-operator-metrics";
 import { resolveAlertHref } from "@/lib/alert-links";
+import HqOperatorDashboard from "@/components/hq/HqOperatorDashboard";
+import { isHqOperatorRole, scopeAppDataForHqOperator } from "@/lib/hq-order-scope";
 
 const MARKET_FILTERS = [
   { id: "all", label: "All markets" },
@@ -196,6 +198,11 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const canApproveDraftQueue = user?.role === "brand_operator";
 
+  const commandData = useMemo(
+    () => (isHqOperatorRole(user?.role) ? scopeAppDataForHqOperator(data) : data),
+    [data, user?.role],
+  );
+
   const [marketFilter, setMarketFilter] = useState<(typeof MARKET_FILTERS)[number]["id"]>("all");
   const [rangeDays, setRangeDays] = useState<7 | 30 | 90>(30);
   const [velocityMode, setVelocityMode] = useState<"trend" | "market" | "account" | "product">("trend");
@@ -203,16 +210,16 @@ export default function Dashboard() {
   const [regionFilter, setRegionFilter] = useState<(typeof REGION_TABS)[number]["id"]>("all");
 
   const filteredOrders = useMemo(
-    () => data.salesOrders.filter((o) => orderInMarketFilter(o.market, marketFilter)),
-    [data.salesOrders, marketFilter],
+    () => commandData.salesOrders.filter((o) => orderInMarketFilter(o.market, marketFilter)),
+    [commandData.salesOrders, marketFilter],
   );
 
-  const inventorySummary = useMemo(() => computeInventorySummary(data.inventory, data.purchaseOrders), [data.inventory, data.purchaseOrders]);
-  const marketRows = useMemo(
-    () => computeMarketPanelRows(data, rangeDays),
-    [data, rangeDays],
+  const inventorySummary = useMemo(
+    () => computeInventorySummary(commandData.inventory, commandData.purchaseOrders),
+    [commandData.inventory, commandData.purchaseOrders],
   );
-  const pendingItems = useMemo(() => buildPendingApprovalItems(data), [data]);
+  const marketRows = useMemo(() => computeMarketPanelRows(commandData, rangeDays), [commandData, rangeDays]);
+  const pendingItems = useMemo(() => buildPendingApprovalItems(commandData), [commandData]);
   const pendingFiltered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return pendingItems;
@@ -224,30 +231,30 @@ export default function Dashboard() {
     );
   }, [pendingItems, search]);
 
-  const orderTabCounts = useMemo(() => computeOrderTabCounts(data.salesOrders), [data.salesOrders]);
+  const orderTabCounts = useMemo(() => computeOrderTabCounts(commandData.salesOrders), [commandData.salesOrders]);
 
   const sellThrough = useMemo(
-    () => computeDepletionSellThrough(data.depletionReports ?? [], 30),
-    [data.depletionReports],
+    () => computeDepletionSellThrough(commandData.depletionReports ?? [], 30),
+    [commandData.depletionReports],
   );
   const activeAccounts = useMemo(
-    () => data.accounts.filter((a) => a.status === "active").length,
-    [data.accounts],
+    () => commandData.accounts.filter((a) => a.status === "active").length,
+    [commandData.accounts],
   );
   const lowStockMarkets = useMemo(() => countLowStockMarkets(marketRows), [marketRows]);
-  const shipmentAlerts = useMemo(() => countShipmentEtaAlerts(data.shipments), [data.shipments]);
-  const hubAlerts = useMemo(() => deriveAlerts(data), [data]);
+  const shipmentAlerts = useMemo(() => countShipmentEtaAlerts(commandData.shipments), [commandData.shipments]);
+  const hubAlerts = useMemo(() => deriveAlerts(commandData), [commandData]);
   /** Same derivation rules as Alerts hub (`deriveAlerts` → unified queue). */
   const decisionAlerts = useMemo(
-    () => mapDerivedAlertsToDecisionAlerts(deriveAlerts(data)),
-    [data],
+    () => mapDerivedAlertsToDecisionAlerts(deriveAlerts(commandData)),
+    [commandData],
   );
-  const replenishment = useMemo(() => computeHQReplenishmentSuggestions(data), [data]);
+  const replenishment = useMemo(() => computeHQReplenishmentSuggestions(commandData), [commandData]);
   const topAccounts = useMemo(
-    () => computeBrandOperatorTopAccounts(data.salesOrders, data.accounts),
-    [data.salesOrders, data.accounts],
+    () => computeBrandOperatorTopAccounts(commandData.salesOrders, commandData.accounts),
+    [commandData.salesOrders, commandData.accounts],
   );
-  const mfgStatus = useMemo(() => computeManufacturerDashboardStatus(data), [data]);
+  const mfgStatus = useMemo(() => computeManufacturerDashboardStatus(commandData), [commandData]);
 
   const weeklySeries = useMemo(
     () => computeWeeklyVelocitySeries(filteredOrders, 10),
@@ -272,18 +279,18 @@ export default function Dashboard() {
   );
 
   /* ── Global Markets widget data ── */
-  const revMTD = useMemo(() => revenueInWindow(data.salesOrders, 30), [data.salesOrders]);
+  const revMTD = useMemo(() => revenueInWindow(commandData.salesOrders, 30), [commandData.salesOrders]);
   const revPrior30 = useMemo(() => {
     const now = new Date();
     const mid = new Date(now.getTime() - 30 * 86400000);
     const start = new Date(mid.getTime() - 30 * 86400000);
-    return data.salesOrders
+    return commandData.salesOrders
       .filter((o) => {
         const t = Date.parse(o.orderDate);
         return !Number.isNaN(t) && t >= start.getTime() && t < mid.getTime() && o.status !== "cancelled" && o.status !== "draft";
       })
       .reduce((sum, o) => sum + o.price, 0);
-  }, [data.salesOrders]);
+  }, [commandData.salesOrders]);
   const revTrend = revPrior30 > 0 ? ((revMTD - revPrior30) / revPrior30) * 100 : 0;
 
   const avgSellThrough = sellThrough;
@@ -296,7 +303,7 @@ export default function Dashboard() {
 
   const regionChartData = useMemo(() => {
     const byMarket: Record<string, number> = {};
-    for (const o of data.salesOrders) {
+    for (const o of commandData.salesOrders) {
       if (o.status === "cancelled" || o.status === "draft") continue;
       const t = Date.parse(o.orderDate);
       const cutoff = Date.now() - 365 * 86400000;
@@ -307,11 +314,11 @@ export default function Dashboard() {
     return Object.entries(byMarket)
       .map(([market, revenue]) => ({ market, revenue: Math.round(revenue / 1000) }))
       .sort((a, b) => b.revenue - a.revenue);
-  }, [data.salesOrders]);
+  }, [commandData.salesOrders]);
 
   const regionMixData = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const o of data.salesOrders) {
+    for (const o of commandData.salesOrders) {
       if (o.status === "cancelled" || o.status === "draft") continue;
       const t = Date.parse(o.orderDate);
       const cutoff = Date.now() - 30 * 86400000;
@@ -324,11 +331,11 @@ export default function Dashboard() {
     return Object.entries(map)
       .map(([name, value], i) => ({ name, value, color: COLORS[i % COLORS.length] }))
       .sort((a, b) => b.value - a.value);
-  }, [data.salesOrders]);
+  }, [commandData.salesOrders]);
 
   const top5Markets = useMemo(() => {
     const map: Record<string, { name: string; region: string; revMTD: number; revTrend: number; sellThrough: number; coverDays: number | null; status: string }> = {};
-    for (const o of data.salesOrders) {
+    for (const o of commandData.salesOrders) {
       if (o.status === "cancelled" || o.status === "draft") continue;
       const t = Date.parse(o.orderDate);
       const cutoff = Date.now() - 30 * 86400000;
@@ -357,17 +364,17 @@ export default function Dashboard() {
       .filter((m) => (regionFilter === "all" ? true : m.region.toLowerCase() === regionFilter))
       .sort((a, b) => b.revMTD - a.revMTD)
       .slice(0, 5);
-  }, [data.salesOrders, marketRows, regionFilter]);
+  }, [commandData.salesOrders, marketRows, regionFilter]);
 
   const onApprove = useCallback(
     (orderId: string) => {
-      const o = data.salesOrders.find((x) => x.id === orderId);
+      const o = commandData.salesOrders.find((x) => x.id === orderId);
       if (
         o &&
-        isRetailChannelOrder(o, data.accounts) &&
+        isRetailChannelOrder(o, commandData.accounts) &&
         o.lines &&
         o.lines.length > 0 &&
-        effectiveRepApprovalStatus(o, data.accounts) === "pending"
+        effectiveRepApprovalStatus(o, commandData.accounts) === "pending"
       ) {
         patchSalesOrder(orderId, { repApprovalStatus: "approved" });
         toast.success("Rep approval recorded", { description: `${orderId} — capture payment in Orders, then wholesaler ships.` });
@@ -376,7 +383,7 @@ export default function Dashboard() {
       patchSalesOrder(orderId, { status: "confirmed" });
       toast.success("Order approved", { description: `${orderId} is confirmed for fulfillment.` });
     },
-    [patchSalesOrder, data.salesOrders, data.accounts],
+    [patchSalesOrder, commandData.salesOrders, commandData.accounts],
   );
 
   const onReject = useCallback(
@@ -391,6 +398,10 @@ export default function Dashboard() {
     () => Math.min(99, hubAlerts.filter((a) => a.severity === "high").length + shipmentAlerts),
     [hubAlerts, shipmentAlerts],
   );
+
+  if (isHqOperatorRole(user?.role)) {
+    return <HqOperatorDashboard />;
+  }
 
   if (loading) {
     return <DashboardSkeleton />;
@@ -899,7 +910,7 @@ export default function Dashboard() {
               <div>
                 <h2 className="font-display text-lg font-semibold tracking-tight">Global markets</h2>
                 <p className="text-xs text-muted-foreground">
-                  Sell-through, stock cover &amp; in-flight logistics · {countActiveMarkets(data.salesOrders, 90)} active markets
+                  Sell-through, stock cover &amp; in-flight logistics · {countActiveMarkets(commandData.salesOrders, 90)} active markets
                 </p>
               </div>
               <Link
@@ -1377,7 +1388,7 @@ export default function Dashboard() {
       </div>
 
       <p className="text-center text-[11px] text-muted-foreground">
-        Active markets (90d): {countActiveMarkets(data.salesOrders, 90)} · Data matches inventory, orders, and shipments
+        Active markets (90d): {countActiveMarkets(commandData.salesOrders, 90)} · Data matches inventory, orders, and shipments
         across roles.
       </p>
     </div>

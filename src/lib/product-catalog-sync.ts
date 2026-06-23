@@ -24,7 +24,8 @@ export function mapApiRowToProduct(row: Record<string, unknown>): Product {
     bottleSizeMl: Number(meta.bottleSizeMl ?? 750),
     abv: Number(meta.abv ?? 25),
     wholesaleCasePrice: Number(meta.wholesaleCasePrice ?? meta.wholesalePriceCase ?? 0),
-    retailPriceCase: Number(meta.retailPriceCase ?? 0),
+    msrpCasePrice: Number(meta.msrpCasePrice ?? meta.retailPriceCase ?? 0),
+    manufacturerCasePrice: Number(meta.manufacturerCasePrice ?? 0),
     launchDate: meta.launchDate != null ? String(meta.launchDate) : undefined,
     status: (meta.status as Product["status"]) || "active",
     imageUrl:

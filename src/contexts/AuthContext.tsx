@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL } from "@/data/team-roster";
+import { isHqOperatorRole } from "@/lib/hq-order-scope";
 
 // Use relative URL in production (same origin), or fallback to localhost for dev
 const API_URL = import.meta.env.VITE_API_URL || "";
@@ -424,13 +425,12 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
     return allowed;
   }
 
-  // HQ-only pages: incentives and product development — only brand_operator and operations allowed
+  // HQ-only pages: incentives and product development — HQ operator roles only
   const hqOnlyPaths = ["/incentives", "/product-development"];
   const isHqOnly = hqOnlyPaths.some(base => pathMatches(p, base));
 
   if (isHqOnly) {
-    // Explicit allow-only: brand_operator and operations roles
-    if (role !== "brand_operator" && role !== "operations") {
+    if (!isHqOperatorRole(role)) {
       return false;
     }
   }

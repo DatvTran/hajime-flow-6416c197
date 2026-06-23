@@ -174,6 +174,8 @@ export const ROLE_PERMISSIONS = {
     Permission.PO_READ,
     Permission.FINANCIALS_READ,
     Permission.REPORTS_READ,
+    Permission.INCENTIVES_READ,
+    Permission.INCENTIVES_WRITE,
   ],
 
   [Role.RETAIL]: [

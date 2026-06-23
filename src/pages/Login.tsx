@@ -54,6 +54,18 @@ function authRoleToTeamRole(r: HajimeRole): TeamMemberPortalRole | null {
   return null;
 }
 
+/** Brand Operator tile accepts HQ admin roles returned by the API. */
+function portalRoleMatchesLogin(selected: HajimeRole, signedInRole: HajimeRole): boolean {
+  const expected = authRoleToTeamRole(selected);
+  if (!expected) {
+    if (selected === "brand_operator") {
+      return signedInRole === "brand_operator" || signedInRole === "founder_admin";
+    }
+    return true;
+  }
+  return signedInRole === expected;
+}
+
 export default function Login() {
   const { user, signIn, signOut, isLoading, error, clearError } = useAuth();
   const navigate = useNavigate();
@@ -137,11 +149,13 @@ export default function Login() {
     }
     try {
       const signedIn = await signIn(email.trim(), password.trim(), role === "retail" ? { retailTradingName: retailAccount } : undefined);
-      const portalRole = authRoleToTeamRole(role);
-      if (portalRole && signedIn.role !== portalRole) {
+      if (!portalRoleMatchesLogin(role, signedIn.role)) {
+        const portalRole = authRoleToTeamRole(role);
         await signOut();
         setLocalError(
-          `This account is registered as ${signedIn.role.replace(/_/g, " ")}, not ${portalRole.replace(/_/g, " ")}. Pick the matching role tile or use the demo email for this portal.`,
+          portalRole
+            ? `This account is registered as ${signedIn.role.replace(/_/g, " ")}, not ${portalRole.replace(/_/g, " ")}. Pick the matching role tile or use the demo email for this portal.`
+            : `This account cannot open the ${role.replace(/_/g, " ")} portal.`,
         );
         return;
       }
