@@ -229,7 +229,9 @@ body{background:hsl(var(--background));color:hsl(var(--foreground));font-family:
     <div class="navitem active" data-nav="dashboard"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Dashboard</div>
     <div class="navitem" data-nav="production"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M10 2v7.31M14 9.3V2M8.5 2h7M14 9.3a6.5 6.5 0 1 1-4 0M5.58 16.5h12.85"/></svg>Production requests<span class="nb nb-amber">2</span></div>
     <div class="navitem" data-nav="replenishment"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>Replenishment orders<span class="nb nb-red" id="replen-nav-badge">3</span></div>
-    <div class="navitem" data-nav="orders"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>All orders</div>
+    <div class="navitem" data-nav="orders"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Distributor
+ orders</div>
+    <div class="navitem" data-nav="distributor-sales"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>Distributor sales</div>
     <div class="navitem" data-nav="markets"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Markets & allocation</div>
   </nav>
   <div class="side-div"></div>
@@ -237,8 +239,6 @@ body{background:hsl(var(--background));color:hsl(var(--foreground));font-family:
     <div class="nav-label">Network</div>
     <div class="navitem" data-nav="manufacturers"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M10 2v7.31M14 9.3V2M8.5 2h7M14 9.3a6.5 6.5 0 1 1-4 0M5.58 16.5h12.85"/></svg>Manufacturers<span class="nb nb-amber">2</span></div>
     <div class="navitem" data-nav="distributors"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Distributors</div>
-    <div class="navitem" data-nav="reps"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Sales reps</div>
-    <div class="navitem" data-nav="accounts"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Retail accounts<span class="nb nb-amber">2</span></div>
   </nav>
   <div class="side-div"></div>
   <nav class="nav-section" style="padding-top:4px">
@@ -266,10 +266,10 @@ body{background:hsl(var(--background));color:hsl(var(--foreground));font-family:
 </main>
 </div>
 <script>
-const LABELS={dashboard:'Dashboard',production:'Production requests',replenishment:'Replenishment orders',orders:'All orders',markets:'Markets & allocation',manufacturers:'Manufacturers',distributors:'Distributors',reps:'Sales reps',accounts:'Retail accounts',programs:'Incentive programs',catalog:'Product catalog',analytics:'Analytics',settings:'Settings'};
+const LABELS={dashboard:'Dashboard',production:'Production requests',replenishment:'Replenishment orders',orders:'Distributor orders','order-detail':'Order','distributor-sales':'Distributor sales','dist-detail':'Distributor','programs':'Incentive programs','program-edit':'Edit program','payouts':'Payout schedule','add-distributor':'Add distributor','mfr-detail':'Manufacturer','new-production':'New production request','add-sku':'Add SKU','sku-detail':'Edit SKU',markets:'Markets & allocation',manufacturers:'Manufacturers',distributors:'Distributors',programs:'Incentive programs',catalog:'Product catalog',analytics:'Analytics',settings:'Settings'};
 function nav(id){
   document.querySelectorAll('[data-nav]').forEach(el=>el.classList.toggle('active',el.dataset.nav===id));
-  document.getElementById('page-title').textContent=LABELS[id]||id;
+  document.getElementById('page-title').textContent=(id==='dist-detail'?DISTS[currentDistIdx].name:id==='mfr-detail'?MFRS[currentMfrIdx].name:id==='distributor-sales'?'Distributor sales':LABELS[id])||id;
   const pg=document.getElementById('pg');
   pg.innerHTML=(PAGES[id]||PAGES.dashboard)();
   pg.scrollTop=0;
@@ -311,15 +311,17 @@ const PRODUCTION=[
 ];
 const srcChip={rep:'src-rep',retail:'src-retail',dist:'src-dist',kura:'src-kura'};
 
+/* Distributor
+ orders: distributors order pallets from HQ (HQ in turn produces via kura) */
 const ORDERS=[
-  {po:'PO-2026-0421',acct:'The Drake Hotel',sku:'HJM-FP-750',qty:100,market:'Chicago',eta:'—',st:'amber',sl:'pending'},
-  {po:'PO-2026-0418',acct:'The Drake Hotel',sku:'HJM-FP-750',qty:100,market:'Chicago',eta:'22 May',st:'blue',sl:'in-transit'},
-  {po:'PO-2026-0417',acct:'Quattro Mani',sku:'HJM-JN-720',qty:50,market:'Milan',eta:'9 Apr',st:'green',sl:'delivered'},
-  {po:'PO-2026-0416',acct:'Bar Hemingway',sku:'HJM-FP-750',qty:40,market:'Paris',eta:'2 Apr',st:'green',sl:'delivered'},
-  {po:'PO-2026-0415',acct:'Kioi Sakaba',sku:'HJM-JN-720',qty:120,market:'Tokyo',eta:'—',st:'amber',sl:'pending'},
-  {po:'PO-2026-0414',acct:'The Aviary',sku:'HJM-FP-750',qty:24,market:'NYC',eta:'8 Apr',st:'green',sl:'delivered'},
-  {po:'PO-2026-0412',acct:'Katana Kitten',sku:'HJM-FP-750',qty:24,market:'NYC',eta:'3 Apr',st:'green',sl:'delivered'},
-  {po:'PO-2026-0408',acct:'Gramercy Tavern',sku:'EU-FP-750',qty:24,market:'NYC',eta:'13 May',st:'green',sl:'delivered'},
+  {po:'RPL-2026-0062',dist:'Empire Wines',sku:'HJM-FP-750',qty:224,market:'NYC',eta:'—',st:'amber',sl:'pending'},
+  {po:'RPL-2026-0061',dist:'Midwest Spirits',sku:'HJM-FP-750',qty:480,market:'Chicago',eta:'4 Jun',st:'amber',sl:'pending'},
+  {po:'RPL-2026-0060',dist:'Empire Wines',sku:'HJM-FP-750 +1',qty:420,market:'NYC',eta:'1 Jun',st:'blue',sl:'in-transit'},
+  {po:'RPL-2026-0059',dist:'Kanto Beverage',sku:'HJM-RY-500',qty:112,market:'Tokyo',eta:'—',st:'red',sl:'on hold'},
+  {po:'RPL-2026-0058',dist:'Empire Wines',sku:'HJM-JN-720',qty:336,market:'NYC',eta:'24 May',st:'green',sl:'delivered'},
+  {po:'RPL-2026-0057',dist:'Cave Lumière',sku:'HJM-FP-750',qty:168,market:'Paris',eta:'21 May',st:'green',sl:'delivered'},
+  {po:'RPL-2026-0056',dist:'Vino Nord',sku:'EU-FP-750',qty:140,market:'Milan',eta:'19 May',st:'green',sl:'delivered'},
+  {po:'RPL-2026-0055',dist:'Midwest Spirits',sku:'HJM-JN-720',qty:280,market:'Chicago',eta:'12 May',st:'green',sl:'delivered'},
 ];
 
 const MARKETS=[
@@ -397,17 +399,17 @@ PAGES.dashboard=()=>`
         <div class="flow-count" style="background:hsl(158 56%36%/.1);color:hsl(158 56%30%)">3,840 cs stock</div>
       </div>
       <div class="flow-arrow">${svgi(IC.arrow,22)}</div>
-      <div class="flow-node" onclick="nav('reps')">
+      <div class="flow-node" onclick="nav('distributor-sales')">
         <div class="flow-icon" style="color:hsl(215 72%42%)">${svgi(IC.users,24)}</div>
         <div class="flow-name">Sales reps</div>
-        <div class="flow-meta">12 reps · 4 territories</div>
+        <div class="flow-meta">via distributors · read-only</div>
         <div class="flow-count" style="background:hsl(215 72%50%/.1);color:hsl(215 72%42%)">$94K pipeline</div>
       </div>
       <div class="flow-arrow">${svgi(IC.arrow,22)}</div>
-      <div class="flow-node" onclick="nav('accounts')">
+      <div class="flow-node" onclick="nav('distributor-sales')">
         <div class="flow-icon" style="color:hsl(40 88%36%)">${svgi(IC.store,24)}</div>
         <div class="flow-name">Retail accounts</div>
-        <div class="flow-meta">83 active · 2 onboarding</div>
+        <div class="flow-meta">via distributors · read-only</div>
         <div class="flow-count" style="background:hsl(40 88%42%/.1);color:hsl(40 88%34%)">$486K Q2</div>
       </div>
     </div>
@@ -540,6 +542,60 @@ PAGES.replenishment=()=>`
   </div>
 </div>`;
 
+/* ── NEW PRODUCTION REQUEST ── */
+PAGES['new-production']=()=>`
+<div class="pw enter">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <button class="btn btn-outline btn-sm" onclick="nav('production')">← Production requests</button>
+    <span style="font-size:12px;color:hsl(var(--muted-foreground))">/ New request</span>
+  </div>
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">New production request</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Commission a batch from a kura partner. They confirm spec and schedule it into their brew calendar.</p></div></div>
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Product & quantity</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group"><label>SKU to produce</label><select><option>Florin Peaks 750ml</option><option>Junmai Shiro 720ml</option><option>Ryusui Reserve 500ml</option><option>First Press 750ml</option><option>Shirogane Nigori 720ml</option></select></div>
+          <div class="form-group"><label>Quantity (cases)</label><input type="number" min="1" value="400"></div>
+          <div class="form-group"><label>Polish ratio (seimaibuai)</label><select><option>50% — Daiginjo</option><option>60% — Ginjo</option><option>35% — premium genshu</option><option>70% — Junmai</option></select></div>
+          <div class="form-group"><label>Lot assignment</label><input type="text" placeholder="e.g. Lot 08"></div>
+        </div>
+      </div>
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Assignment & timing</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group"><label>Assign to kura</label><select><option>Kuramoto Brewing — Preferred · 2,640 cs/Q</option><option>Echigo Kura — Standard · 1,800 cs/Q</option><option>Auto-assign by capacity</option></select></div>
+          <div class="form-group"><label>Start by</label><input type="date" value="2026-06-08"></div>
+          <div class="form-group"><label>Target completion</label><input type="date" value="2026-07-08"></div>
+          <div class="form-group"><label>Priority</label><select><option>Standard</option><option>High — rebuild allocation</option><option>Urgent — below cover floor</option></select></div>
+        </div>
+        <div class="form-group" style="margin-bottom:0"><label>Allocate finished goods to</label><select><option>General finished goods pool</option><option>Chicago — Midwest Spirits</option><option>NYC — Empire Wines</option><option>Tokyo — Kanto Beverage</option><option>Split across markets</option></select></div>
+      </div>
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Notes for the kura</div>
+        <div class="form-group" style="margin-bottom:0"><textarea rows="3" placeholder="Spec details, quality holds, tasting requirements…"></textarea></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card" style="padding:20px;position:sticky;top:20px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid hsl(var(--border)/.5)">Request summary</div>
+        ${[['SKU','Florin Peaks 750ml'],['Quantity','400 cases'],['Est. volume','~3,600 L'],['Rice needed','~4.8 t Yamada Nishiki'],['Brew time','~30 days'],['Kura','Kuramoto Brewing']].map((s,i)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;${i<5?'border-bottom:1px solid hsl(var(--border)/.3)':''};font-size:13px"><span style="color:hsl(var(--muted-foreground))">${s[0]}</span><span style="font-weight:500">${s[1]}</span></div>`).join('')}
+        <button class="btn btn-accent" style="width:100%;height:42px;margin-top:16px" onclick="document.getElementById('np-done').style.display='flex'">Send request to kura</button>
+        <button class="btn btn-outline" style="width:100%;margin-top:8px" onclick="nav('production')">Cancel</button>
+      </div>
+      <div style="background:hsl(280 40%50%/.06);border:1px solid hsl(280 40%50%/.2);border-radius:14px;padding:16px;font-size:12px;color:hsl(280 30%42%);line-height:1.6"><strong style="color:hsl(280 40%44%)">Next:</strong> the kura confirms spec and schedules the batch. You'll see it appear under that kura's active batches once production begins.</div>
+    </div>
+  </div>
+  <div id="np-done" style="display:none;position:fixed;inset:0;background:hsl(24 12%8%/.5);backdrop-filter:blur(4px);z-index:100;align-items:center;justify-content:center">
+    <div style="background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:18px;padding:32px;max-width:380px;text-align:center;box-shadow:var(--shadow-float)">
+      <div style="width:56px;height:56px;border-radius:999px;background:hsl(158 56%36%/.12);color:hsl(158 56%32%);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">${svgi(IC.check,28)}</div>
+      <div style="font-family:var(--font-display);font-size:20px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px">Request sent</div>
+      <div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.6;margin-bottom:20px">PR-2026-0143 sent to Kuramoto Brewing. You'll be notified once they confirm the spec and schedule the batch.</div>
+      <button class="btn btn-accent btn-sm" onclick="document.getElementById('np-done').style.display='none';nav('production')">Back to production</button>
+    </div>
+  </div>
+</div>`;
+
 /* ── PRODUCTION REQUESTS (HQ ↔ kura) ── */
 PAGES.production=()=>`
 <div class="pw enter">
@@ -554,7 +610,7 @@ PAGES.production=()=>`
     <button class="filter-btn">Echigo Kura</button>
   </div>
   ${PRODUCTION.map((a,i)=>`
-  <div class="approval-card${a.urgent?' urgent':''}">
+  <div class="approval-card${a.urgent?' urgent':''}" id="pr-${a.po}">
     <div class="approval-head" onclick="this.nextElementSibling.classList.toggle('open')">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span class="src-chip src-kura">${a.srcLabel}</span>${a.urgent?pill('red','urgent'):''}</div>
@@ -563,8 +619,8 @@ PAGES.production=()=>`
       </div>
       <div style="text-align:right;flex-shrink:0;margin-right:8px"><div style="font-family:var(--font-display);font-size:20px;font-weight:600">${a.value}</div><div style="font-size:10px;color:hsl(var(--muted-foreground))">batch value</div></div>
       <div style="display:flex;gap:8px;flex-shrink:0">
-        <button class="btn btn-red btn-sm" onclick="event.stopPropagation()">Decline</button>
-        <button class="btn btn-green btn-sm" onclick="event.stopPropagation()">Approve</button>
+        <button class="btn btn-red btn-sm" onclick="event.stopPropagation();declineProd('${a.po}')">Decline</button>
+        <button class="btn btn-green btn-sm" onclick="event.stopPropagation();approveProd('${a.po}')">Approve</button>
       </div>
     </div>
     <div class="approval-detail${i===0?' open':''}">
@@ -574,18 +630,41 @@ PAGES.production=()=>`
       </div>
       <div style="padding:12px 14px;background:hsl(var(--card));border-radius:10px;border:1px solid hsl(var(--border)/.5);font-size:13px;margin-bottom:14px"><strong style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground))">Context</strong><div style="margin-top:6px;color:hsl(var(--foreground))">${a.note}</div></div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-green btn-sm">${svgi(IC.check,13)} Approve & confirm spec</button>
-        <button class="btn btn-outline btn-sm">Request change</button>
-        <button class="btn btn-red btn-sm" style="margin-left:auto">Decline</button>
+        <button class="btn btn-green btn-sm" onclick="approveProd('${a.po}')">${svgi(IC.check,13)} Approve & confirm spec</button>
+        <button class="btn btn-outline btn-sm" onclick="toggleProdChange('${a.po}')">Request change</button>
+        <button class="btn btn-red btn-sm" style="margin-left:auto" onclick="declineProd('${a.po}')">Decline</button>
+      </div>
+      <div id="prchg-${a.po}" style="display:none;margin-top:14px;padding:16px;background:hsl(var(--muted)/.4);border-radius:10px;border:1px solid hsl(var(--border)/.5)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Request a change from ${a.rep}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div class="form-group" style="margin:0"><label>Change type</label><select id="prchg-type-${a.po}"><option>Adjust quantity</option><option>Revise spec / polish ratio</option><option>Change lot assignment</option><option>Shift timeline</option><option>Other</option></select></div>
+          <div class="form-group" style="margin:0"><label>Respond by</label><input type="date" id="prchg-date-${a.po}" value="2026-06-25"></div>
+        </div>
+        <div class="form-group" style="margin:0 0 12px"><label>Message to kura</label><textarea id="prchg-msg-${a.po}" rows="3" placeholder="Describe the change you need before approving…" style="resize:none"></textarea></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-outline btn-sm" onclick="toggleProdChange('${a.po}')">Cancel</button><button class="btn btn-accent btn-sm" onclick="sendProdChange('${a.po}')">Send request</button></div>
       </div>
     </div>
   </div>`).join('')}
+  <div id="prod-empty" style="display:none;padding:40px;text-align:center;border:1px dashed hsl(var(--border));border-radius:14px;color:hsl(var(--muted-foreground))">
+    ${svgi(IC.check,28)}<div style="font-size:14px;margin-top:12px;font-weight:500">All caught up</div><div style="font-size:13px;margin-top:4px">No production requests pending. New batch requests from kura partners appear here.</div>
+  </div>
 </div>`;
+function resolveProd(po,fade){
+  const c=document.getElementById('pr-'+po);
+  if(!c)return;
+  c.style.transition='opacity .25s,transform .25s';c.style.opacity='0';if(fade)c.style.transform='translateX(12px)';
+  setTimeout(()=>{c.remove();if(!document.querySelector('.approval-card')){const e=document.getElementById('prod-empty');if(e)e.style.display='block';}},250);
+}
+function approveProd(po){resolveProd(po,true);}
+function declineProd(po){if(confirm('Decline this production request? The kura will be notified.'))resolveProd(po,false);}
+function toggleProdChange(po){const p=document.getElementById('prchg-'+po);if(p)p.style.display=p.style.display==='none'?'block':'none';}
+function sendProdChange(po){const m=document.getElementById('prchg-msg-'+po);if(m&&!m.value.trim()){m.style.borderColor='hsl(0 68% 48%)';return;}resolveProd(po,true);}
 
 /* ── ALL ORDERS ── */
 PAGES.orders=()=>`
 <div class="pw enter">
-  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">All orders</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Every order across all portals and markets · one shared dataset</p></div>
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Distributor
+ orders</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Pallet orders placed by distributors to HQ. Retail and sales-rep orders are handled downstream by each distributor — see <span class="sec-link" onclick="nav('distributor-sales')">Distributor sales</span> for that visibility.</p></div>
     <button class="btn btn-outline btn-sm">Export CSV</button>
   </div>
   <div class="filter-bar">
@@ -595,15 +674,109 @@ PAGES.orders=()=>`
     <button class="filter-btn">Tokyo</button>
     <button class="filter-btn">Paris</button>
     <button class="filter-btn">Milan</button>
-    <div class="search-wrap"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" placeholder="Search PO or account…"></div>
+    <div class="search-wrap"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" placeholder="Search order or distributor…"></div>
   </div>
   <div class="card">
     <table class="data-table">
-      <thead><tr><th>PO</th><th>Account</th><th>SKU</th><th>Qty (cases)</th><th>Market</th><th>ETA</th><th>Status</th></tr></thead>
-      <tbody>${ORDERS.map(o=>`<tr><td class="mono" style="font-size:12px;font-weight:500">${o.po}</td><td style="font-weight:500">${o.acct}</td><td class="mono" style="font-size:12px;color:hsl(var(--muted-foreground))">${o.sku}</td><td class="mono">${o.qty}</td><td>${o.market}</td><td class="mono" style="color:hsl(var(--muted-foreground))">${o.eta}</td><td>${pill(o.st,o.sl)}</td></tr>`).join('')}</tbody>
+      <thead><tr><th>Order</th><th>Distributor</th><th>SKU</th><th>Qty (cases)</th><th>Market</th><th>ETA</th><th>Status</th></tr></thead>
+      <tbody>${ORDERS.map((o,oi)=>`<tr style="cursor:pointer" onclick="openOrder(${oi})"><td class="mono" style="font-size:12px;font-weight:500"><span style="display:inline-flex;align-items:center;gap:5px">${o.po}${svgi(`<path d="m9 18 6-6-6-6"/>`,12)}</span></td><td style="font-weight:500">${o.dist}</td><td class="mono" style="font-size:12px;color:hsl(var(--muted-foreground))">${o.sku}</td><td class="mono">${o.qty}</td><td>${o.market}</td><td class="mono" style="color:hsl(var(--muted-foreground))">${o.eta}</td><td>${pill(o.st,o.sl)}</td></tr>`).join('')}</tbody>
     </table>
   </div>
 </div>`;
+let currentOrderIdx=0;
+function openOrder(i){currentOrderIdx=i;nav('order-detail');}
+PAGES['order-detail']=()=>{
+  const o=ORDERS[currentOrderIdx];
+  const steps=['Placed','Approved','In production / picking','In transit','Delivered'];
+  const stageByStatus={pending:1,'on hold':1,'in-transit':3,delivered:5};
+  const reached=stageByStatus[o.sl]!==undefined?stageByStatus[o.sl]:1;
+  const prices={'HJM-FP-750':38,'HJM-JN-720':26,'HJM-RY-500':65,'EU-FP-750':42};
+  const unit=prices[o.sku.split(' ')[0]]||38;
+  const val=(o.qty*unit).toLocaleString();
+  return`
+<div class="pw enter">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <button class="btn btn-outline btn-sm" onclick="nav('orders')">← Distributor orders</button>
+    <span style="font-size:12px;color:hsl(var(--muted-foreground))">/ ${o.po}</span>
+  </div>
+  <div class="card" style="margin-bottom:18px">
+    <div style="display:flex;align-items:flex-start;gap:18px;padding:22px 24px">
+      <div style="width:52px;height:52px;border-radius:12px;background:hsl(158 56%36%/.1);color:hsl(158 56%30%);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgi(IC.truck,24)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:10px"><h1 style="font-family:var(--font-display);font-size:22px;font-weight:600;letter-spacing:-.02em">${o.po}</h1>${pill(o.st,o.sl)}</div>
+        <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:3px">${o.dist} · ${o.market} · ${o.qty} cases · ETA ${o.eta}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        ${o.sl==='pending'?`<button class="btn btn-green btn-sm" onclick="nav('replenishment')">Approve & fulfill</button>`:o.sl==='on hold'?`<button class="btn btn-accent btn-sm" onclick="nav('markets')">Review allocation</button>`:`<button class="btn btn-outline btn-sm">View shipment</button>`}
+      </div>
+    </div>
+    <div style="padding:0 24px 22px">
+      <div class="brew-steps" style="display:flex;align-items:flex-start;position:relative;margin-top:6px">
+        ${steps.map((s,si)=>{const done=si<reached-1,cur=si===reached-1;return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;z-index:1"><div style="width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:11px;border:2px solid hsl(var(--card));background:${done?'hsl(158 56%36%)':cur?'hsl(var(--accent))':'hsl(var(--muted))'};color:${done||cur?'white':'hsl(var(--muted-foreground))'};${cur?'box-shadow:0 0 0 5px hsl(40 88%42%/.16)':''}">${done?svgi(IC.check,13):si+1}</div><div style="font-size:10px;color:${done||cur?'hsl(var(--foreground))':'hsl(var(--muted-foreground))'};font-weight:500;text-align:center;max-width:80px">${s}</div></div>`;}).join('<div style="flex:0;align-self:flex-start;margin-top:14px;color:hsl(var(--border))">———</div>')}
+      </div>
+    </div>
+  </div>
+  <div class="two-col" style="margin-bottom:0">
+    <div class="card">
+      <div class="card-head"><div class="card-title">Order lines</div></div>
+      <table class="data-table">
+        <thead><tr><th>SKU</th><th>Cases</th><th>Pallets</th><th>Unit</th><th>Line total</th></tr></thead>
+        <tbody><tr><td class="mono" style="font-size:12px">${o.sku}</td><td class="mono">${o.qty}</td><td class="mono">${Math.round(o.qty/56)}</td><td class="mono">$${unit}</td><td class="mono" style="font-weight:600">$${val}</td></tr></tbody>
+      </table>
+      <div style="padding:14px 20px;border-top:1px solid hsl(var(--border)/.5);display:flex;justify-content:space-between;font-size:14px"><span style="font-weight:600">Order total</span><span class="mono" style="font-weight:700">$${val}</span></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title">Details</div></div>
+      <div style="padding:6px 20px">
+        ${[['Distributor',o.dist],['Market',o.market],['Quantity',o.qty+' cases · '+Math.round(o.qty/56)+' pallets'],['ETA',o.eta],['Fulfillment','From HQ finished goods'],['Status',o.sl]].map((r,ri,arr)=>`<div style="display:flex;justify-content:space-between;padding:11px 0;${ri<arr.length-1?'border-bottom:1px solid hsl(var(--border)/.3)':''};font-size:13px"><span style="color:hsl(var(--muted-foreground))">${r[0]}</span><span style="font-weight:500">${r[1]}</span></div>`).join('')}
+      </div>
+    </div>
+  </div>
+</div>`;
+};
+
+/* ── DISTRIBUTOR SALES (downstream visibility) ── */
+const DIST_SALES={
+  'Empire Wines':{market:'NYC',q2:'$182K',cases:1240,reps:[{n:'Mike Tan',terr:'Manhattan + Brooklyn',sales:'$94K',accts:14,quota:'61%'},{n:'Sofia Lim',terr:'Queens + Bronx',sales:'$48K',accts:10,quota:'48%'}],retail:[{n:'The Drake Hotel',type:'Hotel',rev:'$38.4K',orders:9,st:'green'},{n:'The Aviary',type:'Bar',rev:'$14.2K',orders:6,st:'green'},{n:'Dante',type:'Restaurant',rev:'$11.5K',orders:5,st:'amber'},{n:'Katana Kitten',type:'Bar',rev:'$8.6K',orders:4,st:'green'},{n:'Gramercy Tavern',type:'Restaurant',rev:'$21.6K',orders:7,st:'green'}]},
+  'Midwest Spirits':{market:'Chicago',q2:'$94K',cases:680,reps:[{n:'Carlos Reyes',terr:'Chicago metro',sales:'$72K',accts:18,quota:'72%'}],retail:[{n:'The Gage',type:'Restaurant',rev:'$18.2K',orders:6,st:'green'},{n:'Three Dots',type:'Bar',rev:'$9.4K',orders:4,st:'amber'},{n:'Kumiko',type:'Bar',rev:'$15.8K',orders:5,st:'green'}]},
+  'Kanto Beverage':{market:'Tokyo',q2:'¥4.8M',cases:1680,reps:[{n:'Yuki Tanaka',terr:'Tokyo 23 wards',sales:'¥6.2M',accts:31,quota:'88%'}],retail:[{n:'Kioi Sakaba',type:'Izakaya',rev:'¥1.2M',orders:11,st:'green'},{n:'Gen Yamamoto',type:'Bar',rev:'¥0.9M',orders:8,st:'green'}]},
+  'Cave Lumière':{market:'Paris',q2:'€19.6K',cases:280,reps:[{n:'Élise Marchand',terr:'Paris centre',sales:'€19.6K',accts:9,quota:'52%'}],retail:[{n:'Bar Hemingway',type:'Bar',rev:'€8.4K',orders:5,st:'green'},{n:'Le Syndicat',type:'Bar',rev:'€6.2K',orders:4,st:'amber'}]},
+};
+let currentDist='Empire Wines';
+PAGES['distributor-sales']=()=>{
+  const names=Object.keys(DIST_SALES);
+  const d=DIST_SALES[currentDist];
+  const sc={green:'green',amber:'amber',red:'red'};
+  return`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Distributor sales</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Downstream visibility into each distributor's sales-rep performance and retail-store revenue. Read-only — order handling stays with the distributor.</p></div>
+    <button class="btn btn-outline btn-sm">Export report</button>
+  </div>
+  <div class="filter-bar">${names.map(n=>`<button class="filter-btn${n===currentDist?' active':''}" onclick="currentDist='${n.replace(/'/g,"\\'")}';nav('distributor-sales')">${n}</button>`).join('')}</div>
+  <div class="kpi-row">
+    ${kpi(IC.truck,'ic-gold','Distributor',d.market,currentDist,'','')}
+    ${kpi(IC.cart,'ic-green','Sell-through Q2',d.q2,d.cases+' cases moved','','')}
+    ${kpi(IC.users,'ic-blue','Sales reps',d.reps.length+'',d.reps.reduce((a,r)=>a+r.accts,0)+' accounts covered','','')}
+    ${kpi(IC.store,'ic-ink','Retail accounts',d.retail.length+'',d.retail.filter(r=>r.st==='green').length+' active','','')}
+  </div>
+  <div class="two-col" style="margin-bottom:0">
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Sales-rep performance</div><div class="card-sub">Reps selling through ${currentDist}</div></div></div>
+      <table class="data-table">
+        <thead><tr><th>Rep</th><th>Territory</th><th>Q2 sales</th><th>Accounts</th><th>Quota</th></tr></thead>
+        <tbody>${d.reps.map(r=>`<tr><td style="font-weight:500">${r.n}</td><td style="font-size:12px;color:hsl(var(--muted-foreground))">${r.terr}</td><td class="mono" style="font-weight:600;color:hsl(var(--accent))">${r.sales}</td><td class="mono">${r.accts}</td><td class="mono" style="font-weight:600">${r.quota}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Retail-store sales</div><div class="card-sub">Top accounts by revenue</div></div></div>
+      <table class="data-table">
+        <thead><tr><th>Account</th><th>Type</th><th>Q2 revenue</th><th>Orders</th><th>Status</th></tr></thead>
+        <tbody>${d.retail.map(r=>`<tr><td style="font-weight:500">${r.n}</td><td style="font-size:12px;color:hsl(var(--muted-foreground))">${r.type}</td><td class="mono" style="font-weight:600">${r.rev}</td><td class="mono">${r.orders}</td><td>${pill(sc[r.st],r.st==='green'?'active':'watch')}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+  </div>
+</div>`;
+};
 
 /* ── MARKETS ── */
 PAGES.markets=()=>`
@@ -647,7 +820,7 @@ PAGES.markets=()=>`
 PAGES.manufacturers=()=>`
 <div class="pw enter">
   <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Manufacturers</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Kura partners producing Hajime SKUs · send production requests and track batches</p></div>
-    <button class="btn btn-accent btn-sm">+ New production request</button>
+    <button class="btn btn-accent btn-sm" onclick="nav('new-production')">+ New production request</button>
   </div>
   <div class="kpi-row">
     ${kpi(IC.flask,'ic-gold','Active batches','6','across 2 kura','','')}
@@ -655,7 +828,7 @@ PAGES.manufacturers=()=>`
     ${kpi(IC.award,'ic-blue','Avg quality grade','A','98.0% network pass rate','','')}
     ${kpi(IC.alert,'ic-red','Open requests','2','awaiting kura scheduling','','')}
   </div>
-  ${MFRS.map(m=>`
+  ${MFRS.map((m,mi)=>`
   <div class="card" style="margin-bottom:14px">
     <div style="display:flex;align-items:center;gap:16px;padding:18px 20px">
       <div style="width:48px;height:48px;border-radius:12px;background:hsl(280 40%50%/.1);color:hsl(280 40%48%);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgi(IC.flask,22)}</div>
@@ -666,7 +839,7 @@ PAGES.manufacturers=()=>`
         <div style="text-align:right"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground))">On-time</div><div class="mono" style="font-size:13px;font-weight:600;margin-top:2px">${m.ontime}</div></div>
         <div style="text-align:right"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground))">Capacity</div><div class="mono" style="font-size:13px;font-weight:600;margin-top:2px">${m.cap}</div></div>
         ${pill(m.st,m.sl)}
-        <button class="btn btn-outline btn-sm">Manage</button>
+        <button class="btn btn-outline btn-sm" onclick="manageMfr(${mi})">Manage</button>
       </div>
     </div>
   </div>`).join('')}
@@ -680,12 +853,12 @@ PAGES.manufacturers=()=>`
 PAGES.distributors=()=>`
 <div class="pw enter">
   <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Distributors</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Distribution partners by market · monitor fill rate, on-time delivery, and partner tier</p></div>
-    <button class="btn btn-accent btn-sm">+ Add distributor</button>
+    <button class="btn btn-accent btn-sm" onclick="nav('add-distributor')">+ Add distributor</button>
   </div>
   <div class="card">
     <table class="data-table">
       <thead><tr><th>Distributor</th><th>Market</th><th>Tier</th><th>Fill rate</th><th>On-time</th><th>Accounts</th><th>Status</th><th></th></tr></thead>
-      <tbody>${DISTS.map(d=>`
+      <tbody>${DISTS.map((d,di)=>`
       <tr>
         <td><div style="font-weight:500">${d.name}</div></td>
         <td style="color:hsl(var(--muted-foreground))">${d.sub}</td>
@@ -694,76 +867,196 @@ PAGES.distributors=()=>`
         <td class="mono" style="font-weight:600;color:${parseFloat(d.ontime)<94?'hsl(38 90%40%)':'hsl(158 56%32%)'}">${d.ontime}</td>
         <td class="mono">${d.accounts}</td>
         <td>${pill(d.st,d.sl)}</td>
-        <td><button class="btn btn-outline btn-sm">Manage</button></td>
+        <td><button class="btn btn-outline btn-sm" onclick="manageDist(${di})">Manage</button></td>
       </tr>`).join('')}</tbody>
     </table>
   </div>
 </div>`;
 
-/* ── REPS ── */
-PAGES.reps=()=>`
+/* ── MANUFACTURER DETAIL (Manage) ── */
+const MFR_DETAIL=[
+  {loc:'Niigata, Japan · est. 1924',contact:'Haruki Sato · Tōji (Master Brewer)',email:'sato@kuramoto.jp',phone:'+81 25-555-0142',since:'Jan 2024',premium:'¥2/btl quality',rice:'Yamada Nishiki · contract',
+   batches:[{id:'B-0418',sku:'Florin Peaks 750ml',stage:'Fermenting · Day 18',eta:'12 Jun',st:'blue',sl:'fermenting'},{id:'B-0417',sku:'Junmai Shiro 720ml',stage:'Pressing soon · Day 30',eta:'4 Jun',st:'blue',sl:'pressing'},{id:'B-0416',sku:'Ryusui Reserve 500ml',stage:'Bottling · Day 44',eta:'28 May',st:'amber',sl:'bottling'},{id:'B-0415',sku:'Florin Peaks 750ml',stage:'Kōji · Day 5',eta:'25 Jun',st:'green',sl:'kōji'}],
+   requests:[{id:'PR-2026-0142',d:'28 May',items:'400× Florin Peaks',st:'amber',sl:'scheduling'},{id:'PR-2026-0141',d:'26 May',items:'120× Ryusui Reserve',st:'amber',sl:'quality hold'},{id:'PR-2026-0138',d:'2 May',items:'300× Junmai Shiro',st:'green',sl:'delivered'}],
+   skus:['Florin Peaks 750ml','Junmai Shiro 720ml','Ryusui Reserve 500ml']},
+  {loc:'Niigata, Japan · est. 1890',contact:'Ken Mori · Tōji',email:'mori@echigo-kura.jp',phone:'+81 25-555-0188',since:'Aug 2024',premium:'¥1.5/btl quality',rice:'Gohyakumangoku · contract',
+   batches:[{id:'E-0204',sku:'First Press 750ml',stage:'Fermenting · Day 12',eta:'18 Jun',st:'blue',sl:'fermenting'},{id:'E-0203',sku:'Shirogane Nigori 720ml',stage:'Pressing · Day 26',eta:'2 Jun',st:'blue',sl:'pressing'}],
+   requests:[{id:'PR-2026-0140',d:'20 May',items:'200× First Press',st:'green',sl:'in production'},{id:'PR-2026-0133',d:'28 Apr',items:'150× Shirogane Nigori',st:'green',sl:'delivered'}],
+   skus:['First Press 750ml','Shirogane Nigori 720ml']},
+];
+let currentMfrIdx=0;
+function manageMfr(i){currentMfrIdx=i;nav('mfr-detail');}
+PAGES['mfr-detail']=()=>{
+  const m=MFRS[currentMfrIdx],x=MFR_DETAIL[currentMfrIdx];
+  const inits=m.name.split(' ').filter(w=>/[A-Z]/.test(w[0])).slice(0,2).map(w=>w[0]).join('');
+  return`
 <div class="pw enter">
-  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Sales reps</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Field reps across all territories · quota attainment, rankings, and pipeline</p></div>
-    <button class="btn btn-accent btn-sm">+ Add rep</button>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <button class="btn btn-outline btn-sm" onclick="nav('manufacturers')">← Manufacturers</button>
+    <span style="font-size:12px;color:hsl(var(--muted-foreground))">/ ${m.name}</span>
   </div>
-  <div class="kpi-row">
-    ${kpi(IC.users,'ic-gold','Active reps','12','4 territories','','')}
-    ${kpi(IC.chart,'ic-green','Avg quota attainment','67%','vs 58% expected pace',`${svgi(IC.up,11)} ahead of plan`,'kpi-delta delta-up')}
-    ${kpi(IC.cart,'ic-blue','Total pipeline','$94K','61 open opportunities','','')}
-    ${kpi(IC.star,'ic-ink','Commission paid Q2','$38.4K','across all reps','','')}
+  <div class="card" style="margin-bottom:18px">
+    <div style="display:flex;align-items:center;gap:18px;padding:22px 24px">
+      <div style="width:60px;height:60px;border-radius:14px;background:hsl(280 40%50%/.1);color:hsl(280 40%48%);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:22px;font-weight:600;flex-shrink:0">${inits}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:10px"><h1 style="font-family:var(--font-display);font-size:24px;font-weight:600;letter-spacing:-.02em">${m.name}</h1><span style="font-size:11px;font-weight:600;color:${m.tier.includes('Preferred')?'hsl(40 88%34%)':'hsl(var(--muted-foreground))'};background:${m.tier.includes('Preferred')?'hsl(40 88%42%/.1)':'hsl(var(--muted))'};border:1px solid ${m.tier.includes('Preferred')?'hsl(40 88%42%/.25)':'hsl(var(--border))'};padding:2px 10px;border-radius:999px">${m.tier}</span>${pill(m.st,m.sl)}</div>
+        <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:3px">${m.sub} · ${x.loc}</div>
+        <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">${x.contact} · ${x.email} · ${x.phone}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0"><button class="btn btn-outline btn-sm" onclick="nav('production')">Production requests</button><button class="btn btn-accent btn-sm" onclick="nav('new-production')">+ New request</button></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);border-top:1px solid hsl(var(--border)/.5)">
+      ${[['Quality',m.quality],['On-time',m.ontime],['Capacity',m.cap],['Active batches',m.active],['Partner since',x.since],['Premium',x.premium]].map((s,i)=>`<div style="padding:14px 18px;${i<5?'border-right:1px solid hsl(var(--border)/.4)':''}"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600">${s[0]}</div><div style="font-family:var(--font-display);font-size:16px;font-weight:600;margin-top:3px">${s[1]}</div></div>`).join('')}
+    </div>
   </div>
-  <div class="card">
-    <table class="data-table">
-      <thead><tr><th>Rep</th><th>Territory</th><th>Tier</th><th>Quota</th><th>Rank</th><th>Accounts</th><th>Pipeline</th><th></th></tr></thead>
-      <tbody>${REPS.map(r=>`
-      <tr>
-        <td style="font-weight:500">${r.name}</td>
-        <td style="color:hsl(var(--muted-foreground))">${r.sub}</td>
-        <td><span style="font-size:12px;font-weight:600;color:${r.tier.includes('Platinum')?'hsl(215 72%42%)':r.tier.includes('Gold')?'hsl(40 88%34%)':'hsl(var(--muted-foreground))'}">${r.tier}</span></td>
-        <td class="mono" style="font-weight:600">${r.quota}</td>
-        <td class="mono" style="font-size:12px;color:hsl(var(--muted-foreground))">${r.rank}</td>
-        <td class="mono">${r.accounts}</td>
-        <td class="mono" style="color:hsl(var(--accent));font-weight:500">${r.pipeline}</td>
-        <td><button class="btn btn-outline btn-sm">View</button></td>
-      </tr>`).join('')}</tbody>
-    </table>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px"><span style="font-size:11px;color:hsl(var(--muted-foreground));text-transform:uppercase;letter-spacing:.08em;font-weight:600;padding:5px 0;margin-right:4px">Produces:</span>${x.skus.map(s=>`<span style="font-size:12px;padding:4px 10px;border-radius:999px;background:hsl(var(--muted));border:1px solid hsl(var(--border)/.6)">${s}</span>`).join('')}<span style="font-size:12px;padding:4px 10px;border-radius:999px;background:hsl(var(--muted));border:1px solid hsl(var(--border)/.6)">Rice: ${x.rice}</span></div>
+  <div class="two-col" style="margin-bottom:0">
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Active batches</div><div class="card-sub">${x.batches.length} on the brew floor</div></div></div>
+      <table class="data-table">
+        <thead><tr><th>Batch</th><th>SKU</th><th>Stage</th><th>Est. complete</th><th>Status</th></tr></thead>
+        <tbody>${x.batches.map(b=>`<tr><td class="mono" style="font-size:12px;font-weight:500">${b.id}</td><td style="font-weight:500">${b.sku}</td><td style="font-size:12px;color:hsl(var(--muted-foreground))">${b.stage}</td><td class="mono" style="font-size:12px">${b.eta}</td><td>${pill(b.st,b.sl)}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Production requests</div><div class="card-sub">Batch orders HQ has sent</div></div></div>
+      <table class="data-table">
+        <thead><tr><th>Request</th><th>Items</th><th>Status</th></tr></thead>
+        <tbody>${x.requests.map(r=>`<tr><td><div style="font-family:var(--font-mono);font-size:12px;font-weight:500">${r.id}</div><div style="font-size:11px;color:hsl(var(--muted-foreground))">${r.d}</div></td><td style="font-size:12px;color:hsl(var(--muted-foreground))">${r.items}</td><td>${pill(r.st,r.sl)}</td></tr>`).join('')}</tbody>
+      </table>
+      <div style="padding:14px 20px;border-top:1px solid hsl(var(--border)/.5)"><button class="btn btn-outline btn-sm" style="width:100%" onclick="nav('production')">View all production requests</button></div>
+    </div>
+  </div>
+</div>`;
+};
+
+/* ── ADD DISTRIBUTOR ── */
+PAGES['add-distributor']=()=>`
+<div class="pw enter">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <button class="btn btn-outline btn-sm" onclick="nav('distributors')">← Distributors</button>
+    <span style="font-size:12px;color:hsl(var(--muted-foreground))">/ Add distributor</span>
+  </div>
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Add distributor</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Onboard a new distribution partner. They get portal access once activated.</p></div></div>
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Company details</div>
+        <div class="form-group"><label>Distributor name</label><input type="text" placeholder="e.g. Pacific Beverage Co."></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group"><label>Market</label><select><option>Select market…</option><option>NYC</option><option>Chicago</option><option>Tokyo</option><option>Paris</option><option>Milan</option><option>London</option><option>Other…</option></select></div>
+          <div class="form-group"><label>Distribution centers</label><input type="number" min="1" value="1"></div>
+        </div>
+        <div class="form-group"><label>Shipping address</label><input type="text" placeholder="Primary DC address"></div>
+      </div>
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Primary contact</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group"><label>Contact name</label><input type="text" placeholder="Full name"></div>
+          <div class="form-group"><label>Role / title</label><input type="text" placeholder="e.g. Operations Lead"></div>
+          <div class="form-group"><label>Email</label><input type="email" placeholder="name@company.com"></div>
+          <div class="form-group"><label>Phone</label><input type="tel" placeholder="+1 (___) ___-____"></div>
+        </div>
+      </div>
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Partner terms</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+          <div class="form-group"><label>Partner tier</label><select><option>Standard</option><option>Silver Partner</option><option>Gold Partner</option></select></div>
+          <div class="form-group"><label>Payment terms</label><select><option>Net 30</option><option>Net 45</option><option>Net 60</option><option>Prepaid</option></select></div>
+          <div class="form-group"><label>Volume rebate</label><select><option>None</option><option>2% volume</option><option>3% volume</option><option>4% volume</option></select></div>
+        </div>
+        <div class="form-group" style="margin-bottom:0"><label>Co-op marketing fund (annual)</label><input type="text" placeholder="e.g. $5,000 / yr"></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card" style="padding:20px;position:sticky;top:20px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid hsl(var(--border)/.5)">Onboarding</div>
+        <div style="display:flex;flex-direction:column;gap:0">
+          ${['Company & contact details','Partner terms agreed','Portal access provisioned','Initial allocation set'].map((s,i)=>`<div style="display:flex;align-items:center;gap:10px;padding:9px 0;${i<3?'border-bottom:1px solid hsl(var(--border)/.3)':''}"><div style="width:20px;height:20px;border-radius:999px;background:${i===0?'hsl(40 88%42%/.15)':'hsl(var(--muted))'};color:${i===0?'hsl(40 88%34%)':'hsl(var(--muted-foreground))'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${i+1}</div><span style="font-size:12px;color:${i===0?'hsl(var(--foreground))':'hsl(var(--muted-foreground))'}">${s}</span></div>`).join('')}
+        </div>
+        <button class="btn btn-accent" style="width:100%;height:42px;margin-top:16px" onclick="document.getElementById('ad-done').style.display='flex'">Create distributor</button>
+        <button class="btn btn-outline" style="width:100%;margin-top:8px" onclick="nav('distributors')">Cancel</button>
+      </div>
+      <div style="background:hsl(40 88%42%/.06);border:1px solid hsl(40 88%42%/.2);border-radius:14px;padding:16px;font-size:12px;color:hsl(40 72%38%);line-height:1.6"><strong style="color:hsl(40 80%34%)">Next:</strong> once created, the distributor receives portal access to manage their own sales reps, retail accounts, and replenishment orders.</div>
+    </div>
+  </div>
+  <div id="ad-done" style="display:none;position:fixed;inset:0;background:hsl(24 12%8%/.5);backdrop-filter:blur(4px);z-index:100;align-items:center;justify-content:center">
+    <div style="background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:18px;padding:32px;max-width:380px;text-align:center;box-shadow:var(--shadow-float)">
+      <div style="width:56px;height:56px;border-radius:999px;background:hsl(158 56%36%/.12);color:hsl(158 56%32%);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">${svgi(IC.check,28)}</div>
+      <div style="font-family:var(--font-display);font-size:20px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px">Distributor created</div>
+      <div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.6;margin-bottom:20px">Portal access has been provisioned. They'll receive an invite to set up their account and initial allocation.</div>
+      <button class="btn btn-accent btn-sm" onclick="document.getElementById('ad-done').style.display='none';nav('distributors')">Back to distributors</button>
+    </div>
   </div>
 </div>`;
 
-/* ── RETAIL ACCOUNTS ── */
-PAGES.accounts=()=>`
+/* ── DISTRIBUTOR DETAIL (Manage) ── */
+const DIST_DETAIL=[
+  {ship:'Brooklyn, NY · 3 DCs',contact:'Jordan Wei · Operations Lead',email:'jordan.wei@empirewines.com',phone:'+1 (212) 555-0148',since:'Oct 2024',terms:'Net 30',coop:'$5,000 / yr',rebate:'3% volume',
+   skus:[{n:'Florin Peaks 750ml',oh:142,alloc:100,cover:'14 days',st:'low'},{n:'Junmai Shiro 720ml',oh:218,alloc:36,cover:'48 days',st:'ok'},{n:'Ryusui Reserve 500ml',oh:38,alloc:6,cover:'31 days',st:'ok'},{n:'First Press 750ml',oh:96,alloc:0,cover:'40 days',st:'ok'}],
+   replens:[{id:'RPL-2026-0062',d:'1 Jun',items:'4 pallets · Florin Peaks',st:'amber',sl:'pending'},{id:'RPL-2026-0058',d:'12 May',items:'6 pallets · mixed',st:'green',sl:'delivered'}]},
+  {ship:'Chicago, IL · 1 DC',contact:'Dana Brooks · GM',email:'dana.brooks@midwestspirits.com',phone:'+1 (312) 555-0210',since:'Feb 2025',terms:'Net 30',coop:'$3,000 / yr',rebate:'2% volume',
+   skus:[{n:'Florin Peaks 750ml',oh:64,alloc:40,cover:'9 days',st:'low'},{n:'Junmai Shiro 720ml',oh:120,alloc:24,cover:'28 days',st:'ok'},{n:'First Press 750ml',oh:48,alloc:12,cover:'22 days',st:'med'}],
+   replens:[{id:'RPL-2026-0061',d:'1 Jun',items:'8 pallets · Florin Peaks',st:'red',sl:'urgent · pending'},{id:'RPL-2026-0049',d:'28 Apr',items:'5 pallets · mixed',st:'green',sl:'delivered'}]},
+  {ship:'Tokyo, JP · 2 DCs',contact:'Yuki Tanaka · 統括',email:'tanaka@kanto-bev.jp',phone:'+81 3-5555-0182',since:'Jan 2024',terms:'Net 45',coop:'¥600K / yr',rebate:'3% volume',
+   skus:[{n:'Junmai Shiro 720ml',oh:340,alloc:120,cover:'52 days',st:'ok'},{n:'Ryusui Reserve 500ml',oh:96,alloc:24,cover:'45 days',st:'ok'},{n:'Florin Peaks 750ml',oh:280,alloc:60,cover:'60 days',st:'ok'}],
+   replens:[{id:'RPL-2026-0057',d:'8 May',items:'10 pallets · mixed',st:'green',sl:'delivered'}]},
+  {ship:'Paris, FR · 1 DC',contact:'Élise Marchand · Directrice',email:'elise@cavelumiere.fr',phone:'+33 1 55 55 0190',since:'Mar 2025',terms:'Net 30',coop:'€4,000 / yr',rebate:'2% volume',
+   skus:[{n:'Florin Peaks 750ml',oh:52,alloc:18,cover:'18 days',st:'med'},{n:'Ryusui Reserve 500ml',oh:24,alloc:6,cover:'21 days',st:'med'}],
+   replens:[{id:'RPL-2026-0055',d:'2 May',items:'4 pallets · Florin Peaks',st:'green',sl:'delivered'}]},
+];
+let currentDistIdx=0;
+function manageDist(i){currentDistIdx=i;nav('dist-detail');}
+PAGES['dist-detail']=()=>{
+  const d=DISTS[currentDistIdx],x=DIST_DETAIL[currentDistIdx];
+  const inits=d.name.split(' ').filter(w=>/[A-Z0-9]/.test(w[0])).slice(0,2).map(w=>w[0]).join('');
+  const stC={low:'hsl(0 68%44%)',med:'hsl(38 90%40%)',ok:'hsl(158 56%32%)'};
+  const stL={low:'below reorder',med:'monitor',ok:'healthy'};
+  return`
 <div class="pw enter">
-  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Retail accounts</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">All accounts across markets · 2 awaiting onboarding approval</p></div>
-    <div class="search-wrap" style="margin-left:0;max-width:280px"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" placeholder="Search accounts…"></div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <button class="btn btn-outline btn-sm" onclick="nav('distributors')">← Distributors</button>
+    <span style="font-size:12px;color:hsl(var(--muted-foreground))">/ ${d.name}</span>
   </div>
-  <div class="alert-bar alert-warn" style="margin-bottom:24px">
-    ${svgi(IC.alert,16)}<div style="flex:1;font-size:13px"><strong style="color:hsl(30 80%28%)">2 accounts onboarding at the distributor level:</strong> <span style="color:hsl(30 70%35%)">NoMad Library (NYC · Empire Wines) and Osteria Sera (Milan · Vino Nord) are awaiting their distributor's approval. HQ sees them here once activated.</span></div>
-    <button class="btn btn-outline btn-sm" onclick="nav('distributors')">View distributors</button>
+  <div class="card" style="margin-bottom:18px">
+    <div style="display:flex;align-items:center;gap:18px;padding:22px 24px">
+      <div style="width:60px;height:60px;border-radius:14px;background:hsl(158 56%36%/.1);color:hsl(158 56%30%);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:22px;font-weight:600;flex-shrink:0">${inits}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:10px"><h1 style="font-family:var(--font-display);font-size:24px;font-weight:600;letter-spacing:-.02em">${d.name}</h1><span style="font-size:11px;font-weight:600;color:${d.tier.includes('Gold')?'hsl(40 88%34%)':'hsl(var(--muted-foreground))'};background:${d.tier.includes('Gold')?'hsl(40 88%42%/.1)':'hsl(var(--muted))'};border:1px solid ${d.tier.includes('Gold')?'hsl(40 88%42%/.25)':'hsl(var(--border))'};padding:2px 10px;border-radius:999px">${d.tier}</span>${pill(d.st,d.sl)}</div>
+        <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:3px">${d.sub} · ${x.ship}</div>
+        <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">${x.contact} · ${x.email} · ${x.phone}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0"><button class="btn btn-outline btn-sm" onclick="nav('distributor-sales')">View sales</button><button class="btn btn-accent btn-sm" onclick="nav('replenishment')">Replenishment</button></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);border-top:1px solid hsl(var(--border)/.5)">
+      ${[['Fill rate',d.fill],['On-time',d.ontime],['Accounts',d.accounts],['Partner since',x.since],['Terms',x.terms],['Rebate',x.rebate]].map((s,i)=>`<div style="padding:14px 18px;${i<5?'border-right:1px solid hsl(var(--border)/.4)':''}"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600">${s[0]}</div><div style="font-family:var(--font-display);font-size:16px;font-weight:600;margin-top:3px">${s[1]}</div></div>`).join('')}
+    </div>
   </div>
-  <div class="card">
-    <table class="data-table">
-      <thead><tr><th>Account</th><th>Type</th><th>Market</th><th>Distributor</th><th>Rep</th><th>30d revenue</th><th>Status</th></tr></thead>
-      <tbody>
-        ${[
-          {n:'The Drake Hotel',t:'Hotel',m:'Chicago',d:'Midwest Spirits',r:'Carlos Reyes',rev:'$4,200',st:'green',sl:'active'},
-          {n:'NoMad Library',t:'Bar',m:'NYC',d:'— pending —',r:'Mike Tan',rev:'—',st:'amber',sl:'onboarding'},
-          {n:'The Aviary',t:'Bar',m:'NYC',d:'Empire Wines',r:'Mike Tan',rev:'$5,760',st:'green',sl:'active'},
-          {n:'Dante',t:'Restaurant',m:'NYC',d:'Empire Wines',r:'Mike Tan',rev:'$3,840',st:'green',sl:'active'},
-          {n:'Kioi Sakaba',t:'Izakaya',m:'Tokyo',d:'Kanto Beverage',r:'Yuki Tanaka',rev:'¥620K',st:'green',sl:'active'},
-          {n:'Bar Hemingway',t:'Bar',m:'Paris',d:'Cave Lumière',r:'É. Marchand',rev:'€2,400',st:'green',sl:'active'},
-          {n:'Osteria Sera',t:'Restaurant',m:'Milan',d:'— pending —',r:'Vino Nord',rev:'—',st:'amber',sl:'onboarding'},
-          {n:'Quattro Mani',t:'Restaurant',m:'Milan',d:'Vino Nord',r:'Vino Nord',rev:'€1,800',st:'green',sl:'active'},
-        ].map(a=>`<tr><td style="font-weight:500">${a.n}</td><td style="color:hsl(var(--muted-foreground))">${a.t}</td><td>${a.m}</td><td style="${a.d.includes('pending')?'color:hsl(30 80%32%);font-weight:500':'color:hsl(var(--muted-foreground))'}">${a.d}</td><td style="font-size:12px;color:hsl(var(--muted-foreground))">${a.r}</td><td class="mono" style="font-weight:500">${a.rev}</td><td>${pill(a.st,a.sl)}</td></tr>`).join('')}
-      </tbody>
-    </table>
+  <div class="two-col" style="margin-bottom:0">
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">DC inventory</div><div class="card-sub">${x.skus.length} SKUs · stock held at this distributor</div></div></div>
+      <table class="data-table">
+        <thead><tr><th>SKU</th><th>On hand</th><th>Allocated</th><th>Cover</th><th>Status</th></tr></thead>
+        <tbody>${x.skus.map(s=>`<tr><td style="font-weight:500">${s.n}</td><td class="mono">${s.oh} cs</td><td class="mono" style="color:hsl(var(--muted-foreground))">${s.alloc} cs</td><td class="mono" style="color:${stC[s.st]}">${s.cover}</td><td><span style="font-size:11px;font-weight:600;color:${stC[s.st]}">${stL[s.st]}</span></td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Replenishment orders</div><div class="card-sub">Pallet orders from this distributor</div></div></div>
+      <table class="data-table">
+        <thead><tr><th>Order</th><th>Items</th><th>Status</th></tr></thead>
+        <tbody>${x.replens.map(r=>`<tr><td><div style="font-family:var(--font-mono);font-size:12px;font-weight:500">${r.id}</div><div style="font-size:11px;color:hsl(var(--muted-foreground))">${r.d}</div></td><td style="font-size:12px;color:hsl(var(--muted-foreground))">${r.items}</td><td>${pill(r.st,r.sl)}</td></tr>`).join('')}</tbody>
+      </table>
+      <div style="padding:14px 20px;border-top:1px solid hsl(var(--border)/.5)"><button class="btn btn-outline btn-sm" style="width:100%" onclick="nav('replenishment')">View all replenishment orders</button></div>
+    </div>
   </div>
 </div>`;
+};
 
 /* ── INCENTIVE PROGRAMS ── */
 PAGES.programs=()=>`
 <div class="pw enter">
   <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Incentive programs</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Administer the reward program for every role — tiers, thresholds, and payouts in one place</p></div>
-    <button class="btn btn-outline btn-sm">Payout schedule</button>
+    <button class="btn btn-outline btn-sm" onclick="nav('payouts')">Payout schedule</button>
   </div>
   <div class="kpi-row">
     ${kpi(IC.star,'ic-gold','Total payouts Q2','$71.2K','across 4 programs','','')}
@@ -772,15 +1065,10 @@ PAGES.programs=()=>`
     ${kpi(IC.chart,'ic-ink','Program ROI','3.4×','incremental revenue vs cost','','')}
   </div>
   <div class="prog-grid">
-    ${[
-      {ic:IC.store,cl:'ic-gold',title:'Retail Partner Program',sub:'Spend-based tiers · quarterly rebate',members:'42 stores',payout:'$18.6K',metric:'2–4% rebate',tiers:[['Participant',12,'hsl(var(--muted-foreground))'],['Bronze',14,'hsl(30 50%50%)'],['Silver',11,'hsl(220 8%60%)'],['Gold',4,'hsl(40 88%42%)'],['Platinum',1,'hsl(215 72%50%)']]},
-      {ic:IC.users,cl:'ic-blue',title:'Sales Rep Incentive',sub:'Quota attainment · commission + bonuses',members:'12 reps',payout:'$38.4K',metric:'6–12% commission',tiers:[['Standard',3,'hsl(var(--muted-foreground))'],['Silver',4,'hsl(220 8%60%)'],['Gold',4,'hsl(40 88%42%)'],['Platinum',1,'hsl(215 72%50%)']]},
-      {ic:IC.truck,cl:'ic-green',title:'Distributor Partner Program',sub:'Fill rate, on-time & volume',members:'4 distributors',payout:'$11.8K',metric:'3–4% volume rebate',tiers:[['Standard',0,'hsl(var(--muted-foreground))'],['Silver',2,'hsl(220 8%60%)'],['Gold',2,'hsl(40 88%42%)'],['Platinum',0,'hsl(215 72%50%)']]},
-      {ic:IC.flask,cl:'ic-purple',title:'Kura Partner Program',sub:'Quality, yield & on-time production',members:'2 kura',payout:'¥3.2M',metric:'¥2–3/bottle premium',tiers:[['Standard',1,'hsl(var(--muted-foreground))'],['Preferred',1,'hsl(40 88%42%)'],['Master',0,'hsl(215 72%50%)']]},
-    ].map(p=>{
+    ${PROGRAMS.map((p,pi)=>{
       const tot=p.tiers.reduce((a,t)=>a+t[1],0)||1;
       return`<div class="prog-card">
-        <div class="prog-header"><div class="prog-icon ${p.cl==='ic-purple'?'':p.cl}" style="${p.cl==='ic-purple'?'background:hsl(280 40%50%/.1);color:hsl(280 40%48%)':''}">${svgi(p.ic,20)}</div><div style="flex:1"><div class="prog-title">${p.title}</div><div class="prog-sub">${p.sub}</div></div><button class="btn btn-outline btn-sm">Edit</button></div>
+        <div class="prog-header"><div class="prog-icon ${p.cl==='ic-purple'?'':p.cl}" style="${p.cl==='ic-purple'?'background:hsl(280 40%50%/.1);color:hsl(280 40%48%)':''}">${svgi(p.ic,20)}</div><div style="flex:1"><div class="prog-title">${p.title}</div><div class="prog-sub">${p.sub}</div></div><button class="btn btn-outline btn-sm" onclick="editProgram(${pi})">Edit</button></div>
         <div class="prog-body">
           <div class="prog-stat-row"><span class="prog-stat-lab">Members enrolled</span><span class="prog-stat-val">${p.members}</span></div>
           <div class="prog-stat-row"><span class="prog-stat-lab">Reward structure</span><span class="prog-stat-val">${p.metric}</span></div>
@@ -794,24 +1082,286 @@ PAGES.programs=()=>`
   </div>
 </div>`;
 
+/* ── INCENTIVE PROGRAMS data ── */
+const PROGRAMS=[
+  {ic:IC.store,cl:'ic-gold',title:'Retail Partner Program',sub:'Spend-based tiers · quarterly rebate',members:'42 stores',payout:'$18.6K',metric:'2–4% rebate',basis:'Annual spend',
+    tiers:[['Participant',12,'hsl(var(--muted-foreground))',0,'—'],['Bronze',14,'hsl(30 50%50%)',15000,'2% rebate'],['Silver',11,'hsl(220 8%60%)',30000,'3% rebate'],['Gold',4,'hsl(40 88%42%)',75000,'4% rebate + priority alloc.'],['Platinum',1,'hsl(215 72%50%)',150000,'4% + co-op fund + early access']]},
+  {ic:IC.users,cl:'ic-blue',title:'Sales Rep Incentive',sub:'Quota attainment · commission + bonuses',members:'12 reps',payout:'$38.4K',metric:'6–12% commission',basis:'Quota attainment',
+    tiers:[['Standard',3,'hsl(var(--muted-foreground))',0,'6% commission'],['Silver',4,'hsl(220 8%60%)',60,'8% commission'],['Gold',4,'hsl(40 88%42%)',90,'10% + quarterly bonus'],['Platinum',1,'hsl(215 72%50%)',120,'12% + Presidents Club']]},
+  {ic:IC.truck,cl:'ic-green',title:'Distributor Partner Program',sub:'Fill rate, on-time & volume',members:'4 distributors',payout:'$11.8K',metric:'3–4% volume rebate',basis:'Fill rate + volume',
+    tiers:[['Standard',0,'hsl(var(--muted-foreground))',0,'—'],['Silver',2,'hsl(220 8%60%)',95,'3% rebate'],['Gold',2,'hsl(40 88%42%)',97,'3.5% + co-op marketing'],['Platinum',0,'hsl(215 72%50%)',99,'4% + first allocation']]},
+  {ic:IC.flask,cl:'ic-purple',title:'Kura Partner Program',sub:'Quality, yield & on-time production',members:'2 kura',payout:'¥3.2M',metric:'¥2–3/bottle premium',basis:'Quality + yield',
+    tiers:[['Standard',1,'hsl(var(--muted-foreground))',0,'Base rate'],['Preferred',1,'hsl(40 88%42%)',97,'¥2/bottle premium'],['Master',0,'hsl(215 72%50%)',99,'¥3/bottle + co-brand']]},
+];
+let currentProgIdx=0;
+function editProgram(i){currentProgIdx=i;nav('program-edit');}
+PAGES.payouts=()=>{
+  const upcoming=[
+    {date:'30 Jun 2026',prog:'Retail Partner Program',detail:'Q2 quarterly rebate · 42 stores',amt:'$18,600',st:'amber',sl:'scheduled'},
+    {date:'30 Jun 2026',prog:'Sales Rep Incentive',detail:'Q2 commission + bonuses · 12 reps',amt:'$38,400',st:'amber',sl:'scheduled'},
+    {date:'30 Jun 2026',prog:'Distributor Partner Program',detail:'Q2 volume rebate · 4 distributors',amt:'$11,800',st:'amber',sl:'scheduled'},
+    {date:'15 Jul 2026',prog:'Kura Partner Program',detail:'Q2 quality premium · 2 kura',amt:'¥3,200,000',st:'neutral',sl:'pending close'},
+  ];
+  const history=[
+    {date:'31 Mar 2026',prog:'Retail Partner Program',detail:'Q1 quarterly rebate · 40 stores',amt:'$16,200',st:'green',sl:'paid'},
+    {date:'31 Mar 2026',prog:'Sales Rep Incentive',detail:'Q1 commission + bonuses · 12 reps',amt:'$34,100',st:'green',sl:'paid'},
+    {date:'31 Mar 2026',prog:'Distributor Partner Program',detail:'Q1 volume rebate · 4 distributors',amt:'$10,400',st:'green',sl:'paid'},
+    {date:'15 Apr 2026',prog:'Kura Partner Program',detail:'Q1 quality premium · 2 kura',amt:'¥2,900,000',st:'green',sl:'paid'},
+  ];
+  return`
+<div class="pw enter">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <button class="btn btn-outline btn-sm" onclick="nav('programs')">← Incentive programs</button>
+    <span style="font-size:12px;color:hsl(var(--muted-foreground))">/ Payout schedule</span>
+  </div>
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Payout schedule</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Upcoming and historical incentive payouts across all four programs</p></div>
+    <button class="btn btn-outline btn-sm">Export schedule</button>
+  </div>
+  <div class="kpi-row">
+    ${kpi(IC.star,'ic-gold','Next payout','30 Jun','$68.8K across 3 programs','','')}
+    ${kpi(IC.cart,'ic-gold','Scheduled Q2','$92.2K','+ ¥3.2M Kura premium','','')}
+    ${kpi(IC.check,'ic-green','Paid YTD','$60.7K','+ ¥2.9M · Q1 settled','','')}
+    ${kpi(IC.chart,'ic-ink','Programs','4','retail · rep · distributor · kura','','')}
+  </div>
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-head"><div><div class="card-title">Upcoming payouts</div><div class="card-sub">Scheduled for the current cycle</div></div><span style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:hsl(var(--accent))">$68.8K + ¥3.2M</span></div>
+    <table class="data-table">
+      <thead><tr><th>Date</th><th>Program</th><th>Detail</th><th>Amount</th><th>Status</th></tr></thead>
+      <tbody>${upcoming.map(r=>`<tr><td class="mono" style="font-weight:500">${r.date}</td><td style="font-weight:500">${r.prog}</td><td style="color:hsl(var(--muted-foreground));font-size:12px">${r.detail}</td><td class="mono" style="font-weight:600">${r.amt}</td><td>${pill(r.st,r.sl)}</td></tr>`).join('')}</tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="card-head"><div><div class="card-title">Payout history</div><div class="card-sub">Settled in prior cycles</div></div><span style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:hsl(158 56%32%)">$60.7K + ¥2.9M paid</span></div>
+    <table class="data-table">
+      <thead><tr><th>Date</th><th>Program</th><th>Detail</th><th>Amount</th><th>Status</th></tr></thead>
+      <tbody>${history.map(r=>`<tr><td class="mono" style="font-weight:500">${r.date}</td><td style="font-weight:500">${r.prog}</td><td style="color:hsl(var(--muted-foreground));font-size:12px">${r.detail}</td><td class="mono" style="font-weight:600">${r.amt}</td><td>${pill(r.st,r.sl)}</td></tr>`).join('')}</tbody>
+    </table>
+  </div>
+</div>`;
+};
+function saveProgram(){
+  const p=PROGRAMS[currentProgIdx];
+  p.title=document.getElementById('pg-title').value;
+  p.sub=document.getElementById('pg-sub').value;
+  p.metric=document.getElementById('pg-metric').value;
+  p.basis=document.getElementById('pg-basis').value;
+  p.tiers.forEach((t,ti)=>{
+    const nm=document.getElementById('pg-tn-'+ti);const th=document.getElementById('pg-th-'+ti);const rw=document.getElementById('pg-tr-'+ti);
+    if(nm)t[0]=nm.value;
+    if(th)t[3]=th.value;
+    if(rw)t[4]=rw.value;
+  });
+  document.getElementById('prog-saved').style.display='flex';
+}
+PAGES['program-edit']=()=>{
+  const p=PROGRAMS[currentProgIdx];
+  const purple=p.cl==='ic-purple';
+  return`
+<div class="pw enter">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <button class="btn btn-outline btn-sm" onclick="nav('programs')">← Incentive programs</button>
+    <span style="font-size:12px;color:hsl(var(--muted-foreground))">/ Edit · ${p.title}</span>
+  </div>
+  <div class="card" style="margin-bottom:18px">
+    <div style="display:flex;align-items:center;gap:16px;padding:20px 24px;border-bottom:1px solid hsl(var(--border)/.5)">
+      <div class="prog-icon ${purple?'':p.cl}" style="${purple?'background:hsl(280 40%50%/.1);color:hsl(280 40%48%)':''}">${svgi(p.ic,20)}</div>
+      <div><div style="font-family:var(--font-display);font-size:20px;font-weight:600;letter-spacing:-.01em">${p.title}</div><div style="font-size:12px;color:hsl(var(--muted-foreground))">${p.members} enrolled · ${p.payout} paid Q2</div></div>
+    </div>
+    <div style="padding:22px 24px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600;margin-bottom:14px">Program details</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group"><label>Program name</label><input id="pg-title" type="text" value="${p.title}"></div>
+        <div class="form-group"><label>Qualifying basis</label><input id="pg-basis" type="text" value="${p.basis}"></div>
+        <div class="form-group"><label>Description</label><input id="pg-sub" type="text" value="${p.sub}"></div>
+        <div class="form-group"><label>Reward structure</label><input id="pg-metric" type="text" value="${p.metric}"></div>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-head"><div><div class="card-title">Tiers & thresholds</div><div class="card-sub">${p.tiers.length} tiers · edit names, qualifying thresholds, and rewards</div></div></div>
+    <table class="data-table">
+      <thead><tr><th style="width:40px"></th><th>Tier name</th><th>Threshold (${p.basis})</th><th>Reward</th><th>Members</th></tr></thead>
+      <tbody>
+        ${p.tiers.map((t,ti)=>`<tr>
+          <td><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${t[2]}"></span></td>
+          <td><input id="pg-tn-${ti}" type="text" value="${t[0]}" style="height:34px;padding:0 10px;border-radius:7px;border:1px solid hsl(var(--border));background:hsl(var(--background));font-size:13px;font-family:var(--font-body);color:hsl(var(--foreground));outline:none;width:140px"></td>
+          <td><input id="pg-th-${ti}" type="text" value="${t[3]}" style="height:34px;padding:0 10px;border-radius:7px;border:1px solid hsl(var(--border));background:hsl(var(--background));font-size:13px;font-family:var(--font-mono);color:hsl(var(--foreground));outline:none;width:120px"></td>
+          <td><input id="pg-tr-${ti}" type="text" value="${t[4]}" style="height:34px;padding:0 10px;border-radius:7px;border:1px solid hsl(var(--border));background:hsl(var(--background));font-size:13px;font-family:var(--font-body);color:hsl(var(--foreground));outline:none;width:100%;min-width:200px"></td>
+          <td class="mono" style="color:hsl(var(--muted-foreground))">${t[1]}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <div style="padding:14px 20px;border-top:1px solid hsl(var(--border)/.5)"><button class="btn btn-outline btn-sm">+ Add tier</button></div>
+  </div>
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button class="btn btn-outline" onclick="nav('programs')">Cancel</button>
+    <button class="btn btn-accent" onclick="saveProgram()">Save program</button>
+  </div>
+  <div id="prog-saved" style="display:none;position:fixed;inset:0;background:hsl(24 12%8%/.5);backdrop-filter:blur(4px);z-index:100;align-items:center;justify-content:center">
+    <div style="background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:18px;padding:32px;max-width:380px;text-align:center;box-shadow:var(--shadow-float)">
+      <div style="width:56px;height:56px;border-radius:999px;background:hsl(158 56%36%/.12);color:hsl(158 56%32%);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">${svgi(IC.check,28)}</div>
+      <div style="font-family:var(--font-display);font-size:20px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px">Program saved</div>
+      <div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.6;margin-bottom:20px">Changes to ${p.title} apply to all enrolled members from the next payout cycle.</div>
+      <button class="btn btn-accent btn-sm" onclick="document.getElementById('prog-saved').style.display='none';nav('programs')">Back to programs</button>
+    </div>
+  </div>
+</div>`;
+};
+
 /* ── PRODUCT CATALOG ── */
+PAGES['add-sku']=()=>`
+<div class="pw enter">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <button class="btn btn-outline btn-sm" onclick="nav('catalog')">← Product catalog</button>
+    <span style="font-size:12px;color:hsl(var(--muted-foreground))">/ Add SKU</span>
+  </div>
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Add SKU</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Add a new product to the master catalog. Once published, it becomes available for production and market allocation.</p></div></div>
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Product details</div>
+        <div class="form-group"><label>Product name</label><input type="text" placeholder="e.g. Yukimi Daiginjo"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group"><label>SKU code</label><input type="text" placeholder="e.g. HJM-YK-720"></div>
+          <div class="form-group"><label>Bottle size</label><select><option>720ml</option><option>750ml</option><option>500ml</option><option>300ml</option><option>1.8L</option></select></div>
+          <div class="form-group"><label>Style</label><select><option>Junmai Daiginjo</option><option>Junmai Ginjo</option><option>Junmai</option><option>Genshu</option><option>Nigori</option><option>Honjozo</option></select></div>
+          <div class="form-group"><label>Polish ratio (seimaibuai)</label><input type="text" placeholder="e.g. 50%"></div>
+        </div>
+      </div>
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Pricing & production</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group"><label>Retail price</label><input type="text" placeholder="$0.00"></div>
+          <div class="form-group"><label>Wholesale price</label><input type="text" placeholder="$0.00"></div>
+          <div class="form-group"><label>Case size</label><select><option>12 bottles</option><option>6 bottles</option><option>24 bottles</option></select></div>
+          <div class="form-group"><label>Produced by</label><select><option>Kuramoto Brewing</option><option>Echigo Kura</option></select></div>
+        </div>
+      </div>
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Availability</div>
+        <div class="form-group"><label>Release type</label><select><option>Core — always available</option><option>Seasonal</option><option>Limited lot</option></select></div>
+        <div class="form-group" style="margin-bottom:0"><label>Markets (countries)</label><div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:2px">${['United States','Japan','France','Italy','United Kingdom','Germany','Canada','Australia','South Korea','Singapore'].map((mk,i)=>`<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:6px 12px;border-radius:8px;border:1px solid hsl(var(--border));background:hsl(var(--background))"><input type="checkbox" ${i<3?'checked':''} style="accent-color:hsl(var(--accent))">${mk}</label>`).join('')}</div></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card" style="padding:20px;position:sticky;top:20px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid hsl(var(--border)/.5)">Bottle preview</div>
+        <div style="display:flex;justify-content:center;padding:8px 0 16px"><div style="width:44px;height:96px;border-radius:5px 5px 9px 9px;background:linear-gradient(160deg,hsl(40 30%88%),hsl(38 20%80%));border:1px solid hsl(38 16%76%);position:relative"><div style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:14px;height:11px;background:hsl(35 14%70%);border-radius:2px"></div><div style="position:absolute;bottom:18px;left:4px;right:4px;height:30px;background:hsl(40 20%99%);border-radius:2px"></div></div></div>
+        <div style="font-size:12px;color:hsl(var(--muted-foreground));text-align:center;margin-bottom:16px">Label artwork can be uploaded after the SKU is created.</div>
+        <button class="btn btn-accent" style="width:100%;height:42px" onclick="document.getElementById('sku-done').style.display='flex'">Publish SKU</button>
+        <button class="btn btn-outline" style="width:100%;margin-top:8px" onclick="nav('catalog')">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <div id="sku-done" style="display:none;position:fixed;inset:0;background:hsl(24 12%8%/.5);backdrop-filter:blur(4px);z-index:100;align-items:center;justify-content:center">
+    <div style="background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:18px;padding:32px;max-width:380px;text-align:center;box-shadow:var(--shadow-float)">
+      <div style="width:56px;height:56px;border-radius:999px;background:hsl(158 56%36%/.12);color:hsl(158 56%32%);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">${svgi(IC.check,28)}</div>
+      <div style="font-family:var(--font-display);font-size:20px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px">SKU published</div>
+      <div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.6;margin-bottom:20px">The new SKU is now in the master catalog and available for production requests and market allocation.</div>
+      <button class="btn btn-accent btn-sm" onclick="document.getElementById('sku-done').style.display='none';nav('catalog')">Back to catalog</button>
+    </div>
+  </div>
+</div>`;
+
+/* ── PRODUCT CATALOG ── */
+const CATALOG=[
+  {sku:'HJM-FP-750',n:'Florin Peaks',t:'Junmai Daiginjo · 750ml',r:'$48',w:'$38',by:'Kuramoto',mk:'5',st:'green',sl:'active'},
+  {sku:'HJM-JN-720',n:'Junmai Shiro',t:'Junmai · 720ml',r:'$32',w:'$26',by:'Kuramoto',mk:'5',st:'green',sl:'active'},
+  {sku:'HJM-RY-500',n:'Ryusui Reserve',t:'Genshu · 500ml · limited',r:'$82',w:'$65',by:'Kuramoto',mk:'4',st:'green',sl:'active'},
+  {sku:'EU-FP-750',n:'First Press',t:'Coffee Rice · 750ml',r:'$52',w:'$42',by:'Echigo Kura',mk:'3',st:'green',sl:'active'},
+  {sku:'HJM-NG-720',n:'Shirogane Nigori',t:'Nigori · 720ml',r:'$28',w:'$22',by:'Echigo Kura',mk:'2',st:'amber',sl:'seasonal'},
+  {sku:'HJM-HJ-500',n:'Hana Junmai',t:'Junmai · 500ml',r:'$38',w:'$30',by:'Kuramoto',mk:'2',st:'amber',sl:'limited'},
+];
+let currentSkuIdx=0;
+function editSku(i){currentSkuIdx=i;nav('sku-detail');}
+function saveSku(){
+  const s=CATALOG[currentSkuIdx];
+  s.n=document.getElementById('sk-n').value;
+  s.t=document.getElementById('sk-t').value;
+  s.r=document.getElementById('sk-r').value;
+  s.w=document.getElementById('sk-w').value;
+  s.by=document.getElementById('sk-by').value;
+  s.sl=document.getElementById('sk-sl').value;
+  s.st=s.sl==='active'?'green':'amber';
+  document.getElementById('sku-saved').style.display='flex';
+}
+function skuImg(inputId,targetId){
+  const inp=document.getElementById(inputId);
+  if(!inp||!inp.files||!inp.files[0])return;
+  const rd=new FileReader();
+  rd.onload=e=>{
+    CATALOG[currentSkuIdx].img=e.target.result;
+    const t=document.getElementById(targetId);
+    if(t)t.innerHTML='<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:contain">';
+  };
+  rd.readAsDataURL(inp.files[0]);
+}
+PAGES['sku-detail']=()=>{
+  const s=CATALOG[currentSkuIdx];
+  return`
+<div class="pw enter">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <button class="btn btn-outline btn-sm" onclick="nav('catalog')">← Product catalog</button>
+    <span style="font-size:12px;color:hsl(var(--muted-foreground))">/ ${s.sku}</span>
+  </div>
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Edit SKU</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Update pricing, production source, and availability for this product.</p></div></div>
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Product details</div>
+        <div class="form-group"><label>Product name</label><input type="text" id="sk-n" value="${s.n}"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group"><label>SKU code</label><input type="text" value="${s.sku}" readonly style="background:hsl(var(--muted)/.5);color:hsl(var(--muted-foreground))"></div>
+          <div class="form-group"><label>Type / size</label><input type="text" id="sk-t" value="${s.t}"></div>
+        </div>
+      </div>
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Pricing & production</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group"><label>Retail price</label><input type="text" id="sk-r" value="${s.r}"></div>
+          <div class="form-group"><label>Wholesale price</label><input type="text" id="sk-w" value="${s.w}"></div>
+          <div class="form-group"><label>Produced by</label><select id="sk-by"><option ${s.by==='Kuramoto'?'selected':''}>Kuramoto</option><option ${s.by==='Echigo Kura'?'selected':''}>Echigo Kura</option></select></div>
+          <div class="form-group"><label>Availability</label><select id="sk-sl"><option ${s.sl==='active'?'selected':''}>active</option><option ${s.sl==='seasonal'?'selected':''}>seasonal</option><option ${s.sl==='limited'?'selected':''}>limited</option></select></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card" style="padding:20px;position:sticky;top:20px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid hsl(var(--border)/.5)">Product image</div>
+        <div id="sk-thumb" style="width:100%;height:160px;border-radius:10px;border:1px dashed hsl(var(--border));background:hsl(var(--muted)/.4);display:flex;align-items:center;justify-content:center;overflow:hidden;margin-bottom:12px">${s.img?`<img src="${s.img}" style="width:100%;height:100%;object-fit:contain">`:`<div style="text-align:center;color:hsl(var(--muted-foreground))">${svgi(IC.box,28)}<div style="font-size:12px;margin-top:8px">No image yet</div></div>`}</div>
+        <label class="btn btn-outline" style="width:100%;cursor:pointer">Upload image<input type="file" id="sk-file" accept="image/*" style="display:none" onchange="skuImg('sk-file','sk-thumb')"></label>
+        <div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:8px;text-align:center">PNG or JPG · bottle shot on white preferred</div>
+      </div>
+      <div class="card" style="padding:20px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid hsl(var(--border)/.5)">Save changes</div>
+        <div style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.6;margin-bottom:16px">Changes apply across the catalog and to all markets where this SKU is listed.</div>
+        <button class="btn btn-accent" style="width:100%;height:42px" onclick="saveSku()">Save SKU</button>
+        <button class="btn btn-outline" style="width:100%;margin-top:8px" onclick="nav('catalog')">Cancel</button>
+        <button class="btn" style="width:100%;margin-top:8px;background:hsl(0 68%48%/.08);color:hsl(0 68%40%);border:1px solid hsl(0 68%48%/.25)" onclick="if(confirm('Discontinue this SKU?')){nav('catalog')}">Discontinue SKU</button>
+      </div>
+    </div>
+  </div>
+  <div id="sku-saved" style="display:none;position:fixed;inset:0;background:hsl(24 12%8%/.5);backdrop-filter:blur(4px);z-index:100;align-items:center;justify-content:center">
+    <div style="background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:18px;padding:32px;max-width:380px;text-align:center;box-shadow:var(--shadow-float)">
+      <div style="width:56px;height:56px;border-radius:999px;background:hsl(158 56%36%/.12);color:hsl(158 56%32%);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">${svgi(IC.check,28)}</div>
+      <div style="font-family:var(--font-display);font-size:20px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px">SKU updated</div>
+      <div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.6;margin-bottom:20px">Changes saved to the master catalog.</div>
+      <button class="btn btn-accent btn-sm" onclick="document.getElementById('sku-saved').style.display='none';nav('catalog')">Back to catalog</button>
+    </div>
+  </div>
+</div>`;
+};
+
 PAGES.catalog=()=>`
 <div class="pw enter">
-  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Product catalog</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Master SKU list · pricing, production source, and market availability</p></div>
-    <button class="btn btn-accent btn-sm">+ Add SKU</button>
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Product catalog</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Master SKU list · pricing, production source, and market availability · click any row to edit</p></div>
+    <button class="btn btn-accent btn-sm" onclick="nav('add-sku')">+ Add SKU</button>
   </div>
   <div class="card">
     <table class="data-table">
-      <thead><tr><th>SKU</th><th>Product</th><th>Type</th><th>Retail</th><th>Wholesale</th><th>Produced by</th><th>Markets</th><th>Status</th></tr></thead>
+      <thead><tr><th></th><th>SKU</th><th>Product</th><th>Type</th><th>Retail</th><th>Wholesale</th><th>Produced by</th><th>Markets</th><th>Status</th><th></th></tr></thead>
       <tbody>
-        ${[
-          {sku:'HJM-FP-750',n:'Florin Peaks',t:'Junmai Daiginjo · 750ml',r:'$48',w:'$38',by:'Kuramoto',mk:'5',st:'green',sl:'active'},
-          {sku:'HJM-JN-720',n:'Junmai Shiro',t:'Junmai · 720ml',r:'$32',w:'$26',by:'Kuramoto',mk:'5',st:'green',sl:'active'},
-          {sku:'HJM-RY-500',n:'Ryusui Reserve',t:'Genshu · 500ml · limited',r:'$82',w:'$65',by:'Kuramoto',mk:'4',st:'green',sl:'active'},
-          {sku:'EU-FP-750',n:'First Press',t:'Coffee Rice · 750ml',r:'$52',w:'$42',by:'Echigo Kura',mk:'3',st:'green',sl:'active'},
-          {sku:'HJM-NG-720',n:'Shirogane Nigori',t:'Nigori · 720ml',r:'$28',w:'$22',by:'Echigo Kura',mk:'2',st:'amber',sl:'seasonal'},
-          {sku:'HJM-HJ-500',n:'Hana Junmai',t:'Junmai · 500ml',r:'$38',w:'$30',by:'Kuramoto',mk:'2',st:'amber',sl:'limited'},
-        ].map(s=>`<tr><td class="mono" style="font-size:11px;color:hsl(var(--muted-foreground))">${s.sku}</td><td style="font-weight:500">${s.n}</td><td style="color:hsl(var(--muted-foreground))">${s.t}</td><td class="mono" style="font-weight:500">${s.r}</td><td class="mono" style="color:hsl(var(--accent));font-weight:500">${s.w}</td><td style="font-size:12px">${s.by}</td><td class="mono">${s.mk}</td><td>${pill(s.st,s.sl)}</td></tr>`).join('')}
+        ${CATALOG.map((s,si)=>`<tr style="cursor:pointer" onclick="editSku(${si})"><td><div style="width:30px;height:42px;border-radius:4px;background:hsl(var(--muted)/.5);border:1px solid hsl(var(--border)/.5);display:flex;align-items:center;justify-content:center;overflow:hidden">${s.img?`<img src="${s.img}" style="width:100%;height:100%;object-fit:contain">`:`<span style="color:hsl(var(--muted-foreground));opacity:.5">${svgi(IC.box,13)}</span>`}</div></td><td class="mono" style="font-size:11px;color:hsl(var(--muted-foreground))">${s.sku}</td><td style="font-weight:500">${s.n}</td><td style="color:hsl(var(--muted-foreground))">${s.t}</td><td class="mono" style="font-weight:500">${s.r}</td><td class="mono" style="color:hsl(var(--accent));font-weight:500">${s.w}</td><td style="font-size:12px">${s.by}</td><td class="mono">${s.mk}</td><td>${pill(s.st,s.sl)}</td><td><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();editSku(${si})">Edit</button></td></tr>`).join('')}
       </tbody>
     </table>
   </div>

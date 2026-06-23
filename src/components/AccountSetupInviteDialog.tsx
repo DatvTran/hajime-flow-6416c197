@@ -159,7 +159,9 @@ export function AccountSetupInviteDialog({
     }
   }, [open]);
 
-  const ready = Boolean(storeName.trim() && email.trim());
+  const ready =
+    Boolean(storeName.trim() && email.trim()) &&
+    (variant !== "distributor" || distributorReps.length === 0 || assignedRepEmail.trim() !== "");
 
   const emailGreeting = useMemo(() => {
     const store = storeName.trim();
@@ -169,8 +171,12 @@ export function AccountSetupInviteDialog({
   const handleDiscard = () => onOpenChange(false);
 
   const handleSend = async () => {
-    if (!ready) {
+    if (!storeName.trim() || !email.trim()) {
       toast.error("Store name and invitation email are required");
+      return;
+    }
+    if (variant === "distributor" && distributorReps.length > 0 && !assignedRepEmail.trim()) {
+      toast.error("Select an assigned sales rep for this store");
       return;
     }
     setSubmitting(true);
@@ -305,21 +311,16 @@ export function AccountSetupInviteDialog({
                       <div className="flex flex-col gap-4">
                         {variant === "distributor" ? (
                           <div className="space-y-2">
-                            <Label htmlFor="asi-rep">Assigned sales rep</Label>
+                            <Label htmlFor="asi-rep">Assigned sales rep *</Label>
                             <Select
-                              value={assignedRepEmail || "__unassigned__"}
-                              onValueChange={(v) =>
-                                setAssignedRepEmail(v === "__unassigned__" ? "" : v)
-                              }
+                              value={assignedRepEmail || undefined}
+                              onValueChange={setAssignedRepEmail}
                               disabled={submitting}
                             >
                               <SelectTrigger id="asi-rep" className="touch-manipulation">
-                                <SelectValue placeholder="Select a rep (optional)" />
+                                <SelectValue placeholder="Select territory rep" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="__unassigned__">
-                                  Unassigned — wholesaler only
-                                </SelectItem>
                                 {distributorReps.map((rep) => (
                                   <SelectItem key={rep.id} value={rep.email}>
                                     {rep.displayName}
@@ -329,8 +330,8 @@ export function AccountSetupInviteDialog({
                             </Select>
                             <p className="text-xs text-muted-foreground">
                               {selectedRep
-                                ? `${selectedRep.displayName} will own this account in their territory and appear as the contact in the email.`
-                                : "Optional. Assign a field rep so the store appears on their account list."}
+                                ? `${selectedRep.displayName} will own this account and receive credit on their territory list.`
+                                : "Required when you have sales reps on your team — the store is linked to their user id in the database."}
                             </p>
                             {distributorReps.length === 0 ? (
                               <p className="text-xs text-amber-700 dark:text-amber-400">

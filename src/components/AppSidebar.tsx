@@ -33,6 +33,7 @@ import {
   Store,
   Building2,
   UserPlus,
+  Globe,
 } from "lucide-react";
 import {
   Sidebar,

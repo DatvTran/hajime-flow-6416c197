@@ -11,6 +11,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAppData } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { isHqOperatorRole, scopeAppDataForHqOperator } from "@/lib/hq-order-scope";
 import { MarketsSkeleton } from "@/components/skeletons";
 import {
   computeAnchorMarketsSnapshot,
@@ -30,12 +32,20 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Globe, Info, TrendingUp } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
+import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
+import { HqMarketsAllocationView } from "@/components/hq/HqMarketsAllocationView";
 
 export default function MarketsPage() {
   const { data, loading } = useAppData();
+  const { user } = useAuth();
+
+  const commandData = useMemo(
+    () => (isHqOperatorRole(user?.role) ? scopeAppDataForHqOperator(data) : data),
+    [data, user?.role],
+  );
 
   const view = useMemo(() => {
-    const mode = resolveMarketsHqMode(data.salesOrders);
+    const mode = resolveMarketsHqMode(commandData.salesOrders);
     const asOf = marketsAsOfDate(mode);
     if (mode === "illustrative") {
       return {
@@ -50,19 +60,24 @@ export default function MarketsPage() {
     }
     return {
       mode,
-      snap: computeAnchorMarketsSnapshot(data.salesOrders, 30, asOf),
-      active: countActiveMarkets(data.salesOrders, 90, asOf),
-      rev30: revenueInWindow(data.salesOrders, 30, asOf),
-      growth30: computeRevenueGrowthPercent(data.salesOrders, 30, asOf),
-      panelRows: computeMarketPanelRows(data, 30, asOf),
-      replenishment: computeHQReplenishmentSuggestions(data, asOf),
+      snap: computeAnchorMarketsSnapshot(commandData.salesOrders, 30, asOf),
+      active: countActiveMarkets(commandData.salesOrders, 90, asOf),
+      rev30: revenueInWindow(commandData.salesOrders, 30, asOf),
+      growth30: computeRevenueGrowthPercent(commandData.salesOrders, 30, asOf),
+      panelRows: computeMarketPanelRows(commandData, 30, asOf),
+      replenishment: computeHQReplenishmentSuggestions(commandData, asOf),
     };
-  }, [data]);
+  }, [commandData]);
 
   const chartData = useMemo(() => view.snap.map((r) => ({ market: r.city, revenue: r.revenue })), [view.snap]);
+  const asOf = useMemo(() => marketsAsOfDate(view.mode), [view.mode]);
 
   if (loading) {
     return <MarketsSkeleton />;
+  }
+
+  if (isHqOperatorRole(user?.role)) {
+    return <HqMarketsAllocationView data={commandData} view={view} asOf={asOf} />;
   }
 
   return (
@@ -70,6 +85,7 @@ export default function MarketsPage() {
       <PageHeader
         title="Markets"
         description="Allocation and performance by region — Brand Operator control tower (spec §2.B, §4 stage 4)."
+        variant={pageHeaderVariantForRole(user.role)}
       />
 
       {view.mode === "snapshot" ? (

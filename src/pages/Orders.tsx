@@ -22,23 +22,40 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
-import { Navigate, useLocation, useSearchParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { mapRoleToSalesOrderFormVariant } from "@/lib/sales-order-form-variants";
 import { toast } from "@/components/ui/sonner";
 import { apiListCardLast4s, apiVerifyCheckoutSession } from "@/lib/stripe-api";
 import { setStoredCardLast4, setStoredCustomerId } from "@/lib/stripe-local";
 import { buildOutboundShipmentForOrder } from "@/lib/order-shipment";
-import { downloadSalesOrdersCsv } from "@/lib/export-orders-csv";
+import { filterWholesaleOrdersForHq, isHqOperatorRole } from "@/lib/hq-order-scope";
+import { mergeHqWholesaleOrdersForDisplay } from "@/lib/hq-orders-demo";
+import { HqDistributorPartnerStrip } from "@/components/HqDistributorPartnerStrip";
+import { HqReplenishmentOrdersView } from "@/components/hq/HqReplenishmentOrdersView";
+import { HqDistributorOrdersView } from "@/components/hq/HqDistributorOrdersView";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function Orders() {
   const { t } = useLanguage();
   const { user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const isDistributorPortal = location.pathname.startsWith("/distributor/orders");
-  const { salesOrders: orders, addSalesOrder, patchSalesOrder } = useSalesOrders();
+  const { salesOrders: allOrders, addSalesOrder, patchSalesOrder } = useSalesOrders();
   const { accounts } = useAccounts();
+  const hqOrderContext = useMemo(() => {
+    if (!isHqOperatorRole(user?.role)) {
+      return { orders: allOrders, accounts };
+    }
+    const merged = mergeHqWholesaleOrdersForDisplay(allOrders, accounts);
+    return {
+      orders: filterWholesaleOrdersForHq(merged.orders, merged.accounts),
+      accounts: merged.accounts,
+    };
+  }, [allOrders, accounts, user?.role]);
+  const orders = hqOrderContext.orders;
+  const hqDisplayAccounts = hqOrderContext.accounts;
   const { appendEntry } = useFinancingLedger();
   const { updateData, loading } = useAppData();
   
@@ -105,12 +122,16 @@ export default function Orders() {
       { replace: true },
     );
     if (o) {
+      if (isHqOperatorRole(user?.role) && searchParams.get("view") !== "replenishment") {
+        navigate(`/orders/${encodeURIComponent(oid)}`, { replace: true });
+        return;
+      }
       setSearch(oid);
       setSelectedOrderId(oid);
     } else {
       setSearch(oid);
     }
-  }, [searchParams, orders, setSearchParams]);
+  }, [searchParams, orders, setSearchParams, user?.role, navigate]);
 
   /** Deep link from Accounts page — pre-fill order search by trading name. */
   useEffect(() => {
@@ -307,21 +328,90 @@ export default function Orders() {
     );
   }
 
+  const hqView = searchParams.get("view");
+  if (isHqOperatorRole(user?.role) && hqView === "sales") {
+    return <Navigate to="/accounts?view=sales" replace />;
+  }
+
+  if (isHqOperatorRole(user?.role)) {
+    const orderDialogs = (
+      <>
+        <NewSalesOrderDialog
+          open={newOrderOpen}
+          onOpenChange={setNewOrderOpen}
+          existingOrders={orders}
+          onCreate={handleCreateOrder}
+          variant={newOrderVariant}
+        />
+        <SalesOrderDetailDialog
+          order={detailOrder}
+          open={detailOrder !== null}
+          onOpenChange={(o) => {
+            if (!o) setSelectedOrderId(null);
+          }}
+          onPatch={patchOrder}
+          accounts={accounts}
+          billingRefresh={billingUiTick}
+          onStripeBillingUpdated={() => setBillingUiTick((n) => n + 1)}
+        />
+      </>
+    );
+
+    if (hqView === "replenishment") {
+      return (
+        <>
+          <HqReplenishmentOrdersView
+            orders={orders}
+            accounts={hqDisplayAccounts}
+            onApprove={(o) => void patchOrder(o.id, { status: "confirmed" })}
+            onDecline={(o) => void patchOrder(o.id, { status: "cancelled" })}
+            onSelect={setSelectedOrderId}
+          />
+          {orderDialogs}
+        </>
+      );
+    }
+
+    return (
+      <>
+        <HqDistributorOrdersView orders={orders} />
+      </>
+    );
+  }
+
+  const hqPageTitle =
+    isHqOperatorRole(user?.role) && hqView === "replenishment"
+      ? "Replenishment orders"
+      : isHqOperatorRole(user?.role) && hqView === "sales"
+        ? "Distributor sales"
+        : isHqOperatorRole(user?.role)
+          ? "Distributor orders"
+          : "Orders";
+  const hqPageDescription =
+    hqView === "replenishment"
+      ? "Pallet orders from distributors to restock their DCs — approve to ship from finished goods."
+      : hqView === "sales"
+        ? "Downstream visibility into each distributor's sales-rep performance and retail-store revenue."
+        : isHqOperatorRole(user?.role)
+          ? "Pallet orders placed by distributors to HQ. Retail and sales-rep orders are handled downstream by each distributor."
+          : undefined;
+
   return (
     <div>
       <PageHeader
-        title="Orders"
+        title={hqPageTitle}
         variant={pageHeaderVariantForRole(user.role)}
         description={
-          user.role === "brand_operator"
-            ? "Brand HQ — monitor every pathway (manufacturer, wholesaler, rep, retail) and all payment states in one list."
+          hqPageDescription ??
+          (isHqOperatorRole(user?.role)
+            ? "Wholesale sell-in to distributors and wholesalers — not individual retail store orders. Open a partner below to see their network sales, inventory, reps, and retail accounts."
             : user.role === "distributor"
               ? "Wholesaler — after retail pays, create delivery and process shipping (confirmed + paid orders)."
               : user.role === "manufacturer"
                 ? "Sell-in visibility — mirror lines for planning alongside Production orders."
                 : user.role === "sales_rep" || user.role === "sales"
                   ? "Approve retail drafts, then payment releases the order to the wholesaler for delivery."
-                  : "Order lifecycle and fulfillment."
+                  : "Order lifecycle and fulfillment.")
         }
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
@@ -349,6 +439,8 @@ export default function Orders() {
           </div>
         }
       />
+
+      {isHqOperatorRole(user?.role) && hqView !== "sales" ? <HqDistributorPartnerStrip /> : null}
 
       <NewSalesOrderDialog
         open={newOrderOpen}

@@ -1,37 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL || "";
+import { apiFetch } from "@/lib/api-auth-fetch";
 
-function getAuthToken(): string | null {
-  try {
-    // Keep backward compatibility with legacy token key used in older dev builds
-    return localStorage.getItem("hajime_access_token") || localStorage.getItem("token");
-  } catch {
-    return null;
-  }
-}
-
-/**
- * apiFetch wraps fetch with auth headers and error handling
- */
-export async function apiFetch(url: string, options: RequestInit = {}) {
-  const token = getAuthToken();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...((options.headers as Record<string, string>) || {}),
-  };
-
-  const response = await fetch(`${API_URL}${url}`, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(error.error || `HTTP ${response.status}`);
-  }
-
-  return response.json();
-}
+export { apiFetch, getAuthToken, isAuthErrorMessage, refreshAccessToken } from "@/lib/api-auth-fetch";
 
 // ===== PRODUCTS =====
 
@@ -74,6 +43,7 @@ export async function updateProduct(id: string, productData: Partial<{
 
 /** Update catalog row when the client only knows SKU (e.g. seed-only rows without DB id yet). */
 export async function updateProductBySku(sku: string, productData: Partial<{
+  sku: string;
   name: string;
   description?: string;
   category?: string;
@@ -404,6 +374,18 @@ export async function getAppBootstrap(params?: { scope?: "platform" | "full" }) 
   if (params?.scope) queryParams.set("scope", params.scope);
   const q = queryParams.toString();
   return apiFetch(`/api/v1/app-bootstrap${q ? `?${q}` : ""}`);
+}
+
+export type DistributorOrganizationRow = {
+  id: string;
+  name: string;
+  slug: string;
+  database_name?: string;
+  is_active?: boolean;
+};
+
+export async function getDistributorOrganizations() {
+  return apiFetch<{ data: DistributorOrganizationRow[] }>("/api/v1/distributor-organizations");
 }
 
 export async function getProducts(params?: {
@@ -759,9 +741,13 @@ export async function getTeamMembers(opts?: { includeInactive?: boolean }) {
   return apiFetch(`/api/v1/team-members${q}`);
 }
 
-export async function approveRetailCrmContact(teamMemberId: string) {
+export async function approveRetailCrmContact(
+  teamMemberId: string,
+  body?: { assignedSalesRepEmail?: string; assignedSalesRepUserId?: string | number },
+) {
   return apiFetch(`/api/v1/team-members/${encodeURIComponent(teamMemberId)}/approve-retail`, {
     method: "POST",
+    body: JSON.stringify(body ?? {}),
   });
 }
 
@@ -1341,16 +1327,7 @@ export async function getNewProductRequest(id: string) {
   return apiFetch(`/api/v1/new-product-requests/${id}`);
 }
 
-export async function createNewProductRequest(requestData: {
-  request_id: string;
-  title: string;
-  requested_by: "brand_operator" | "manufacturer";
-  specs?: string;
-  notes?: string;
-  assigned_manufacturer?: string;
-  status?: string;
-  manufacturer_proposal?: string;
-}) {
+export async function createNewProductRequest(requestData: Record<string, unknown>) {
   return apiFetch("/api/v1/new-product-requests", {
     method: "POST",
     body: JSON.stringify(requestData),
@@ -1478,7 +1455,18 @@ export async function getSupplyChainIncentivesState(): Promise<{
   updatedAt?: string;
   updatedBy?: string | number | null;
 }> {
-  return apiFetch("/api/v1/supply-chain-incentives");
+  try {
+    return await apiFetch("/api/v1/supply-chain-incentives");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Missing table, permissions, or offline — treat as empty state (caller falls back to local seed).
+    if (
+      /403|401|404|500|Insufficient permissions|Tenant identity|Failed to fetch supply chain/i.test(msg)
+    ) {
+      return { data: null };
+    }
+    throw e;
+  }
 }
 
 export async function putSupplyChainIncentivesState(

@@ -13,8 +13,8 @@ import {
   getShipments,
   getNewProductRequests,
 } from "./api-v1";
-import { getOperationalSettings, getTeamMembers, getWarehouses, getAppBootstrap } from "@/lib/api-v1-mutations";
-import type { AppData, OperationalSettings, TeamMember, TeamMemberPortalRole, Warehouse } from "@/types/app-data";
+import { getOperationalSettings, getTeamMembers, getWarehouses, getAppBootstrap, getVisitNotes } from "@/lib/api-v1-mutations";
+import type { AppData, OperationalSettings, TeamMember, TeamMemberPortalRole, VisitNoteEntry, Warehouse } from "@/types/app-data";
 import type { InventoryItem, NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
 import { isSeedStyleSalesOrderId } from "@/lib/sales-order-utils";
 
@@ -113,6 +113,11 @@ function mapRowToTeamMember(row: Record<string, unknown>): TeamMember {
     row.managed_by_user_id != null && String(row.managed_by_user_id).trim() !== ""
       ? String(row.managed_by_user_id).trim()
       : undefined;
+  const portalUserIdRaw = row.portal_user_id;
+  const portalUserId =
+    portalUserIdRaw != null && String(portalUserIdRaw).trim() !== ""
+      ? String(portalUserIdRaw).trim()
+      : undefined;
   return {
     id: String(row.id ?? ""),
     displayName: String(row.name ?? row.display_name ?? ""),
@@ -126,6 +131,15 @@ function mapRowToTeamMember(row: Record<string, unknown>): TeamMember {
     ...(linkedAccountId ? { linkedAccountId } : {}),
     ...(retailTradingName ? { retailTradingName } : {}),
     ...(managedByUserId ? { managedByUserId } : {}),
+    ...(portalUserId ? { portalUserId } : {}),
+    ...(row.distributor_org_id != null && String(row.distributor_org_id).trim() !== ""
+      ? {
+          distributorOrgId: String(row.distributor_org_id),
+          ...(row.distributor_org_name != null
+            ? { distributorOrgName: String(row.distributor_org_name) }
+            : {}),
+        }
+      : {}),
   };
 }
 
@@ -526,7 +540,8 @@ function transformToAppData(
         wholesaleCasePrice: Number(
           p.metadata?.wholesaleCasePrice ?? p.metadata?.wholesalePriceCase ?? 0,
         ),
-        retailPriceCase: p.metadata?.retailPriceCase || 0,
+        msrpCasePrice: Number(p.metadata?.msrpCasePrice ?? p.metadata?.retailPriceCase ?? 0),
+        manufacturerCasePrice: Number(p.metadata?.manufacturerCasePrice ?? 0),
         launchDate: p.metadata?.launchDate,
         status: p.metadata?.status || "active",
         imageUrl: p.metadata?.imageUrl || p.metadata?.image,
@@ -572,6 +587,13 @@ function transformToAppData(
           ...(a.assigned_sales_rep_id != null
             ? { assignedSalesRepUserId: String(a.assigned_sales_rep_id) }
             : {}),
+          ...(a.distributor_org_id != null
+            ? {
+                distributorOrgId: String(a.distributor_org_id),
+                distributorOrgName:
+                  a.distributor_org_name != null ? String(a.distributor_org_name) : undefined,
+              }
+            : {}),
           tags: a.tags || [],
           avgOrderSize: a.avg_order_size || 0,
           firstOrderDate: a.first_order_date || new Date().toISOString(),
@@ -612,6 +634,14 @@ function transformToAppData(
           status: invStatus === "low" ? ("available" as const) : (invStatus as "available" | "reserved"),
           labelVersion: String(i.label_version ?? "v1.0"),
           notes: String(i.notes ?? ""),
+          ...(i.distributor_org_id != null && String(i.distributor_org_id).trim() !== ""
+            ? {
+                distributorOrgId: String(i.distributor_org_id),
+                ...(i.distributor_org_name != null
+                  ? { distributorOrgName: String(i.distributor_org_name) }
+                  : {}),
+              }
+            : {}),
         };
       }),
       depletionReports: (depletionReports || []).map(r => ({
@@ -653,6 +683,35 @@ function transformToAppData(
     console.error("[DataService] transformToAppData error:", err);
     throw err;
   }
+}
+
+/** Map `/api/v1/visit-notes` or bootstrap rows → client `VisitNoteEntry`. */
+export function mapVisitNotesFromApi(rows: unknown[]): VisitNoteEntry[] {
+  return (rows || []).map((raw) => {
+    const row = raw as Record<string, unknown>;
+    const visitDate = row.visit_date ?? row.visitDate;
+    const at =
+      visitDate != null
+        ? String(visitDate).slice(0, 16).replace("T", " ")
+        : row.created_at != null
+          ? String(row.created_at).slice(0, 16).replace("T", " ")
+          : new Date().toISOString().slice(0, 16).replace("T", " ");
+    const authorRep =
+      (row.author_email != null && String(row.author_email).trim()) ||
+      (row.author_display_name != null && String(row.author_display_name).trim()) ||
+      (row.authorRep != null && String(row.authorRep).trim()) ||
+      "";
+    return {
+      id: String(row.id ?? `v-${Date.now()}`),
+      at,
+      account:
+        (row.account_name != null && String(row.account_name).trim()) ||
+        (row.account != null && String(row.account).trim()) ||
+        String(row.account_id ?? ""),
+      body: String(row.note ?? row.body ?? ""),
+      authorRep,
+    };
+  });
 }
 
 /** Map `/api/v1/orders` rows → client `SalesOrder` (shared by bootstrap + refresh). */
@@ -705,6 +764,13 @@ export function mapApiOrdersToSalesOrders(
       taxAmount: Number(o.tax_amount ?? 0),
       shippingCost: Number(o.shipping_cost ?? 0),
       totalAmount: price,
+      ...(o.distributor_org_id != null && String(o.distributor_org_id).trim() !== ""
+        ? {
+            distributorOrgId: String(o.distributor_org_id),
+            distributorOrgName:
+              o.distributor_org_name != null ? String(o.distributor_org_name) : undefined,
+          }
+        : {}),
     };
   });
 }
@@ -755,7 +821,9 @@ async function fetchAppDataBootstrap(scope: "platform" | "full" = "platform"): P
 
   const opRow = payload.operationalSettings as Record<string, unknown> | null | undefined;
   const operationalSettings = mapOperationalSettingsFromApi(opRow ?? null, data.products || []);
-  return operationalSettings ? { ...data, operationalSettings } : data;
+  const visitNotes = mapVisitNotesFromApi((payload.visitNotes as unknown[]) || []);
+  const withNotes = visitNotes.length > 0 ? { ...data, visitNotes } : data;
+  return operationalSettings ? { ...withNotes, operationalSettings } : withNotes;
 }
 
 
@@ -775,6 +843,7 @@ export async function fetchAppDataGranular(scope: "platform" | "full" = "platfor
     fetchWithTimeout("teamMembers", () => getTeamMembers({ includeInactive: true }), API_CALL_TIMEOUT_MS),
     fetchWithTimeout("warehouses", () => getWarehouses({ includeInactive: true }), API_CALL_TIMEOUT_MS),
     fetchWithTimeout("operationalSettings", () => getOperationalSettings(), API_CALL_TIMEOUT_MS),
+    fetchWithTimeout("visitNotes", () => getVisitNotes({ limit: 100 }), API_CALL_TIMEOUT_MS),
   ]);
   
   const productsRes = results[0].status === 'fulfilled' ? results[0].value : { data: [] };
@@ -788,6 +857,7 @@ export async function fetchAppDataGranular(scope: "platform" | "full" = "platfor
   const teamMembersRes = results[8].status === 'fulfilled' ? results[8].value : { data: [] };
   const warehousesRes = results[9].status === 'fulfilled' ? results[9].value : { data: [] };
   const operationalRes = results[10].status === 'fulfilled' ? results[10].value : null;
+  const visitNotesRes = results[11].status === 'fulfilled' ? results[11].value : { data: [] };
   
   // Log any failures
   results.forEach((result, index) => {
@@ -814,8 +884,10 @@ export async function fetchAppDataGranular(scope: "platform" | "full" = "platfor
       ? (operationalRes as { data: Record<string, unknown> }).data
       : null;
   const operationalSettings = mapOperationalSettingsFromApi(opRow, data.products || []);
+  const visitNotes = mapVisitNotesFromApi(visitNotesRes.data || []);
+  const withNotes = visitNotes.length > 0 ? { ...data, visitNotes } : data;
 
-  return operationalSettings ? { ...data, operationalSettings } : data;
+  return operationalSettings ? { ...withNotes, operationalSettings } : withNotes;
 }
 
 /**

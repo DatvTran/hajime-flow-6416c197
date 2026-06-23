@@ -40,10 +40,12 @@ import { normalizeAppData } from "@/lib/normalize-app-data";
 import { applyCatalogToAppData, mapApiRowToProduct } from "@/lib/product-catalog-sync";
 import {
   mapNewProductRequestApiResponse,
+  mapNewProductRequestCreateToApi,
   mapNewProductRequestPatchToApi,
   newProductRequestApiId,
 } from "@/lib/new-product-request-api";
-import { loadLocalAppData, saveLocalAppData } from "@/lib/local-app-data";
+import { isAuthErrorMessage } from "@/lib/api-auth-fetch";
+import { loadLocalAppData, saveLocalAppData, clearLocalAppData } from "@/lib/local-app-data";
 import {
   canSyncOrderStatusToApi,
   isPersistedApiOrderId,
@@ -57,6 +59,7 @@ import {
   deleteProductBySku as apiDeleteProductBySku,
   createAccount as apiCreateAccount,
   updateAccount as apiUpdateAccount,
+  deleteAccount as apiDeleteAccount,
   createOrder as apiCreateOrder,
   updateOrderStatus as apiUpdateOrderStatus,
   adjustInventory as apiAdjustInventory,
@@ -105,6 +108,7 @@ const FALLBACK_SEED = normalizeAppData(seedJson as AppData);
 
 /** Build API payload aligned with `products` table + JSONB metadata (see data-service transformToAppData). */
 function catalogProductApiPayload(merged: Product): {
+  sku: string;
   name: string;
   description?: string;
   category?: string;
@@ -112,16 +116,21 @@ function catalogProductApiPayload(merged: Product): {
   metadata: Record<string, unknown>;
 } {
   const wholesale = merged.wholesaleCasePrice ?? 0;
+  const msrp = merged.msrpCasePrice ?? 0;
+  const manufacturer = merged.manufacturerCasePrice ?? 0;
   return {
+    sku: merged.sku,
     name: merged.name,
     ...(merged.shortDescription != null ? { description: merged.shortDescription } : {}),
     unit_size: merged.size,
     metadata: {
       size: merged.size,
       caseSize: merged.caseSize,
+      msrpCasePrice: msrp,
+      retailPriceCase: msrp,
       wholesalePriceCase: wholesale,
       wholesaleCasePrice: wholesale,
-      retailPriceCase: 0,
+      manufacturerCasePrice: manufacturer,
       minOrderCases: merged.minOrderCases ?? 1,
       status: merged.status,
       ...(merged.abv != null ? { abv: merged.abv } : {}),
@@ -245,6 +254,11 @@ function mapApiRowToTeamMember(row: Record<string, unknown>): TeamMember {
     row.managed_by_user_id != null && String(row.managed_by_user_id).trim() !== ""
       ? String(row.managed_by_user_id).trim()
       : undefined;
+  const portalUserIdRaw = row.portal_user_id;
+  const portalUserId =
+    portalUserIdRaw != null && String(portalUserIdRaw).trim() !== ""
+      ? String(portalUserIdRaw).trim()
+      : undefined;
 
   return {
     id: String(row.id ?? ""),
@@ -257,6 +271,15 @@ function mapApiRowToTeamMember(row: Record<string, unknown>): TeamMember {
     ...(pendingDistributorApproval === true ? { pendingDistributorApproval: true } : {}),
     ...(crmRequestedByUserId ? { crmRequestedByUserId } : {}),
     ...(managedByUserId ? { managedByUserId } : {}),
+    ...(portalUserId ? { portalUserId } : {}),
+    ...(row.distributor_org_id != null && String(row.distributor_org_id).trim() !== ""
+      ? {
+          distributorOrgId: String(row.distributor_org_id),
+          ...(row.distributor_org_name != null
+            ? { distributorOrgName: String(row.distributor_org_name) }
+            : {}),
+        }
+      : {}),
   };
 }
 
@@ -380,14 +403,22 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const local = loadLocalAppData();
-    if (local) {
-      setData(normalizeAppData(applyCatalogToAppData(local)));
-    } else {
+    try {
+      const local = loadLocalAppData();
+      if (local) {
+        setData(normalizeAppData(applyCatalogToAppData(local)));
+      } else {
+        setData(FALLBACK_SEED);
+      }
+      setError(null);
+    } catch (err) {
+      console.error("[AppDataContext] Local hydrate failed, using seed:", err);
+      clearLocalAppData();
       setData(FALLBACK_SEED);
+      setError(null);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-    setError(null);
   }, [user?.id]);
 
   useEffect(() => {
@@ -423,7 +454,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             });
           }
         }
-        return;
       }
 
       if (cancelled) return;
@@ -433,6 +463,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         if (!cancelled) applyServer(fullData as AppData);
       } catch (e) {
         console.warn("[AppDataContext] Full distributor sync skipped:", e);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
 
@@ -602,6 +634,15 @@ export function useProducts() {
       toast.error("Product with this SKU already exists");
       return { success: false, error: "Duplicate SKU" };
     }
+
+    const saveLocal = () => {
+      updateData((d) =>
+        applyCatalogToAppData({
+          ...d,
+          products: [...d.products, p],
+        }),
+      );
+    };
     
     try {
       const payload = catalogProductApiPayload(p);
@@ -622,6 +663,13 @@ export function useProducts() {
       return { success: true, data: result.data };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create product";
+      if (isAuthErrorMessage(message)) {
+        saveLocal();
+        toast.success("Product saved locally", {
+          description: "Your session expired — sign in again to sync with the server.",
+        });
+        return { success: true };
+      }
       toast.error("Failed to create product", { description: message });
       return { success: false, error: message };
     }
@@ -640,26 +688,36 @@ export function useProducts() {
     const hasNumericId =
       idRaw != null && String(idRaw).trim() !== "" && String(idRaw) !== "undefined";
 
+    const applyLocal = (id?: string | number) => {
+      updateData((d) =>
+        applyCatalogToAppData({
+          ...d,
+          products: d.products.map((x) =>
+            x.sku === sku ? { ...merged, id: id ?? idRaw } : x,
+          ),
+        }),
+      );
+    };
+
     try {
       const result = hasNumericId
         ? await apiUpdateProduct(String(idRaw), payload)
         : await apiUpdateProductBySku(sku, payload);
 
       const rid = (result as { data?: { id?: string | number } }).data?.id;
-
-      updateData((d) =>
-        applyCatalogToAppData({
-          ...d,
-          products: d.products.map((x) =>
-            x.sku === sku ? { ...merged, id: rid ?? idRaw } : x,
-          ),
-        }),
-      );
+      applyLocal(rid ?? idRaw);
 
       toast.success("Product updated");
       return { success: true, data: result.data };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update product";
+      if (isAuthErrorMessage(message)) {
+        applyLocal();
+        toast.success("Product saved locally", {
+          description: "Your session expired — sign in again to sync with the server.",
+        });
+        return { success: true };
+      }
       toast.error("Failed to update product", { description: message });
       return { success: false, error: message };
     }
@@ -847,13 +905,32 @@ export function useAccounts() {
     }
   }, [updateData]);
   
+  const deleteAccount = useCallback(async (id: string) => {
+    try {
+      if (!id.startsWith("demo-")) {
+        await apiDeleteAccount(id);
+      }
+      updateData((d) => ({
+        ...d,
+        accounts: d.accounts.filter((x) => x.id !== id),
+      }));
+      toast.success("Account deleted");
+      return { success: true as const };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete account";
+      toast.error("Failed to delete account", { description: message });
+      return { success: false as const, error: message };
+    }
+  }, [updateData]);
+  
   return useMemo(
     () => ({
       accounts: data.accounts,
       addAccount,
       updateAccount,
+      deleteAccount,
     }),
-    [data.accounts, addAccount, updateAccount],
+    [data.accounts, addAccount, updateAccount, deleteAccount],
   );
 }
 
@@ -1712,16 +1789,7 @@ export function useNewProductRequests() {
 
   const addNewProductRequest = useCallback(async (npr: Omit<NewProductRequest, "id">) => {
     try {
-      const response = await apiCreateNewProductRequest({
-        request_id: npr.id,
-        title: npr.title,
-        requested_by: npr.requestedBy as "brand_operator" | "manufacturer",
-        specs: npr.specs,
-        notes: npr.notes,
-        assigned_manufacturer: npr.assignedManufacturer,
-        status: npr.status,
-        manufacturer_proposal: npr.manufacturerProposal,
-      });
+      const response = await apiCreateNewProductRequest(mapNewProductRequestCreateToApi(npr));
       updateData((d) => ({
         ...d,
         newProductRequests: [

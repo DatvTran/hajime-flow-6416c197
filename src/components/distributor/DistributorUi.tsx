@@ -16,6 +16,7 @@ export function DistributorPageHeader({
   actions,
   rawTitle,
   rawDescription,
+  className,
 }: {
   title: string;
   description?: string;
@@ -23,10 +24,11 @@ export function DistributorPageHeader({
   /** When set, title is shown as-is (e.g. personalized greeting). */
   rawTitle?: boolean;
   rawDescription?: boolean;
+  className?: string;
 }) {
   const { t } = useLanguage();
   return (
-    <div className="dist-ph-row flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className={cn("dist-ph-row flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between", className)}>
       <div className="min-w-0">
         <h1 className="font-display text-[26px] font-semibold tracking-[-0.02em] text-foreground sm:text-[30px]">
           {rawTitle ? title : t(title)}
@@ -339,11 +341,9 @@ export function DistributorShipmentCard({
 export function DistributorScheduleDay({ label, children }: { label: string; children: ReactNode }) {
   const { t } = useLanguage();
   return (
-    <div className="dist-schedule-day mb-6">
-      <div className="dist-sched-day-label mb-2.5 border-b border-border/40 pb-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        {t(label)}
-      </div>
-      <div className="space-y-2">{children}</div>
+    <div className="schedule-day">
+      <div className="sched-day-label">{label.includes("—") || /\d/.test(label) ? label : t(label)}</div>
+      {children}
     </div>
   );
 }
@@ -364,17 +364,17 @@ export function DistributorScheduleRow({
   action?: ReactNode;
 }) {
   return (
-    <div className="dist-sched-row flex flex-col gap-3 rounded-[10px] border border-border/60 bg-card px-4 py-3 shadow-[var(--shadow-soft)] transition-shadow hover:shadow-[var(--shadow-lifted)] sm:flex-row sm:items-center sm:gap-3.5">
-      <div className="dist-sched-time w-[80px] shrink-0 font-mono text-xs font-medium">{time}</div>
-      <div className="dist-sched-body min-w-0 flex-1">
-        <div className="dist-sched-acct text-[13px] font-medium">{account}</div>
-        <div className="dist-sched-items mt-0.5 text-xs text-muted-foreground">{items}</div>
+    <div className="sched-row">
+      <div className="sched-time">{time}</div>
+      <div className="sched-body">
+        <div className="sched-acct">{account}</div>
+        <div className="sched-items">{items}</div>
       </div>
-      <div className="shrink-0 text-right">
-        {tracking ? <div className="font-mono text-[11px] text-muted-foreground">{tracking}</div> : null}
-        {pill ? <div className="mt-1">{pill}</div> : null}
+      <div className="sched-meta">
+        {tracking ? <div className="sched-tracking">{tracking}</div> : null}
+        {pill ? <div className="sched-pill">{pill}</div> : null}
       </div>
-      {action}
+      {action ? <div className="sched-action">{action}</div> : null}
     </div>
   );
 }

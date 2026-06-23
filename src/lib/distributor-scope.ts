@@ -26,10 +26,10 @@ export function filterTeamMembersForDistributor(
   distributorUserId: string,
 ): TeamMember[] {
   const distId = String(distributorUserId);
-  const repUserIds = new Set(
+  const repPortalUserIds = new Set(
     members
-      .filter((m) => m.role === "sales_rep" && m.managedByUserId === distId)
-      .map((m) => m.id),
+      .filter((m) => m.role === "sales_rep" && m.managedByUserId === distId && m.portalUserId)
+      .map((m) => String(m.portalUserId)),
   );
   return members.filter((m) => {
     if (m.managedByUserId === distId) return true;
@@ -37,7 +37,7 @@ export function filterTeamMembersForDistributor(
       m.role === "retail" &&
       m.pendingDistributorApproval &&
       m.crmRequestedByUserId &&
-      repUserIds.has(String(m.crmRequestedByUserId))
+      repPortalUserIds.has(String(m.crmRequestedByUserId))
     ) {
       return true;
     }

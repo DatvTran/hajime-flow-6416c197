@@ -115,9 +115,13 @@ export function normalizeAppData(raw: AppData): AppData {
     ...raw,
     products: mergeProducts(raw.products, SEED.products),
     // Empty API array is valid (e.g. distributor with no scoped orders) — do not inject seed demos.
-    salesOrders: Array.isArray(raw.salesOrders)
+    salesOrders: (Array.isArray(raw.salesOrders)
       ? raw.salesOrders
-      : pickOrSeed(raw.salesOrders, SEED.salesOrders),
+      : pickOrSeed(raw.salesOrders, SEED.salesOrders)
+    ).map((o) => ({
+      ...o,
+      salesRep: o.salesRep != null && String(o.salesRep).trim() !== "" ? String(o.salesRep) : "—",
+    })),
     accounts: accountsMerged,
     inventory: pickOrSeed(raw.inventory, SEED.inventory),
     version: raw.version ?? 1,
@@ -126,7 +130,10 @@ export function normalizeAppData(raw: AppData): AppData {
     teamMembers,
     financingLedger: Array.isArray(raw.financingLedger) ? raw.financingLedger : [],
     retailerShelfStock,
-    visitNotes: Array.isArray(raw.visitNotes) ? raw.visitNotes : [],
+    visitNotes: (Array.isArray(raw.visitNotes) ? raw.visitNotes : []).map((n) => ({
+      ...n,
+      authorRep: n.authorRep != null && String(n.authorRep).trim() !== "" ? String(n.authorRep) : "",
+    })),
     newProductRequests: pickOrSeed(raw.newProductRequests, DEFAULT_NEW_PRODUCT_REQUESTS),
     transferOrders: pickOrSeed(raw.transferOrders, DEFAULT_TRANSFER_ORDERS),
     depletionReports: pickOrSeed(raw.depletionReports, DEFAULT_DEPLETION_REPORTS),

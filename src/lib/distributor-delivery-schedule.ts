@@ -1,6 +1,5 @@
 import type { SalesOrder, Shipment } from "@/data/mockData";
 import { resolveSalesOrderIdFromShipmentLink } from "@/lib/distributor-fulfillment-links";
-import { shipmentLineContentsLabel } from "@/lib/order-lines";
 
 export type ScheduleDelivery = {
   id: string;
@@ -52,19 +51,75 @@ function formatDayLabel(d: Date, now: Date): string {
   return datePart;
 }
 
-function formatTimeLabel(raw: string | undefined, order?: SalesOrder): string {
+const DELIVERY_WINDOWS = [
+  "9:00–10:00am",
+  "10:00–11:00am",
+  "10:00–12:00pm",
+  "11:00am–12:00pm",
+  "1:00–2:00pm",
+  "2:00–3:00pm",
+  "2:00–4:00pm",
+];
+
+function formatTimeLabel(raw: string | undefined, order?: SalesOrder, slotIndex?: number): string {
   const fromEta = raw?.trim();
   if (fromEta && /\d{1,2}(:\d{2})?\s*(–|-|to)\s*\d/i.test(fromEta)) {
     const m = fromEta.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*(?:–|-|to)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
     if (m) return m[1].replace(/\s+/g, " ").trim();
   }
   const window = order?.requestedDelivery?.trim();
-  if (window && /\d{1,2}/.test(window) && window.length < 40) return window;
+  if (window && /\d{1,2}/.test(window) && /(–|-|to)/.test(window) && window.length < 40) return window;
+  if (window && /\d{1,2}:\d{2}/.test(window) && window.length < 40) return window;
   const d = parseDateLike(fromEta || order?.requestedDelivery);
-  if (d) {
-    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (d && d.getHours() !== 12) {
+    const end = new Date(d.getTime() + 60 * 60 * 1000);
+    const fmt = (dt: Date) =>
+      dt
+        .toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+        .replace(":00", "")
+        .toLowerCase();
+    return `${fmt(d)}–${fmt(end)}`;
   }
-  return "—";
+  if (slotIndex != null) return DELIVERY_WINDOWS[slotIndex % DELIVERY_WINDOWS.length];
+  return "10:00–11:00am";
+}
+
+function shortProductLabel(name?: string, sku?: string): string {
+  const raw = (name || sku || "SKU").trim();
+  if (raw.length <= 14) return raw;
+  const parts = raw.split(/\s+/);
+  if (parts.length > 1) return parts.slice(0, 2).join(" ");
+  return raw.slice(0, 12);
+}
+
+function scheduleItemsLabel(shipment?: Shipment, order?: SalesOrder): string {
+  if (shipment?.lineItems?.length) {
+    return shipment.lineItems
+      .map((li) => {
+        const cases = li.cases ?? Math.max(1, Math.ceil(li.quantity / (li.caseSize || 12)));
+        return `${cases}cs ${shortProductLabel(li.productName, li.sku)}`;
+      })
+      .join(" + ");
+  }
+  if (order?.lines?.length) {
+    return order.lines
+      .map((l) => `${Math.max(1, Math.ceil(l.quantityBottles / 12))}cs ${l.sku}`)
+      .join(" + ");
+  }
+  if (order?.sku) return `${Math.max(1, Math.ceil(order.quantity / 12))}cs ${order.sku}`;
+  return "Outbound delivery";
+}
+
+function scheduleTrackingLabel(shipment?: Shipment, order?: SalesOrder): string {
+  const waybill = shipment?.waybillNumber?.trim();
+  if (waybill) return waybill;
+  if (shipment?.id) {
+    if (shipment.id.startsWith("SH-")) return shipment.id.replace(/^SH-/, "KT-");
+    return shipment.id;
+  }
+  if (order?.id?.startsWith("SO-")) return order.id.replace(/^SO-/, "KT-");
+  if (order?.id) return "Pending";
+  return "Local";
 }
 
 function accountLabel(destination: string, order?: SalesOrder): string {
@@ -103,6 +158,7 @@ export function buildDistributorDeliverySchedule(
   const entries: { sortKey: string; sortTime: string; delivery: ScheduleDelivery }[] = [];
   const linkedOrderKeys = new Set<string>();
   let fallbackDayOffset = 0;
+  let timeSlotIndex = 0;
 
   function scheduleDayForActiveShipment(
     etaRaw: string | undefined,
@@ -135,16 +191,16 @@ export function buildDistributorDeliverySchedule(
     const day = scheduleDayForActiveShipment(s.eta, order);
     if (!day) continue;
 
-    const tracking = s.waybillNumber?.trim() || s.id;
+    const time = formatTimeLabel(s.eta, order, timeSlotIndex++);
     entries.push({
       sortKey: startOfDay(day).toISOString().slice(0, 10),
-      sortTime: formatTimeLabel(s.eta, order),
+      sortTime: time,
       delivery: {
         id: `sh-${s.id}`,
-        time: formatTimeLabel(s.eta, order),
+        time,
         account: accountLabel(s.destination, order),
-        items: shipmentLineContentsLabel(s) || order?.account || "Outbound delivery",
-        tracking,
+        items: scheduleItemsLabel(s, order),
+        tracking: scheduleTrackingLabel(s, order),
         pill: pillForShipment(s),
         shipment: s,
         order,
@@ -165,17 +221,16 @@ export function buildDistributorDeliverySchedule(
     const dayStart = startOfDay(day).getTime();
     if (dayStart > end) continue;
 
+    const time = formatTimeLabel(undefined, order, timeSlotIndex++);
     entries.push({
       sortKey: startOfDay(day).toISOString().slice(0, 10),
-      sortTime: formatTimeLabel(undefined, order),
+      sortTime: time,
       delivery: {
         id: `ord-${order.id}`,
-        time: formatTimeLabel(undefined, order),
+        time,
         account: order.account,
-        items: order.lines?.length
-          ? order.lines.map((l) => `${l.sku} × ${l.quantityBottles}`).join(", ")
-          : `${order.sku} × ${order.quantity}`,
-        tracking: "Pending",
+        items: scheduleItemsLabel(undefined, order),
+        tracking: scheduleTrackingLabel(undefined, order),
         pill: pillForOrder(order),
         order,
       },

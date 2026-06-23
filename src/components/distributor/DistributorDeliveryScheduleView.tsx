@@ -42,7 +42,6 @@ export function DistributorDeliveryScheduleView({
   );
 
   const visibleDays = compact ? days.slice(0, 2) : days;
-  const deliveryCount = visibleDays.reduce((n, d) => n + d.deliveries.length, 0);
 
   const scheduleBody =
     visibleDays.length === 0 ? (
@@ -75,16 +74,18 @@ export function DistributorDeliveryScheduleView({
     );
 
   if (compact) {
-    return <div className="space-y-3">{scheduleBody}</div>;
+    return <div className="dist-delivery-schedule-compact">{scheduleBody}</div>;
   }
 
   return (
-    <DistributorPage className="dist-delivery-schedule space-y-6 pb-8">
+    <DistributorPage className="dist-delivery-schedule animate-enter pb-8">
       <DistributorPageHeader
         title="Delivery schedule"
         description="Upcoming confirmed deliveries · next 7 days"
+        rawDescription
+        className="!flex-row !items-start !justify-between !gap-4"
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button type="button" className="dist-btn dist-btn-outline dist-btn-sm">
               {t("Week view")}
             </button>
@@ -94,15 +95,6 @@ export function DistributorDeliveryScheduleView({
           </div>
         }
       />
-
-      {deliveryCount > 0 ? (
-        <p className="text-[13px] text-muted-foreground">
-          {t("{{count}} deliveries across the next {{days}} days", {
-            count: deliveryCount,
-            days: visibleDays.length,
-          })}
-        </p>
-      ) : null}
 
       {scheduleBody}
     </DistributorPage>

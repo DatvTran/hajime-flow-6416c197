@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppData } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { isHqOperatorRole, scopeAppDataForHqOperator } from "@/lib/hq-order-scope";
 import { GlobalMarketsSkeleton } from "@/components/skeletons";
 import {
   computeAnchorMarketsSnapshot,
@@ -86,9 +88,15 @@ function formatCasesGlyph(n: number): string {
 
 export default function GlobalMarketsPage() {
   const { data, loading } = useAppData();
+  const { user } = useAuth();
+
+  const commandData = useMemo(
+    () => (isHqOperatorRole(user?.role) ? scopeAppDataForHqOperator(data) : data),
+    [data, user?.role],
+  );
 
   const view = useMemo(() => {
-    const mode = resolveMarketsHqMode(data.salesOrders);
+    const mode = resolveMarketsHqMode(commandData.salesOrders);
     const asOf = marketsAsOfDate(mode);
     if (mode === "illustrative") {
       return {
@@ -103,14 +111,14 @@ export default function GlobalMarketsPage() {
     }
     return {
       mode,
-      snap: computeAnchorMarketsSnapshot(data.salesOrders, 30, asOf),
-      active: countActiveMarkets(data.salesOrders, 90, asOf),
-      rev30: revenueInWindow(data.salesOrders, 30, asOf),
-      growth30: computeRevenueGrowthPercent(data.salesOrders, 30, asOf),
-      panelRows: computeMarketPanelRows(data, 30, asOf),
-      replenishment: computeHQReplenishmentSuggestions(data, asOf),
+      snap: computeAnchorMarketsSnapshot(commandData.salesOrders, 30, asOf),
+      active: countActiveMarkets(commandData.salesOrders, 90, asOf),
+      rev30: revenueInWindow(commandData.salesOrders, 30, asOf),
+      growth30: computeRevenueGrowthPercent(commandData.salesOrders, 30, asOf),
+      panelRows: computeMarketPanelRows(commandData, 30, asOf),
+      replenishment: computeHQReplenishmentSuggestions(commandData, asOf),
     };
-  }, [data]);
+  }, [commandData]);
 
   const chartData = useMemo(() => view.snap.map((r) => ({ market: r.city, revenue: r.revenue })), [view.snap]);
 
