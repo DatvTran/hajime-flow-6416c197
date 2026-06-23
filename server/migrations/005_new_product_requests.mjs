@@ -54,8 +54,8 @@ export async function up(knex) {
     table.text('notes');
     
     // Audit
-    table.uuid('created_by');
-    table.uuid('updated_by');
+    table.bigInteger('created_by');
+    table.bigInteger('updated_by');
     table.timestamps(true, true);
     
     // Indexes

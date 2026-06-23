@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PurchaseOrderDetailDialog } from "@/components/PurchaseOrderDetailDialog";
@@ -16,6 +16,9 @@ import { resolveReceivingLocationForPo } from "@/lib/po-destination-warehouse";
 import { PurchaseOrdersSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
+import { isHqOperatorRole } from "@/lib/hq-order-scope";
+import { HqProductionRequestsView, type ProductionChangeRequest } from "@/components/hq/HqProductionRequestsView";
 import { DistributorPurchaseOrdersView } from "@/components/distributor/DistributorPurchaseOrdersView";
 
 function shouldAddInventoryForTransition(p: PurchaseOrder, nextStatus: PurchaseOrder["status"]): boolean {
@@ -28,6 +31,7 @@ function shouldAddInventoryForTransition(p: PurchaseOrder, nextStatus: PurchaseO
 export default function PurchaseOrders() {
   const { t } = useLanguage();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { loading, data } = useAppData();
 
   const canCreateProductionRequest = user.role === "brand_operator" || user.role === "operations" || user.role === "founder_admin";
@@ -89,14 +93,39 @@ export default function PurchaseOrders() {
       return;
     }
     const sku = searchParams.get("sku");
-    if (sku && canCreateProductionRequest) {
+    const newParam = searchParams.get("new");
+    if ((sku || newParam === "1") && canCreateProductionRequest) {
       const qty = searchParams.get("qty");
-      setNewPoPrefill({ sku, quantity: qty ?? undefined });
+      if (isHqOperatorRole(user.role)) {
+        const params = new URLSearchParams();
+        if (sku) params.set("sku", sku);
+        if (qty) params.set("qty", qty);
+        setSearchParams(
+          (prev) => {
+            const n = new URLSearchParams(prev);
+            n.delete("sku");
+            n.delete("qty");
+            n.delete("new");
+            return n;
+          },
+          { replace: true },
+        );
+        navigate(`/purchase-orders/new${params.toString() ? `?${params.toString()}` : ""}`, { replace: true });
+        return;
+      }
+      setNewPoPrefill({ sku: sku ?? undefined, quantity: qty ?? undefined });
       setNewPoOpen(true);
       setTab("production");
-      setSearchParams((prev) => { const n = new URLSearchParams(prev); n.delete("sku"); n.delete("qty"); return n; }, { replace: true });
+      setSearchParams((prev) => {
+        const n = new URLSearchParams(prev);
+        n.delete("sku");
+        n.delete("qty");
+        n.delete("new");
+        return n;
+      }, { replace: true });
+      return;
     }
-  }, [searchParams, purchaseOrders, transferOrders, canCreateProductionRequest, setSearchParams]);
+  }, [searchParams, purchaseOrders, transferOrders, canCreateProductionRequest, setSearchParams, navigate, user.role]);
 
   const patchPo = async (id: string, patch: Partial<Pick<PurchaseOrder, "status">>) => {
     if (!canEditPoStatus) return;
@@ -285,11 +314,53 @@ export default function PurchaseOrders() {
     );
   }
 
+  const handleProductionChangeRequest = async (po: PurchaseOrder, change: ProductionChangeRequest) => {
+    const kura = po.manufacturer.split(" ")[0] || po.manufacturer;
+    const noteBlock = `[Change requested · ${change.changeType} · respond by ${change.respondBy}]\n${change.message}`;
+    const notes = po.notes?.trim() ? `${po.notes.trim()}\n\n${noteBlock}` : noteBlock;
+    await patchPurchaseOrder(po.id, { notes });
+    toast.success(t("Change request sent"), {
+      description: `${kura} ${t("will review your notes before scheduling the batch.")}`,
+    });
+  };
+
+  if (isHqOperatorRole(user.role)) {
+    return (
+      <>
+        <HqProductionRequestsView
+          purchaseOrders={purchaseOrders}
+          onSelect={(id) => setSelectedPoId(id)}
+          onApprove={(po) => void patchPo(po.id, { status: "approved" })}
+          onDecline={(po) => {
+            void patchPo(po.id, { status: "draft" });
+            toast.info(t("Production request declined"), { description: po.id });
+          }}
+          onRequestChange={handleProductionChangeRequest}
+          canEdit={canEditPoStatus}
+        />
+        <PurchaseOrderDetailDialog
+          purchaseOrder={detailPo}
+          open={detailPo !== null}
+          onOpenChange={(o) => {
+            if (!o) setSelectedPoId(null);
+          }}
+          onPatch={patchPo}
+          readOnly={!canEditPoStatus}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Supply orders"
-        description="Manage production requests to the manufacturer and transfer orders that move existing stock to distributors or retail accounts."
+        title={isHqOperatorRole(user.role) ? "Production requests" : "Supply orders"}
+        variant={pageHeaderVariantForRole(user.role)}
+        description={
+          isHqOperatorRole(user.role)
+            ? "Batch requests from kura partners — your sign-off confirms spec, lot, and allocation before they schedule production. Retail and rep orders are approved by distributors, not HQ."
+            : "Manage production requests to the manufacturer and transfer orders that move existing stock to distributors or retail accounts."
+        }
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <Button variant="outline" size="sm" className="w-full justify-center touch-manipulation sm:w-auto">

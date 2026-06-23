@@ -6,13 +6,14 @@ interface PageHeaderProps {
   description?: string;
   actions?: ReactNode;
   titleAddon?: ReactNode;
-  /** Retail store shell, sales rep field shell — same display title / description scale. */
-  variant?: "default" | "retail" | "sales_rep" | "distributor";
+  /** Retail store shell, sales rep field shell, distributor / HQ operator shells. */
+  variant?: "default" | "retail" | "sales_rep" | "distributor" | "hq";
 }
 
 export function PageHeader({ title, description, actions, titleAddon, variant = "default" }: PageHeaderProps) {
   const { t, language } = useLanguage();
-  const useKitTypography = variant === "retail" || variant === "sales_rep" || variant === "distributor";
+  const useKitTypography =
+    variant === "retail" || variant === "sales_rep" || variant === "distributor" || variant === "hq";
   const titleClass = useKitTypography
     ? "font-display text-[26px] font-semibold tracking-[-0.02em] text-foreground"
     : "font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl";

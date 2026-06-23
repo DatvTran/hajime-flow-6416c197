@@ -9,14 +9,14 @@ primary_region = "nrt"
   dockerfile = "Dockerfile"
 
 [deploy]
-  release_command = "sh -c 'cd /app/server && npx knex migrate:latest'"
+  release_command = "sh -c 'cd /app/server && node scripts/migrate-release.mjs'"
 
 [http_service]
   internal_port = 8080
   force_https = true
   auto_stop_machines = true
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
 [[vm]]
   size = "shared-cpu-1x"

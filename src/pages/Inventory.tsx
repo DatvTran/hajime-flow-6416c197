@@ -34,6 +34,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Download, FileSpreadsheet } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { isHqOperatorRole } from "@/lib/hq-order-scope";
+import { HqProductCatalogView } from "@/components/hq/HqProductCatalogView";
+import { useProducts, usePurchaseOrders } from "@/contexts/AppDataContext";
 
 const STATUS_VALUES: InventoryItem["status"][] = ["available", "reserved", "damaged"];
 
@@ -110,6 +113,8 @@ function parseLocationTypeParam(raw: string | null): InventoryItem["locationType
 export default function Inventory() {
   const { t } = useLanguage();
   const { data, loading } = useAppData();
+  const { products } = useProducts();
+  const { purchaseOrders } = usePurchaseOrders();
   const { 
     items, 
     allItems,
@@ -196,6 +201,15 @@ export default function Inventory() {
 
   if (loading) {
     return <InventorySkeleton />;
+  }
+
+  if (isHqOperatorRole(user?.role)) {
+    return (
+      <HqProductCatalogView
+        products={products}
+        purchaseOrders={purchaseOrders}
+      />
+    );
   }
 
   return (

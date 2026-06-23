@@ -13,11 +13,6 @@ function buildDistributorConnection(databaseName) {
 
   if (nodeEnv === 'production' || nodeEnv === 'staging') {
     const base = flyDatabaseConnection({ ssl: { rejectUnauthorized: false } });
-    if (typeof base === 'string') {
-      const u = new URL(base);
-      u.pathname = `/${databaseName}`;
-      return u.toString();
-    }
     return { ...base, database: databaseName };
   }
 
