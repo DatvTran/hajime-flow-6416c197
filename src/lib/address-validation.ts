@@ -20,6 +20,7 @@ export type AddressValidationResult = {
 };
 
 function hasControlChars(s: string): boolean {
+  // eslint-disable-next-line no-control-regex -- intentional: validates user input for control chars
   return /[\u0000-\u001F\u007F]/.test(s);
 }
 
