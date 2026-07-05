@@ -140,25 +140,34 @@ setupSecurityMiddleware(app);
 // Body parsing
 app.use(express.json({ limit: '2mb' }));
 
-// Public readiness: verifies Postgres is reachable (real query, not static JSON).
+// Public readiness: verifies Postgres is reachable and surfaces diagnostic info.
 app.get('/api/health', async (_req, res) => {
+  let dbStatus = 'disconnected';
+  let dbNow;
   try {
-    const r = await db.raw('select now() as now');
+    const r = await db.raw('SELECT NOW() AS now');
     const row = r?.rows?.[0] ?? r?.[0];
-    const dbNow = row?.now != null ? String(row.now) : undefined;
-    res.json({
-      ok: true,
-      database: 'up',
-      dbNow,
-    });
+    dbNow = row?.now != null ? String(row.now) : undefined;
+    dbStatus = 'connected';
   } catch (e) {
     console.error('[hajime-api] /api/health DB check failed:', e);
-    res.status(503).json({
-      ok: false,
-      database: 'down',
-      error: e instanceof Error ? e.message : 'Database unavailable',
-    });
   }
+  const ok = dbStatus === 'connected';
+  res.status(ok ? 200 : 503).json({
+    ok,
+    database: dbStatus,
+    dbNow,
+    stripe: Boolean(stripe),
+    features: {
+      auth: FEATURE_FLAG_AUTH_ENABLED,
+      csv: FEATURE_FLAG_CSV_ENABLED,
+    },
+    migration: {
+      activeStage: dataMigrationService.stage,
+      dbPrimaryModeEnabled: dataMigrationService.stage >= 3,
+    },
+    migrationStage: dataMigrationService.stage,
+  });
 });
 
 // Allow conditional revalidation while avoiding stale cache.
@@ -268,32 +277,6 @@ app.put('/api/app', authenticateToken, async (req, res) => {
     console.error(e);
     res.status(500).json({ error: String(e?.message ?? e) });
   }
-});
-
-// ===== HEALTH CHECK =====
-app.get('/api/health', async (_req, res) => {
-  let dbStatus = 'unknown';
-  try {
-    await db.raw('SELECT 1');
-    dbStatus = 'connected';
-  } catch (err) {
-    dbStatus = 'disconnected';
-  }
-
-  res.json({
-    ok: true,
-    stripe: Boolean(stripe),
-    database: dbStatus,
-    features: {
-      auth: FEATURE_FLAG_AUTH_ENABLED,
-      csv: FEATURE_FLAG_CSV_ENABLED,
-    },
-    migration: {
-      activeStage: dataMigrationService.stage,
-      dbPrimaryModeEnabled: dataMigrationService.stage >= 3,
-    },
-    migrationStage: dataMigrationService.stage,
-  });
 });
 
 // ===== STRIPE ROUTES (existing) =====
