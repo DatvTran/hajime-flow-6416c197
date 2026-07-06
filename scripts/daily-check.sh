@@ -114,11 +114,11 @@ else
       2>/dev/null | cut -d'"' -f4 || echo "unknown")
     OK_VAL=$(grep -o '"ok":[a-z]*' /tmp/hajime_health_$$.json \
       2>/dev/null | cut -d: -f2 || echo "unknown")
-    if [[ "$DB_VAL" == "connected" && "$OK_VAL" == "true" ]]; then
-      pass "Health 200 OK — ok:true · database:connected"
+    if [[ "$DB_VAL" == "up" && "$OK_VAL" == "true" ]]; then
+      pass "Health 200 OK — ok:true · database:up"
     else
       fail "Health 200 but ok=$OK_VAL database=$DB_VAL"
-      stop "Health endpoint returned ok=$OK_VAL database=$DB_VAL. Expected ok:true + database:connected."
+      stop "Health endpoint returned ok=$OK_VAL database=$DB_VAL. Expected ok:true + database:up."
     fi
   else
     fail "Health check failed (HTTP $HTTP_CODE)"
@@ -180,13 +180,16 @@ if [[ $START_TIER -le 2 ]]; then
 hdr "TIER 2 — Code health  (~10–15 min)"
 
 # ── 2a. TypeScript types ──────────────────────────────────────────────────────
-step "2a. TypeScript — tsc --noEmit"
+step "2a. TypeScript — tsc --build"
 info "SWC/Vite strips types without checking them; tsc is the only gate."
-if npx tsc --noEmit 2>&1; then
+info "Root tsconfig.json is solution-style (files: [], references only) —"
+info "bare 'tsc --noEmit' silently checks nothing; '--build' is required to"
+info "actually descend into tsconfig.app.json / tsconfig.node.json."
+if npx tsc --build --force 2>&1; then
   pass "tsc: no type errors"
 else
   fail "tsc: type errors found"
-  stop "tsc --noEmit reported errors. Vite green ≠ types green — fix before anything else."
+  stop "tsc --build reported errors. Vite green ≠ types green — fix before anything else."
 fi
 
 # ── 2b. ESLint ────────────────────────────────────────────────────────────────
