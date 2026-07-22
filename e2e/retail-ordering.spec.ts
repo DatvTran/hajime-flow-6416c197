@@ -1,5 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
-import { signInAsRole } from "./role-based-routes.spec";
+import { signInAsRole } from "./auth-helpers";
 
 /**
  * Retail Ordering Flow E2E Tests
