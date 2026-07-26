@@ -114,8 +114,8 @@ else
       2>/dev/null | cut -d'"' -f4 || echo "unknown")
     OK_VAL=$(grep -o '"ok":[a-z]*' /tmp/hajime_health_$$.json \
       2>/dev/null | cut -d: -f2 || echo "unknown")
-    if [[ "$DB_VAL" == "connected" && "$OK_VAL" == "true" ]]; then
-      pass "Health 200 OK — ok:true · database:connected"
+    if [[ "$DB_VAL" == "up" && "$OK_VAL" == "true" ]]; then
+      pass "Health 200 OK — ok:true · database:up"
     else
       fail "Health 200 but ok=$OK_VAL database=$DB_VAL"
       stop "Health endpoint returned ok=$OK_VAL database=$DB_VAL. Expected ok:true + database:connected."
@@ -307,7 +307,9 @@ fi
 # ── 3e. Registration role guard ───────────────────────────────────────────────
 step "3e. Self-registration role guard"
 # SELF_REGISTERABLE_ROLES must not contain founder_admin or brand_operator
-PRIV_IN_SELF_REG=$(grep -A 20 "SELF_REGISTERABLE_ROLES" \
+# (scoped to just the array body, not the whole file, to avoid false
+# positives from later unrelated constants like ADMIN_ASSIGNABLE_ROLES)
+PRIV_IN_SELF_REG=$(sed -n '/SELF_REGISTERABLE_ROLES *= *\[/,/\];/p' \
   server/routes/auth.schemas.mjs 2>/dev/null \
   | grep -iE "founder_admin|brand_operator" || true)
 if [[ -z "$PRIV_IN_SELF_REG" ]]; then
