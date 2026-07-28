@@ -114,11 +114,11 @@ else
       2>/dev/null | cut -d'"' -f4 || echo "unknown")
     OK_VAL=$(grep -o '"ok":[a-z]*' /tmp/hajime_health_$$.json \
       2>/dev/null | cut -d: -f2 || echo "unknown")
-    if [[ "$DB_VAL" == "connected" && "$OK_VAL" == "true" ]]; then
-      pass "Health 200 OK — ok:true · database:connected"
+    if [[ "$DB_VAL" == "up" && "$OK_VAL" == "true" ]]; then
+      pass "Health 200 OK — ok:true · database:up"
     else
       fail "Health 200 but ok=$OK_VAL database=$DB_VAL"
-      stop "Health endpoint returned ok=$OK_VAL database=$DB_VAL. Expected ok:true + database:connected."
+      stop "Health endpoint returned ok=$OK_VAL database=$DB_VAL. Expected ok:true + database:up."
     fi
   else
     fail "Health check failed (HTTP $HTTP_CODE)"
