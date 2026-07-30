@@ -1,56 +1,42 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, Clock, FlaskConical, Plus, Sparkles } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { AlertTriangle, Check, FileText, FlaskConical, Plus } from "lucide-react";
 import type { NewProductRequest } from "@/data/mockData";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { formatBaseSpiritLabel } from "@/lib/base-spirit-options";
 import {
   filterNprByStatus,
-  formatNprPerBottle,
-  hqNprDisplayStatus,
-  kuraShortName,
   nprCounts,
   nprSearchMatch,
   type HqNprFilterId,
 } from "@/lib/hq-product-development-display";
-import { ProductRequestDetailDialog } from "@/components/ProductRequestDetailDialog";
+import { HqProductDevelopmentCard } from "@/components/hq/HqProductDevelopmentCard";
 import {
-  HqBtn,
   HqBtnLink,
-  HqOperatorCard,
-  HqOperatorDataTable,
   HqOperatorFilterBar,
   HqOperatorFilterButton,
   HqOperatorKpiCard,
   HqOperatorKpiGrid,
   HqOperatorPage,
   HqOperatorPageHeader,
-  HqOperatorPill,
   HqOperatorSearchWrap,
-  HqOperatorSrcChip,
 } from "@/components/hq/HqOperatorUi";
 
 type Props = {
   newProductRequests: NewProductRequest[];
-  patchNewProductRequest: (id: string, patch: Partial<NewProductRequest>) => void;
+  onPatch: (id: string, patch: Partial<NewProductRequest>) => void | Promise<unknown>;
+  onNudge?: (id: string) => void | Promise<unknown>;
 };
 
 const FILTER_OPTIONS: { key: HqNprFilterId; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "draft", label: "Drafts" },
-  { key: "active", label: "With manufacturer" },
-  { key: "proposed", label: "Proposals" },
+  { key: "draft", label: "Concept" },
+  { key: "active", label: "Feasibility review" },
+  { key: "proposed", label: "Proposal" },
   { key: "approved", label: "Approved" },
   { key: "closed", label: "Closed" },
 ];
 
-export function HqProductDevelopmentView({
-  newProductRequests,
-  patchNewProductRequest,
-}: Props) {
+export function HqProductDevelopmentView({ newProductRequests, onPatch, onNudge }: Props) {
   const { t } = useLanguage();
-  const navigate = useNavigate();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<HqNprFilterId>("all");
   const [search, setSearch] = useState("");
 
@@ -58,76 +44,71 @@ export function HqProductDevelopmentView({
 
   const filtered = useMemo(() => {
     const byStatus = filterNprByStatus(newProductRequests, filter);
-    return byStatus.filter((n) => nprSearchMatch(n, search));
+    return byStatus
+      .filter((n) => nprSearchMatch(n, search))
+      .sort((a, b) => {
+        const priority = (s: NewProductRequest["status"]) => {
+          if (s === "proposed") return 0;
+          if (s === "draft") return 1;
+          if (s === "under_review" || s === "submitted") return 2;
+          if (s === "approved") return 3;
+          return 4;
+        };
+        const diff = priority(a.status) - priority(b.status);
+        if (diff !== 0) return diff;
+        return (
+          new Date(b.proposalReceivedAt ?? b.submittedAt ?? b.requestedAt).getTime() -
+          new Date(a.proposalReceivedAt ?? a.submittedAt ?? a.requestedAt).getTime()
+        );
+      });
   }, [newProductRequests, filter, search]);
 
-  const selected = useMemo(
-    () => (selectedId ? newProductRequests.find((n) => n.id === selectedId) ?? null : null),
-    [newProductRequests, selectedId],
-  );
-
-  const pipelineOpen = counts.draft + counts.active + counts.proposed;
+  const inDevelopment = counts.draft + counts.active + counts.proposed + counts.approved;
+  const awaitingFeasibility = newProductRequests.filter((n) => n.status === "submitted").length;
 
   return (
     <HqOperatorPage className="space-y-6">
       <HqOperatorPageHeader
-        title="Product development"
-        description={
-          <>
-            Brief manufacturers on new SKUs before they enter the catalog. After approval, publish via{" "}
-            <Link
-              to="/inventory/add"
-              className="hq-sec-link font-medium text-accent underline-offset-2 hover:underline"
-            >
-              {t("Add SKU")}
-            </Link>{" "}
-            or commission a batch from{" "}
-            <Link
-              to="/purchase-orders"
-              className="hq-sec-link font-medium text-accent underline-offset-2 hover:underline"
-            >
-              {t("Production requests")}
-            </Link>
-            .
-          </>
-        }
-        rawDescription
+        title="Product Development"
+        description="Define what new alcohol concept should exist — spirit, ABV, flavor, packaging — and send it to a manufacturer for feasibility. This is not a reorder; once approved, use Production requests to brew inventory."
         actions={
-          <HqBtnLink to="/product-development/new" variant="accent" size="sm">
-            <Plus className="size-3.5" strokeWidth={1.75} />
-            {t("New request")}
-          </HqBtnLink>
+          <>
+            <HqBtnLink to="/product-development/new" variant="accent" size="sm">
+              <Plus className="size-3.5" strokeWidth={1.75} />
+              {t("New concept")}
+            </HqBtnLink>
+          </>
         }
       />
 
       <HqOperatorKpiGrid>
         <HqOperatorKpiCard
           icon={FlaskConical}
-          tone="ink"
-          label="Open pipeline"
-          value={String(pipelineOpen)}
-          sub="draft through proposal"
+          tone="blue"
+          label="In development"
+          value={String(inDevelopment)}
+          sub="concepts in the pipeline"
         />
         <HqOperatorKpiCard
-          icon={Clock}
+          icon={AlertTriangle}
           tone="amber"
-          label="Awaiting manufacturer"
-          value={String(counts.active)}
-          sub="submitted or under review"
+          label="Awaiting feasibility"
+          value={String(awaitingFeasibility || counts.active)}
+          sub="sent to manufacturer"
         />
         <HqOperatorKpiCard
-          icon={Sparkles}
+          icon={FileText}
           tone="blue"
           label="Proposals to review"
           value={String(counts.proposed)}
-          sub="HQ decision needed"
+          sub="manufacturer responded"
         />
         <HqOperatorKpiCard
-          icon={FlaskConical}
+          icon={Check}
           tone="green"
-          label="Approved SKUs"
+          label="Approved for production"
           value={String(counts.approved)}
-          sub="ready for catalog or PO"
+          sub="moving to brewing"
         />
       </HqOperatorKpiGrid>
 
@@ -144,85 +125,31 @@ export function HqProductDevelopmentView({
         />
       </HqOperatorFilterBar>
 
-      <HqOperatorCard className="overflow-hidden p-0">
-        <HqOperatorDataTable>
-          <thead>
-            <tr>
-              <th>{t("Request")}</th>
-              <th>{t("Product")}</th>
-              <th>{t("Manufacturer")}</th>
-              <th>{t("Spirit / ABV")}</th>
-              <th>{t("Target launch")}</th>
-              <th>{t("Proposed $/bottle")}</th>
-              <th>{t("Status")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="py-12 text-center">
-                  <FlaskConical className="mx-auto size-7 text-muted-foreground/25" strokeWidth={1.5} />
-                  <p className="mt-3 text-sm font-medium text-foreground">{t("No product requests match your filters")}</p>
-                  <p className="mt-1 text-[13px] text-muted-foreground">
-                    {t("Create a brief for a manufacturer to evaluate feasibility and costing.")}
-                  </p>
-                  <HqBtn
-                    variant="accent"
-                    size="sm"
-                    className="mt-4"
-                    type="button"
-                    onClick={() => navigate("/product-development/new")}
-                  >
-                    <Plus className="size-3.5" strokeWidth={1.75} />
-                    {t("New request")}
-                  </HqBtn>
-                </td>
-              </tr>
-            ) : (
-              filtered.map((npr) => {
-                const pill = hqNprDisplayStatus(npr.status);
-                return (
-                  <tr
-                    key={npr.id}
-                    className="cursor-pointer transition-colors hover:bg-muted/30"
-                    onClick={() => setSelectedId(npr.id)}
-                  >
-                    <td className="font-mono text-xs font-medium">
-                      <span className="inline-flex items-center gap-1.5">
-                        {npr.id}
-                        <ChevronRight className="size-3 text-muted-foreground" strokeWidth={1.75} />
-                      </span>
-                    </td>
-                    <td className="max-w-[200px] truncate font-medium">{npr.title}</td>
-                    <td>
-                      {npr.assignedManufacturer ? (
-                        <HqOperatorSrcChip variant="kura">{kuraShortName(npr.assignedManufacturer)}</HqOperatorSrcChip>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="text-[13px] text-muted-foreground">
-                      {formatBaseSpiritLabel(npr.specs.baseSpirit)} · {npr.specs.targetAbv}%
-                    </td>
-                    <td className="font-mono text-xs text-muted-foreground">{npr.specs.targetLaunchDate}</td>
-                    <td className="font-mono text-xs">{formatNprPerBottle(npr)}</td>
-                    <td>
-                      <HqOperatorPill tone={pill.tone}>{t(pill.label)}</HqOperatorPill>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </HqOperatorDataTable>
-      </HqOperatorCard>
-
-      <ProductRequestDetailDialog
-        open={!!selected}
-        onOpenChange={(open) => !open && setSelectedId(null)}
-        request={selected}
-        onPatch={patchNewProductRequest}
-      />
+      {filtered.length === 0 ? (
+        <div className="rounded-[14px] border border-dashed border-border px-10 py-10 text-center text-muted-foreground">
+          <FlaskConical className="mx-auto size-7 opacity-25" strokeWidth={1.5} />
+          <p className="mt-3 text-sm font-medium text-foreground">{t("No products in development")}</p>
+          <p className="mt-1 text-[13px]">
+            {t("Start a new alcohol concept and send it to a manufacturer for feasibility.")}
+          </p>
+          <HqBtnLink to="/product-development/new" variant="accent" size="sm" className="mt-4">
+            <Plus className="size-3.5" strokeWidth={1.75} />
+            {t("New concept")}
+          </HqBtnLink>
+        </div>
+      ) : (
+        <div>
+          {filtered.map((npr, index) => (
+            <HqProductDevelopmentCard
+              key={npr.id}
+              request={npr}
+              defaultOpen={index === 0}
+              onPatch={onPatch}
+              onNudge={onNudge}
+            />
+          ))}
+        </div>
+      )}
     </HqOperatorPage>
   );
 }

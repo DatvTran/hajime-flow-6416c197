@@ -28,6 +28,8 @@ export async function up(knex) {
     
     // Assignment
     table.string('assigned_manufacturer');
+    table.string('assigned_manufacturer_email', 255);
+    table.string('assigned_crm_member_id', 255);
     
     // Timeline tracking
     table.timestamp('submitted_at');

@@ -14,6 +14,10 @@ export function mapNewProductRequestCreateToApi(
     specs: npr.specs,
     notes: npr.notes || null,
     assigned_manufacturer: npr.assignedManufacturer || null,
+    assigned_manufacturer_email: npr.assignedManufacturerEmail
+      ? npr.assignedManufacturerEmail.trim().toLowerCase()
+      : null,
+    assigned_crm_member_id: npr.assignedCrmMemberId || null,
     status: npr.status,
   };
   if (npr.status === "submitted") {
@@ -33,6 +37,14 @@ export function mapNewProductRequestPatchToApi(
   if (patch.requestedBy !== undefined) out.requested_by = patch.requestedBy;
   if (patch.assignedManufacturer !== undefined) {
     out.assigned_manufacturer = patch.assignedManufacturer;
+  }
+  if (patch.assignedManufacturerEmail !== undefined) {
+    out.assigned_manufacturer_email = patch.assignedManufacturerEmail
+      ? patch.assignedManufacturerEmail.trim().toLowerCase()
+      : null;
+  }
+  if (patch.assignedCrmMemberId !== undefined) {
+    out.assigned_crm_member_id = patch.assignedCrmMemberId || null;
   }
   if (patch.specs !== undefined) out.specs = patch.specs;
   if (patch.manufacturerProposal !== undefined) {

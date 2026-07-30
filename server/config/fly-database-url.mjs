@@ -49,6 +49,19 @@ export function normalizeFlyDatabaseUrl(url) {
   }
 }
 
+/** Point a Fly DATABASE_URL at a local fly proxy (127.0.0.1:port). */
+export function rewriteDatabaseUrlForProxy(
+  url,
+  { host = '127.0.0.1', port = 15432 } = {},
+) {
+  const normalized = normalizeFlyDatabaseUrl(url) || url;
+  const parsed = new URL(normalized);
+  parsed.hostname = host;
+  parsed.port = String(port);
+  parsed.searchParams.set('sslmode', 'disable');
+  return parsed.toString();
+}
+
 /**
  * @param {{ ssl?: false | { rejectUnauthorized?: boolean } }} [fallbackSsl]
  * @returns {import('pg').ClientConfig}

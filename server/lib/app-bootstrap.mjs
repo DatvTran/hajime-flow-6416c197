@@ -18,6 +18,11 @@ import { normalizeRepLabel, resolveSalesRepLabelForUser } from './sales-rep-labe
 import { attachPortalUserIds } from './team-member-enrich.mjs';
 import { isHqGlobalViewer } from './hq-global-view.mjs';
 import { applyHqWholesaleOrdersScope } from './hq-order-scope.mjs';
+import {
+  resolveManufacturerAssignmentIdentity,
+  applyManufacturerNprScopeToQuery,
+  applyManufacturerPoScopeToQuery,
+} from './npr-manufacturer-scope.mjs';
 
 const LIMITS = {
   products: 300,
@@ -177,11 +182,16 @@ async function fetchPurchaseOrders(req, scope) {
     req,
     async (db, tid) => {
       if (!tid) return [];
-      const list = await db('purchase_orders')
+      let listQuery = db('purchase_orders')
         .where({ tenant_id: tid })
-        .whereNull('deleted_at')
-        .orderBy('created_at', 'desc')
-        .limit(limit);
+        .whereNull('deleted_at');
+
+      if (req.user?.role === Role.MANUFACTURER) {
+        const identity = await resolveManufacturerAssignmentIdentity(db, tid, req.user);
+        listQuery = applyManufacturerPoScopeToQuery(listQuery, identity);
+      }
+
+      const list = await listQuery.orderBy('created_at', 'desc').limit(limit);
       const ids = list.map((o) => o.id).filter(Boolean);
       const itemsByPo = new Map();
       if (ids.length > 0) {
@@ -240,10 +250,12 @@ async function fetchNewProductRequests(req, scope) {
     req,
     async (db, tid) => {
       if (!tid) return [];
-      return db('new_product_requests')
-        .where({ tenant_id: tid })
-        .orderBy('requested_at', 'desc')
-        .limit(limit);
+      let query = db('new_product_requests').where({ tenant_id: tid });
+      if (req.user?.role === Role.MANUFACTURER) {
+        const identity = await resolveManufacturerAssignmentIdentity(db, tid, req.user);
+        query = applyManufacturerNprScopeToQuery(query, identity);
+      }
+      return query.orderBy('requested_at', 'desc').limit(limit);
     },
     scope,
   );

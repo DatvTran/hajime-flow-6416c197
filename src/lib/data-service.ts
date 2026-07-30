@@ -159,7 +159,7 @@ function parsePoMetadata(raw: unknown): Record<string, unknown> {
   return {};
 }
 
-function mapRowToPurchaseOrder(po: Record<string, unknown>): PurchaseOrder {
+export function mapRowToPurchaseOrder(po: Record<string, unknown>): PurchaseOrder {
   const id = po.po_number != null ? String(po.po_number) : String(po.id ?? "");
   const rawStatus = String(po.status ?? "draft").toLowerCase().replace(/-/g, "_");
 
@@ -458,6 +458,12 @@ export function mapRowToNewProductRequest(row: Record<string, unknown>): NewProd
     status: (String(row.status ?? "draft") as NewProductRequest["status"]),
     assignedManufacturer:
       row.assigned_manufacturer != null ? String(row.assigned_manufacturer) : undefined,
+    assignedManufacturerEmail:
+      row.assigned_manufacturer_email != null
+        ? String(row.assigned_manufacturer_email)
+        : undefined,
+    assignedCrmMemberId:
+      row.assigned_crm_member_id != null ? String(row.assigned_crm_member_id) : undefined,
     submittedAt: row.submitted_at != null ? String(row.submitted_at) : undefined,
     reviewStartedAt: row.review_started_at != null ? String(row.review_started_at) : undefined,
     proposalReceivedAt:
@@ -475,6 +481,26 @@ export function mapRowToNewProductRequest(row: Record<string, unknown>): NewProd
  * Transform API v1 data to AppData format
  */
 /** Map DB operational_settings row → client OperationalSettings (safety stock uses one reorder level for all SKUs). */
+function parseHiddenManufacturerIds(raw: unknown): string[] {
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+      }
+    } catch {
+      return raw
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean);
+    }
+  }
+  if (Array.isArray(raw)) {
+    return raw.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+  }
+  return [];
+}
+
 function mapOperationalSettingsFromApi(
   row: Record<string, unknown> | null | undefined,
   products: { sku: string }[],
@@ -493,7 +519,28 @@ function mapOperationalSettingsFromApi(
     companyName: typeof row.company_name === "string" ? row.company_name : undefined,
     primaryMarkets: typeof row.primary_markets === "string" ? row.primary_markets : undefined,
     manufacturerName: typeof row.manufacturer_name === "string" ? row.manufacturer_name : undefined,
+    supportEmail: typeof row.support_email === "string" ? row.support_email : undefined,
+    hqHiddenManufacturerIds:
+      row.hq_hidden_manufacturer_ids != null && String(row.hq_hidden_manufacturer_ids).trim() !== ""
+        ? parseHiddenManufacturerIds(row.hq_hidden_manufacturer_ids)
+        : undefined,
+    hqManufacturerPartnerConfigs: parsePartnerConfigsFromOperationalSettings(
+      row.hq_manufacturer_partner_configs,
+    ),
   };
+}
+
+function parsePartnerConfigsFromOperationalSettings(
+  raw: unknown,
+): Record<string, unknown> | undefined {
+  if (raw == null || String(raw).trim() === "") return undefined;
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
 }
 
 function transformToAppData(
@@ -593,6 +640,9 @@ function transformToAppData(
                 distributorOrgName:
                   a.distributor_org_name != null ? String(a.distributor_org_name) : undefined,
               }
+            : {}),
+          ...(a.portal_login_email != null && String(a.portal_login_email).trim() !== ""
+            ? { portalLoginEmail: String(a.portal_login_email) }
             : {}),
           tags: a.tags || [],
           avgOrderSize: a.avg_order_size || 0,

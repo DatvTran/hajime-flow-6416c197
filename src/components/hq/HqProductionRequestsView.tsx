@@ -49,6 +49,31 @@ function isUrgent(po: PurchaseOrder): boolean {
   return po.status === "delayed" || po.status === "draft";
 }
 
+/** HQ issues a request by moving it out of draft; only drafts are still to issue. */
+function canIssue(po: PurchaseOrder): boolean {
+  return po.status === "draft";
+}
+
+function hqRequestStatus(po: PurchaseOrder): {
+  tone: "green" | "blue" | "amber" | "red" | "neutral";
+  label: string;
+} {
+  switch (po.status) {
+    case "draft":
+      return { tone: "amber", label: "to issue" };
+    case "approved":
+      return { tone: "blue", label: "awaiting manufacturer" };
+    case "in-production":
+      return { tone: "green", label: "in production" };
+    case "delayed":
+      return { tone: "red", label: "delayed" };
+    case "completed":
+      return { tone: "green", label: "complete" };
+    default:
+      return { tone: "neutral", label: po.status.replace(/-/g, " ") };
+  }
+}
+
 function kuraShortName(manufacturer: string): string {
   return manufacturer.split(" ")[0] || manufacturer;
 }
@@ -121,7 +146,7 @@ function ProductionRequestChangePanel({
         </div>
       </div>
       <div className="hq-appr-form-group mb-3">
-        <label htmlFor={`prchg-msg-${po.id}`}>{t("Message to kura")}</label>
+        <label htmlFor={`prchg-msg-${po.id}`}>{t("Message to manufacturer")}</label>
         <textarea
           id={`prchg-msg-${po.id}`}
           rows={3}
@@ -202,15 +227,15 @@ export function HqProductionRequestsView({
     <HqOperatorPage className="space-y-6">
       <HqOperatorPageHeader
         title="Production requests"
-        description="Batch requests from kura partners — your sign-off confirms spec, lot, and allocation before they schedule production. Retail and rep orders are approved by distributors, not HQ."
+        description="Reorder an existing SKU from a manufacturer — raise or lower quantity and ship to the warehouse or market you need. New drink concepts belong in Product Development; distributor restock lives under Orders."
         actions={
           <div className="flex flex-wrap gap-2">
             <HqBtn variant="outline" size="sm" type="button">
               {t("Request history")}
             </HqBtn>
             {canEdit ? (
-              <HqBtnLink to="/purchase-orders/new" variant="accent" size="sm">
-                + {t("New production request")}
+              <HqBtnLink to="/production-requests/new" variant="accent" size="sm">
+                + {t("Reorder production")}
               </HqBtnLink>
             ) : null}
           </div>
@@ -237,11 +262,11 @@ export function HqProductionRequestsView({
           <Check className="mx-auto size-7 text-[hsl(158_56%_32%)]" strokeWidth={1.75} />
           <p className="mt-3 text-sm font-medium text-foreground">{t("All caught up")}</p>
           <p className="mt-1 text-[13px]">
-            {t("No production requests pending. New batch requests from kura partners appear here.")}
+            {t("No open production reorders. Pick an existing SKU, set quantity, and choose a destination to get started.")}
           </p>
           {canEdit ? (
-            <HqBtnLink to="/purchase-orders/new" variant="accent" size="sm" className="mt-4">
-              {t("New production request")}
+            <HqBtnLink to="/production-requests/new" variant="accent" size="sm" className="mt-4">
+              {t("Reorder production")}
             </HqBtnLink>
           ) : null}
         </div>
@@ -272,19 +297,19 @@ export function HqProductionRequestsView({
                       <div className="font-display text-xl font-semibold">{formatHqCurrency(batchValue)}</div>
                       <div className="text-[10px] text-muted-foreground">{t("batch value")}</div>
                     </div>
-                    {canEdit ? (
+                    {canEdit && canIssue(po) ? (
                       <div className="flex shrink-0 gap-2">
                         <HqBtn
                           variant="red"
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (window.confirm(t("Decline this production request? The kura will be notified."))) {
+                            if (window.confirm(t("Cancel this draft production request?"))) {
                               dismissCard(po.id, () => onDecline(po));
                             }
                           }}
                         >
-                          {t("Decline")}
+                          {t("Cancel")}
                         </HqBtn>
                         <HqBtn
                           variant="green"
@@ -294,10 +319,16 @@ export function HqProductionRequestsView({
                             dismissCard(po.id, () => onApprove(po));
                           }}
                         >
-                          {t("Approve")}
+                          {t("Issue to manufacturer")}
                         </HqBtn>
                       </div>
-                    ) : null}
+                    ) : (
+                      <div className="shrink-0">
+                        <HqOperatorPill tone={hqRequestStatus(po).tone}>
+                          {t(hqRequestStatus(po).label)}
+                        </HqOperatorPill>
+                      </div>
+                    )}
                   </>
                 }
                 detail={
@@ -311,8 +342,8 @@ export function HqProductionRequestsView({
                         <div className="text-[11px] text-muted-foreground">{po.manufacturer}</div>
                       </div>
                       <div className="hq-detail-panel">
-                        <div className="hq-detail-label">{t("On approval")}</div>
-                        <div className="text-[13px] font-medium">{t("Kura schedules batch")}</div>
+                        <div className="hq-detail-label">{t("Once issued")}</div>
+                        <div className="text-[13px] font-medium">{t("Manufacturer accepts & schedules batch")}</div>
                         <div className="text-[11px] text-muted-foreground">{t("finished goods → distributors")}</div>
                       </div>
                     </div>
@@ -327,15 +358,21 @@ export function HqProductionRequestsView({
                     {canEdit ? (
                       <>
                         <div className="hq-appr-actions">
-                          <HqBtn
-                            variant="green"
-                            size="sm"
-                            type="button"
-                            onClick={() => dismissCard(po.id, () => onApprove(po))}
-                          >
-                            <Check className="size-3.5" strokeWidth={2} />
-                            {t("Approve & confirm spec")}
-                          </HqBtn>
+                          {canIssue(po) ? (
+                            <HqBtn
+                              variant="green"
+                              size="sm"
+                              type="button"
+                              onClick={() => dismissCard(po.id, () => onApprove(po))}
+                            >
+                              <Check className="size-3.5" strokeWidth={2} />
+                              {t("Issue to manufacturer")}
+                            </HqBtn>
+                          ) : (
+                            <HqBtn variant="outline" size="sm" type="button" onClick={() => onSelect(po.id)}>
+                              {t("View details")}
+                            </HqBtn>
+                          )}
                           <HqBtn
                             variant="outline"
                             size="sm"
@@ -344,19 +381,21 @@ export function HqProductionRequestsView({
                           >
                             {t("Request change")}
                           </HqBtn>
-                          <HqBtn
-                            variant="red"
-                            size="sm"
-                            type="button"
-                            className="ml-auto"
-                            onClick={() => {
-                              if (window.confirm(t("Decline this production request? The kura will be notified."))) {
-                                dismissCard(po.id, () => onDecline(po));
-                              }
-                            }}
-                          >
-                            {t("Decline")}
-                          </HqBtn>
+                          {canIssue(po) ? (
+                            <HqBtn
+                              variant="red"
+                              size="sm"
+                              type="button"
+                              className="ml-auto"
+                              onClick={() => {
+                                if (window.confirm(t("Cancel this draft production request?"))) {
+                                  dismissCard(po.id, () => onDecline(po));
+                                }
+                              }}
+                            >
+                              {t("Cancel")}
+                            </HqBtn>
+                          ) : null}
                         </div>
                         {changeOpen ? (
                           <ProductionRequestChangePanel

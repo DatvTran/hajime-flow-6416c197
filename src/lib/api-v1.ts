@@ -641,6 +641,27 @@ export function getNewProductRequest(id: string): Promise<{ data: NewProductRequ
   return apiFetch(`/api/v1/new-product-requests/${id}`);
 }
 
+// ===== MANUFACTURER FINISHED GOODS =====
+
+export interface ManufacturerFinishedGoodsApi {
+  id: string | number;
+  sku: string;
+  name: string;
+  lot: string;
+  cases: number;
+  reserved: number;
+  status: string;
+  po_number?: string | null;
+}
+
+export function getManufacturerFinishedGoods(params?: {
+  sku?: string;
+}): Promise<{ data: ManufacturerFinishedGoodsApi[] }> {
+  const query = new URLSearchParams();
+  if (params?.sku) query.set("sku", params.sku);
+  return apiFetch(`/api/v1/manufacturer-finished-goods?${query.toString()}`);
+}
+
 export function createNewProductRequest(data: Partial<NewProductRequestApi>): Promise<{ data: NewProductRequestApi }> {
   return apiFetch("/api/v1/new-product-requests", {
     method: "POST",
@@ -658,5 +679,14 @@ export function updateNewProductRequest(id: string, data: Partial<NewProductRequ
 export function deleteNewProductRequest(id: string): Promise<{ success: boolean }> {
   return apiFetch(`/api/v1/new-product-requests/${id}`, {
     method: "DELETE",
+  });
+}
+
+export function nudgeNewProductRequest(id: string): Promise<{
+  data: NewProductRequestApi;
+  notify?: { sent: boolean; reason?: string };
+}> {
+  return apiFetch(`/api/v1/new-product-requests/${id}/nudge`, {
+    method: "POST",
   });
 }

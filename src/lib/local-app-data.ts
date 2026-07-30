@@ -1,6 +1,8 @@
 import type { AppData } from "@/types/app-data";
 
-const KEY = "hajime-app-data-v1";
+/** Bumped when manufacturer portal demo seed must not rehydrate from an old browser cache. */
+const KEY = "hajime-app-data-v2";
+const LEGACY_KEYS = ["hajime-app-data-v1"];
 
 export function loadLocalAppData(): AppData | null {
   try {
@@ -24,6 +26,16 @@ export function saveLocalAppData(data: AppData): void {
 export function clearLocalAppData(): void {
   try {
     localStorage.removeItem(KEY);
+    for (const legacy of LEGACY_KEYS) localStorage.removeItem(legacy);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Drop obsolete v1 snapshots so Kirin/Florin demo rows can't stick around after demo wipe. */
+export function purgeLegacyLocalAppData(): void {
+  try {
+    for (const legacy of LEGACY_KEYS) localStorage.removeItem(legacy);
   } catch {
     /* ignore */
   }

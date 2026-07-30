@@ -456,6 +456,7 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
       pathMatches(p, "/crm") ||
       pathMatches(p, "/manufacturer") ||
       pathMatches(p, "/purchase-orders") ||
+      pathMatches(p, "/production-requests") ||
       pathMatches(p, "/markets") ||
       pathMatches(p, "/global-markets") ||
       pathMatches(p, "/retail")

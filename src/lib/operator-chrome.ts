@@ -44,6 +44,7 @@ const RULES: { prefix: string; section: string; page: string }[] = [
   { prefix: "/sales", section: "Field", page: "Field · today" },
 
   { prefix: "/global-markets", section: "Operations", page: "Global markets" },
+  { prefix: "/production-requests", section: "Command", page: "Production requests" },
   { prefix: "/purchase-orders", section: "Command", page: "Production requests" },
   { prefix: "/product-development", section: "Supply chain", page: "Product development" },
 

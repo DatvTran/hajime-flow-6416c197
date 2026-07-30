@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Download, Factory, Truck } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
-import { useInventory, usePurchaseOrders, useTransferOrders, useAppData } from "@/contexts/AppDataContext";
+import { useInventory, usePurchaseOrders, useTransferOrders, useAppData, useProductionStatuses, useAccounts } from "@/contexts/AppDataContext";
 import { resolveReceivingLocationForPo } from "@/lib/po-destination-warehouse";
 import { PurchaseOrdersSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,6 +20,10 @@ import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
 import { isHqOperatorRole } from "@/lib/hq-order-scope";
 import { HqProductionRequestsView, type ProductionChangeRequest } from "@/components/hq/HqProductionRequestsView";
 import { DistributorPurchaseOrdersView } from "@/components/distributor/DistributorPurchaseOrdersView";
+import { ManufacturerProductionRequestsView } from "@/components/manufacturer/ManufacturerProductionRequestsView";
+import { resolveManufacturerAssignmentIdentity } from "@/lib/npr-manufacturer-scope";
+import { filterPosForManufacturerUser } from "@/lib/po-manufacturer-scope";
+import { TEAM_ROSTER } from "@/data/team-roster";
 
 function shouldAddInventoryForTransition(p: PurchaseOrder, nextStatus: PurchaseOrder["status"]): boolean {
   // Production POs ADD inventory when delivered (manufacturer shipment arrives)
@@ -33,6 +37,7 @@ export default function PurchaseOrders() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { loading, data } = useAppData();
+  const { accounts } = useAccounts();
 
   const canCreateProductionRequest = user.role === "brand_operator" || user.role === "operations" || user.role === "founder_admin";
   const canCreateTransfer = user.role === "brand_operator" || user.role === "operations" || user.role === "distributor" || user.role === "founder_admin";
@@ -46,8 +51,27 @@ export default function PurchaseOrders() {
     deductInTransitForDelivery,
     checkCanShipTransfer 
   } = useInventory();
-  const { purchaseOrders, addPurchaseOrder, patchPurchaseOrder } = usePurchaseOrders();
+  const { purchaseOrders, addPurchaseOrder, patchPurchaseOrder, fetchPurchaseOrders } = usePurchaseOrders();
   const { transferOrders, addTransferOrder, patchTransferOrder } = useTransferOrders();
+  const { addProductionStatus } = useProductionStatuses();
+
+  useEffect(() => {
+    void fetchPurchaseOrders();
+  }, [fetchPurchaseOrders]);
+
+  useEffect(() => {
+    const onFocus = () => void fetchPurchaseOrders();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [fetchPurchaseOrders]);
+
+  const teamMembers = data.teamMembers?.length ? data.teamMembers : TEAM_ROSTER;
+
+  const manufacturerScopedOrders = useMemo(() => {
+    if (user.role !== "manufacturer") return purchaseOrders;
+    const identity = resolveManufacturerAssignmentIdentity(user.email, teamMembers, accounts);
+    return filterPosForManufacturerUser(purchaseOrders, identity);
+  }, [purchaseOrders, user.role, user.email, teamMembers, accounts]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<"production" | "transfer">("production");
@@ -110,7 +134,7 @@ export default function PurchaseOrders() {
           },
           { replace: true },
         );
-        navigate(`/purchase-orders/new${params.toString() ? `?${params.toString()}` : ""}`, { replace: true });
+        navigate(`/production-requests/new${params.toString() ? `?${params.toString()}` : ""}`, { replace: true });
         return;
       }
       setNewPoPrefill({ sku: sku ?? undefined, quantity: qty ?? undefined });
@@ -314,6 +338,54 @@ export default function PurchaseOrders() {
     );
   }
 
+  const handleManufacturerChangeRequest = async (po: PurchaseOrder, message: string) => {
+    const noteBlock = `[Change requested by manufacturer · ${new Date().toISOString().slice(0, 10)}]\n${message}`;
+    const notes = po.notes?.trim() ? `${po.notes.trim()}\n\n${noteBlock}` : noteBlock;
+    await patchPurchaseOrder(po.id, { notes });
+    toast.success(t("Change request sent"), {
+      description: t("Hajime HQ will review your notes before confirming the batch."),
+    });
+  };
+
+  const handleManufacturerAcceptSchedule = async (po: PurchaseOrder) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const alreadyScheduled =
+      po.status === "in-production" ||
+      po.status === "completed" ||
+      po.status === "shipped" ||
+      po.status === "delivered";
+
+    if (!alreadyScheduled) {
+      const noteBlock = `[Accepted · scheduled for production · ${today}]`;
+      const notes = po.notes?.trim() ? `${po.notes.trim()}\n\n${noteBlock}` : noteBlock;
+      // Accepting moves the request onto the brew floor: flip it to in-production
+      // and seed the first production-status entry so it surfaces as a batch.
+      await patchPurchaseOrder(po.id, { status: "in-production", notes });
+      addProductionStatus({
+        poId: po.id,
+        stage: "Scheduled",
+        updatedAt: today,
+        notes: "Accepted by manufacturer · scheduled on brew floor",
+      });
+    }
+
+    toast.success(t("Batch scheduled"), {
+      description: t("{{sku}} is now on the brew floor.", { sku: po.sku }),
+    });
+    navigate("/manufacturer/brew-batches");
+  };
+
+  if (user.role === "manufacturer") {
+    return (
+      <ManufacturerProductionRequestsView
+        purchaseOrders={manufacturerScopedOrders}
+        onAcceptSchedule={handleManufacturerAcceptSchedule}
+        onRequestChange={handleManufacturerChangeRequest}
+        onViewSpec={(id) => navigate(`/manufacturer/purchase-orders/${id}/spec`)}
+      />
+    );
+  }
+
   const handleProductionChangeRequest = async (po: PurchaseOrder, change: ProductionChangeRequest) => {
     const kura = po.manufacturer.split(" ")[0] || po.manufacturer;
     const noteBlock = `[Change requested · ${change.changeType} · respond by ${change.respondBy}]\n${change.message}`;
@@ -333,7 +405,7 @@ export default function PurchaseOrders() {
           onApprove={(po) => void patchPo(po.id, { status: "approved" })}
           onDecline={(po) => {
             void patchPo(po.id, { status: "draft" });
-            toast.info(t("Production request declined"), { description: po.id });
+            toast.info(t("Draft request cancelled"), { description: po.id });
           }}
           onRequestChange={handleProductionChangeRequest}
           canEdit={canEditPoStatus}
@@ -358,7 +430,7 @@ export default function PurchaseOrders() {
         variant={pageHeaderVariantForRole(user.role)}
         description={
           isHqOperatorRole(user.role)
-            ? "Batch requests from kura partners — your sign-off confirms spec, lot, and allocation before they schedule production. Retail and rep orders are approved by distributors, not HQ."
+            ? "Batch requests from manufacturer partners — your sign-off confirms spec, lot, and allocation before they schedule production. Retail and rep orders are approved by distributors, not HQ."
             : "Manage production requests to the manufacturer and transfer orders that move existing stock to distributors or retail accounts."
         }
         actions={

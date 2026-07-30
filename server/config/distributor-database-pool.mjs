@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { platformDb } from './database.mjs';
 import { flyDatabaseConnection } from './fly-database-url.mjs';
+import { localDbHost } from './local-db-host.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,7 +18,7 @@ function buildDistributorConnection(databaseName) {
   }
 
   return {
-    host: process.env.DB_HOST || 'localhost',
+    host: localDbHost(),
     port: Number(process.env.DB_PORT) || 5432,
     database: databaseName,
     user: process.env.DB_USER || 'postgres',

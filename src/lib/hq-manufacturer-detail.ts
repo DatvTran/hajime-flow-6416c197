@@ -1,9 +1,9 @@
 import type { PurchaseOrder } from "@/data/mockData";
 import type { ManufacturerProfile } from "@/types/app-data";
-import { demoManufacturerIdForName } from "@/lib/hq-manufacturers-demo";
 import {
-  isHqManufacturerPartnerId,
+  isLegacyKirinProfilesListRow,
   loadHqManufacturerPartner,
+  resolveHqManufacturerPartnerId,
   type HqManufacturerPartnerConfig,
 } from "@/lib/hq-manufacturer-partners";
 
@@ -42,7 +42,7 @@ export type ManufacturerPartnerDetail = {
   activeBatches: number;
   partnerSince: string;
   premium: string;
-  rice: string;
+  rawMaterialsContract: string;
   skus: string[];
   batches: ManufacturerBatchRow[];
   requests: ManufacturerRequestRow[];
@@ -124,7 +124,7 @@ function detailFromPartnerConfig(c: HqManufacturerPartnerConfig): ManufacturerPa
     activeBatches: c.activeBatches,
     partnerSince: c.partnerSince,
     premium: c.premium,
-    rice: c.rice,
+    rawMaterialsContract: c.rawMaterialsContract,
     skus: c.skus,
     batches: DEMO_BATCHES[c.id] ?? [],
     requests: DEMO_REQUESTS[c.id] ?? [],
@@ -180,7 +180,7 @@ function buildFromPurchaseOrders(
     id: manufacturerId,
     name,
     sub,
-    tier: seed?.tier ?? "Preferred Kura",
+    tier: seed?.tier ?? "Preferred manufacturer partner",
     tierIsPreferred: seed?.tierIsPreferred ?? true,
     statusTone: openReq > 0 ? "amber" : (seed?.statusTone ?? "green"),
     statusLabel: openReq > 0 ? `${openReq} requests open` : (seed?.statusLabel ?? "on schedule"),
@@ -194,7 +194,7 @@ function buildFromPurchaseOrders(
     activeBatches: active.length || (seed?.activeBatches ?? 0),
     partnerSince: seed?.partnerSince ?? "—",
     premium: seed?.premium ?? "—",
-    rice: seed?.rice ?? "—",
+    rawMaterialsContract: seed?.rawMaterialsContract ?? "—",
     skus: skus.length > 0 ? skus : ["—"],
     batches,
     requests,
@@ -206,21 +206,30 @@ export function buildManufacturerPartnerDetail(
   purchaseOrders: PurchaseOrder[],
   profile: ManufacturerProfile | null,
 ): ManufacturerPartnerDetail {
-  const demoId =
-    isHqManufacturerPartnerId(manufacturerId) ? manufacturerId : demoManufacturerIdForName(manufacturerId);
+  const partnerId =
+    resolveHqManufacturerPartnerId(manufacturerId) ??
+    (profile?.manufacturerId ? resolveHqManufacturerPartnerId(profile.manufacturerId) : null);
 
-  if (demoId) {
-    const config = loadHqManufacturerPartner(demoId);
+  if (partnerId) {
+    const config = loadHqManufacturerPartner(partnerId);
     const seed = detailFromPartnerConfig(config);
-    const mergedPos = buildFromPurchaseOrders(demoId, config.name, config.sub, purchaseOrders, seed);
-    return { ...seed, ...mergedPos, skus: seed.skus, batches: mergedPos.batches.length ? mergedPos.batches : seed.batches };
+    const mergedPos = buildFromPurchaseOrders(partnerId, config.name, config.sub, purchaseOrders, seed);
+    return {
+      ...seed,
+      ...mergedPos,
+      id: partnerId,
+      name: config.name,
+      sub: config.sub,
+      skus: seed.skus,
+      batches: mergedPos.batches.length ? mergedPos.batches : seed.batches,
+    };
   }
 
   if (profile) {
     const name = profile.companyName || "Manufacturer";
-    const sub = [profile.address.city, profile.address.country].filter(Boolean).join(" · ") || "Kura partner";
+    const sub = [profile.address.city, profile.address.country].filter(Boolean).join(" · ") || "Manufacturer partner";
     return buildFromPurchaseOrders(manufacturerId, name, sub, purchaseOrders);
   }
 
-  return buildFromPurchaseOrders(manufacturerId, "Manufacturer", "Kura partner", purchaseOrders);
+  return buildFromPurchaseOrders(manufacturerId, "Manufacturer", "Manufacturer partner", purchaseOrders);
 }

@@ -676,11 +676,14 @@ export type NewProductManufacturerProposal = {
 };
 
 export type NewProductBrandDecision = {
-  approved: boolean;
+  approved?: boolean;
   approvedBy?: string;
   approvedAt?: string;
   rejectionReason?: string;
   requestedChanges?: string;
+  /** Set when HQ nudges manufacturer during feasibility review */
+  hqNudgedAt?: string;
+  hqNudgeCount?: number;
 };
 
 export type NewProductRequest = {
@@ -707,6 +710,8 @@ export type NewProductRequest = {
   notes: string;
   status: NewProductRequestStatus;
   assignedManufacturer?: string;
+  assignedManufacturerEmail?: string;
+  assignedCrmMemberId?: string;
   submittedAt?: string;
   reviewStartedAt?: string;
   proposalReceivedAt?: string;
@@ -741,6 +746,7 @@ export const newProductRequests: NewProductRequest[] = [
     notes: "Competitor: Mr Black, but higher ABV and Japanese design positioning.",
     status: "under_review",
     assignedManufacturer: "Kirin Brewery Co.",
+    assignedManufacturerEmail: "export@kirin.example",
     submittedAt: "2025-04-02T10:00:00Z",
     reviewStartedAt: "2025-04-03T10:00:00Z",
   },
@@ -764,6 +770,7 @@ export const newProductRequests: NewProductRequest[] = [
     notes: "Seasonal summer release.",
     status: "approved",
     assignedManufacturer: "Kirin Brewery Co.",
+    assignedManufacturerEmail: "export@kirin.example",
     submittedAt: "2025-03-16T10:00:00Z",
     reviewStartedAt: "2025-03-17T10:00:00Z",
     proposalReceivedAt: "2025-03-20T10:00:00Z",

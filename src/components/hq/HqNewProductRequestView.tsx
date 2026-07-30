@@ -64,7 +64,6 @@ export function HqNewProductRequestView({ onCreate }: Props) {
     () => defaultManufacturers,
   );
   const [manufacturerKey, setManufacturerKey] = useState(() => defaultManufacturers[0]?.key ?? "");
-  const [manufacturerPickerHasCrm, setManufacturerPickerHasCrm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMode, setSuccessMode] = useState<SubmitMode>("draft");
@@ -79,7 +78,6 @@ export function HqNewProductRequestView({ onCreate }: Props) {
         const merged = buildHqManufacturerPickerOptions(rows, accounts);
         setManufacturerChoices(merged);
         setManufacturerKey((prev) => (merged.some((m) => m.key === prev) ? prev : merged[0]?.key ?? ""));
-        setManufacturerPickerHasCrm(rows.some((r) => Boolean(r.crmMemberId)));
       } catch {
         /* keep fallback */
       }
@@ -161,6 +159,8 @@ export function HqNewProductRequestView({ onCreate }: Props) {
     notes: notes.trim(),
     status: mode === "submitted" ? "submitted" : "draft",
     assignedManufacturer: manufacturerDisplayLabel,
+    assignedManufacturerEmail: selectedManufacturer?.email?.trim().toLowerCase() || undefined,
+    assignedCrmMemberId: selectedManufacturer?.crmMemberId ?? undefined,
     ...(mode === "submitted" ? { submittedAt: new Date().toISOString() } : {}),
   });
 
@@ -202,9 +202,9 @@ export function HqNewProductRequestView({ onCreate }: Props) {
       </div>
 
       <HqOperatorPageHeader
-        title="New product development request"
+        title="New alcohol concept"
         rawTitle
-        description="Brief a manufacturer on a new SKU. They review feasibility, costing, and timeline before you approve it for the catalog."
+        description="Define the concept of alcohol to make — spirit, ABV, flavor, packaging — and brief a manufacturer for feasibility. This does not reorder inventory; after approval, use Production requests to brew quantity to a location."
       />
 
       <div className="grid items-start gap-5 lg:grid-cols-[1fr_320px]">
@@ -379,9 +379,7 @@ export function HqNewProductRequestView({ onCreate }: Props) {
             <div className="mt-4 border-t border-border/40 pt-4">
               <div className="mb-2 text-[12px] font-medium">{t("Assign to manufacturer")}</div>
               <p className="mb-3 text-[12px] leading-relaxed text-muted-foreground">
-                {manufacturerPickerHasCrm
-                  ? t("Contacts from Settings → CRM. Profile company names are preferred when the email matches.")
-                  : t("Choose which manufacturer should receive this brief.")}
+                {t("Manufacturer profiles from Manufacturers. CRM login is used when the email matches the profile.")}
               </p>
               <div
                 className="grid gap-2"

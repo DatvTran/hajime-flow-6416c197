@@ -174,12 +174,12 @@ const BASE_PROGRAMS: Record<HqIncentiveProgramId, HqIncentiveProgramConfig> = {
   },
   kura: {
     id: "kura",
-    title: "Kura Partner Program",
+    title: "Manufacturer Partner Program",
     subtitle: "Quality, yield & on-time production",
     icon: FlaskConical,
     iconClass: "",
     iconStyle: { background: "hsl(280 40% 50% / 0.1)", color: "hsl(280 40% 48%)" },
-    membersLabel: "2 kura",
+    membersLabel: "2 manufacturer partners",
     q2Payout: "¥3.2M",
     rewardStructure: "¥2–3/bottle premium",
     period: "quarterly",
@@ -191,7 +191,7 @@ const BASE_PROGRAMS: Record<HqIncentiveProgramId, HqIncentiveProgramConfig> = {
       "Premiums paid quarterly on approved batches only. Rice subsidy drawdown tracked against annual cap. Co-branded label program requires Master tier approval.",
     active: true,
     tiers: [
-      { id: "t1", name: "Standard", threshold: "Onboarded kura", reward: "¥1.5/btl", memberCount: 1, color: "hsl(var(--muted-foreground))" },
+      { id: "t1", name: "Standard", threshold: "Onboarded manufacturer partner", reward: "¥1.5/btl", memberCount: 1, color: "hsl(var(--muted-foreground))" },
       { id: "t2", name: "Preferred", threshold: "97% quality · 94% OT", reward: "¥2/btl + rice priority", memberCount: 1, color: "hsl(40 88% 42%)" },
       { id: "t3", name: "Master", threshold: "99% · 95% yield · 97% OT", reward: "¥3/btl + co-brand", memberCount: 0, color: "hsl(215 72% 50%)" },
     ],

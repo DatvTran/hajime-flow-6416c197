@@ -115,8 +115,8 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
         {
           label: "Supply chain",
           items: [
-            { title: "Production requests", url: "/purchase-orders", icon: FileText },
             { title: "Product development", url: "/product-development", icon: Factory },
+            { title: "Production requests", url: "/production-requests", icon: FileText },
             { title: "Manufacturer portal", url: "/manufacturer", icon: Factory },
             { title: "Manufacturer profiles", url: "/manufacturer/profiles", icon: Building2 },
           ],
@@ -139,23 +139,32 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
         },
       ];
     case "manufacturer":
+      // Fallback only — manufacturer users should use ManufacturerShellLayout + ManufacturerSidebar.
       return [
         {
-          label: "Manufacturer",
+          label: "Production",
           items: [
-            { title: "Overview", url: "/manufacturer", icon: LayoutDashboard },
-            { title: "New product requests", url: "/manufacturer/product-requests", icon: Factory },
-            { title: "Production orders", url: "/manufacturer/purchase-orders", icon: FileText },
-            { title: "Shipments", url: "/manufacturer/shipments", icon: Truck },
-            { title: "Batch history", url: "/manufacturer/inventory", icon: Package },
-            { title: "Market demand", url: "/manufacturer/market-demand", icon: Globe },
-            { title: "Alerts", url: "/manufacturer/alerts", icon: AlertTriangle },
-            { title: "Payments & receipts", url: "/manufacturer/finance", icon: Receipt },
+            { title: "Dashboard", url: "/manufacturer", icon: Home },
+            { title: "Production requests", url: "/manufacturer/purchase-orders", icon: FileText },
+            { title: "Brew batches", url: "/manufacturer/brew-batches", icon: Factory },
+            { title: "Bottling line", url: "/manufacturer/bottling-line", icon: Wine },
           ],
         },
         {
-          label: "Account",
-          items: [{ title: "Profile", url: "/manufacturer/profile", icon: User }],
+          label: "Supply",
+          items: [
+            { title: "Raw materials", url: "/manufacturer/materials", icon: Package },
+            { title: "Finished goods", url: "/manufacturer/finished-goods", icon: Warehouse },
+            { title: "Shipments to HQ", url: "/manufacturer/shipments", icon: Truck },
+          ],
+        },
+        {
+          label: "Quality & performance",
+          items: [
+            { title: "Quality control", url: "/manufacturer/quality", icon: ClipboardList },
+            { title: "Analytics & reports", url: "/manufacturer/analytics", icon: BarChart3 },
+            { title: "Support", url: "/manufacturer/support", icon: HelpCircle },
+          ],
         },
       ];
     case "distributor":
@@ -263,7 +272,7 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
             { title: "Inventory", url: "/inventory", icon: Package },
             { title: "Orders", url: "/orders", icon: ShoppingCart },
             { title: "Shipments", url: "/shipments", icon: Truck },
-            { title: "Production", url: "/purchase-orders", icon: FileText },
+            { title: "Production requests", url: "/production-requests", icon: FileText },
           ],
         },
         {

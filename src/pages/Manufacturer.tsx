@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useProductionStatuses, usePurchaseOrders, useAppData } from "@/contexts/AppDataContext";
+import { useProductionStatuses, usePurchaseOrders, useAppData, useAccounts } from "@/contexts/AppDataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAuditLog } from "@/hooks/useAuditLog";
 import { useShipmentsAutoRefresh } from "@/hooks/useShipmentsAutoRefresh";
@@ -17,6 +17,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "@/components/ui/sonner";
 import { computeInventorySummary, computeReorderRecommendations, deriveAlerts } from "@/lib/hajime-metrics";
 import type { Shipment } from "@/data/mockData";
+import { TEAM_ROSTER } from "@/data/team-roster";
+import { resolveManufacturerAssignmentIdentity } from "@/lib/npr-manufacturer-scope";
+import { filterPosForManufacturerUser } from "@/lib/po-manufacturer-scope";
 
 function formatInboundDeparted(s: Shipment): string {
   if (s.shippedAt) {
@@ -36,6 +39,7 @@ export default function Manufacturer() {
   const { purchaseOrders } = usePurchaseOrders();
   const { productionStatuses, addProductionStatus } = useProductionStatuses();
   const { data, loading, refreshShipments, refreshProducts } = useAppData();
+  const { accounts } = useAccounts();
 
   useEffect(() => {
     if (loading) return;
@@ -45,9 +49,23 @@ export default function Manufacturer() {
   const { user } = useAuth();
   const logAudit = useAuditLog();
 
-  const invSummary = useMemo(() => computeInventorySummary(data.inventory, data.purchaseOrders), [data.inventory, data.purchaseOrders]);
+  const teamMembers = data.teamMembers?.length ? data.teamMembers : TEAM_ROSTER;
 
-  const activePOs = useMemo(() => purchaseOrders.filter((po) => po.status !== "draft"), [purchaseOrders]);
+  const scopedPurchaseOrders = useMemo(() => {
+    if (user.role !== "manufacturer") return purchaseOrders;
+    const identity = resolveManufacturerAssignmentIdentity(user.email, teamMembers, accounts);
+    return filterPosForManufacturerUser(purchaseOrders, identity);
+  }, [purchaseOrders, user.role, user.email, teamMembers, accounts]);
+
+  const invSummary = useMemo(
+    () => computeInventorySummary(data.inventory, scopedPurchaseOrders),
+    [data.inventory, scopedPurchaseOrders],
+  );
+
+  const activePOs = useMemo(
+    () => scopedPurchaseOrders.filter((po) => po.status !== "draft"),
+    [scopedPurchaseOrders],
+  );
 
   const inboundQueue = useMemo(
     () => data.shipments.filter((s) => s.type === "inbound" && s.status !== "delivered"),
@@ -56,14 +74,14 @@ export default function Manufacturer() {
 
   const requestedByMarket = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const po of purchaseOrders) {
+    for (const po of scopedPurchaseOrders) {
       const k = po.marketDestination || "—";
       m[k] = (m[k] ?? 0) + po.quantity;
     }
     return Object.entries(m)
       .map(([market, bottles]) => ({ market, bottles }))
       .sort((a, b) => b.bottles - a.bottles);
-  }, [purchaseOrders]);
+  }, [scopedPurchaseOrders]);
 
   const mfgAlerts = useMemo(() => deriveAlerts(data).slice(0, 5), [data]);
 
@@ -80,19 +98,19 @@ export default function Manufacturer() {
   const poLabelForShipment = useCallback(
     (s: Shipment) => {
       const key = String(s.linkedOrder ?? "");
-      const byDb = purchaseOrders.find((p) => p.databaseId != null && String(p.databaseId) === key);
+      const byDb = scopedPurchaseOrders.find((p) => p.databaseId != null && String(p.databaseId) === key);
       if (byDb) return byDb.id;
-      return purchaseOrders.find((p) => p.id === key)?.id ?? (key ? `PO ref ${key}` : "—");
+      return scopedPurchaseOrders.find((p) => p.id === key)?.id ?? (key ? `PO ref ${key}` : "—");
     },
-    [purchaseOrders],
+    [scopedPurchaseOrders],
   );
 
   const kpi = useMemo(() => {
     const delayed = activePOs.filter((p) => p.status === "delayed").length;
-    const pendingApproval = purchaseOrders.filter((p) => p.status === "draft").length;
+    const pendingApproval = scopedPurchaseOrders.filter((p) => p.status === "draft").length;
     const onTrack = activePOs.filter((p) => p.status !== "delayed").length;
     return { delayed, pendingApproval, onTrack };
-  }, [activePOs, purchaseOrders]);
+  }, [activePOs, scopedPurchaseOrders]);
 
   const [selectedPoId, setSelectedPoId] = useState<string>(() => activePOs[0]?.id ?? "");
   const [stage, setStage] = useState<string>(MANUFACTURER_STAGE_PIPELINE[0]);

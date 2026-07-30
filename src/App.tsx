@@ -8,6 +8,7 @@ import { HqOperatorLayout } from "@/components/hq/HqOperatorLayout";
 import { RetailLayout } from "@/components/RetailLayout";
 import { SalesRepLayout } from "@/components/SalesRepLayout";
 import { DistributorLayout } from "@/components/DistributorLayout";
+import { ManufacturerShellLayout } from "@/components/ManufacturerShellLayout";
 import { AppDataProvider } from "@/contexts/AppDataContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { RetailCartProvider } from "@/contexts/RetailCartContext";
@@ -33,6 +34,16 @@ const Orders = lazyWithChunkReload(() => import("./pages/Orders"));
 const Accounts = lazyWithChunkReload(() => import("./pages/Accounts"));
 const PurchaseOrders = lazyWithChunkReload(() => import("./pages/PurchaseOrders"));
 const Manufacturer = lazyWithChunkReload(() => import("./pages/Manufacturer"));
+const ManufacturerDashboardPage = lazyWithChunkReload(() => import("./pages/ManufacturerDashboardPage"));
+const ManufacturerBrewBatchesPage = lazyWithChunkReload(() => import("./pages/ManufacturerBrewBatchesPage"));
+const ManufacturerBottlingLinePage = lazyWithChunkReload(() => import("./pages/ManufacturerBottlingLinePage"));
+const ManufacturerRawMaterialsPage = lazyWithChunkReload(() => import("./pages/ManufacturerRawMaterialsPage"));
+const ManufacturerFinishedGoodsPage = lazyWithChunkReload(() => import("./pages/ManufacturerFinishedGoodsPage"));
+const ManufacturerShipmentsPage = lazyWithChunkReload(() => import("./pages/ManufacturerShipmentsPage"));
+const ManufacturerQualityControlPage = lazyWithChunkReload(() => import("./pages/ManufacturerQualityControlPage"));
+const ManufacturerAnalyticsPage = lazyWithChunkReload(() => import("./pages/ManufacturerAnalyticsPage"));
+const ManufacturerSupportPage = lazyWithChunkReload(() => import("./pages/ManufacturerSupportPage"));
+const ManufacturerSpecSheetPage = lazyWithChunkReload(() => import("./pages/ManufacturerSpecSheetPage"));
 const Shipments = lazyWithChunkReload(() => import("./pages/Shipments"));
 const Reports = lazyWithChunkReload(() => import("./pages/Reports"));
 const SettingsPage = lazyWithChunkReload(() => import("./pages/Settings"));
@@ -60,6 +71,7 @@ const HqIncentiveProgramEditPage = lazyWithChunkReload(() => import("./pages/HqI
 const HqIncentivePayoutSchedulePage = lazyWithChunkReload(() => import("./pages/HqIncentivePayoutSchedulePage"));
 const ProductDevelopmentPage = lazyWithChunkReload(() => import("./pages/ProductDevelopmentPage"));
 const HqNewProductRequestPage = lazyWithChunkReload(() => import("./pages/HqNewProductRequestPage"));
+const HqProductRequestDetailPage = lazyWithChunkReload(() => import("./pages/HqProductRequestDetailPage"));
 const HqNewProductionRequestPage = lazyWithChunkReload(() => import("./pages/HqNewProductionRequestPage"));
 
 // Distributor routes
@@ -97,6 +109,15 @@ const RetailBackbarPage = lazyWithChunkReload(() => import("./pages/RetailBackba
 
 const queryClient = new QueryClient();
 
+function useManufacturerPortalShell(): boolean {
+  const { user } = useAuth();
+  const { pathname } = useLocation();
+  if (!user) return false;
+  if (user.role === "brand_operator" || user.role === "founder_admin") return false;
+  if (user.role === "manufacturer") return true;
+  return pathname === "/manufacturer" || pathname.startsWith("/manufacturer/");
+}
+
 function useDistributorPortalShell(): boolean {
   const { user } = useAuth();
   const { pathname } = useLocation();
@@ -108,9 +129,15 @@ function useHqOperatorPortalShell(): boolean {
   return user?.role === "brand_operator" || user?.role === "founder_admin";
 }
 
+function ManufacturerHome() {
+  const { user } = useAuth();
+  return user?.role === "manufacturer" ? <ManufacturerDashboardPage /> : <Manufacturer />;
+}
+
 function AppDataShell() {
   const { user } = useAuth();
   const { state, formattedTimeRemaining, stayActive } = useInactivityTimer();
+  const manufacturerPortal = useManufacturerPortalShell();
   const distributorPortal = useDistributorPortalShell();
   const hqOperatorPortal = useHqOperatorPortalShell();
   
@@ -128,6 +155,8 @@ function AppDataShell() {
         <SalesRepLayout />
       ) : hqOperatorPortal ? (
         <HqOperatorLayout />
+      ) : manufacturerPortal ? (
+        <ManufacturerShellLayout />
       ) : distributorPortal ? (
         <DistributorLayout />
       ) : (
@@ -173,20 +202,31 @@ const App = () => {
                     <Route path="/markets" element={<MarketsPage />} />
                     <Route path="/global-markets" element={<GlobalMarketsPage />} />
                     <Route path="/shipments" element={<Shipments />} />
+                    <Route path="/production-requests/new" element={<HqNewProductionRequestPage />} />
+                    <Route path="/production-requests" element={<PurchaseOrders />} />
                     <Route path="/purchase-orders/new" element={<HqNewProductionRequestPage />} />
                     <Route path="/purchase-orders" element={<PurchaseOrders />} />
                     <Route path="/product-development/new" element={<HqNewProductRequestPage />} />
+                    <Route path="/product-development/:requestId" element={<HqProductRequestDetailPage />} />
                     <Route path="/product-development" element={<ProductDevelopmentPage />} />
-                    <Route path="/manufacturer" element={<Manufacturer />} />
+                    <Route path="/manufacturer" element={<ManufacturerHome />} />
+                    <Route path="/manufacturer/brew-batches" element={<ManufacturerBrewBatchesPage />} />
+                    <Route path="/manufacturer/bottling-line" element={<ManufacturerBottlingLinePage />} />
+                    <Route path="/manufacturer/materials" element={<ManufacturerRawMaterialsPage />} />
+                    <Route path="/manufacturer/finished-goods" element={<ManufacturerFinishedGoodsPage />} />
+                    <Route path="/manufacturer/quality" element={<ManufacturerQualityControlPage />} />
+                    <Route path="/manufacturer/analytics" element={<ManufacturerAnalyticsPage />} />
+                    <Route path="/manufacturer/support" element={<ManufacturerSupportPage />} />
                     <Route path="/manufacturer/market-demand" element={<ManufacturerMarketDemandPage />} />
                     <Route path="/manufacturer/profile" element={<ManufacturerProfilePage />} />
                     <Route path="/manufacturer/profiles/add" element={<HqAddManufacturerPage />} />
                     <Route path="/manufacturer/profiles/:manufacturerId/edit" element={<HqManufacturerPartnerEditPage />} />
                     <Route path="/manufacturer/profiles/:manufacturerId" element={<HqManufacturerPartnerPage />} />
                     <Route path="/manufacturer/profiles" element={<ManufacturerProfilesListPage />} />
+                    <Route path="/manufacturer/purchase-orders/:poId/spec" element={<ManufacturerSpecSheetPage />} />
                     <Route path="/manufacturer/purchase-orders" element={<PurchaseOrders />} />
                     <Route path="/manufacturer/product-requests" element={<ManufacturerProductRequestsPage />} />
-                    <Route path="/manufacturer/shipments" element={<Shipments />} />
+                    <Route path="/manufacturer/shipments" element={<ManufacturerShipmentsPage />} />
                     <Route path="/manufacturer/inventory" element={<Inventory />} />
                     <Route path="/manufacturer/alerts" element={<AlertsHubPage />} />
                     <Route path="/manufacturer/finance" element={<FinancePaymentsPage />} />

@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { usePurchaseOrders } from "@/contexts/AppDataContext";
 import { getManufacturerProfiles } from "@/lib/api-v1-mutations";
 import { mapApiRowToProfile } from "@/lib/manufacturer-profile-map";
 import { mergeHqManufacturerPurchaseOrdersForDisplay } from "@/lib/hq-manufacturers-demo";
-import { isHqManufacturerPartnerId, loadHqManufacturerPartner } from "@/lib/hq-manufacturer-partners";
+import {
+  isLegacyKirinManufacturerRoute,
+  resolveHqManufacturerPartnerId,
+  loadHqManufacturerPartner,
+  hydratePartnerConfigsFromProfiles,
+} from "@/lib/hq-manufacturer-partners";
+import { manufacturerPartnerPath } from "@/lib/hq-manufacturers-metrics";
 import type { ManufacturerProfile } from "@/types/app-data";
 import { HqManufacturerPartnerManageView } from "@/components/hq/HqManufacturerPartnerManageView";
 
@@ -22,7 +28,9 @@ export default function HqManufacturerPartnerPage() {
     try {
       const res = (await getManufacturerProfiles()) as { data?: Record<string, unknown>[] };
       const rows = Array.isArray(res.data) ? res.data : [];
-      setProfiles(rows.map((r) => mapApiRowToProfile(r)));
+      const mapped = rows.map((r) => mapApiRowToProfile(r));
+      hydratePartnerConfigsFromProfiles(mapped);
+      setProfiles(mapped);
     } catch {
       setProfiles([]);
     }
@@ -32,28 +40,29 @@ export default function HqManufacturerPartnerPage() {
     void load();
   }, [load]);
 
+  const partnerId = useMemo(() => resolveHqManufacturerPartnerId(manufacturerId), [manufacturerId]);
+
   const profile = useMemo(
     () =>
       profiles.find(
         (p) =>
           p.id === manufacturerId ||
           p.manufacturerId === manufacturerId ||
+          (partnerId != null && p.manufacturerId === partnerId) ||
           (p.companyName || "").toLowerCase().replace(/\s+/g, "-") === manufacturerId.toLowerCase(),
       ) ?? null,
-    [profiles, manufacturerId],
+    [profiles, manufacturerId, partnerId],
   );
 
   const orgName = useMemo(() => {
-    if (isHqManufacturerPartnerId(manufacturerId)) {
-      return loadHqManufacturerPartner(manufacturerId).name;
-    }
+    if (partnerId) return loadHqManufacturerPartner(partnerId).name;
     return profile?.companyName;
-  }, [manufacturerId, profile]);
+  }, [partnerId, profile]);
 
   if (!manufacturerId) {
     return (
       <div className="p-6 text-[13px] text-muted-foreground">
-        Missing manufacturer id. Open a kura from{" "}
+        Missing manufacturer id. Open a manufacturer partner from{" "}
         <Link to="/manufacturer/profiles" className="font-medium text-accent underline-offset-2 hover:underline">
           Manufacturers
         </Link>
@@ -62,9 +71,17 @@ export default function HqManufacturerPartnerPage() {
     );
   }
 
+  if (isLegacyKirinManufacturerRoute(manufacturerId) && !partnerId) {
+    return <Navigate to="/manufacturer/profiles" replace />;
+  }
+
+  if (partnerId && partnerId !== manufacturerId) {
+    return <Navigate to={manufacturerPartnerPath(partnerId)} replace />;
+  }
+
   return (
     <HqManufacturerPartnerManageView
-      manufacturerId={manufacturerId}
+      manufacturerId={partnerId ?? manufacturerId}
       purchaseOrders={displayOrders}
       profile={profile}
       orgName={orgName}

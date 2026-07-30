@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { flyDatabaseConnection } from './fly-database-url.mjs';
+import { localDbHost } from './local-db-host.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
@@ -26,7 +27,7 @@ const config = {
   development: {
     ...baseConfig,
     connection: {
-      host: process.env.DB_HOST || 'localhost',
+      host: localDbHost(),
       port: Number(process.env.DB_PORT) || 5432,
       database: process.env.DB_NAME || 'hajime_dev',
       user: process.env.DB_USER || 'postgres',
@@ -36,7 +37,7 @@ const config = {
   test: {
     ...baseConfig,
     connection: {
-      host: process.env.DB_HOST || 'localhost',
+      host: localDbHost(),
       port: Number(process.env.DB_PORT) || 5432,
       database: process.env.DB_NAME || 'hajime_test',
       user: process.env.DB_USER || 'postgres',

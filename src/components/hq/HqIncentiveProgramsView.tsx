@@ -91,9 +91,9 @@ export function HqIncentiveProgramsView() {
         id: "kura",
         icon: FlaskConical,
         iconClass: "",
-        title: "Kura Partner Program",
+        title: "Manufacturer Partner Program",
         sub: "Quality, yield & on-time production",
-        members: `${mfrCount} kura`,
+        members: `${mfrCount} manufacturer partners`,
         payout: mfrCount > 0 ? "¥3.2M" : "—",
         metric: "¥2–3/bottle premium",
         tiers: [
@@ -123,7 +123,7 @@ export function HqIncentiveProgramsView() {
 
       <HqOperatorKpiGrid>
         <HqOperatorKpiCard icon={Star} tone="gold" label="Total payouts Q2" value={formatHqCompact(totalPayout)} sub={t("across 4 programs")} />
-        <HqOperatorKpiCard icon={Users} tone="blue" label="Members enrolled" value={String(enrolled)} sub={t("reps, distributors, kura, retail")} />
+        <HqOperatorKpiCard icon={Users} tone="blue" label="Members enrolled" value={String(enrolled)} sub={t("reps, distributors, manufacturer partners, retail")} />
         <HqOperatorKpiCard icon={TrendingUp} tone="green" label="Tier upgrades Q2" value="7" sub={t("members advanced a tier")} />
         <HqOperatorKpiCard icon={BarChart3} tone="ink" label="Program ROI" value="3.4×" sub={t("incremental revenue vs cost")} />
       </HqOperatorKpiGrid>
@@ -137,7 +137,7 @@ export function HqIncentiveProgramsView() {
                 <div
                   className={`hq-prog-icon ${p.iconClass}`}
                   style={
-                    p.title.includes("Kura")
+                    p.title.includes("Manufacturer Partner")
                       ? { background: "hsl(280 40% 50% / 0.1)", color: "hsl(280 40% 48%)" }
                       : undefined
                   }

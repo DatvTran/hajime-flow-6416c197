@@ -71,11 +71,16 @@ export function buildPurchaseOrderFromForm(
   options?: { distributorAccountId?: string },
 ): PurchaseOrder {
   let manufacturerId: string | undefined;
-  if (
-    !form.manufacturerKey.startsWith("fallback:") &&
-    !form.manufacturerKey.startsWith("prof:")
-  ) {
-    manufacturerId = form.manufacturerKey;
+  const key = form.manufacturerKey;
+  if (key.startsWith("account:")) {
+    manufacturerId = key.slice("account:".length);
+  } else if (key.startsWith("partner:")) {
+    // Canonical HQ partner id (kosapan / kuramoto / echigo) — manufacturer portal scopes on this.
+    manufacturerId = key.slice("partner:".length);
+  } else if (key.startsWith("prof:")) {
+    manufacturerId = key.slice("prof:".length);
+  } else if (!key.startsWith("fallback:")) {
+    manufacturerId = key;
   }
 
   const qty = Math.max(1, Math.round(Number(form.quantity) || 0));

@@ -365,7 +365,7 @@ export function HqIncentiveProgramEditView({ programId }: Props) {
 
           <div className="rounded-[14px] border border-[hsl(280_40%_50%/0.2)] bg-[hsl(280_40%_50%/0.06)] p-4 text-xs leading-relaxed text-[hsl(280_30%_42%)]">
             <strong className="text-[hsl(280_40%_44%)]">{t("Portal sync:")}</strong>{" "}
-            {t("Saved rules propagate to distributor, sales rep, retail, and kura portals on next login.")}
+            {t("Saved rules propagate to distributor, sales rep, retail, and manufacturer partner portals on next login.")}
           </div>
         </div>
       </HqOperatorTwoCol>

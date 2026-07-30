@@ -1,6 +1,7 @@
 import type { Account, PurchaseOrder } from "@/data/mockData";
 import {
   configToPlatformAccount,
+  isManufacturerHidden,
   listHqManufacturerPartners,
   type HqManufacturerPartnerId,
 } from "@/lib/hq-manufacturer-partners";
@@ -133,6 +134,7 @@ export function mergeHqManufacturerAccountsForDisplay(accounts: Account[]): Acco
   const extras: Account[] = [];
   for (const partner of listHqManufacturerPartners()) {
     const acc = configToPlatformAccount(partner);
+    if (isManufacturerHidden(acc.id) || isManufacturerHidden(partner.id)) continue;
     const key = accountKey(acc);
     if (seen.has(key)) continue;
     seen.add(key);
