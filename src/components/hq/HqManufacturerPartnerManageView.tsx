@@ -5,10 +5,9 @@ import type { PurchaseOrder } from "@/data/mockData";
 import type { ManufacturerProfile } from "@/types/app-data";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
-  isHqManufacturerPartnerId,
-  loadHqManufacturerPartner,
   manufacturerPartnerEditPath,
 } from "@/lib/hq-manufacturer-partners";
+import { newProductionRequestPath } from "@/lib/hq-manufacturer-picker-options";
 import { buildManufacturerPartnerDetail } from "@/lib/hq-manufacturer-detail";
 import { manufacturerInitials } from "@/lib/hq-manufacturers-metrics";
 import {
@@ -82,15 +81,13 @@ export function HqManufacturerPartnerManageView({ manufacturerId, purchaseOrders
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
-            {isHqManufacturerPartnerId(manufacturerId) ? (
-              <HqBtnLink to={manufacturerPartnerEditPath(manufacturerId)} variant="outline" size="sm">
-                {t("Edit account")}
-              </HqBtnLink>
-            ) : null}
-            <HqBtnLink to="/purchase-orders" variant="outline" size="sm">
+            <HqBtnLink to={manufacturerPartnerEditPath(manufacturerId)} variant="outline" size="sm">
+              {t("Edit account")}
+            </HqBtnLink>
+            <HqBtnLink to="/production-requests" variant="outline" size="sm">
               {t("Production requests")}
             </HqBtnLink>
-            <HqBtnLink to="/purchase-orders/new" variant="accent" size="sm">
+            <HqBtnLink to={newProductionRequestPath(manufacturerId, detail.name)} variant="accent" size="sm">
               + {t("New request")}
             </HqBtnLink>
           </div>
@@ -133,9 +130,9 @@ export function HqManufacturerPartnerManageView({ manufacturerId, purchaseOrders
             {sku}
           </span>
         ))}
-        {detail.rice !== "—" ? (
+        {detail.rawMaterialsContract !== "—" ? (
           <span className="rounded-full border border-border/60 bg-muted px-2.5 py-1 text-xs">
-            {t("Rice")}: {detail.rice}
+            {t("Raw materials")}: {detail.rawMaterialsContract}
           </span>
         ) : null}
       </div>
@@ -148,7 +145,7 @@ export function HqManufacturerPartnerManageView({ manufacturerId, purchaseOrders
           />
           {detail.batches.length === 0 ? (
             <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-              {t("No active batches for this kura.")}
+              {t("No active batches for this manufacturer partner.")}
             </div>
           ) : (
             <HqOperatorDataTable>
@@ -210,7 +207,7 @@ export function HqManufacturerPartnerManageView({ manufacturerId, purchaseOrders
             </HqOperatorDataTable>
           )}
           <div className="mt-auto border-t border-border/50 px-5 py-3.5">
-            <HqBtnLink to="/purchase-orders" variant="outline" size="sm" className="w-full justify-center">
+            <HqBtnLink to="/production-requests" variant="outline" size="sm" className="w-full justify-center">
               {t("View all production requests")}
             </HqBtnLink>
           </div>

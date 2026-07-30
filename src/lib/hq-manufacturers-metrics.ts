@@ -3,9 +3,15 @@ import type { ManufacturerProfile } from "@/types/app-data";
 import { mergeHqManufacturerAccountsForDisplay } from "@/lib/hq-manufacturers-demo";
 import {
   configToListRow,
-  isHqManufacturerPartnerDeleted,
+  hydratePartnerConfigsFromProfiles,
   isHqManufacturerPartnerId,
-  listHqManufacturerPartners,
+  isLegacyKirinAccount,
+  isLegacyKirinProfilesListRow,
+  isManufacturerHidden,
+  listHqManufacturerPartnersForProfilesList,
+  loadHqManufacturerPartner,
+  resolveHqManufacturerPartnerId,
+  type HqManufacturerPartnerId,
 } from "@/lib/hq-manufacturer-partners";
 
 export type HqManufacturerListRow = {
@@ -82,8 +88,8 @@ function rowFromAccount(acc: Account, pos: PurchaseOrder[]): HqManufacturerListR
   const inProd = mPos.filter((po) => po.status === "in-production" || po.status === "approved").length;
   const tags = (acc.tags ?? []).map((t) => t.toLowerCase());
   const tier = tags.some((t) => t.includes("preferred") || t.includes("gold"))
-    ? "Preferred Kura"
-    : "Standard Kura";
+    ? "Preferred manufacturer partner"
+    : "Standard manufacturer partner";
 
   return {
     id: acc.id,
@@ -99,13 +105,132 @@ function rowFromAccount(acc: Account, pos: PurchaseOrder[]): HqManufacturerListR
   };
 }
 
-function mergePartnerRows(live: HqManufacturerListRow[]): HqManufacturerListRow[] {
-  const seen = new Set(live.map((r) => r.id.toLowerCase()));
-  const extras = listHqManufacturerPartners()
-    .map(configToListRow)
-    .filter((r) => !seen.has(r.id.toLowerCase()) && !isHqManufacturerPartnerDeleted(r.id));
-  if (live.length >= 3 && extras.length === 0) return live;
-  return extras.length > 0 ? [...live, ...extras] : live;
+function partnerIdForListRow(row: HqManufacturerListRow): HqManufacturerPartnerId | null {
+  return resolveHqManufacturerPartnerId(row.id) ?? resolveHqManufacturerPartnerId(row.name);
+}
+
+function overlayPartnerConfigOnRows(rows: HqManufacturerListRow[]): HqManufacturerListRow[] {
+  return rows.map((row) => {
+    const partnerId = partnerIdForListRow(row);
+    if (!partnerId) return row;
+    const partnerRow = configToListRow(loadHqManufacturerPartner(partnerId));
+    return { ...partnerRow, id: row.id };
+  });
+}
+
+function rowFromPoManufacturer(manufacturerName: string, pos: PurchaseOrder[]): HqManufacturerListRow {
+  const norm = manufacturerName.trim().toLowerCase();
+  const mPos = pos.filter((po) => po.manufacturer.trim().toLowerCase() === norm);
+  const onTimePct =
+    mPos.length > 0
+      ? Math.round((mPos.filter((po) => po.status !== "delayed").length / mPos.length) * 1000) / 10
+      : 96.2;
+  const openReq = mPos.filter((po) => po.status === "draft" || po.status === "delayed").length;
+  const active = mPos.filter((po) => po.status === "in-production" || po.status === "approved").length;
+  const slug = norm.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "manufacturer";
+
+  return {
+    id: slug,
+    name: manufacturerName.trim(),
+    sub: "Production partner",
+    tier: "Preferred manufacturer partner",
+    quality: "98.0%",
+    onTime: `${onTimePct}%`,
+    cap: `${Math.max(active, 1) * 800} cs/Q`,
+    statusTone: openReq > 0 ? "amber" : "green",
+    statusLabel: openReq > 0 ? `${openReq} requests open` : "on schedule",
+    activeBatches: active,
+  };
+}
+
+function rowMatchesManufacturer(row: HqManufacturerListRow, manufacturerName: string): boolean {
+  const norm = manufacturerName.trim().toLowerCase();
+  if (!norm) return true;
+  const rowName = row.name.trim().toLowerCase();
+  const rowId = row.id.trim().toLowerCase();
+  if (rowName === norm || rowId === norm) return true;
+  if (rowName.includes(norm.slice(0, 6)) || norm.includes(rowName.slice(0, 6))) return true;
+  for (const partnerId of HQ_MANUFACTURER_PARTNER_IDS) {
+    const partner = loadHqManufacturerPartner(partnerId);
+    if (partner.accountId.toLowerCase() === rowId && norm.includes(partner.name.toLowerCase().slice(0, 6))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function rowsFromPoManufacturers(pos: PurchaseOrder[], existing: HqManufacturerListRow[]): HqManufacturerListRow[] {
+  // HQ partner configs are the source of truth — skip PO-only synthetic rows when partners exist.
+  if (listHqManufacturerPartnersForProfilesList().length > 0) return [];
+
+  const names = [...new Set(pos.map((po) => po.manufacturer.trim()).filter(Boolean))].filter(
+    (name) => !/kirin/i.test(name),
+  );
+  return names
+    .filter((name) => !existing.some((row) => rowMatchesManufacturer(row, name)))
+    .map((name) => rowFromPoManufacturer(name, pos));
+}
+
+function shouldHideLegacyPoManufacturerRow(row: HqManufacturerListRow): boolean {
+  if (isHqManufacturerPartnerId(row.id)) return false;
+  if (isLegacyKirinProfilesListRow(row)) return true;
+  if (listHqManufacturerPartnersForProfilesList().length === 0) return false;
+  return /kirin/i.test(row.name);
+}
+
+function filterHiddenManufacturerRows(rows: HqManufacturerListRow[]): HqManufacturerListRow[] {
+  return rows.filter((row) => {
+    if (isHqManufacturerPartnerId(row.id)) {
+      return !shouldHideLegacyPoManufacturerRow(row);
+    }
+    return (
+      !shouldHideLegacyPoManufacturerRow(row) &&
+      !isManufacturerHidden(row.id) &&
+      !isManufacturerHidden(row.name) &&
+      !isManufacturerHidden(row.name.toLowerCase().replace(/\s+/g, "-"))
+    );
+  });
+}
+
+function rowFromProfile(p: ManufacturerProfile, pos: PurchaseOrder[]): HqManufacturerListRow {
+  const name = p.companyName || "—";
+  const mPos = pos.filter((po) =>
+    po.manufacturer.toLowerCase().includes((name || "").toLowerCase().slice(0, 6)),
+  );
+  const onTimePct =
+    mPos.length > 0
+      ? Math.round((mPos.filter((po) => po.status !== "delayed").length / mPos.length) * 1000) / 10
+      : 96.2;
+  const inProd = mPos.filter((po) => po.status === "in-production").length;
+  const openReq = mPos.filter((po) => po.status === "draft" || po.status === "delayed").length;
+  return {
+    id:
+      resolveHqManufacturerPartnerId(p.manufacturerId || p.id || name) ||
+      p.manufacturerId ||
+      p.id ||
+      name.toLowerCase().replace(/\s+/g, "-"),
+    name,
+    sub: [p.address.city, p.address.country].filter(Boolean).join(" · ") || "Manufacturer partner",
+    tier: "Preferred manufacturer partner",
+    quality: "98.6%",
+    onTime: `${onTimePct}%`,
+    cap: `${Math.max(inProd, 1) * 660} cs/Q`,
+    statusTone: openReq > 0 ? ("amber" as const) : onTimePct >= 94 ? ("green" as const) : ("amber" as const),
+    statusLabel: openReq > 0 ? `${openReq} requests open` : onTimePct >= 94 ? "on schedule" : "monitor",
+    activeBatches: inProd || mPos.filter((po) => po.status === "approved").length,
+  };
+}
+
+function dedupeManufacturerRows(rows: HqManufacturerListRow[]): HqManufacturerListRow[] {
+  const seen = new Set<string>();
+  const out: HqManufacturerListRow[] = [];
+  for (const row of rows) {
+    const keys = [row.id.toLowerCase(), row.name.trim().toLowerCase()];
+    if (keys.some((k) => seen.has(k))) continue;
+    for (const k of keys) seen.add(k);
+    out.push(row);
+  }
+  return out;
 }
 
 export function buildHqManufacturerListRows(
@@ -116,69 +241,56 @@ export function buildHqManufacturerListRows(
   const mergedAccounts = mergeHqManufacturerAccountsForDisplay(accounts);
   const pos = productionPos(purchaseOrders);
 
-  if (profiles.length > 0) {
-    const rows = profiles.map((p) => {
-      const name = p.companyName || "—";
-      const mPos = pos.filter((po) =>
-        po.manufacturer.toLowerCase().includes((name || "").toLowerCase().slice(0, 6)),
-      );
-      const onTimePct =
-        mPos.length > 0
-          ? Math.round((mPos.filter((po) => po.status !== "delayed").length / mPos.length) * 1000) / 10
-          : 96.2;
-      const inProd = mPos.filter((po) => po.status === "in-production").length;
-      const openReq = mPos.filter((po) => po.status === "draft" || po.status === "delayed").length;
-      return {
-        id: p.id || p.manufacturerId || name.toLowerCase().replace(/\s+/g, "-"),
-        name,
-        sub: [p.address.city, p.address.country].filter(Boolean).join(" · ") || "Kura partner",
-        tier: "Preferred Kura",
-        quality: "98.6%",
-        onTime: `${onTimePct}%`,
-        cap: `${Math.max(inProd, 1) * 660} cs/Q`,
-        statusTone: openReq > 0 ? ("amber" as const) : onTimePct >= 94 ? ("green" as const) : ("amber" as const),
-        statusLabel: openReq > 0 ? `${openReq} requests open` : onTimePct >= 94 ? "on schedule" : "monitor",
-        activeBatches: inProd || mPos.filter((po) => po.status === "approved").length,
-      };
-    });
-    return { rows: mergePartnerRows(rows), useDesignDemo: false };
-  }
+  const partnerRows = listHqManufacturerPartnersForProfilesList(profiles).map(configToListRow);
 
-  const mfrAccounts = manufacturerAccounts(mergedAccounts);
-  if (mfrAccounts.length > 0) {
-    const rows = mfrAccounts.map((acc) => rowFromAccount(acc, pos));
-    const merged = mergePartnerRows(rows);
-    const useDemo = merged.some((r) => isHqManufacturerPartnerId(r.id));
-    return { rows: merged, useDesignDemo: useDemo && mfrAccounts.length < 3 };
-  }
+  const profileRows = profiles
+    .filter(
+      (p) =>
+        !isManufacturerHidden(p.id) &&
+        !isManufacturerHidden(p.manufacturerId) &&
+        !isManufacturerHidden((p.companyName || "").toLowerCase().replace(/\s+/g, "-")),
+    )
+    .map((p) => rowFromProfile(p, pos))
+    .filter((row) => !partnerRows.some((partner) => rowMatchesManufacturer(partner, row.name)));
 
-  const kirinPos = pos.filter((po) => po.manufacturer.toLowerCase().includes("kirin"));
-  if (kirinPos.length > 0) {
-    const onTimePct =
-      Math.round((kirinPos.filter((po) => po.status !== "delayed").length / kirinPos.length) * 1000) / 10;
-    const openReq = kirinPos.filter((po) => po.status === "draft" || po.status === "delayed").length;
-    const active = kirinPos.filter((po) => po.status === "in-production" || po.status === "approved").length;
-    return {
-      rows: mergePartnerRows([
-        {
-          id: "kirin",
-          name: "Kirin Brewery Co.",
-          sub: "Niigata, Japan · Production partner",
-          tier: "Preferred Kura",
-          quality: "98.0%",
-          onTime: `${onTimePct}%`,
-          cap: `${Math.max(active, 1) * 800} cs/Q`,
-          statusTone: openReq > 0 ? "amber" : "green",
-          statusLabel: openReq > 0 ? `${openReq} requests open` : "on schedule",
-          activeBatches: active,
-        },
-      ]),
-      useDesignDemo: false,
-    };
-  }
+  const linkedIds = new Set(
+    profiles.flatMap((p) => [p.manufacturerId, p.id].filter(Boolean).map((s) => s.toLowerCase())),
+  );
+  const linkedNames = new Set(
+    profiles.map((p) => (p.companyName || "").trim().toLowerCase()).filter(Boolean),
+  );
 
-  const demoRows = listHqManufacturerPartners().map(configToListRow);
-  return { rows: demoRows, useDesignDemo: true };
+  const accountRows = manufacturerAccounts(mergedAccounts)
+    .filter((acc) => !isManufacturerHidden(acc.id))
+    .filter((acc) => !isLegacyKirinAccount(acc))
+    .filter((acc) => {
+      const id = acc.id.toLowerCase();
+      const name = (acc.tradingName || acc.legalName || "").trim().toLowerCase();
+      if (linkedIds.has(id)) return false;
+      if (name && linkedNames.has(name)) return false;
+      return true;
+    })
+    .map((acc) => rowFromAccount(acc, pos))
+    .filter(
+      (row) =>
+        !partnerRows.some((partner) => rowMatchesManufacturer(partner, row.name)) &&
+        !partnerRows.some((partner) => partner.id.toLowerCase() === row.id.toLowerCase()),
+    );
+
+  const combined = dedupeManufacturerRows([
+    ...overlayPartnerConfigOnRows(partnerRows),
+    ...profileRows,
+    ...accountRows,
+  ]);
+  const poRows = rowsFromPoManufacturers(pos, combined);
+  const merged = overlayPartnerConfigOnRows(dedupeManufacturerRows([...combined, ...poRows]));
+  const mfrAccountCount = manufacturerAccounts(mergedAccounts).length;
+  const useDemo = merged.some((r) => isHqManufacturerPartnerId(r.id));
+
+  return {
+    rows: filterHiddenManufacturerRows(merged),
+    useDesignDemo: useDemo && mfrAccountCount < 3 && profileRows.length === 0,
+  };
 }
 
 export function manufacturerPartnerPath(manufacturerId: string): string {

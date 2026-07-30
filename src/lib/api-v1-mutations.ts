@@ -126,6 +126,7 @@ export async function createAccount(accountData: {
   salesOwner?: string;
   notes?: string;
   status?: string;
+  portalLoginEmail?: string;
 }) {
   return apiFetch("/api/v1/accounts", {
     method: "POST",
@@ -147,6 +148,7 @@ export async function updateAccount(id: string, accountData: Partial<{
   salesOwner: string;
   notes: string;
   status: string;
+  portalLoginEmail: string;
 }>) {
   return apiFetch(`/api/v1/accounts/${id}`, {
     method: "PUT",
@@ -888,6 +890,9 @@ export async function updateOperationalSettings(settings: {
   company_name?: string;
   primary_markets?: string;
   manufacturer_name?: string;
+  support_email?: string;
+  hq_hidden_manufacturer_ids?: string;
+  hq_manufacturer_partner_configs?: string;
 }) {
   return apiFetch("/api/v1/operational-settings", {
     method: "PUT",
@@ -996,9 +1001,31 @@ export async function createManufacturerProfile(profileData: {
   });
 }
 
+export async function ensureManufacturerPortalAccessApi(body: {
+  portalLoginEmail: string;
+  contactName?: string;
+  companyName?: string;
+}) {
+  return apiFetch("/api/v1/manufacturer-portal-access", {
+    method: "POST",
+    body: JSON.stringify(body),
+  }) as Promise<{
+    data?: {
+      ok?: boolean;
+      skipped?: boolean;
+      action?: string;
+      email?: string;
+      reason?: string;
+      role?: string;
+      usesDemoPassword?: boolean;
+    };
+  }>;
+}
+
 export async function updateManufacturerProfile(
   id: string,
   profileData: Partial<{
+    manufacturer_id: string;
     company_name: string;
     contact_name: string;
     email: string;
@@ -1026,6 +1053,12 @@ export async function updateManufacturerProfile(
   return apiFetch(`/api/v1/manufacturer-profiles/${id}`, {
     method: "PUT",
     body: JSON.stringify(profileData),
+  });
+}
+
+export async function deleteManufacturerProfile(id: string) {
+  return apiFetch(`/api/v1/manufacturer-profiles/${encodeURIComponent(id)}`, {
+    method: "DELETE",
   });
 }
 
@@ -1257,6 +1290,28 @@ export async function createShipment(shipmentData: {
   return apiFetch("/api/v1/shipments", {
     method: "POST",
     body: JSON.stringify(shipmentData),
+  });
+}
+
+// ===== MANUFACTURER FINISHED GOODS =====
+
+export async function receiveManufacturerFinishedGoods(payload: {
+  sku: string;
+  name: string;
+  lot: string;
+  cases: number;
+  po_number?: string;
+}) {
+  return apiFetch("/api/v1/manufacturer-finished-goods", {
+    method: "POST",
+    body: JSON.stringify({ action: "receive", ...payload }),
+  });
+}
+
+export async function deductManufacturerFinishedGoods(payload: { sku: string; cases: number }) {
+  return apiFetch("/api/v1/manufacturer-finished-goods", {
+    method: "POST",
+    body: JSON.stringify({ action: "deduct", ...payload }),
   });
 }
 

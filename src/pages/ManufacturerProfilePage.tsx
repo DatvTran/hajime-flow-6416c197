@@ -162,11 +162,20 @@ export default function ManufacturerProfilePage() {
 
       const listRes = (await getManufacturerProfiles()) as { data?: Record<string, unknown>[] };
       const rows = Array.isArray(listRes.data) ? listRes.data : [];
-      const existing = rows.find((r) => String(r.manufacturer_id ?? "") === uid);
+      // Match by user id OR login email (same as hydrate) so we update the existing
+      // HQ-linked row instead of creating a duplicate under the numeric user id.
+      const email = user.email?.toLowerCase().trim() || "";
+      const existing =
+        rows.find((r) => String(r.manufacturer_id ?? "") === uid) ??
+        (email ? rows.find((r) => String(r.email ?? "").toLowerCase() === email) : undefined);
 
       let savedRow: Record<string, unknown>;
       if (existing?.id) {
-        const res = (await updateManufacturerProfile(String(existing.id), profilePayload)) as {
+        const res = (await updateManufacturerProfile(String(existing.id), {
+          ...profilePayload,
+          // Keep the row's canonical id (e.g. "kosapan") — never rekey to the user id.
+          manufacturer_id: String(existing.manufacturer_id ?? uid),
+        })) as {
           data: Record<string, unknown>;
         };
         savedRow = res.data;

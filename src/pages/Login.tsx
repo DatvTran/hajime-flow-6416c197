@@ -46,8 +46,12 @@ const DEMO_SALES_REP_PASSWORD = "admin123!";
 /** Demo distributor — migration `026_demo_sales_rep_users` (Metro Logistics). */
 const DEMO_DISTRIBUTOR_PASSWORD = "admin123!";
 
+/** Demo manufacturer — migration `038_demo_manufacturer_users` (Kirin contacts). */
+const DEMO_MANUFACTURER_PASSWORD = "admin123!";
+
 const DEFAULT_SALES_REP_PERSONA_ID = "tm-seed-2";
 const DEFAULT_DISTRIBUTOR_PERSONA_ID = "tm-seed-7";
+const DEFAULT_MANUFACTURER_PERSONA_ID = "tm-seed-9";
 
 function authRoleToTeamRole(r: HajimeRole): TeamMemberPortalRole | null {
   if (r === "sales_rep" || r === "retail" || r === "distributor" || r === "manufacturer") return r;
@@ -135,6 +139,18 @@ export default function Login() {
         setDisplayName("Metro Logistics Ops");
       }
       setPassword(DEMO_DISTRIBUTOR_PASSWORD);
+    }
+    if (r === "manufacturer") {
+      const m = TEAM_ROSTER.find((x) => x.id === DEFAULT_MANUFACTURER_PERSONA_ID);
+      if (m) {
+        setPersonaId(m.id);
+        setEmail(m.email);
+        setDisplayName(m.displayName);
+      } else {
+        setEmail("export@kirin.example");
+        setDisplayName("Kirin Production Liaison");
+      }
+      setPassword(DEMO_MANUFACTURER_PASSWORD);
     }
     setStep("credentials");
   };
@@ -325,6 +341,9 @@ export default function Login() {
                           if (m.role === "distributor") {
                             setPassword(DEMO_DISTRIBUTOR_PASSWORD);
                           }
+                          if (m.role === "manufacturer") {
+                            setPassword(DEMO_MANUFACTURER_PASSWORD);
+                          }
                         }}
                       >
                         <SelectTrigger id="persona" className="h-10 touch-manipulation">
@@ -428,6 +447,13 @@ export default function Login() {
                       <p className="text-[11px] leading-relaxed text-muted-foreground">
                         Demo login: <span className="font-mono text-foreground">fulfillment@metrologistics.example</span> · password{" "}
                         <span className="font-mono text-foreground">{DEMO_DISTRIBUTOR_PASSWORD}</span> (Metro Logistics — migration 026).
+                        Do not use <span className="font-mono text-foreground">admin@hajime.jp</span>; that is Brand Operator only.
+                      </p>
+                    ) : null}
+                    {role === "manufacturer" ? (
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        Demo login: <span className="font-mono text-foreground">export@kirin.example</span> · password{" "}
+                        <span className="font-mono text-foreground">{DEMO_MANUFACTURER_PASSWORD}</span> (Kirin — migration 038).
                         Do not use <span className="font-mono text-foreground">admin@hajime.jp</span>; that is Brand Operator only.
                       </p>
                     ) : null}

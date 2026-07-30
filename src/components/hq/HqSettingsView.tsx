@@ -4,6 +4,7 @@ import { useAppData } from "@/contexts/AppDataContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { filterPlatformAccountsForHq } from "@/lib/hq-order-scope";
 import { updateOperationalSettings } from "@/lib/api-v1-mutations";
+import { SUPPORT_LIAISON } from "@/lib/manufacturer-support";
 import { toast } from "@/components/ui/sonner";
 import {
   HqBtn,
@@ -20,7 +21,7 @@ const APPROVAL_TOGGLES: ToggleRow[] = [
   { id: "auto-reorder", label: "Auto-approve reorders under $2,000", sub: "From accounts in good standing within cadence", defaultOn: true },
   { id: "new-accounts", label: "Require approval for new accounts", sub: "All onboarding routes through HQ", defaultOn: true },
   { id: "cover-floor", label: "Hold orders that breach cover floor", sub: "Flag when a market drops below 21 days", defaultOn: true },
-  { id: "auto-route", label: "Auto-route production requests", sub: "Assign to kura by capacity and SKU", defaultOn: false },
+  { id: "auto-route", label: "Auto-route production requests", sub: "Assign to manufacturer partners by capacity and SKU", defaultOn: false },
 ];
 
 const NOTIFICATION_TOGGLES: ToggleRow[] = [
@@ -48,6 +49,7 @@ export function HqSettingsView() {
   const [toggles, setToggles] = useState<Record<string, boolean>>({});
   const [companyName, setCompanyName] = useState(os.companyName ?? "Hajime");
   const [hqLocation, setHqLocation] = useState(os.primaryMarkets ?? "Tokyo, Japan");
+  const [supportEmail, setSupportEmail] = useState(os.supportEmail ?? SUPPORT_LIAISON.email);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -61,13 +63,14 @@ export function HqSettingsView() {
   useEffect(() => {
     setCompanyName(os.companyName ?? "Hajime");
     setHqLocation(os.primaryMarkets ?? "Tokyo, Japan");
-  }, [os.companyName, os.primaryMarkets]);
+    setSupportEmail(os.supportEmail ?? SUPPORT_LIAISON.email);
+  }, [os.companyName, os.primaryMarkets, os.supportEmail]);
 
   const portals = useMemo(() => {
     const accounts = filterPlatformAccountsForHq(data.accounts);
     const reps = (data.teamMembers ?? []).filter((m) => m.role === "sales_rep").length;
     return [
-      { label: "Manufacturer (Kura)", count: accounts.filter((a) => a.type === "manufacturer").length, tone: "green" as const },
+      { label: "Manufacturer partners", count: accounts.filter((a) => a.type === "manufacturer").length, tone: "green" as const },
       { label: "Distributor", count: accounts.filter((a) => a.type === "distributor").length, tone: "green" as const },
       { label: "Sales Rep", count: reps, tone: "green" as const },
       { label: "Retail Store", count: accounts.filter((a) => ["retail", "bar", "restaurant", "hotel"].includes(String(a.type))).length, tone: "green" as const },
@@ -80,6 +83,7 @@ export function HqSettingsView() {
       await updateOperationalSettings({
         company_name: companyName.trim(),
         primary_markets: hqLocation.trim(),
+        support_email: supportEmail.trim(),
         lead_time_days: os.manufacturerLeadTimeDays,
         shelf_threshold: os.retailerStockThresholdBottles,
       });
@@ -89,6 +93,7 @@ export function HqSettingsView() {
           ...d.operationalSettings!,
           companyName,
           primaryMarkets: hqLocation,
+          supportEmail: supportEmail.trim() || undefined,
         },
       }));
       toast.success(t("Settings saved"));
@@ -138,6 +143,19 @@ export function HqSettingsView() {
             <div className="hq-form-group">
               <label htmlFor="hq-location">{t("HQ location")}</label>
               <input id="hq-location" value={hqLocation} onChange={(e) => setHqLocation(e.target.value)} />
+            </div>
+            <div className="hq-form-group">
+              <label htmlFor="hq-support-email">{t("Support email")}</label>
+              <input
+                id="hq-support-email"
+                type="email"
+                value={supportEmail}
+                onChange={(e) => setSupportEmail(e.target.value)}
+                placeholder="support@drinkhajime.jp"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("Shown to manufacturers and distributors on their Support pages.")}
+              </p>
             </div>
             <div className="hq-form-group mb-0">
               <label htmlFor="hq-operator">{t("Operator")}</label>

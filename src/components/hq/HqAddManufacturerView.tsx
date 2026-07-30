@@ -4,6 +4,7 @@ import { ArrowLeft, Check } from "lucide-react";
 import type { Account } from "@/data/mockData";
 import { useAccounts } from "@/contexts/AppDataContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { createManufacturerProfile } from "@/lib/api-v1-mutations";
 import { nextAccountId } from "@/lib/account-ids";
 import { manufacturerPartnerPath } from "@/lib/hq-manufacturers-metrics";
 import {
@@ -14,7 +15,7 @@ import {
 } from "@/components/hq/HqOperatorUi";
 import { toast } from "@/components/ui/sonner";
 
-const TIERS = ["Preferred Kura", "Standard Kura"] as const;
+const TIERS = ["Preferred manufacturer partner", "Standard manufacturer partner"] as const;
 
 export function HqAddManufacturerView() {
   const { t } = useLanguage();
@@ -28,7 +29,7 @@ export function HqAddManufacturerView() {
   const [contactRole, setContactRole] = useState("Tōji");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [tier, setTier] = useState<string>("Standard Kura");
+  const [tier, setTier] = useState<string>("Standard manufacturer partner");
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [createdId, setCreatedId] = useState("");
@@ -49,7 +50,6 @@ export function HqAddManufacturerView() {
       return;
     }
 
-    const slug = mfrName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     const account: Account = {
       id: nextAccountId(accounts),
       legalName: mfrName,
@@ -73,9 +73,39 @@ export function HqAddManufacturerView() {
     setSubmitting(true);
     try {
       const result = await addAccount(account);
-      if (!result.success) return;
-      setCreatedId(slug || result.data?.id || account.id);
+      if (!result.success) {
+        toast.error(t("Could not create manufacturer"), {
+          description: result.error,
+        });
+        return;
+      }
+
+      const accountId = String(result.data?.id ?? account.id);
+
+      try {
+        await createManufacturerProfile({
+          manufacturer_id: accountId,
+          company_name: mfrName,
+          contact_name: contactName.trim() || undefined,
+          email: email.trim(),
+          phone: phone.trim() || undefined,
+          city: city.trim() || undefined,
+          country: country.trim() || "Japan",
+          payment_terms: "Net 45",
+        });
+      } catch (profileErr) {
+        const message =
+          profileErr instanceof Error ? profileErr.message : t("Manufacturer profile could not be saved");
+        toast.warning(t("Manufacturer account created"), {
+          description: message,
+        });
+      }
+
+      setCreatedId(accountId);
       setShowSuccess(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t("Failed to create manufacturer");
+      toast.error(t("Failed to create manufacturer"), { description: message });
     } finally {
       setSubmitting(false);
     }
@@ -96,7 +126,7 @@ export function HqAddManufacturerView() {
 
       <HqOperatorPageHeader
         title="Add manufacturer"
-        description="Onboard a new kura partner. They receive portal access once activated."
+        description="Onboard a new manufacturer partner. They receive portal access once activated."
       />
 
       <form onSubmit={(e) => void handleSubmit(e)} className="grid gap-4 lg:grid-cols-[1fr_320px] lg:items-start">

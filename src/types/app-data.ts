@@ -30,6 +30,12 @@ export type OperationalSettings = {
   companyName?: string;
   primaryMarkets?: string;
   manufacturerName?: string;
+  /** HQ-controlled support contact email — surfaced on Manufacturer & Distributor support. */
+  supportEmail?: string;
+  /** Manufacturer partner / account ids hidden from HQ Manufacturers (persisted server-side). */
+  hqHiddenManufacturerIds?: string[];
+  /** HQ manufacturer partner overrides keyed by partner id (kosapan, kuramoto, echigo). */
+  hqManufacturerPartnerConfigs?: Record<string, unknown>;
 };
 
 /** Multi-node cash visibility: retailer → wholesaler → manufacturer (demo ledger). */
@@ -170,6 +176,8 @@ export type AppData = {
   warehouses?: Warehouse[];
   /** Manufacturer portal company profile (Manufacturer Profile page). */
   manufacturerProfile?: ManufacturerProfile;
+  /** Manufacturer finished-goods lots — bottling output, decremented by outbound shipments. */
+  manufacturerFinishedGoods?: import("@/lib/manufacturer-finished-goods").FinishedGoodsRow[];
 };
 
 export type VisitNoteEntry = {

@@ -41,6 +41,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Link } from "react-router-dom";
 import { isHqOperatorRole } from "@/lib/hq-order-scope";
 import { HqSettingsView } from "@/components/hq/HqSettingsView";
+import { SUPPORT_LIAISON } from "@/lib/manufacturer-support";
 
 /** Edit warehouse: no account / no CRM link */
 const WH_LINK_NONE = "__none__";
@@ -65,6 +66,7 @@ export default function SettingsPage() {
   const [companyName, setCompanyName] = useState(os.companyName ?? "");
   const [primaryMarkets, setPrimaryMarkets] = useState(os.primaryMarkets ?? "");
   const [manufacturerName, setManufacturerName] = useState(os.manufacturerName ?? "");
+  const [supportEmail, setSupportEmail] = useState(os.supportEmail ?? SUPPORT_LIAISON.email);
   const [dbHealth, setDbHealth] = useState<"checking" | "ok" | "error">("checking");
   const [dbHealthDetail, setDbHealthDetail] = useState<string | null>(null);
   const [warehouseDialogOpen, setWarehouseDialogOpen] = useState(false);
@@ -159,6 +161,7 @@ export default function SettingsPage() {
     setCompanyName(o.companyName ?? "");
     setPrimaryMarkets(o.primaryMarkets ?? "");
     setManufacturerName(o.manufacturerName ?? "");
+    setSupportEmail(o.supportEmail ?? SUPPORT_LIAISON.email);
     if (data.products.length > 0) {
       const v = o.safetyStockBySku[data.products[0].sku];
       if (v != null) setSafetyDefault(String(v));
@@ -167,6 +170,7 @@ export default function SettingsPage() {
     data.operationalSettings?.companyName,
     data.operationalSettings?.primaryMarkets,
     data.operationalSettings?.manufacturerName,
+    data.operationalSettings?.supportEmail,
     data.operationalSettings?.safetyStockBySku,
     data.products,
   ]);
@@ -188,6 +192,7 @@ export default function SettingsPage() {
         company_name: companyName.trim(),
         primary_markets: primaryMarkets.trim(),
         manufacturer_name: manufacturerName.trim(),
+        support_email: supportEmail.trim(),
       });
 
       updateData((d) => ({
@@ -200,6 +205,7 @@ export default function SettingsPage() {
           companyName: companyName.trim() || undefined,
           primaryMarkets: primaryMarkets.trim() || undefined,
           manufacturerName: manufacturerName.trim() || undefined,
+          supportEmail: supportEmail.trim() || undefined,
         },
       }));
       toast.success("Replenishment settings saved", {
@@ -696,6 +702,21 @@ export default function SettingsPage() {
                 placeholder="Kirin Brewery Co."
                 className="touch-manipulation"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="hq-support-email">Support email</Label>
+              <Input
+                id="hq-support-email"
+                type="email"
+                value={supportEmail}
+                onChange={(e) => setSupportEmail(e.target.value)}
+                placeholder="support@drinkhajime.jp"
+                className="touch-manipulation"
+                autoComplete="email"
+              />
+              <p className="text-xs text-muted-foreground">
+                The contact email manufacturers and distributors see on their Support pages.
+              </p>
             </div>
             <Separator />
             <div className="space-y-2">
