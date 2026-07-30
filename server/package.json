@@ -6,10 +6,11 @@
     "dev:full": "npm run dev:full --prefix ..",
     "fly:deploy": "bash ../scripts/fly-deploy.sh",
     "start": "node index.mjs",
-    "migrate": "knex migrate:latest --knexfile knexfile.mjs",
+    "migrate": "node scripts/ensure-local-db.mjs && knex migrate:latest --knexfile knexfile.mjs",
     "migrate:release": "node scripts/migrate-release.mjs",
     "migrate:rollback": "knex migrate:rollback --knexfile knexfile.mjs",
     "migrate:make": "knex migrate:make --knexfile knexfile.mjs",
+    "db:up": "docker compose -f ../docker-compose.yml up -d postgres",
     "seed": "knex seed:run --knexfile knexfile.mjs",
     "db:reset": "npm run migrate:rollback && npm run migrate && npm run seed",
     "test:integration": "node --test tests/*.test.mjs"

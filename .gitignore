@@ -36,3 +36,6 @@ server/data/
 test-results/
 playwright-report/
 playwright/.cache/
+
+# Design tool auto-generated previews (e.g. Paper / bundler thumbnails)
+**/.thumbnail

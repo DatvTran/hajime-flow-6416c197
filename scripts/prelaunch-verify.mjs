@@ -13,7 +13,7 @@ const ACCOUNTS = JSON.parse(
   process.env.PRELAUNCH_ACCOUNTS ||
     JSON.stringify([
       { label: 'Brand HQ', email: 'admin@hajime.jp', password: 'admin123!', role: 'brand_operator' },
-      { label: 'Manufacturer (via HQ)', email: 'admin@hajime.jp', password: 'admin123!', role: 'manufacturer' },
+      { label: 'Manufacturer (Kirin)', email: 'export@kirin.example', password: 'admin123!', role: 'manufacturer' },
       { label: 'Distributor (Metro)', email: 'fulfillment@metrologistics.example', password: 'admin123!', role: 'distributor' },
       { label: 'Sales rep', email: 'marcus.chen@hajime.jp', password: 'admin123!', role: 'sales_rep' },
       { label: 'Retail', email: 'retail@hajime.jp', password: 'retail123!', role: 'retail' },
