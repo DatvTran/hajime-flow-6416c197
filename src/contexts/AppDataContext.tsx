@@ -19,6 +19,7 @@ import type {
   Product,
   PurchaseOrder,
   SalesOrder,
+  Shipment,
   TransferOrder,
 } from "@/data/mockData";
 import { deductFifoAvailableBottles } from "@/lib/inventory-deduct";
@@ -37,6 +38,13 @@ import type { ProductionStatus } from "@/data/mockData";
 import seedJson from "@/data/seed-app.json";
 import { toast } from "@/components/ui/sonner";
 import { normalizeAppData } from "@/lib/normalize-app-data";
+import { syncHiddenManufacturerIdsFromSettings, syncPartnerConfigsFromSettings } from "@/lib/hq-manufacturer-partners";
+import { shouldSyncAccountToApi } from "@/lib/account-ids";
+import {
+  receiveFinishedGoodsRows,
+  deductFinishedGoodsRows,
+  type FinishedGoodsReceipt,
+} from "@/lib/manufacturer-finished-goods";
 import { applyCatalogToAppData, mapApiRowToProduct } from "@/lib/product-catalog-sync";
 import {
   mapNewProductRequestApiResponse,
@@ -45,7 +53,8 @@ import {
   newProductRequestApiId,
 } from "@/lib/new-product-request-api";
 import { isAuthErrorMessage } from "@/lib/api-auth-fetch";
-import { loadLocalAppData, saveLocalAppData, clearLocalAppData } from "@/lib/local-app-data";
+import { loadLocalAppData, saveLocalAppData, clearLocalAppData, purgeLegacyLocalAppData } from "@/lib/local-app-data";
+import { scrubManufacturerPortalDemoData } from "@/lib/manufacturer-portal-demo-scrub";
 import {
   canSyncOrderStatusToApi,
   isPersistedApiOrderId,
@@ -93,15 +102,18 @@ import {
   updateProductionStatus as apiUpdateProductionStatus,
   deleteProductionStatus as apiDeleteProductionStatus,
   getProductionStatuses as apiGetProductionStatuses,
+  receiveManufacturerFinishedGoods as apiReceiveFinishedGoods,
+  deductManufacturerFinishedGoods as apiDeductFinishedGoods,
 } from "@/lib/api-v1-mutations";
-import { mapApiOrdersToSalesOrders, mapRowToShipment, mergeSalesOrdersFromApi } from "@/lib/data-service";
-import { getOrders } from "@/lib/api-v1";
+import { mapApiOrdersToSalesOrders, mapRowToShipment, mapRowToPurchaseOrder, mergeSalesOrdersFromApi } from "@/lib/data-service";
+import { getOrders, getManufacturerFinishedGoods, getPurchaseOrders } from "@/lib/api-v1";
 import { resolveOrderIdForApiUpdate } from "@/lib/sales-order-api-id";
 import {
   getNewProductRequests,
   createNewProductRequest as apiCreateNewProductRequest,
   updateNewProductRequest as apiUpdateNewProductRequest,
   deleteNewProductRequest as apiDeleteNewProductRequest,
+  nudgeNewProductRequest as apiNudgeNewProductRequest,
 } from "@/lib/api-v1";
 
 const FALLBACK_SEED = normalizeAppData(seedJson as AppData);
@@ -167,7 +179,22 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
   if (!server.operationalSettings && local.operationalSettings) {
     merged.operationalSettings = local.operationalSettings;
   } else if (server.operationalSettings && local.operationalSettings) {
-    merged.operationalSettings = { ...local.operationalSettings, ...server.operationalSettings };
+    const serverHidden = server.operationalSettings.hqHiddenManufacturerIds;
+    const localHidden = local.operationalSettings.hqHiddenManufacturerIds;
+    const serverPartners = server.operationalSettings.hqManufacturerPartnerConfigs;
+    const localPartners = local.operationalSettings.hqManufacturerPartnerConfigs;
+    merged.operationalSettings = {
+      ...local.operationalSettings,
+      ...server.operationalSettings,
+      hqHiddenManufacturerIds:
+        serverHidden !== undefined
+          ? serverHidden
+          : localHidden,
+      hqManufacturerPartnerConfigs:
+        serverPartners !== undefined
+          ? serverPartners
+          : localPartners,
+    };
   } else if (server.operationalSettings) {
     merged.operationalSettings = server.operationalSettings;
   }
@@ -403,23 +430,43 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    purgeLegacyLocalAppData();
+
     try {
       const local = loadLocalAppData();
+      const isManufacturer = user.role === "manufacturer";
       if (local) {
-        setData(normalizeAppData(applyCatalogToAppData(local)));
+        const base = isManufacturer ? scrubManufacturerPortalDemoData(local) : local;
+        syncHiddenManufacturerIdsFromSettings(base.operationalSettings?.hqHiddenManufacturerIds);
+        syncPartnerConfigsFromSettings(base.operationalSettings?.hqManufacturerPartnerConfigs);
+        let next = normalizeAppData(applyCatalogToAppData(base));
+        if (isManufacturer) next = scrubManufacturerPortalDemoData(next);
+        setData(next);
+      } else if (isManufacturer) {
+        // Never dump Kirin/sake FALLBACK_SEED into a manufacturer portal session.
+        const empty = scrubManufacturerPortalDemoData(FALLBACK_SEED);
+        syncHiddenManufacturerIdsFromSettings(empty.operationalSettings?.hqHiddenManufacturerIds);
+        syncPartnerConfigsFromSettings(empty.operationalSettings?.hqManufacturerPartnerConfigs);
+        setData(scrubManufacturerPortalDemoData(normalizeAppData(applyCatalogToAppData(empty))));
       } else {
+        syncHiddenManufacturerIdsFromSettings(FALLBACK_SEED.operationalSettings?.hqHiddenManufacturerIds);
+        syncPartnerConfigsFromSettings(FALLBACK_SEED.operationalSettings?.hqManufacturerPartnerConfigs);
         setData(FALLBACK_SEED);
       }
       setError(null);
     } catch (err) {
       console.error("[AppDataContext] Local hydrate failed, using seed:", err);
       clearLocalAppData();
-      setData(FALLBACK_SEED);
+      setData(
+        user.role === "manufacturer"
+          ? normalizeAppData(applyCatalogToAppData(scrubManufacturerPortalDemoData(FALLBACK_SEED)))
+          : FALLBACK_SEED,
+      );
       setError(null);
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, user?.role]);
 
   useEffect(() => {
     if (!user) return;
@@ -428,10 +475,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     const hadLocalOnStart = Boolean(loadLocalAppData());
 
     const applyServer = (serverData: AppData) => {
-      const merged = mergeServerWithLocal(serverData, loadLocalAppData());
-      setData(normalizeAppData(applyCatalogToAppData(merged)));
+      let merged = mergeServerWithLocal(serverData, loadLocalAppData());
+      syncHiddenManufacturerIdsFromSettings(merged.operationalSettings?.hqHiddenManufacturerIds);
+      syncPartnerConfigsFromSettings(merged.operationalSettings?.hqManufacturerPartnerConfigs);
+      let normalized = normalizeAppData(applyCatalogToAppData(merged));
+      // After normalize — pickOrSeed can reintroduce Kirin demo POs when API lists are empty.
+      if (user.role === "manufacturer") {
+        normalized = scrubManufacturerPortalDemoData(normalized);
+      }
+      setData(normalized);
       setError(null);
-      saveLocalAppData(merged);
+      saveLocalAppData(normalized);
     };
 
     (async () => {
@@ -568,12 +622,85 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const refreshProductionStatuses = useCallback(async () => {
+    try {
+      const res = (await apiGetProductionStatuses({ limit: 500 })) as { data?: unknown[] };
+      const rows = Array.isArray(res.data) ? res.data : [];
+      if (rows.length === 0) return;
+      const events = rows.map((raw) => {
+        const r = raw as Record<string, unknown>;
+        const when = r.completed_at ?? r.started_at ?? r.created_at;
+        return {
+          poId: String(r.po_id ?? ""),
+          stage: String(r.stage ?? ""),
+          updatedAt: when != null ? String(when).slice(0, 10) : new Date().toISOString().slice(0, 10),
+          notes: r.notes != null ? String(r.notes) : "",
+        };
+      });
+      setData((prev) => {
+        if (!prev) return prev;
+        const seen = new Set(
+          prev.productionStatuses.map((s) => `${s.poId}|${s.stage}|${s.updatedAt}|${s.notes}`),
+        );
+        const merged = [
+          ...events.filter((e) => !seen.has(`${e.poId}|${e.stage}|${e.updatedAt}|${e.notes}`)),
+          ...prev.productionStatuses,
+        ];
+        return { ...prev, productionStatuses: merged };
+      });
+    } catch (err) {
+      console.warn("[refreshProductionStatuses] API list failed; keeping local:", err);
+    }
+  }, []);
+
+  const refreshManufacturerFinishedGoods = useCallback(async () => {
+    try {
+      const res = await getManufacturerFinishedGoods();
+      const rows = Array.isArray(res.data) ? res.data : [];
+      const manufacturerFinishedGoods = rows.map((r) => ({
+        sku: String(r.sku),
+        name: String(r.name),
+        lot: String(r.lot),
+        cases: Number(r.cases) || 0,
+        reserved: Number(r.reserved) || 0,
+        status: r.status === "med" ? ("med" as const) : ("ok" as const),
+        poId: r.po_number ? String(r.po_number) : undefined,
+      }));
+      setData((prev) => (prev ? { ...prev, manufacturerFinishedGoods } : prev));
+    } catch (err) {
+      console.warn("[refreshManufacturerFinishedGoods] API list failed; keeping local:", err);
+    }
+  }, []);
+
+  const refreshNewProductRequests = useCallback(async () => {
+    try {
+      const response = await getNewProductRequests({ limit: 100 });
+      const rows = Array.isArray(response.data) ? response.data : [];
+      const mapped = rows.map((row) =>
+        mapNewProductRequestApiResponse(row as Record<string, unknown>),
+      );
+      setData((prev) => (prev ? { ...prev, newProductRequests: mapped } : prev));
+    } catch (err) {
+      console.warn("[refreshNewProductRequests] API list failed; keeping local:", err);
+    }
+  }, []);
+
   // Stage 4: Removed auto-save useEffect — writes now use granular API mutations
   // Local changes are persisted via saveLocalAppData only
   useEffect(() => {
     if (!data || loading) return;
     saveLocalAppData(data);
   }, [data, loading]);
+
+  // Hydrate DB-backed collections once after initial load.
+  const didInitSupplyChainRefresh = useRef(false);
+  useEffect(() => {
+    if (!data || loading || didInitSupplyChainRefresh.current) return;
+    didInitSupplyChainRefresh.current = true;
+    void refreshProductionStatuses();
+    void refreshManufacturerFinishedGoods();
+    void refreshNewProductRequests();
+  }, [data, loading, refreshProductionStatuses, refreshManufacturerFinishedGoods, refreshNewProductRequests]);
 
   const value = useMemo((): AppDataContextValue | null => {
     if (!data) return null;
@@ -845,6 +972,7 @@ export function useAccounts() {
         salesOwner: a.salesOwner,
         notes: a.internalNotes ?? a.notes,
         status: a.status,
+        portalLoginEmail: a.portalLoginEmail,
       });
 
       const serverId = String(result.data?.id ?? a.id);
@@ -871,37 +999,59 @@ export function useAccounts() {
     }
   }, [updateData]);
   
-  const updateAccount = useCallback(async (a: Account) => {
+  const updateAccount = useCallback(async (a: Account, opts?: { silent?: boolean }) => {
     try {
-      // Call granular API
-      const result = await apiUpdateAccount(a.id, {
-        name: a.name,
-        tradingName: a.tradingName,
-        type: a.type,
-        market: a.market,
-        email: a.email,
-        phone: a.phone,
-        billingAddress: a.billingAddress,
-        shippingAddress: a.shippingAddress,
-        paymentTerms: a.paymentTerms,
-        creditLimit: a.creditLimit,
-        salesOwner: a.salesOwner,
-        notes: a.notes,
-        status: a.status,
-      });
-      
-      // Update local state
+      const market =
+        a.market ||
+        (a.city && a.country ? `${a.city}, ${a.country}` : a.city || a.country || undefined);
+
+      if (shouldSyncAccountToApi(a.id)) {
+        const result = (await apiUpdateAccount(a.id, {
+          name: a.legalName || a.tradingName,
+          tradingName: a.tradingName,
+          type: a.type,
+          market,
+          email: a.email,
+          phone: a.phone,
+          billingAddress: a.billingAddress,
+          shippingAddress: a.shippingAddress,
+          paymentTerms: a.paymentTerms,
+          creditLimit: a.creditLimit,
+          salesOwner: a.salesOwner,
+          notes: a.internalNotes ?? a.notes,
+          status: a.status,
+          portalLoginEmail: a.portalLoginEmail,
+        })) as { portalProvision?: { ok?: boolean; action?: string; email?: string; reason?: string; usesDemoPassword?: boolean } };
+        updateData((d) => ({
+          ...d,
+          accounts: d.accounts.some((x) => x.id === a.id)
+            ? d.accounts.map((x) => (x.id === a.id ? a : x))
+            : [...d.accounts, a],
+        }));
+
+        if (!opts?.silent) {
+          toast.success("Account updated");
+        }
+        return { success: true as const, portalProvision: result?.portalProvision };
+      }
+
       updateData((d) => ({
         ...d,
-        accounts: d.accounts.map((x) => (x.id === a.id ? a : x)),
+        accounts: d.accounts.some((x) => x.id === a.id)
+          ? d.accounts.map((x) => (x.id === a.id ? a : x))
+          : [...d.accounts, a],
       }));
-      
-      toast.success("Account updated");
-      return { success: true, data: result.data };
+
+      if (!opts?.silent) {
+        toast.success("Account updated");
+      }
+      return { success: true as const };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update account";
-      toast.error("Failed to update account", { description: message });
-      return { success: false, error: message };
+      if (!opts?.silent) {
+        toast.error("Failed to update account", { description: message });
+      }
+      return { success: false as const, error: message };
     }
   }, [updateData]);
   
@@ -1723,20 +1873,40 @@ export function usePurchaseOrders() {
     }
   }, [data.purchaseOrders, updateData]);
 
+  const fetchPurchaseOrders = useCallback(async () => {
+    try {
+      const res = await getPurchaseOrders({ limit: 200 });
+      const rows = Array.isArray(res.data) ? res.data : [];
+      const mapped = rows.map((row) =>
+        mapRowToPurchaseOrder(row as Record<string, unknown>),
+      );
+      updateData((d) => ({ ...d, purchaseOrders: mapped }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to fetch purchase orders";
+      console.warn("[fetchPurchaseOrders]", message);
+    }
+  }, [updateData]);
+
   return useMemo(
     () => ({
       purchaseOrders: data.purchaseOrders,
       addPurchaseOrder,
       patchPurchaseOrder,
       removePurchaseOrder,
+      fetchPurchaseOrders,
     }),
-    [data.purchaseOrders, addPurchaseOrder, patchPurchaseOrder, removePurchaseOrder]
+    [data.purchaseOrders, addPurchaseOrder, patchPurchaseOrder, removePurchaseOrder, fetchPurchaseOrders]
   );
 }
 
 export function useShipments() {
-  const { data } = useAppData();
-  return useMemo(() => ({ shipments: data.shipments }), [data.shipments]);
+  const { data, updateData } = useAppData();
+  const addShipment = useCallback(
+    (shipment: Shipment) =>
+      updateData((d) => ({ ...d, shipments: [shipment, ...d.shipments] })),
+    [updateData],
+  );
+  return useMemo(() => ({ shipments: data.shipments, addShipment }), [data.shipments, addShipment]);
 }
 
 export function useProductionStatuses() {
@@ -1744,10 +1914,68 @@ export function useProductionStatuses() {
   return useMemo(
     () => ({
       productionStatuses: data.productionStatuses,
-      addProductionStatus: (row: ProductionStatus) =>
-        updateData((d) => ({ ...d, productionStatuses: [row, ...d.productionStatuses] })),
+      addProductionStatus: (row: ProductionStatus) => {
+        updateData((d) => ({ ...d, productionStatuses: [row, ...d.productionStatuses] }));
+        void apiCreateProductionStatus({
+          po_id: row.poId,
+          stage: row.stage,
+          status: "in_progress",
+          notes: row.notes,
+          completed_at: row.updatedAt,
+        }).catch((err) =>
+          console.warn("[addProductionStatus] API create failed; kept local:", err),
+        );
+      },
     }),
     [data.productionStatuses, updateData],
+  );
+}
+
+export function useManufacturerFinishedGoods() {
+  const { data, updateData } = useAppData();
+  const finishedGoods = data.manufacturerFinishedGoods ?? [];
+
+  const receiveFinishedGoods = useCallback(
+    (receipt: FinishedGoodsReceipt) => {
+      updateData((d) => ({
+        ...d,
+        manufacturerFinishedGoods: receiveFinishedGoodsRows(
+          d.manufacturerFinishedGoods ?? [],
+          receipt,
+        ),
+      }));
+      void apiReceiveFinishedGoods({
+        sku: receipt.sku,
+        name: receipt.name,
+        lot: receipt.lot,
+        cases: receipt.cases,
+        po_number: receipt.poId,
+      }).catch((err) =>
+        console.warn("[receiveFinishedGoods] API persist failed; kept local:", err),
+      );
+    },
+    [updateData],
+  );
+
+  const deductFinishedGoods = useCallback(
+    (deduction: { sku: string; cases: number }) => {
+      updateData((d) => ({
+        ...d,
+        manufacturerFinishedGoods: deductFinishedGoodsRows(
+          d.manufacturerFinishedGoods ?? [],
+          deduction,
+        ),
+      }));
+      void apiDeductFinishedGoods(deduction).catch((err) =>
+        console.warn("[deductFinishedGoods] API persist failed; kept local:", err),
+      );
+    },
+    [updateData],
+  );
+
+  return useMemo(
+    () => ({ finishedGoods, receiveFinishedGoods, deductFinishedGoods }),
+    [finishedGoods, receiveFinishedGoods, deductFinishedGoods],
   );
 }
 
@@ -1810,7 +2038,9 @@ export function useNewProductRequests() {
 
   const patchNewProductRequest = useCallback(async (id: string, patch: Partial<NewProductRequest>) => {
     try {
-      const existing = (data.newProductRequests ?? []).find((n) => n.id === id);
+      const existing = (data.newProductRequests ?? []).find(
+        (n) => n.id === id || n.databaseId === id,
+      );
       const apiId = existing ? newProductRequestApiId(existing) : id;
       const response = await apiUpdateNewProductRequest(
         apiId,
@@ -1822,7 +2052,9 @@ export function useNewProductRequests() {
       updateData((d) => ({
         ...d,
         newProductRequests: (d.newProductRequests ?? []).map((n) =>
-          n.id === id ? { ...n, ...mapped } : n,
+          n.id === id || n.databaseId === id || n.id === mapped.id
+            ? { ...n, ...mapped, id: mapped.id || n.id }
+            : n,
         ),
       }));
       if (patch.status === "approved") {
@@ -1837,6 +2069,67 @@ export function useNewProductRequests() {
     }
   }, [data.newProductRequests, refreshProducts, updateData]);
 
+  const removeNewProductRequests = useCallback(async (ids: string[]) => {
+    const targetSet = new Set(ids.map((x) => String(x)));
+    const toRemove = (data.newProductRequests ?? []).filter(
+      (n) => targetSet.has(n.id) || (n.databaseId != null && targetSet.has(String(n.databaseId))),
+    );
+    if (toRemove.length === 0) return { success: true, removed: 0 };
+
+    for (const npr of toRemove) {
+      try {
+        await apiDeleteNewProductRequest(newProductRequestApiId(npr));
+      } catch {
+        /* NPR may be demo-only / already gone — ignore */
+      }
+    }
+
+    updateData((d) => ({
+      ...d,
+      newProductRequests: (d.newProductRequests ?? []).filter(
+        (n) => !(targetSet.has(n.id) || (n.databaseId != null && targetSet.has(String(n.databaseId)))),
+      ),
+    }));
+    return { success: true, removed: toRemove.length };
+  }, [data.newProductRequests, updateData]);
+
+  const nudgeNewProductRequest = useCallback(async (id: string) => {
+    try {
+      const existing = (data.newProductRequests ?? []).find(
+        (n) => n.id === id || n.databaseId === id,
+      );
+      const apiId = existing ? newProductRequestApiId(existing) : id;
+      const response = await apiNudgeNewProductRequest(apiId);
+      const mapped = mapNewProductRequestApiResponse(
+        (response as { data: Record<string, unknown> }).data,
+      );
+      updateData((d) => ({
+        ...d,
+        newProductRequests: (d.newProductRequests ?? []).map((n) =>
+          n.id === id || n.databaseId === id || n.id === mapped.id
+            ? { ...n, ...mapped, id: mapped.id || n.id }
+            : n,
+        ),
+      }));
+      const notify = (response as { notify?: { sent?: boolean } }).notify;
+      const mfg = existing?.assignedManufacturer ?? "Manufacturer";
+      if (notify?.sent) {
+        toast.success("Reminder sent", {
+          description: `${mfg} was nudged by email and will see it in their portal.`,
+        });
+      } else {
+        toast.message("Reminder recorded", {
+          description: `${mfg} will see a nudge in their manufacturer portal.`,
+        });
+      }
+      return { success: true, data: mapped };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to nudge manufacturer";
+      toast.error("Failed to nudge manufacturer", { description: message });
+      return { success: false, error: message };
+    }
+  }, [data.newProductRequests, updateData]);
+
   return useMemo(
     () => ({
       newProductRequests: data.newProductRequests ?? [],
@@ -1845,8 +2138,19 @@ export function useNewProductRequests() {
       fetchRequests,
       addNewProductRequest,
       patchNewProductRequest,
+      nudgeNewProductRequest,
+      removeNewProductRequests,
     }),
-    [data.newProductRequests, loading, error, fetchRequests, addNewProductRequest, patchNewProductRequest]
+    [
+      data.newProductRequests,
+      loading,
+      error,
+      fetchRequests,
+      addNewProductRequest,
+      patchNewProductRequest,
+      nudgeNewProductRequest,
+      removeNewProductRequests,
+    ]
   );
 }
 

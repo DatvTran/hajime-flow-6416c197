@@ -21,6 +21,16 @@ export default function HqNewProductionRequestPage() {
     [searchParams],
   );
 
+  const prefillManufacturer = useMemo(
+    () => {
+      const id = searchParams.get("manufacturer") ?? undefined;
+      const label = searchParams.get("manufacturerLabel") ?? undefined;
+      if (!id && !label) return null;
+      return { id, label };
+    },
+    [searchParams],
+  );
+
   const linkedNprId = searchParams.get("npr");
 
   const handleCreate = useCallback(
@@ -46,7 +56,9 @@ export default function HqNewProductionRequestPage() {
       existing={purchaseOrders}
       onCreate={handleCreate}
       prefill={prefill}
+      prefillManufacturer={prefillManufacturer}
       userRole={user.role}
+      productionOnly
     />
   );
 }

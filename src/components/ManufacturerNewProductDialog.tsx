@@ -46,6 +46,9 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   existingRequests: NewProductRequest[];
   onCreate: (npr: Omit<NewProductRequest, "id">) => void;
+  assignedManufacturer: string;
+  assignedManufacturerEmail?: string;
+  assignedCrmMemberId?: string;
 };
 
 const FLAVOR_PROFILES = [
@@ -55,7 +58,15 @@ const FLAVOR_PROFILES = [
   "tropical", "coconut", "mint", "smoky", "oak", "butterscotch", "salted_caramel",
 ];
 
-export function ManufacturerNewProductDialog({ open, onOpenChange, existingRequests, onCreate }: Props) {
+export function ManufacturerNewProductDialog({
+  open,
+  onOpenChange,
+  existingRequests,
+  onCreate,
+  assignedManufacturer,
+  assignedManufacturerEmail,
+  assignedCrmMemberId,
+}: Props) {
   const [submitting, setSubmitting] = useState(false);
   
   // Product specs
@@ -152,9 +163,11 @@ export function ManufacturerNewProductDialog({ open, onOpenChange, existingReque
         regulatoryMarkets: markets.split(",").map((m) => m.trim()).filter(Boolean),
       },
       attachments: [],
-      notes: notes.trim() || `Proposed new SKU by Kirin Brewery Co.`,
+      notes: notes.trim() || `Proposed new SKU by ${assignedManufacturer}.`,
       status: "proposed",
-      assignedManufacturer: "Kirin Brewery Co.",
+      assignedManufacturer,
+      assignedManufacturerEmail: assignedManufacturerEmail?.trim().toLowerCase() || undefined,
+      assignedCrmMemberId: assignedCrmMemberId || undefined,
       submittedAt: new Date().toISOString(),
       reviewStartedAt: new Date().toISOString(),
       proposalReceivedAt: new Date().toISOString(),

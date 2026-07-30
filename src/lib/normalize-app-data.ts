@@ -100,6 +100,9 @@ export function normalizeAppData(raw: AppData): AppData {
     companyName: op?.companyName,
     primaryMarkets: op?.primaryMarkets,
     manufacturerName: op?.manufacturerName,
+    supportEmail: op?.supportEmail,
+    hqHiddenManufacturerIds: op?.hqHiddenManufacturerIds,
+    hqManufacturerPartnerConfigs: op?.hqManufacturerPartnerConfigs,
   };
 
   const retailerShelfStock: NonNullable<AppData["retailerShelfStock"]> = {
@@ -134,12 +137,20 @@ export function normalizeAppData(raw: AppData): AppData {
       ...n,
       authorRep: n.authorRep != null && String(n.authorRep).trim() !== "" ? String(n.authorRep) : "",
     })),
-    newProductRequests: pickOrSeed(raw.newProductRequests, DEFAULT_NEW_PRODUCT_REQUESTS),
+    // Empty API array is valid (e.g. manufacturer with no assigned requests) — do not inject seed demos.
+    newProductRequests: Array.isArray(raw.newProductRequests)
+      ? raw.newProductRequests
+      : pickOrSeed(raw.newProductRequests, DEFAULT_NEW_PRODUCT_REQUESTS),
     transferOrders: pickOrSeed(raw.transferOrders, DEFAULT_TRANSFER_ORDERS),
     depletionReports: pickOrSeed(raw.depletionReports, DEFAULT_DEPLETION_REPORTS),
-    purchaseOrders: pickOrSeed(raw.purchaseOrders, SEED.purchaseOrders),
+    purchaseOrders: Array.isArray(raw.purchaseOrders)
+      ? raw.purchaseOrders
+      : pickOrSeed(raw.purchaseOrders, SEED.purchaseOrders),
     shipments: pickOrSeed(raw.shipments, SEED.shipments),
     productionStatuses: pickOrSeed(raw.productionStatuses, SEED.productionStatuses),
     warehouses: pickOrSeed(raw.warehouses, DEFAULT_WAREHOUSES),
+    manufacturerFinishedGoods: Array.isArray(raw.manufacturerFinishedGoods)
+      ? raw.manufacturerFinishedGoods
+      : [],
   };
 }

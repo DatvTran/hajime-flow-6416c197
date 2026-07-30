@@ -26,6 +26,19 @@ import {
   sendStoreSetupInviteEmail,
   CRM_TEAM_ROLE_LABELS,
 } from '../services/crm-invite.mjs';
+import { sendProductBriefSubmittedEmail, sendProductBriefNudgeEmail, sendProductionRequestIssuedEmail } from '../services/product-brief-notify.mjs';
+import {
+  resolveManufacturerAssignmentIdentity,
+  nprMatchesManufacturerIdentity,
+  applyManufacturerNprScopeToQuery,
+  poMatchesManufacturerIdentity,
+  applyManufacturerPoScopeToQuery,
+  sanitizeManufacturerNprUpdate,
+  assertManufacturerNprUpdateAllowed,
+  applyNprStatusTimestamps,
+  resolveManufacturerNotifyEmail,
+} from '../lib/npr-manufacturer-scope.mjs';
+import { ensureManufacturerPortalAccess } from '../lib/manufacturer-account-provision.mjs';
 import {
   normalizeIncentiveManagerState,
   incentiveStateJsonByteLength,
@@ -1401,6 +1414,7 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req
         credit_limit: accountData.creditLimit,
         sales_owner: accountData.salesOwner,
         notes: accountData.notes,
+        portal_login_email: accountData.portalLoginEmail || accountData.portal_login_email || null,
       })
       .returning('*');
 
@@ -1415,9 +1429,28 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req
       );
     }
 
+    let portalProvision = null;
+    if (account && String(account.type || '').trim() === 'manufacturer') {
+      const portalEmail =
+        account.portal_login_email != null && String(account.portal_login_email).trim() !== ''
+          ? String(account.portal_login_email).trim()
+          : account.email;
+      try {
+        portalProvision = await ensureManufacturerPortalAccess(getDb(), tenantId, {
+          portalLoginEmail: portalEmail,
+          contactName: account.name || account.trading_name,
+          companyName: account.trading_name || account.name,
+        });
+      } catch (provisionErr) {
+        console.error('[API v1] Manufacturer portal provision failed:', provisionErr);
+        portalProvision = { ok: false, reason: 'provision_failed' };
+      }
+    }
+
     res.status(201).json({
       data: account,
       depotLink,
+      portalProvision,
     });
   } catch (err) {
     console.error('[API v1] Error creating account:', err);
@@ -1431,22 +1464,47 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const { id } = req.params;
-    const updates = req.body;
-    
-    delete updates.id;
-    delete updates.tenant_id;
-    delete updates.created_at;
-    
-    if (updates.billingAddress) updates.billing_address = JSON.stringify(updates.billingAddress);
-    if (updates.shippingAddress) updates.shipping_address = JSON.stringify(updates.shippingAddress);
-    if (updates.tradingName) updates.trading_name = updates.tradingName;
-    if (updates.salesOwner) updates.sales_owner = updates.salesOwner;
-    if (updates.paymentTerms) updates.payment_terms = updates.paymentTerms;
-    if (updates.creditLimit) updates.credit_limit = updates.creditLimit;
-    
-    updates.updated_at = new Date();
-    
-    const [account] = await getDb('accounts')
+    const body = req.body || {};
+
+    const updates = { updated_at: new Date() };
+    const name = body.name ?? body.legalName;
+    if (name != null && String(name).trim() !== '') updates.name = String(name).trim();
+    if (body.tradingName != null) updates.trading_name = String(body.tradingName).trim();
+    if (body.type != null) updates.type = String(body.type).trim();
+    if (body.market != null) updates.market = String(body.market).trim();
+    if (body.status != null) updates.status = String(body.status).trim();
+    if (body.email != null) updates.email = String(body.email).trim();
+    if (body.phone != null) updates.phone = String(body.phone).trim();
+    if (body.paymentTerms != null) updates.payment_terms = String(body.paymentTerms).trim();
+    if (body.creditLimit != null) updates.credit_limit = body.creditLimit;
+    if (body.salesOwner != null) updates.sales_owner = String(body.salesOwner).trim();
+    if (body.notes != null) updates.notes = String(body.notes);
+    if (body.portalLoginEmail !== undefined) {
+      updates.portal_login_email =
+        body.portalLoginEmail != null && String(body.portalLoginEmail).trim() !== ''
+          ? String(body.portalLoginEmail).trim()
+          : null;
+    }
+    if (body.billingAddress != null) {
+      updates.billing_address =
+        typeof body.billingAddress === 'string'
+          ? body.billingAddress
+          : JSON.stringify(body.billingAddress);
+    }
+    if (body.shippingAddress != null) {
+      updates.shipping_address =
+        typeof body.shippingAddress === 'string'
+          ? body.shippingAddress
+          : JSON.stringify(body.shippingAddress);
+    }
+
+    const db = getDb();
+    if (updates.portal_login_email !== undefined) {
+      const hasPortalCol = await db.schema.hasColumn('accounts', 'portal_login_email');
+      if (!hasPortalCol) delete updates.portal_login_email;
+    }
+
+    const [account] = await db('accounts')
       .where({ id, tenant_id: tenantId })
       .whereNull('deleted_at')
       .update(updates)
@@ -1455,8 +1513,26 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
     if (!account) {
       return res.status(404).json({ error: 'Account not found' });
     }
+
+    let portalProvision = null;
+    if (String(account.type || '').trim() === 'manufacturer') {
+      const portalEmail =
+        account.portal_login_email != null && String(account.portal_login_email).trim() !== ''
+          ? String(account.portal_login_email).trim()
+          : account.email;
+      try {
+        portalProvision = await ensureManufacturerPortalAccess(db, tenantId, {
+          portalLoginEmail: portalEmail,
+          contactName: account.name || account.trading_name,
+          companyName: account.trading_name || account.name,
+        });
+      } catch (provisionErr) {
+        console.error('[API v1] Manufacturer portal provision failed:', provisionErr);
+        portalProvision = { ok: false, reason: 'provision_failed' };
+      }
+    }
     
-    res.json({ data: account });
+    res.json({ data: account, portalProvision });
   } catch (err) {
     console.error('[API v1] Error updating account:', err);
     res.status(500).json({ error: 'Failed to update account' });
@@ -3057,6 +3133,8 @@ function normalizeNewProductRequestUpdates(body) {
   const aliases = [
     ['requestedBy', 'requested_by'],
     ['assignedManufacturer', 'assigned_manufacturer'],
+    ['assignedManufacturerEmail', 'assigned_manufacturer_email'],
+    ['assignedCrmMemberId', 'assigned_crm_member_id'],
     ['manufacturerProposal', 'manufacturer_proposal'],
     ['brandDecision', 'brand_decision'],
     ['productionPoId', 'production_po_id'],
@@ -3104,6 +3182,86 @@ function prepareNewProductRequestJsonbFields(row) {
   return out;
 }
 
+async function maybeNotifyManufacturerProductBrief(db, tenantId, row) {
+  if (!row || row.status !== 'submitted') return;
+  let to = String(row.assigned_manufacturer_email || '').trim().toLowerCase();
+  if (!to) {
+    to = await resolveManufacturerNotifyEmail(db, tenantId, {
+      manufacturerId: row.assigned_crm_member_id,
+      supplierName: row.assigned_manufacturer,
+    });
+  }
+  if (!to) return;
+
+  let brandName = 'Hajime HQ';
+  try {
+    const tenant = await platformDb('tenants').where({ id: tenantId }).first();
+    if (tenant?.name) brandName = tenant.name;
+  } catch {
+    // non-fatal
+  }
+
+  try {
+    await sendProductBriefSubmittedEmail({
+      to,
+      manufacturerName: row.assigned_manufacturer,
+      requestId: row.request_id,
+      title: row.title,
+      brandName,
+    });
+  } catch (err) {
+    console.error('[API v1] Product brief email failed:', err);
+  }
+}
+
+async function maybeNotifyManufacturerProductionRequest(db, tenantId, order, items = []) {
+  if (!order) return;
+  const poType = String(order.po_type || order.poType || 'production');
+  if (poType === 'sales') return;
+  const status = String(order.status || '');
+  // Only notify once HQ has issued the request (not while still an HQ-only draft).
+  if (status === 'draft') return;
+
+  const to = await resolveManufacturerNotifyEmail(db, tenantId, {
+    manufacturerId: order.manufacturer_id,
+    supplierName: order.supplier_name,
+  });
+  if (!to) return;
+
+  let brandName = 'Hajime HQ';
+  try {
+    const tenant = await platformDb('tenants').where({ id: tenantId }).first();
+    if (tenant?.name) brandName = tenant.name;
+  } catch {
+    // non-fatal
+  }
+
+  const firstSku = Array.isArray(items) && items[0] ? items[0].sku || items[0].product_name : null;
+
+  try {
+    await sendProductionRequestIssuedEmail({
+      to,
+      manufacturerName: order.supplier_name,
+      poNumber: order.po_number,
+      sku: firstSku,
+      quantity: order.total_bottles,
+      destination: order.market_destination,
+      brandName,
+    });
+  } catch (err) {
+    console.error('[API v1] Production request email failed:', err);
+  }
+}
+
+async function assertManufacturerOwnsPurchaseOrder(req, tenantId, order) {
+  if (req.user?.role !== Role.MANUFACTURER) return null;
+  const identity = await resolveManufacturerAssignmentIdentity(getDb(), tenantId, req.user);
+  if (!poMatchesManufacturerIdentity(order, identity)) {
+    return 'Purchase order not found';
+  }
+  return null;
+}
+
 // GET /api/v1/new-product-requests - List new product requests
 router.get('/new-product-requests', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
   try {
@@ -3143,7 +3301,12 @@ router.get('/new-product-requests', requirePermission(Permission.PRODUCTION_READ
     if (assigned_manufacturer) {
       query = query.where('assigned_manufacturer', assigned_manufacturer);
     }
-    
+
+    let manufacturerIdentity = null;
+    if (req.user?.role === Role.MANUFACTURER) {
+      manufacturerIdentity = await resolveManufacturerAssignmentIdentity(getDb(), tenantId, req.user);
+      query = applyManufacturerNprScopeToQuery(query, manufacturerIdentity);
+    }
     // Postgres does not allow ORDER BY in COUNT queries unless grouped; clear ordering for count.
     const countQuery = query.clone().clearOrder().count('id as count').first();
     
@@ -3188,6 +3351,13 @@ router.get('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_
     if (!request) {
       return res.status(404).json({ error: 'New product request not found' });
     }
+
+    if (req.user?.role === Role.MANUFACTURER) {
+      const identity = await resolveManufacturerAssignmentIdentity(getDb(), tenantId, req.user);
+      if (!nprMatchesManufacturerIdentity(request, identity)) {
+        return res.status(404).json({ error: 'New product request not found' });
+      }
+    }
     
     // Parse JSONB fields
     res.json({ 
@@ -3218,6 +3388,8 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
       specs,
       notes,
       assigned_manufacturer,
+      assigned_manufacturer_email,
+      assigned_crm_member_id,
       status = 'draft',
       submitted_at,
     } = body;
@@ -3232,6 +3404,47 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
     }
 
     const resolvedStatus = String(status || 'draft');
+
+    if (resolvedStatus === 'submitted') {
+      const hasAssignee =
+        Boolean(assigned_manufacturer && String(assigned_manufacturer).trim()) ||
+        Boolean(assigned_manufacturer_email && String(assigned_manufacturer_email).trim()) ||
+        Boolean(assigned_crm_member_id && String(assigned_crm_member_id).trim());
+      if (!hasAssignee) {
+        return res.status(400).json({
+          error: 'Assign a manufacturer partner before submitting a product development brief',
+        });
+      }
+    }
+
+    // Manufacturers may only create briefs for themselves — never for another partner.
+    if (req.user?.role === Role.MANUFACTURER) {
+      const identity = await resolveManufacturerAssignmentIdentity(getDb(), tenantId, req.user);
+      const selfLabels = [...identity.labels];
+      const selfEmails = [...identity.emails];
+      const assignedEmail = assigned_manufacturer_email
+        ? String(assigned_manufacturer_email).trim().toLowerCase()
+        : '';
+      const assignedLabel = String(assigned_manufacturer || '').trim().toLowerCase();
+      const assignedCrm = assigned_crm_member_id != null ? String(assigned_crm_member_id).trim() : '';
+      const emailOk = !assignedEmail || selfEmails.includes(assignedEmail);
+      const crmOk =
+        !assignedCrm ||
+        identity.crmMemberIds.has(assignedCrm) ||
+        [...identity.crmMemberIds].some((id) => String(id).toLowerCase() === assignedCrm.toLowerCase());
+      const labelOk =
+        !assignedLabel ||
+        selfLabels.some((l) => {
+          const nl = String(l).trim().toLowerCase();
+          return nl === assignedLabel || nl.includes(assignedLabel) || assignedLabel.includes(nl);
+        });
+      if (!(emailOk && crmOk && labelOk)) {
+        return res.status(403).json({
+          error: 'Product development briefs can only be assigned to your manufacturer facility',
+        });
+      }
+    }
+
     const insertRow = {
       tenant_id: tenantId,
       request_id:
@@ -3243,6 +3456,10 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
       specs: normalizedSpecs,
       status: resolvedStatus,
       assigned_manufacturer: assigned_manufacturer || null,
+      assigned_manufacturer_email: assigned_manufacturer_email
+        ? String(assigned_manufacturer_email).trim().toLowerCase()
+        : null,
+      assigned_crm_member_id: assigned_crm_member_id || null,
       notes: notes || null,
       created_by: auditUserIdForDb(req.user?.userId),
     };
@@ -3254,6 +3471,10 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
     const [request] = await getDb('new_product_requests')
       .insert(insertRow)
       .returning('*');
+
+    if (resolvedStatus === 'submitted') {
+      await maybeNotifyManufacturerProductBrief(getDb(), tenantId, request);
+    }
     
     res.status(201).json({ 
       data: prepareNewProductRequestJsonbFields({
@@ -3284,11 +3505,55 @@ router.put('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_
       return res.status(404).json({ error: 'New product request not found' });
     }
 
-    const updates = normalizeNewProductRequestUpdates(req.body);
+    let updates = normalizeNewProductRequestUpdates(req.body);
+    if (updates.assigned_manufacturer_email !== undefined && updates.assigned_manufacturer_email != null) {
+      updates.assigned_manufacturer_email = String(updates.assigned_manufacturer_email)
+        .trim()
+        .toLowerCase();
+    }
+
+    if (req.user?.role === Role.MANUFACTURER) {
+      const identity = await resolveManufacturerAssignmentIdentity(getDb(), tenantId, req.user);
+      if (!nprMatchesManufacturerIdentity(existing, identity)) {
+        return res.status(404).json({ error: 'New product request not found' });
+      }
+      const denied = assertManufacturerNprUpdateAllowed(existing, updates);
+      if (denied) {
+        return res.status(403).json({ error: denied });
+      }
+      updates = sanitizeManufacturerNprUpdate(updates);
+      if (updates.status || updates.manufacturer_proposal) {
+        const bd = normalizeNewProductRequestJsonb(existing.brand_decision) || {};
+        if (bd.hqNudgedAt) {
+          const nextBd = { ...bd };
+          delete nextBd.hqNudgedAt;
+          updates.brand_decision = nextBd;
+        }
+      }
+    }
     
     for (const key of ['specs', 'manufacturer_proposal', 'brand_decision', 'attachments']) {
       if (updates[key] !== undefined) {
         updates[key] = normalizeNewProductRequestJsonb(updates[key]);
+      }
+    }
+
+    const stamped = applyNprStatusTimestamps(existing, updates);
+    Object.assign(updates, stamped);
+
+    const nextStatus = updates.status != null ? String(updates.status) : String(existing.status);
+    if (nextStatus === 'submitted' && req.user?.role !== Role.MANUFACTURER) {
+      const assigneeName = updates.assigned_manufacturer ?? existing.assigned_manufacturer;
+      const assigneeEmail = updates.assigned_manufacturer_email ?? existing.assigned_manufacturer_email;
+      const assigneeCrm = updates.assigned_crm_member_id ?? existing.assigned_crm_member_id;
+      const hasAssignee =
+        Boolean(assigneeName && String(assigneeName).trim()) ||
+        Boolean(assigneeEmail && String(assigneeEmail).trim()) ||
+        Boolean(assigneeCrm && String(assigneeCrm).trim());
+      if (!hasAssignee) {
+        return res.status(400).json({
+          error: 'Assign a manufacturer partner before submitting a product development brief',
+        });
       }
     }
     
@@ -3305,6 +3570,12 @@ router.put('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_
     }
 
     updated = await syncCatalogFromApprovedRequest(getDb(), tenantId, updated);
+
+    const becameSubmitted =
+      existing.status !== 'submitted' && updated.status === 'submitted';
+    if (becameSubmitted) {
+      await maybeNotifyManufacturerProductBrief(getDb(), tenantId, updated);
+    }
     
     res.json({ 
       data: {
@@ -3333,6 +3604,15 @@ router.delete('/new-product-requests/:id', requirePermission(Permission.PRODUCTI
       return res.status(404).json({ error: 'New product request not found' });
     }
 
+    // Product briefs are manufacturer-assigned: manufacturers may only delete their own;
+    // HQ/ops may delete any.
+    if (req.user?.role === Role.MANUFACTURER) {
+      const identity = await resolveManufacturerAssignmentIdentity(getDb(), tenantId, req.user);
+      if (!nprMatchesManufacturerIdentity(existing, identity)) {
+        return res.status(404).json({ error: 'New product request not found' });
+      }
+    }
+
     const deleted = await getDb('new_product_requests')
       .where({ id: existing.id, tenant_id: tenantId })
       .del();
@@ -3345,6 +3625,291 @@ router.delete('/new-product-requests/:id', requirePermission(Permission.PRODUCTI
   } catch (err) {
     console.error('[API v1] Error deleting new product request:', err);
     res.status(500).json({ error: 'Failed to delete new product request' });
+  }
+});
+
+// POST /api/v1/new-product-requests/:id/nudge — HQ reminder during feasibility review
+router.post('/new-product-requests/:id/nudge', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    if (req.user?.role === Role.MANUFACTURER) {
+      return res.status(403).json({ error: 'Only HQ can nudge manufacturers on product briefs' });
+    }
+
+    const { id } = req.params;
+    const existing = await resolveNewProductRequestRow(getDb(), tenantId, id);
+    if (!existing) {
+      return res.status(404).json({ error: 'New product request not found' });
+    }
+
+    if (!['submitted', 'under_review'].includes(String(existing.status))) {
+      return res.status(400).json({
+        error: 'Nudge is only available while waiting on manufacturer feasibility review',
+      });
+    }
+
+    const to = String(existing.assigned_manufacturer_email || '').trim().toLowerCase();
+    if (!to) {
+      return res.status(400).json({
+        error: 'No manufacturer email on this brief — edit the request and assign a contact email first',
+      });
+    }
+
+    const brandDecision = normalizeNewProductRequestJsonb(existing.brand_decision) || {};
+    const nextBrandDecision = {
+      ...brandDecision,
+      hqNudgedAt: new Date().toISOString(),
+      hqNudgeCount: (Number(brandDecision.hqNudgeCount) || 0) + 1,
+    };
+
+    const [updated] = await getDb('new_product_requests')
+      .where({ id: existing.id, tenant_id: tenantId })
+      .update({
+        brand_decision: nextBrandDecision,
+        updated_at: new Date(),
+        updated_by: auditUserIdForDb(req.user?.userId),
+      })
+      .returning('*');
+
+    let brandName = 'Hajime HQ';
+    try {
+      const tenant = await platformDb('tenants').where({ id: tenantId }).first();
+      if (tenant?.name) brandName = tenant.name;
+    } catch {
+      // non-fatal
+    }
+
+    const notify = await sendProductBriefNudgeEmail({
+      to,
+      manufacturerName: existing.assigned_manufacturer,
+      requestId: existing.request_id,
+      title: existing.title,
+      brandName,
+    });
+
+    res.json({
+      data: {
+        ...updated,
+        specs: updated.specs || {},
+        manufacturer_proposal: updated.manufacturer_proposal || null,
+        brand_decision: updated.brand_decision || null,
+        attachments: updated.attachments || [],
+      },
+      notify,
+    });
+  } catch (err) {
+    console.error('[API v1] Error nudging new product request:', err);
+    res.status(500).json({ error: 'Failed to nudge manufacturer' });
+  }
+});
+
+// ===== PRODUCTION STATUSES =====
+
+// GET /api/v1/production-statuses - List production stage events
+router.get('/production-statuses', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { po_id, page = 1, limit = 200 } = req.query;
+
+    let query = getDb('production_statuses')
+      .where({ tenant_id: tenantId })
+      .orderBy('created_at', 'desc');
+    if (po_id) query = query.where('po_id', po_id);
+
+    const offset = (Number(page) - 1) * Number(limit);
+    const rows = await query.limit(Number(limit)).offset(offset);
+    res.json({ data: rows, pagination: { page: Number(page), limit: Number(limit) } });
+  } catch (err) {
+    console.error('[API v1] Error fetching production statuses:', err);
+    res.status(500).json({ error: 'Failed to fetch production statuses' });
+  }
+});
+
+// POST /api/v1/production-statuses - Log a production stage event
+router.post('/production-statuses', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { po_id, batch_id, stage, status, notes, started_at, completed_at } = req.body || {};
+
+    if (!po_id || !stage) {
+      return res.status(400).json({ error: 'po_id and stage are required' });
+    }
+
+    const [row] = await getDb('production_statuses')
+      .insert({
+        tenant_id: tenantId,
+        po_id: String(po_id),
+        batch_id: batch_id != null ? String(batch_id) : null,
+        stage: String(stage),
+        status: status != null ? String(status) : 'in_progress',
+        notes: notes != null ? String(notes) : null,
+        started_at: started_at || null,
+        completed_at: completed_at || null,
+        created_by: req.user?.userId ?? null,
+      })
+      .returning('*');
+
+    res.status(201).json({ data: row });
+  } catch (err) {
+    console.error('[API v1] Error creating production status:', err);
+    res.status(500).json({ error: 'Failed to create production status' });
+  }
+});
+
+// PUT /api/v1/production-statuses/:id - Update a production stage event
+router.put('/production-statuses/:id', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    const { stage, status, notes, started_at, completed_at } = req.body || {};
+
+    const updates = { updated_at: new Date() };
+    if (stage != null) updates.stage = String(stage);
+    if (status != null) updates.status = String(status);
+    if (notes != null) updates.notes = String(notes);
+    if (started_at != null) updates.started_at = started_at;
+    if (completed_at != null) updates.completed_at = completed_at;
+
+    const [row] = await getDb('production_statuses')
+      .where({ id, tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+
+    if (!row) return res.status(404).json({ error: 'Production status not found' });
+    res.json({ data: row });
+  } catch (err) {
+    console.error('[API v1] Error updating production status:', err);
+    res.status(500).json({ error: 'Failed to update production status' });
+  }
+});
+
+// DELETE /api/v1/production-statuses/:id - Remove a production stage event
+router.delete('/production-statuses/:id', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+    const deleted = await getDb('production_statuses').where({ id, tenant_id: tenantId }).del();
+    if (!deleted) return res.status(404).json({ error: 'Production status not found' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[API v1] Error deleting production status:', err);
+    res.status(500).json({ error: 'Failed to delete production status' });
+  }
+});
+
+// ===== MANUFACTURER FINISHED GOODS =====
+
+function finishedGoodsStatusForCases(availableCases) {
+  return availableCases < 80 ? 'med' : 'ok';
+}
+
+// GET /api/v1/manufacturer-finished-goods - List finished-goods lots
+router.get('/manufacturer-finished-goods', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { sku } = req.query;
+
+    let query = getDb('manufacturer_finished_goods')
+      .where({ tenant_id: tenantId })
+      .orderBy('created_at', 'desc');
+    if (sku) query = query.where('sku', sku);
+
+    const rows = await query;
+    res.json({ data: rows });
+  } catch (err) {
+    console.error('[API v1] Error fetching finished goods:', err);
+    res.status(500).json({ error: 'Failed to fetch finished goods' });
+  }
+});
+
+// POST /api/v1/manufacturer-finished-goods - Receive (bottling) or deduct (shipping) finished goods
+router.post('/manufacturer-finished-goods', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { action } = req.body || {};
+
+    if (action === 'receive') {
+      const { sku, name, lot, cases, po_number } = req.body || {};
+      const addCases = Number(cases) || 0;
+      if (!sku || !lot || addCases <= 0) {
+        return res.status(400).json({ error: 'sku, lot and a positive cases count are required to receive' });
+      }
+      const existing = await getDb('manufacturer_finished_goods')
+        .where({ tenant_id: tenantId, sku, lot })
+        .first();
+
+      let row;
+      if (existing) {
+        const nextCases = Number(existing.cases) + addCases;
+        [row] = await getDb('manufacturer_finished_goods')
+          .where({ id: existing.id, tenant_id: tenantId })
+          .update({
+            cases: nextCases,
+            status: finishedGoodsStatusForCases(nextCases - Number(existing.reserved)),
+            updated_at: new Date(),
+          })
+          .returning('*');
+      } else {
+        [row] = await getDb('manufacturer_finished_goods')
+          .insert({
+            tenant_id: tenantId,
+            sku: String(sku),
+            name: name != null ? String(name) : String(sku),
+            lot: String(lot),
+            cases: addCases,
+            reserved: 0,
+            status: finishedGoodsStatusForCases(addCases),
+            po_number: po_number != null ? String(po_number) : null,
+          })
+          .returning('*');
+      }
+      return res.status(201).json({ data: row });
+    }
+
+    if (action === 'deduct') {
+      const { sku, cases } = req.body || {};
+      let remaining = Number(cases) || 0;
+      if (!sku || remaining <= 0) {
+        return res.status(400).json({ error: 'sku and a positive cases count are required to deduct' });
+      }
+      const lots = await getDb('manufacturer_finished_goods')
+        .where({ tenant_id: tenantId, sku })
+        .orderBy('created_at', 'asc');
+
+      for (const lot of lots) {
+        if (remaining <= 0) break;
+        const available = Number(lot.cases) - Number(lot.reserved);
+        const take = Math.min(available, remaining);
+        if (take <= 0) continue;
+        remaining -= take;
+        const nextCases = Number(lot.cases) - take;
+        if (nextCases <= 0) {
+          await getDb('manufacturer_finished_goods').where({ id: lot.id, tenant_id: tenantId }).del();
+        } else {
+          await getDb('manufacturer_finished_goods')
+            .where({ id: lot.id, tenant_id: tenantId })
+            .update({
+              cases: nextCases,
+              status: finishedGoodsStatusForCases(nextCases - Number(lot.reserved)),
+              updated_at: new Date(),
+            });
+        }
+      }
+      const rows = await getDb('manufacturer_finished_goods').where({ tenant_id: tenantId });
+      return res.json({ data: rows });
+    }
+
+    return res.status(400).json({ error: "action must be 'receive' or 'deduct'" });
+  } catch (err) {
+    console.error('[API v1] Error updating finished goods:', err);
+    res.status(500).json({ error: 'Failed to update finished goods' });
   }
 });
 
@@ -3419,6 +3984,11 @@ router.get('/purchase-orders', requirePermission(Permission.PRODUCTION_READ), as
     
     if (status) baseQuery = baseQuery.where('status', status);
     if (manufacturer_id) baseQuery = baseQuery.where('manufacturer_id', manufacturer_id);
+
+    if (req.user?.role === Role.MANUFACTURER) {
+      const identity = await resolveManufacturerAssignmentIdentity(getDb(), tenantId, req.user);
+      baseQuery = applyManufacturerPoScopeToQuery(baseQuery, identity);
+    }
     
     const offset = (Number(page) - 1) * Number(limit);
     
@@ -3477,6 +4047,13 @@ router.get('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_READ)
     
     if (!order) {
       return res.status(404).json({ error: 'Purchase order not found' });
+    }
+
+    if (req.user?.role === Role.MANUFACTURER) {
+      const identity = await resolveManufacturerAssignmentIdentity(getDb(), tenantId, req.user);
+      if (!poMatchesManufacturerIdentity(order, identity)) {
+        return res.status(404).json({ error: 'Purchase order not found' });
+      }
     }
     
     const items = await getDb('purchase_order_items')
@@ -3537,10 +4114,27 @@ router.post('/purchase-orders', requirePermission(Permission.PRODUCTION_WRITE), 
       return res.status(400).json({ error: 'po_number is required' });
     }
 
+    const resolvedPoType = po_type || poType || 'production';
     const mfgId =
       manufacturer_id != null && String(manufacturer_id).trim() !== ''
         ? String(manufacturer_id).trim()
         : null;
+
+    // Production reorders are manufacturer-only: HQ must assign a partner; manufacturers cannot issue for others.
+    if (resolvedPoType !== 'sales') {
+      if (!mfgId) {
+        await trx.rollback();
+        return res.status(400).json({
+          error: 'Assign a manufacturer partner before issuing a production request',
+        });
+      }
+      if (req.user?.role === Role.MANUFACTURER) {
+        await trx.rollback();
+        return res.status(403).json({
+          error: 'Only HQ can issue production requests to manufacturer partners',
+        });
+      }
+    }
 
     const issue = order_date || orderDate;
     const due =
@@ -3576,7 +4170,7 @@ router.post('/purchase-orders', requirePermission(Permission.PRODUCTION_WRITE), 
       total_bottles: Number(total_bottles ?? totalBottles ?? body.totalBottles ?? 0) || 0,
       total_amount: Number(total_amount ?? totalAmount ?? body.totalAmount ?? 0) || 0,
       notes: notes != null ? String(notes) : '',
-      po_type: po_type || poType || 'production',
+      po_type: resolvedPoType,
       distributor_account_id:
         distributor_account_id != null && String(distributor_account_id).trim() !== ''
           ? String(distributor_account_id).trim()
@@ -3620,6 +4214,8 @@ router.post('/purchase-orders', requirePermission(Permission.PRODUCTION_WRITE), 
     }
     
     await trx.commit();
+
+    await maybeNotifyManufacturerProductionRequest(getDb(), tenantId, order, items);
     
     res.status(201).json({ data: order });
   } catch (err) {
@@ -3645,6 +4241,12 @@ router.put('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WRITE
     if (!existing) {
       await trx.rollback();
       return res.status(404).json({ error: 'Purchase order not found' });
+    }
+
+    const ownershipError = await assertManufacturerOwnsPurchaseOrder(req, tenantId, existing);
+    if (ownershipError) {
+      await trx.rollback();
+      return res.status(404).json({ error: ownershipError });
     }
 
     const rid = existing.id;
@@ -3754,6 +4356,11 @@ router.patch('/purchase-orders/:id/status', requirePermission(Permission.PRODUCT
     if (!row) {
       return res.status(404).json({ error: 'Purchase order not found' });
     }
+
+    const ownershipError = await assertManufacturerOwnsPurchaseOrder(req, tenantId, row);
+    if (ownershipError) {
+      return res.status(404).json({ error: ownershipError });
+    }
     
     const updates = { 
       status, 
@@ -3791,6 +4398,11 @@ router.delete('/purchase-orders/:id', requirePermission(Permission.PRODUCTION_WR
     const row = await resolvePurchaseOrderRow(getDb(), tenantId, idParam);
     if (!row) {
       return res.status(404).json({ error: 'Purchase order not found' });
+    }
+
+    const ownershipError = await assertManufacturerOwnsPurchaseOrder(req, tenantId, row);
+    if (ownershipError) {
+      return res.status(404).json({ error: ownershipError });
     }
     
     const [order] = await getDb('purchase_orders')
@@ -5344,8 +5956,8 @@ router.get('/team-members', async (req, res) => {
 
 /**
  * GET /api/v1/purchase-order-manufacturer-options
- * CRM manufacturer contacts (team_members) merged with manufacturer_profiles by email.
- * Uses PO_READ so Operations can create POs without SETTINGS_READ (team-members list is HQ-only).
+ * Manufacturer profiles only (Manufacturers list). CRM team_members enrich a profile
+ * when the email matches — CRM contacts without a manufacturer profile are omitted.
  */
 router.get('/purchase-order-manufacturer-options', requirePermission(Permission.PO_READ), async (req, res) => {
   try {
@@ -5359,47 +5971,45 @@ router.get('/purchase-order-manufacturer-options', requirePermission(Permission.
 
     const profiles = await getDb('manufacturer_profiles').where({ tenant_id: tenantId });
 
-    const profileByEmail = new Map();
-    for (const p of profiles) {
-      const em = String(p.email ?? '').trim().toLowerCase();
-      if (em) profileByEmail.set(em, p);
+    const memberByEmail = new Map();
+    for (const m of members) {
+      const em = String(m.email ?? '').trim().toLowerCase();
+      if (em && !memberByEmail.has(em)) memberByEmail.set(em, m);
     }
 
     const options = [];
-
-    for (const m of members) {
-      const email = String(m.email ?? '').trim().toLowerCase();
-      const prof = profileByEmail.get(email);
-      let label = prof?.company_name ? String(prof.company_name).trim() : '';
-      if (!label && prof?.contact_name) label = String(prof.contact_name).trim();
-      if (!label) label = String(m.name ?? '').trim();
-      if (!label) label = email;
-
-      options.push({
-        key: String(m.id),
-        label,
-        email,
-        crmMemberId: String(m.id),
-        hasProfile: Boolean(prof),
-      });
-    }
-
-    const crmEmails = new Set(members.map((x) => String(x.email ?? '').trim().toLowerCase()));
+    const seenEmails = new Set();
+    const seenLabels = new Set();
 
     for (const p of profiles) {
       const em = String(p.email ?? '').trim().toLowerCase();
-      if (!em || crmEmails.has(em)) continue;
-      const label =
-        String(p.company_name ?? '').trim() ||
-        String(p.contact_name ?? '').trim();
+      const company = String(p.company_name ?? '').trim();
+      const contact = String(p.contact_name ?? '').trim();
+      const mid = p.manufacturer_id != null ? String(p.manufacturer_id).trim() : '';
+      const label = company || contact || em;
       if (!label) continue;
+
+      const labelKey = label.toLowerCase();
+      if (seenLabels.has(labelKey)) continue;
+      if (em && seenEmails.has(em)) continue;
+
+      const m = em ? memberByEmail.get(em) : null;
+      const city = String(p.city ?? '').trim();
+      const country = String(p.country ?? '').trim();
+      const location = [city, country].filter(Boolean).join(', ');
+      const subParts = [location, contact && contact !== label ? contact : ''].filter(Boolean);
+
       options.push({
-        key: `prof:${em}`,
+        key: m ? String(m.id) : mid ? `partner:${mid}` : em ? `prof:${em}` : `prof:${labelKey}`,
         label,
-        email: em,
-        crmMemberId: null,
+        email: em || undefined,
+        sub: subParts.length ? subParts.join(' · ') : undefined,
+        crmMemberId: m ? String(m.id) : mid || null,
         hasProfile: true,
       });
+
+      seenLabels.add(labelKey);
+      if (em) seenEmails.add(em);
     }
 
     options.sort((a, b) => a.label.localeCompare(b.label));
@@ -6591,6 +7201,48 @@ router.patch('/support-tickets/:id/status', requirePermission(Permission.ORDERS_
 
 // ===== MANUFACTURER PROFILES =====
 
+/**
+ * Saving a manufacturer profile must also unhide it on the HQ Manufacturers list.
+ * Clients may hold a stale (or empty) copy of hq_hidden_manufacturer_ids, so the
+ * scrub happens here where the database is the source of truth.
+ */
+async function unhideManufacturerInSettings(tenantId, manufacturerId, companyName) {
+  try {
+    const settings = await getDb('operational_settings')
+      .where({ tenant_id: tenantId })
+      .first();
+    const raw = settings?.hq_hidden_manufacturer_ids;
+    if (!raw) return;
+
+    let hidden;
+    try {
+      hidden = JSON.parse(raw);
+    } catch {
+      hidden = String(raw).split(',').map((s) => s.trim()).filter(Boolean);
+    }
+    if (!Array.isArray(hidden) || hidden.length === 0) return;
+
+    const slug = String(companyName ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    const mfrId = String(manufacturerId ?? '').trim().toLowerCase();
+    const drop = new Set(
+      [mfrId, `demo-${mfrId}`, slug, `demo-${slug}`].filter(Boolean),
+    );
+
+    const next = hidden.filter((entry) => !drop.has(String(entry).trim().toLowerCase()));
+    if (next.length === hidden.length) return;
+
+    await getDb('operational_settings')
+      .where({ tenant_id: tenantId })
+      .update({ hq_hidden_manufacturer_ids: JSON.stringify(next), updated_at: new Date() });
+  } catch (err) {
+    console.error('[API v1] Failed to unhide manufacturer in settings:', err?.message || err);
+  }
+}
+
 // GET /api/v1/manufacturer-profiles
 router.get('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_READ), async (req, res) => {
   try {
@@ -6618,15 +7270,45 @@ router.get('/manufacturer-profiles/:id', requirePermission(Permission.PRODUCTION
     const profile = await getDb('manufacturer_profiles')
       .where({ id, tenant_id: tenantId })
       .first();
+
+    const resolved =
+      profile ??
+      (await getDb('manufacturer_profiles')
+        .where({ manufacturer_id: id, tenant_id: tenantId })
+        .first());
     
-    if (!profile) {
+    if (!resolved) {
       return res.status(404).json({ error: 'Manufacturer profile not found' });
     }
     
-    res.json({ data: profile });
+    res.json({ data: resolved });
   } catch (err) {
     console.error('[API v1] Error fetching manufacturer profile:', err);
     res.status(500).json({ error: 'Failed to fetch manufacturer profile' });
+  }
+});
+
+// POST /api/v1/manufacturer-portal-access — provision portal login from HQ (works for demo partner ids too)
+router.post('/manufacturer-portal-access', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const body = req.body || {};
+    const portalLoginEmail = body.portalLoginEmail ?? body.portal_login_email;
+    if (!portalLoginEmail || !String(portalLoginEmail).trim()) {
+      return res.status(400).json({ error: 'portalLoginEmail is required' });
+    }
+
+    const portalProvision = await ensureManufacturerPortalAccess(getDb(), tenantId, {
+      portalLoginEmail: String(portalLoginEmail).trim(),
+      contactName: body.contactName ?? body.contact_name,
+      companyName: body.companyName ?? body.company_name,
+    });
+
+    res.json({ data: portalProvision });
+  } catch (err) {
+    console.error('[API v1] Error provisioning manufacturer portal access:', err);
+    res.status(500).json({ error: 'Failed to provision manufacturer portal access' });
   }
 });
 
@@ -6654,6 +7336,7 @@ router.post('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_WR
         .where({ id: existing.id, tenant_id: tenantId })
         .update(updates)
         .returning('*');
+      await unhideManufacturerInSettings(tenantId, profile.manufacturer_id, profile.company_name);
       return res.status(200).json({ data: profile });
     }
     
@@ -6690,6 +7373,7 @@ router.post('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_WR
       })
       .returning('*');
     
+    await unhideManufacturerInSettings(tenantId, profile.manufacturer_id, profile.company_name);
     res.status(201).json({ data: profile });
   } catch (err) {
     console.error('[API v1] Error creating manufacturer profile:', err);
@@ -6719,10 +7403,32 @@ router.put('/manufacturer-profiles/:id', requirePermission(Permission.PRODUCTION
       return res.status(404).json({ error: 'Manufacturer profile not found' });
     }
     
+    await unhideManufacturerInSettings(tenantId, profile.manufacturer_id, profile.company_name);
     res.json({ data: profile });
   } catch (err) {
     console.error('[API v1] Error updating manufacturer profile:', err);
     res.status(500).json({ error: 'Failed to update manufacturer profile' });
+  }
+});
+
+// DELETE /api/v1/manufacturer-profiles/:id — matches by profile id or manufacturer_id
+router.delete('/manufacturer-profiles/:id', requirePermission(Permission.PRODUCTION_WRITE), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const { id } = req.params;
+
+    const deleted = await getDb('manufacturer_profiles')
+      .where({ tenant_id: tenantId })
+      .andWhere(function filterProfile() {
+        this.where({ id }).orWhere({ manufacturer_id: String(id) });
+      })
+      .del();
+
+    res.json({ data: { deleted } });
+  } catch (err) {
+    console.error('[API v1] Error deleting manufacturer profile:', err);
+    res.status(500).json({ error: 'Failed to delete manufacturer profile' });
   }
 });
 

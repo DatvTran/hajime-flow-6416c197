@@ -37,7 +37,7 @@ export function resolveAlertHref(alert: DerivedAlert, role: HajimeRole): string 
       return `/manufacturer/purchase-orders?po=${encodeURIComponent(poId)}`;
     }
     const poId = id.slice("po-delay-".length);
-    return `/purchase-orders?po=${encodeURIComponent(poId)}`;
+    return `/production-requests?po=${encodeURIComponent(poId)}`;
   }
 
   if (type === "shipment") {

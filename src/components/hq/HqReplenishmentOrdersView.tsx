@@ -16,38 +16,42 @@ import {
   HqOperatorSrcChip,
 } from "@/components/hq/HqOperatorUi";
 import { cn } from "@/lib/utils";
+import { casesForOrder, type ReplenishmentStock } from "@/lib/hq-replenishment-stock";
 
 type Props = {
   orders: SalesOrder[];
   accounts: Account[];
+  stockByOrder?: Map<string, ReplenishmentStock>;
   onApprove: (order: SalesOrder) => void;
   onDecline: (order: SalesOrder) => void;
   onSelect: (id: string) => void;
+  onTriggerProduction?: (order: SalesOrder) => void;
 };
 
 type FilterId = "all" | "urgent" | "in-stock" | "short";
-
-function casesForOrder(o: SalesOrder, caseSize = 12): number {
-  if (o.lines?.length) {
-    return o.lines.reduce((s, l) => s + Math.ceil(l.quantityBottles / caseSize), 0);
-  }
-  return Math.ceil(o.quantity / caseSize);
-}
 
 function palletsForOrder(o: SalesOrder): number {
   return Math.max(1, Math.ceil(casesForOrder(o) / 48));
 }
 
-function fulfillTone(order: SalesOrder): { tone: "green" | "amber" | "red"; label: string } {
-  if (order.status === "draft") return { tone: "amber", label: "short / hold" };
-  if (order.status === "confirmed") return { tone: "green", label: "in stock" };
-  return { tone: "green", label: "approved" };
+function fulfillTone(short: boolean): { tone: "green" | "amber" | "red"; label: string } {
+  return short ? { tone: "red", label: "short — produce" } : { tone: "green", label: "in stock" };
 }
 
-export function HqReplenishmentOrdersView({ orders, accounts, onApprove, onDecline, onSelect }: Props) {
+export function HqReplenishmentOrdersView({
+  orders,
+  accounts,
+  stockByOrder,
+  onApprove,
+  onDecline,
+  onSelect,
+  onTriggerProduction,
+}: Props) {
   const { t } = useLanguage();
   const [filter, setFilter] = useState<FilterId>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const isShort = (o: SalesOrder) => stockByOrder?.get(o.id)?.short ?? false;
 
   const pending = useMemo(
     () => orders.filter((o) => o.status === "draft" || o.status === "confirmed"),
@@ -56,10 +60,11 @@ export function HqReplenishmentOrdersView({ orders, accounts, onApprove, onDecli
 
   const filtered = useMemo(() => {
     if (filter === "urgent") return pending.filter((o) => o.status === "draft");
-    if (filter === "in-stock") return pending.filter((o) => o.status === "confirmed");
-    if (filter === "short") return pending.filter((o) => o.status === "draft");
+    if (filter === "in-stock") return pending.filter((o) => !isShort(o));
+    if (filter === "short") return pending.filter((o) => isShort(o));
     return pending;
-  }, [pending, filter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, filter, stockByOrder]);
 
   const urgentOrder = pending.find((o) => o.status === "draft");
 
@@ -67,7 +72,7 @@ export function HqReplenishmentOrdersView({ orders, accounts, onApprove, onDecli
     <HqOperatorPage className="space-y-6">
       <HqOperatorPageHeader
         title="Replenishment orders"
-        description="Pallet orders from distributors to restock their DCs — approve to ship from finished goods. Short stock triggers a production request to a kura."
+        description="Pallet orders from distributors to restock their DCs — approve to ship from finished goods. Short stock triggers a production request to a manufacturer partner."
         actions={
           <HqBtnLink to="/inventory" variant="outline" size="sm">
             {t("Finished goods")}
@@ -79,7 +84,7 @@ export function HqReplenishmentOrdersView({ orders, accounts, onApprove, onDecli
         <HqOperatorAlertBar
           variant="error"
           actions={
-            <HqBtnLink to="/purchase-orders" variant="accent" size="sm">
+            <HqBtnLink to="/production-requests" variant="accent" size="sm">
               {t("View production")}
             </HqBtnLink>
           }
@@ -104,10 +109,10 @@ export function HqReplenishmentOrdersView({ orders, accounts, onApprove, onDecli
           {t("Urgent")} ({pending.filter((o) => o.status === "draft").length})
         </HqOperatorFilterButton>
         <HqOperatorFilterButton active={filter === "in-stock"} onClick={() => setFilter("in-stock")}>
-          {t("In stock")}
+          {t("In stock")} ({pending.filter((o) => !isShort(o)).length})
         </HqOperatorFilterButton>
         <HqOperatorFilterButton active={filter === "short"} onClick={() => setFilter("short")}>
-          {t("Short / hold")}
+          {t("Short")} ({pending.filter((o) => isShort(o)).length})
         </HqOperatorFilterButton>
       </HqOperatorFilterBar>
 
@@ -130,7 +135,9 @@ export function HqReplenishmentOrdersView({ orders, accounts, onApprove, onDecli
         filtered.map((order, i) => {
           const pallets = palletsForOrder(order);
           const cases = casesForOrder(order);
-          const fm = fulfillTone(order);
+          const stock = stockByOrder?.get(order.id);
+          const short = stock?.short ?? false;
+          const fm = fulfillTone(short);
           const open = expandedId === order.id || (expandedId === null && i === 0);
           const acc = accounts.find((a) => a.tradingName === order.account || a.legalName === order.account);
           const market = order.market || acc?.city || "—";
@@ -138,7 +145,7 @@ export function HqReplenishmentOrdersView({ orders, accounts, onApprove, onDecli
           return (
             <div
               key={order.id}
-              className={cn("hq-rpl-card", order.status === "draft" && "urgent")}
+              className={cn("hq-rpl-card", short && "urgent")}
             >
               <button
                 type="button"
@@ -189,9 +196,9 @@ export function HqReplenishmentOrdersView({ orders, accounts, onApprove, onDecli
                               : "text-[hsl(0_68%_42%)]",
                         )}
                       >
-                        {order.status === "draft"
-                          ? t("Short stock — production may be required")
-                          : t("Available in finished goods")}
+                        {short
+                          ? t("Short {{n}} cs — production required", { n: stock?.shortfallCases ?? 0 })
+                          : t("{{n}} cs available in finished goods", { n: stock?.availableCases ?? 0 })}
                       </div>
                     </div>
                     <div className="hq-detail-panel">
@@ -205,10 +212,10 @@ export function HqReplenishmentOrdersView({ orders, accounts, onApprove, onDecli
                       <Check className="size-3.5" strokeWidth={2} />
                       {t("Approve & ship from finished goods")}
                     </HqBtn>
-                    {order.status === "draft" ? (
-                      <HqBtnLink to="/purchase-orders" variant="outline" size="sm">
-                        {t("Link production request")}
-                      </HqBtnLink>
+                    {short && onTriggerProduction ? (
+                      <HqBtn variant="accent" size="sm" onClick={() => onTriggerProduction(order)}>
+                        {t("Trigger production request")}
+                      </HqBtn>
                     ) : null}
                     <HqBtn variant="outline" size="sm" onClick={() => onSelect(order.id)}>
                       {t("View order")}

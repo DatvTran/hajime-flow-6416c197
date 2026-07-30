@@ -7,7 +7,11 @@ import { activeDestinationWarehouses } from "@/lib/po-destination-warehouse";
 import { findAccountForManufacturerPick } from "@/lib/manufacturer-account-nav";
 import { getPurchaseOrderManufacturerOptions } from "@/lib/api-v1-mutations";
 import { simulateLedgerCommit } from "@/lib/ledger";
-import { kuraShortName } from "@/lib/hq-product-development-display";
+import {
+  buildHqManufacturerPickerOptions,
+  resolveManufacturerPickerKey,
+  type ManufacturerPickerHint,
+} from "@/lib/hq-manufacturer-picker-options";
 import {
   addDaysISO,
   buildPurchaseOrderFromForm,
@@ -33,16 +37,21 @@ type Props = {
   existing: PurchaseOrder[];
   onCreate: (po: PurchaseOrder) => Promise<{ success: boolean }>;
   prefill?: { sku?: string; quantity?: string } | null;
+  prefillManufacturer?: ManufacturerPickerHint | null;
   userRole?: string;
   distributorAccountId?: string;
+  /** When true (HQ default), form is production-only — no sales/order PO toggle. */
+  productionOnly?: boolean;
 };
 
 export function HqNewProductionRequestView({
   existing,
   onCreate,
   prefill,
+  prefillManufacturer,
   userRole = "brand_operator",
   distributorAccountId,
+  productionOnly = false,
 }: Props) {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -50,9 +59,11 @@ export function HqNewProductionRequestView({
   const { products } = useProducts();
   const { accounts } = useAccounts();
 
-  const defaultPoType: PurchaseOrder["poType"] = userRole === "distributor" ? "sales" : "production";
+  const defaultPoType: PurchaseOrder["poType"] =
+    productionOnly || userRole !== "distributor" ? "production" : "sales";
   const canChangePoType =
-    userRole === "brand_operator" || userRole === "operations" || userRole === "founder_admin";
+    !productionOnly &&
+    (userRole === "brand_operator" || userRole === "operations" || userRole === "founder_admin");
 
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -60,15 +71,9 @@ export function HqNewProductionRequestView({
 
   const [poType, setPoType] = useState<NonNullable<PurchaseOrder["poType"]>>(defaultPoType);
   const [manufacturerChoices, setManufacturerChoices] = useState<PoManufacturerOption[]>(() =>
-    FALLBACK_MANUFACTURER_NAMES.map((label, i) => ({
-      key: `fallback:${i}`,
-      label,
-      crmMemberId: null,
-      hasProfile: false,
-    })),
+    buildHqManufacturerPickerOptions([], accounts),
   );
-  const [manufacturerKey, setManufacturerKey] = useState("fallback:0");
-  const [manufacturerPickerHasCrm, setManufacturerPickerHasCrm] = useState(false);
+  const [manufacturerKey, setManufacturerKey] = useState("");
   const [issueDate, setIssueDate] = useState(todayISO());
   const [requiredDate, setRequiredDate] = useState(addDaysISO(30));
   const [requestedShipDate, setRequestedShipDate] = useState(addDaysISO(35));
@@ -77,7 +82,7 @@ export function HqNewProductionRequestView({
   const [packagingInstructions, setPackagingInstructions] = useState("Standard 12-bottle case");
   const [labelVersion, setLabelVersion] = useState("v3.1");
   const [marketDestination, setMarketDestination] = useState("Toronto Main Warehouse");
-  const [status, setStatus] = useState<PurchaseOrder["status"]>("draft");
+  const [status, setStatus] = useState<PurchaseOrder["status"]>("approved");
   const [notes, setNotes] = useState("");
   const [selectedDistributorId, setSelectedDistributorId] = useState(distributorAccountId || "");
 
@@ -115,19 +120,29 @@ export function HqNewProductionRequestView({
         const res = (await getPurchaseOrderManufacturerOptions()) as { data?: PoManufacturerOption[] };
         const rows = Array.isArray(res.data) ? res.data : [];
         if (cancelled) return;
-        if (rows.length > 0) {
-          setManufacturerChoices(rows);
-          setManufacturerKey(rows[0].key);
-          setManufacturerPickerHasCrm(rows.some((r) => Boolean(r.crmMemberId)));
-        }
+        const merged = buildHqManufacturerPickerOptions(rows, accounts);
+        setManufacturerChoices(merged);
+        const hinted = resolveManufacturerPickerKey(merged, prefillManufacturer);
+        setManufacturerKey((prev) => {
+          if (hinted) return hinted;
+          return merged.some((m) => m.key === prev) ? prev : merged[0]?.key ?? "";
+        });
       } catch {
-        /* keep fallback */
+        if (cancelled) return;
+        const merged = buildHqManufacturerPickerOptions([], accounts);
+        setManufacturerChoices(merged);
+        const hinted = resolveManufacturerPickerKey(merged, prefillManufacturer);
+        setManufacturerKey(hinted ?? merged[0]?.key ?? "");
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [accounts, prefillManufacturer]);
+
+  const manufacturerLocked = Boolean(
+    prefillManufacturer?.id?.trim() || prefillManufacturer?.label?.trim(),
+  );
 
   useEffect(() => {
     if (manufacturerChoices.length === 0) return;
@@ -137,7 +152,9 @@ export function HqNewProductionRequestView({
   }, [manufacturerChoices, manufacturerKey]);
 
   const manufacturerDisplayLabel =
-    manufacturerChoices.find((c) => c.key === manufacturerKey)?.label ?? FALLBACK_MANUFACTURER_NAMES[0];
+    manufacturerChoices.find((c) => c.key === manufacturerKey)?.label ??
+    prefillManufacturer?.label ??
+    FALLBACK_MANUFACTURER_NAMES[0];
 
   const bottleQty = Math.max(1, Math.round(Number(quantity) || 0));
   const caseSize = selectedProduct?.caseSize ?? 12;
@@ -150,7 +167,7 @@ export function HqNewProductionRequestView({
         value: selectedProduct ? `${selectedProduct.sku} — ${selectedProduct.name}` : sku || "—",
       },
       { label: "Quantity", value: `${cases.toLocaleString()} cases (${bottleQty.toLocaleString()} bottles)` },
-      { label: "Kura", value: kuraShortName(manufacturerDisplayLabel) },
+      { label: "Manufacturer", value: manufacturerDisplayLabel },
       { label: "Destination", value: marketDestination || "—" },
       { label: "Target completion", value: requiredDate || "—" },
       { label: "Ship by", value: requestedShipDate || "—" },
@@ -197,7 +214,7 @@ export function HqNewProductionRequestView({
         packagingInstructions,
         labelVersion,
         marketDestination,
-        status,
+        status: poType === "production" ? "approved" : status,
         notes,
         selectedDistributorId,
       },
@@ -226,11 +243,11 @@ export function HqNewProductionRequestView({
         } else {
           sessionStorage.setItem(
             "hq_po_success_nav",
-            `/purchase-orders?po=${encodeURIComponent(po.id)}`,
+            `/production-requests?po=${encodeURIComponent(po.id)}`,
           );
         }
       } else {
-        sessionStorage.setItem("hq_po_success_nav", `/purchase-orders?po=${encodeURIComponent(po.id)}`);
+        sessionStorage.setItem("hq_po_success_nav", `/production-requests?po=${encodeURIComponent(po.id)}`);
       }
     } finally {
       setSubmitting(false);
@@ -238,7 +255,7 @@ export function HqNewProductionRequestView({
   };
 
   const finishSuccess = () => {
-    const target = sessionStorage.getItem("hq_po_success_nav") ?? "/purchase-orders";
+    const target = sessionStorage.getItem("hq_po_success_nav") ?? "/production-requests";
     sessionStorage.removeItem("hq_po_success_nav");
     navigate(target);
   };
@@ -247,18 +264,35 @@ export function HqNewProductionRequestView({
     <HqOperatorPage className="space-y-5">
       <div className="flex flex-wrap items-center gap-2.5">
         <Link
-          to="/purchase-orders"
+          to="/production-requests"
           className="hq-btn hq-btn-outline hq-btn-sm inline-flex items-center gap-1.5 no-underline"
         >
           <ArrowLeft className="size-3.5" strokeWidth={1.75} />
           {t("Production requests")}
         </Link>
-        <span className="text-xs text-muted-foreground">/ {t("New request")}</span>
+        <span className="text-xs text-muted-foreground">
+          {prefillManufacturer?.label ? (
+            <>
+              / {prefillManufacturer.label} / {t("New request")}
+            </>
+          ) : (
+            <>/ {t("New request")}</>
+          )}
+        </span>
       </div>
 
       <HqOperatorPageHeader
-        title="New production request"
-        description="Commission a batch from a kura partner. They confirm spec and schedule it into their brew calendar."
+        title="Reorder production"
+        description={
+          prefillManufacturer?.label
+            ? t(
+                "Reorder an existing SKU from {{partner}} — adjust quantity up or down and choose the destination warehouse or market.",
+                { partner: prefillManufacturer.label },
+              )
+            : t(
+                "Reorder an existing SKU from a manufacturer — adjust quantity up or down and choose the destination warehouse or market. New concepts go to Product Development.",
+              )
+        }
       />
 
       <div className="grid items-start gap-5 lg:grid-cols-[1fr_320px]">
@@ -312,7 +346,7 @@ export function HqNewProductionRequestView({
             <div className="hq-settings-title">{t("Product & quantity")}</div>
             <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
               <div className="hq-form-group mb-0 sm:col-span-2">
-                <label htmlFor="po-sku">{t("SKU to produce")}</label>
+                <label htmlFor="po-sku">{t("SKU to reorder")}</label>
                 {products.length === 0 ? (
                   <p className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-[13px] text-muted-foreground">
                     {t("No products yet.")}{" "}
@@ -347,22 +381,34 @@ export function HqNewProductionRequestView({
                   onChange={(e) => setQuantity(e.target.value)}
                   disabled={submitting}
                 />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {t("Raise or lower vs the last batch — same SKU, different inventory need.")}
+                </p>
               </div>
               <div className="hq-form-group mb-0">
                 <label htmlFor="po-status">{t("Initial status")}</label>
-                <select
-                  id="po-status"
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as PurchaseOrder["status"])}
-                  disabled={submitting}
-                  className="hq-form-select capitalize"
-                >
-                  {PO_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s.replace("-", " ")}
-                    </option>
-                  ))}
-                </select>
+                {poType === "production" ? (
+                  <p
+                    id="po-status"
+                    className="flex h-10 items-center rounded-md border border-border/60 bg-muted/30 px-3 text-[13px] text-muted-foreground"
+                  >
+                    {t("Issued to manufacturer")} ({t("awaiting schedule")})
+                  </p>
+                ) : (
+                  <select
+                    id="po-status"
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as PurchaseOrder["status"])}
+                    disabled={submitting}
+                    className="hq-form-select capitalize"
+                  >
+                    {PO_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s.replace("-", " ")}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div className="hq-form-group mb-0 sm:col-span-2">
                 <label htmlFor="po-pack">{t("Packaging instructions")}</label>
@@ -389,27 +435,41 @@ export function HqNewProductionRequestView({
             <div className="hq-settings-title">{t("Assignment & timing")}</div>
             <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
               <div className="hq-form-group mb-0 sm:col-span-2">
-                <label htmlFor="po-kura">{t("Assign to kura")}</label>
-                <select
-                  id="po-kura"
-                  value={manufacturerKey}
-                  onChange={(e) => setManufacturerKey(e.target.value)}
-                  disabled={submitting}
-                  className="hq-form-select"
-                >
-                  {manufacturerChoices.map((row) => (
-                    <option key={row.key} value={row.key}>
-                      {row.label}
-                    </option>
-                  ))}
-                </select>
-                {manufacturerPickerHasCrm ? (
-                  <p className="mt-1.5 text-[11px] text-muted-foreground">
-                    {t("Contacts from Settings → CRM. Profile company names are preferred when the email matches.")}
+                <label htmlFor="po-manufacturer-partner">{t("Assign to manufacturer partner")}</label>
+                {manufacturerLocked ? (
+                  <p
+                    id="po-manufacturer-partner"
+                    className="flex h-10 items-center rounded-md border border-border/60 bg-muted/30 px-3 text-[13px] font-medium text-foreground"
+                  >
+                    {manufacturerDisplayLabel}
                   </p>
-                ) : manufacturerChoices.some((c) => c.key.startsWith("fallback:")) ? (
+                ) : (
+                  <select
+                    id="po-manufacturer-partner"
+                    value={manufacturerKey}
+                    onChange={(e) => setManufacturerKey(e.target.value)}
+                    disabled={submitting}
+                    className="hq-form-select"
+                  >
+                    {manufacturerChoices.map((row) => (
+                      <option key={row.key} value={row.key}>
+                        {row.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {manufacturerLocked ? (
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    {t("This request is assigned to the manufacturer partner you selected from Manufacturers.")}
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    {t("Manufacturer profiles from Manufacturers. CRM login is used when the email matches the profile.")}
+                  </p>
+                )}
+                {manufacturerChoices.some((c) => c.key.startsWith("fallback:")) ? (
                   <p className="mt-1.5 text-[11px] text-[hsl(30_80%_34%)]">
-                    {t("No manufacturer CRM contacts loaded — using demo kura name.")}
+                    {t("No manufacturer CRM contacts loaded — using demo partner name.")}
                   </p>
                 ) : null}
               </div>
@@ -461,6 +521,9 @@ export function HqNewProductionRequestView({
                     </option>
                   ))}
                 </select>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {t("Same SKU can ship to a different location on each reorder.")}
+                </p>
                 <p className="mt-1.5 text-[11px] text-muted-foreground">
                   {t("Same locations as Settings → Warehouses. Inventory receipts map here when the PO is delivered.")}
                 </p>
@@ -469,7 +532,7 @@ export function HqNewProductionRequestView({
           </HqOperatorCard>
 
           <HqOperatorCard className="hq-settings-panel">
-            <div className="hq-settings-title">{t("Notes for the kura")}</div>
+            <div className="hq-settings-title">{t("Notes for the manufacturer partner")}</div>
             <div className="hq-form-group mb-0">
               <label htmlFor="po-notes">{t("Spec details & requirements")}</label>
               <textarea
@@ -516,9 +579,9 @@ export function HqNewProductionRequestView({
                 ? t("Sending…")
                 : poType === "sales"
                   ? t("Create sales PO")
-                  : t("Send request to kura")}
+                  : t("Send request to {{partner}}", { partner: manufacturerDisplayLabel })}
             </HqBtn>
-            <HqBtnLink to="/purchase-orders" variant="outline" className="mt-2 w-full justify-center">
+            <HqBtnLink to="/production-requests" variant="outline" className="mt-2 w-full justify-center">
               {t("Cancel")}
             </HqBtnLink>
           </HqOperatorCard>
@@ -526,7 +589,7 @@ export function HqNewProductionRequestView({
           <div className="rounded-[14px] border border-[hsl(280_40%_50%/0.2)] bg-[hsl(280_40%_50%/0.06)] p-4 text-xs leading-relaxed text-[hsl(280_30%_42%)]">
             <strong className="text-[hsl(280_40%_44%)]">{t("Next:")}</strong>{" "}
             {t(
-              "the kura confirms spec and schedules the batch. You'll see it appear under Production requests once submitted.",
+              "The manufacturer confirms the reorder and schedules the batch. Quantity and destination can differ each time — this is not a new product concept.",
             )}
           </div>
         </div>
@@ -541,8 +604,11 @@ export function HqNewProductionRequestView({
             <div className="font-display text-xl font-semibold tracking-[-0.01em]">{t("Request sent")}</div>
             <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
               {createdPoId
-                ? `${createdPoId} ${t("sent to")} ${kuraShortName(manufacturerDisplayLabel)}. ${t("You'll be notified once they confirm the spec and schedule the batch.")}`
-                : t("Your production request was sent to the kura partner.")}
+                ? t("{{poId}} sent to {{partner}}. You'll be notified once they confirm the spec and schedule the batch.", {
+                    poId: createdPoId,
+                    partner: manufacturerDisplayLabel,
+                  })
+                : t("Your production request was sent to the manufacturer partner.")}
             </p>
             <HqBtn variant="accent" size="sm" className="mt-5" onClick={finishSuccess}>
               {t("Back to production requests")}

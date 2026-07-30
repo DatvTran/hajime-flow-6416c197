@@ -22,6 +22,7 @@ describe("mapNewProductRequestCreateToApi", () => {
       notes: "notes",
       status: "submitted",
       assignedManufacturer: "Kuramoto Brewing",
+      assignedManufacturerEmail: "haruki.sato@kuramoto.jp",
       submittedAt: "2026-06-18T12:00:00.000Z",
     };
 
@@ -30,6 +31,7 @@ describe("mapNewProductRequestCreateToApi", () => {
     expect(String(payload.request_id)).toMatch(/^NPR-\d{4}-\d{4}$/);
     expect(payload.specs).toEqual(npr.specs);
     expect(payload.assigned_manufacturer).toBe("Kuramoto Brewing");
+    expect(payload.assigned_manufacturer_email).toBe("haruki.sato@kuramoto.jp");
     expect(payload.status).toBe("submitted");
     expect(payload.submitted_at).toBe("2026-06-18T12:00:00.000Z");
   });

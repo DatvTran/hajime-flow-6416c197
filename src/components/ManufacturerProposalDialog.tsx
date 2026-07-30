@@ -15,6 +15,8 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { Separator } from "@/components/ui/separator";
+import { Bell } from "lucide-react";
+import { NprProductBriefPanel } from "@/components/npr/NprProductBriefPanel";
 
 function addDaysISO(days: number): string {
   const d = new Date();
@@ -26,7 +28,7 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   request: NewProductRequest | null;
-  onPatch: (id: string, patch: Partial<NewProductRequest>) => void;
+  onPatch: (id: string, patch: Partial<NewProductRequest>) => void | Promise<unknown>;
 };
 
 export function ManufacturerProposalDialog({ open, onOpenChange, request, onPatch }: Props) {
@@ -54,6 +56,12 @@ export function ManufacturerProposalDialog({ open, onOpenChange, request, onPatc
 
   useEffect(() => {
     if (!open || !request) return;
+    if (request.status === "submitted") {
+      void onPatch(request.id, {
+        status: "under_review",
+        reviewStartedAt: new Date().toISOString(),
+      });
+    }
     const p = request.manufacturerProposal;
     if (p) {
       setFeasible(p.feasible);
@@ -105,7 +113,7 @@ export function ManufacturerProposalDialog({ open, onOpenChange, request, onPatc
   const canRespond = request.status === "submitted" || request.status === "under_review";
   const isReadOnly = !canRespond;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const batch = Math.max(1, Math.round(Number(batchSize) || 0));
     const minBatch = Math.max(1, Math.round(Number(minimumBatchSize) || 0));
@@ -147,7 +155,7 @@ export function ManufacturerProposalDialog({ open, onOpenChange, request, onPatc
 
     setSubmitting(true);
     try {
-      onPatch(request.id, {
+      await onPatch(request.id, {
         manufacturerProposal: proposal,
         status: "proposed",
         reviewStartedAt: request.reviewStartedAt || new Date().toISOString(),
@@ -160,8 +168,10 @@ export function ManufacturerProposalDialog({ open, onOpenChange, request, onPatc
     }
   };
 
-  const handleDecline = () => {
-    onPatch(request.id, {
+  const handleDecline = async () => {
+    setSubmitting(true);
+    try {
+      await onPatch(request.id, {
       status: "declined",
       reviewStartedAt: request.reviewStartedAt || new Date().toISOString(),
       manufacturerProposal: {
@@ -193,6 +203,9 @@ export function ManufacturerProposalDialog({ open, onOpenChange, request, onPatc
     });
     toast.info("Request declined", { description: `${request.id} has been declined.` });
     onOpenChange(false);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -204,6 +217,28 @@ export function ManufacturerProposalDialog({ open, onOpenChange, request, onPatc
             {request.id} · Target ABV {request.specs.targetAbv}% · Launch {request.specs.targetLaunchDate}
           </DialogDescription>
         </DialogHeader>
+
+        {request.brandDecision?.hqNudgedAt ? (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+            <Bell className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              Hajime HQ sent a reminder to complete your feasibility review
+              {request.brandDecision.hqNudgeCount && request.brandDecision.hqNudgeCount > 1
+                ? ` (${request.brandDecision.hqNudgeCount} reminders)`
+                : ""}
+              .
+            </p>
+          </div>
+        ) : null}
+
+        {request.brandDecision?.requestedChanges?.trim() ? (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-100">
+            <p className="font-medium">HQ requested revision</p>
+            <p className="mt-1">{request.brandDecision.requestedChanges}</p>
+          </div>
+        ) : null}
+
+        <NprProductBriefPanel request={request} />
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-3">

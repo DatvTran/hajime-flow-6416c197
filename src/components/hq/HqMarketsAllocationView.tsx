@@ -55,7 +55,7 @@ export function HqMarketsAllocationView({
         title="Markets & allocation"
         description="Inventory cover and revenue by market · manage SKU allocation across distributors"
         actions={
-          <HqBtnLink to="/purchase-orders" variant="accent" size="sm">
+          <HqBtnLink to="/production-requests" variant="accent" size="sm">
             Rebalance allocation
           </HqBtnLink>
         }
@@ -65,7 +65,7 @@ export function HqMarketsAllocationView({
         <HqOperatorAlertBar
           variant="error"
           actions={
-            <HqBtnLink to="/purchase-orders" variant="accent" size="sm">
+            <HqBtnLink to="/production-requests" variant="accent" size="sm">
               Review
             </HqBtnLink>
           }

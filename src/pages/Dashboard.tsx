@@ -845,7 +845,7 @@ export default function Dashboard() {
                     {data.purchaseOrders.map((po) => (
                       <tr key={po.id} className="border-b border-border/40 last:border-0">
                         <td className="py-1.5 font-mono text-[10px] font-medium text-primary">
-                          <Link to="/purchase-orders" className="hover:underline">
+                          <Link to="/production-requests" className="hover:underline">
                             {po.id}
                           </Link>
                         </td>
@@ -862,7 +862,7 @@ export default function Dashboard() {
                 </table>
               </ScrollArea>
               <Button variant="link" className="mt-1 h-auto px-0 text-xs" asChild>
-                <Link to="/purchase-orders" className="inline-flex items-center gap-1">
+                <Link to="/production-requests" className="inline-flex items-center gap-1">
                   Open production requests <ExternalLink className="h-3 w-3" />
                 </Link>
               </Button>

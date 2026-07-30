@@ -1,12 +1,25 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useNewProductRequests } from "@/contexts/AppDataContext";
-import { Factory, FileText, ChevronRight, Plus, Calendar, Package, DollarSign } from "lucide-react";
+import { useAppData, useAccounts, useNewProductRequests } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { TEAM_ROSTER } from "@/data/team-roster";
+import {
+  filterNprsForManufacturerUser,
+  resolveManufacturerAssignmentIdentity,
+  resolveManufacturerAssignmentLabel,
+} from "@/lib/npr-manufacturer-scope";
+import {
+  manufacturerNprNeedsResponse,
+  manufacturerNprStageLabel,
+  nprConceptBrief,
+  nprConceptSummary,
+  nprUpdatedLabel,
+} from "@/lib/hq-product-development-display";
+import { Factory, FileText, ChevronRight, Plus, Calendar, Package, DollarSign, Bell } from "lucide-react";
 import { ManufacturerProposalDialog } from "@/components/ManufacturerProposalDialog";
 import { ManufacturerNewProductDialog } from "@/components/ManufacturerNewProductDialog";
-import { formatBaseSpiritLabel } from "@/lib/base-spirit-options";
 
 const STATUS_STYLES: Record<string, string> = {
   submitted: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
@@ -17,33 +30,57 @@ const STATUS_STYLES: Record<string, string> = {
   declined: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  submitted: "Submitted",
-  under_review: "Under Review",
-  proposed: "Proposal Sent",
-  approved: "Approved by Brand",
-  rejected: "Rejected by Brand",
-  declined: "Declined",
-};
+const ACTIVE_STATUSES = new Set(["submitted", "under_review", "proposed"]);
 
 export default function ManufacturerProductRequestsPage() {
-  const { newProductRequests, patchNewProductRequest, addNewProductRequest } = useNewProductRequests();
+  const { user } = useAuth();
+  const { data } = useAppData();
+  const { accounts } = useAccounts();
+  const { newProductRequests, patchNewProductRequest, addNewProductRequest, fetchRequests } =
+    useNewProductRequests();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
+  useEffect(() => {
+    void fetchRequests();
+  }, [fetchRequests]);
+
+  useEffect(() => {
+    const onFocus = () => void fetchRequests();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [fetchRequests]);
+
+  const teamMembers = data.teamMembers?.length ? data.teamMembers : TEAM_ROSTER;
+
+  const manufacturerIdentity = useMemo(
+    () => resolveManufacturerAssignmentIdentity(user?.email, teamMembers, accounts),
+    [user?.email, teamMembers, accounts],
+  );
+
   const assigned = useMemo(
-    () => newProductRequests.filter((n) => n.status !== "draft" && n.assignedManufacturer === "Kirin Brewery Co."),
-    [newProductRequests]
+    () => filterNprsForManufacturerUser(newProductRequests, manufacturerIdentity),
+    [newProductRequests, manufacturerIdentity],
   );
 
-  const pendingCount = useMemo(
-    () => assigned.filter((n) => n.status === "submitted").length,
-    [assigned]
+  const activeAssigned = useMemo(
+    () => assigned.filter((n) => ACTIVE_STATUSES.has(n.status)),
+    [assigned],
   );
 
-  const inReviewCount = useMemo(
-    () => assigned.filter((n) => n.status === "under_review").length,
-    [assigned]
+  const manufacturerLabel = useMemo(
+    () => resolveManufacturerAssignmentLabel(manufacturerIdentity, accounts),
+    [manufacturerIdentity, accounts],
+  );
+
+  const feasibilityCount = useMemo(
+    () => assigned.filter((n) => n.status === "submitted" || n.status === "under_review").length,
+    [assigned],
+  );
+
+  const nudgedCount = useMemo(
+    () => assigned.filter((n) => Boolean(n.brandDecision?.hqNudgedAt)).length,
+    [assigned],
   );
 
   const selected = useMemo(
@@ -64,22 +101,28 @@ export default function ManufacturerProductRequestsPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <div className="card-interactive p-4 space-y-1">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Pending Review</p>
-          <p className="font-display text-2xl font-semibold tabular-nums">{pendingCount}</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Feasibility review</p>
+          <p className="font-display text-2xl font-semibold tabular-nums">{feasibilityCount}</p>
         </div>
         <div className="card-interactive p-4 space-y-1">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">In Review</p>
-          <p className="font-display text-2xl font-semibold tabular-nums">{inReviewCount}</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Proposals sent</p>
+          <p className="font-display text-2xl font-semibold tabular-nums">
+            {assigned.filter((n) => n.status === "proposed").length}
+          </p>
         </div>
         <div className="card-interactive p-4 space-y-1">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Total Active</p>
-          <p className="font-display text-2xl font-semibold tabular-nums">{assigned.length}</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">HQ Reminders</p>
+          <p className="font-display text-2xl font-semibold tabular-nums">{nudgedCount}</p>
+        </div>
+        <div className="card-interactive p-4 space-y-1">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Active briefs</p>
+          <p className="font-display text-2xl font-semibold tabular-nums">{activeAssigned.length}</p>
         </div>
       </div>
 
-      {assigned.length === 0 ? (
+      {activeAssigned.length === 0 ? (
         <div className="card-elevated py-12">
           <div className="flex flex-col items-center gap-2 text-center">
             <Factory className="h-7 w-7 text-muted-foreground/20" strokeWidth={1} />
@@ -88,7 +131,10 @@ export default function ManufacturerProductRequestsPage() {
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {assigned.map((npr) => (
+          {activeAssigned.map((npr) => {
+            const hqNudged = Boolean(npr.brandDecision?.hqNudgedAt);
+            const conceptBrief = nprConceptBrief(npr);
+            return (
             <div
               key={npr.id}
               role="button"
@@ -100,32 +146,46 @@ export default function ManufacturerProductRequestsPage() {
                   setSelectedId(npr.id);
                 }
               }}
-              className="card-interactive group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className={`card-interactive group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2${
+                hqNudged ? " ring-2 ring-amber-400/60" : ""
+              }`}
             >
               <div className="p-5">
-                <div className="mb-3 flex items-start justify-between">
+                <div className="mb-3 flex items-start justify-between gap-2">
                   <div>
                     <h3 className="font-display font-semibold underline-offset-2 group-hover:underline">
                       {npr.title}
                     </h3>
-                    <p className="text-xs text-muted-foreground">{npr.id}</p>
+                    <p className="text-xs text-muted-foreground">{npr.id} · {nprConceptSummary(npr)}</p>
                   </div>
-                  <Badge className={`text-[10px] ${STATUS_STYLES[npr.status]}`}>
-                    {STATUS_LABELS[npr.status]}
-                  </Badge>
+                  <div className="flex flex-col items-end gap-1.5">
+                    {hqNudged ? (
+                      <Badge className="bg-amber-100 text-[10px] text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                        <Bell className="mr-1 h-3 w-3" />
+                        HQ reminder
+                      </Badge>
+                    ) : null}
+                    <Badge className={`text-[10px] ${STATUS_STYLES[npr.status] ?? ""}`}>
+                      {manufacturerNprStageLabel(npr.status)}
+                    </Badge>
+                  </div>
                 </div>
                 <div className="space-y-1.5 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
-                    {formatBaseSpiritLabel(npr.specs.baseSpirit)} · {npr.specs.targetAbv}% ABV
-                  </div>
+                  {conceptBrief !== "—" ? (
+                    <p className="line-clamp-2 text-[13px] leading-snug text-foreground/90">{conceptBrief}</p>
+                  ) : null}
                   <div className="flex items-center gap-2">
                     <Calendar className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
                     Target launch: {npr.specs.targetLaunchDate}
                   </div>
                   <div className="flex items-center gap-2">
                     <Package className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
-                    MOQ: {npr.specs.minimumOrderQuantity.toLocaleString()} bottles
+                    MOQ: {npr.specs.minimumOrderQuantity.toLocaleString()} bottles ·{" "}
+                    {npr.specs.packaging.bottleSize}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
+                    Price point: {npr.specs.targetPricePoint.replace(/_/g, " ")}
                   </div>
                   {npr.manufacturerProposal ? (
                     <div className="flex items-center gap-2 text-xs">
@@ -136,15 +196,17 @@ export default function ManufacturerProductRequestsPage() {
                     </div>
                   ) : null}
                 </div>
-                <div className="mt-4 flex items-center text-xs font-medium text-primary">
-                  {npr.status === "submitted" || npr.status === "under_review"
-                    ? "Review \u0026 respond"
-                    : "View details"}{" "}
-                  <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                <div className="mt-4 flex items-center justify-between text-xs font-medium text-primary">
+                  <span className="text-muted-foreground">Updated {nprUpdatedLabel(npr)}</span>
+                  <span className="flex items-center">
+                    {manufacturerNprNeedsResponse(npr.status) ? "Review & respond" : "View details"}
+                    <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                  </span>
                 </div>
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
       )}
 
@@ -160,6 +222,9 @@ export default function ManufacturerProductRequestsPage() {
         onOpenChange={setCreateOpen}
         existingRequests={newProductRequests}
         onCreate={addNewProductRequest}
+        assignedManufacturer={manufacturerLabel}
+        assignedManufacturerEmail={manufacturerIdentity.email}
+        assignedCrmMemberId={[...manufacturerIdentity.crmMemberIds][0]}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { AlertCircle, Award, Box, FlaskConical, Plus } from "lucide-react";
 import type { Account, PurchaseOrder } from "@/data/mockData";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -10,6 +10,14 @@ import {
   computeHqManufacturersKpi,
   manufacturerPartnerPath,
 } from "@/lib/hq-manufacturers-metrics";
+import {
+  manufacturerPartnerEditPath,
+  getHiddenManufacturersSnapshot,
+  getPartnerConfigsSnapshot,
+  hydratePartnerConfigsFromProfiles,
+  subscribeHiddenManufacturers,
+  subscribePartnerConfigs,
+} from "@/lib/hq-manufacturer-partners";
 import {
   HqBtn,
   HqBtnLink,
@@ -30,6 +38,16 @@ type Props = {
 
 export function HqManufacturersView({ accounts, purchaseOrders, onAddManufacturer }: Props) {
   const { t } = useLanguage();
+  const hiddenManufacturersKey = useSyncExternalStore(
+    subscribeHiddenManufacturers,
+    getHiddenManufacturersSnapshot,
+    getHiddenManufacturersSnapshot,
+  );
+  const partnerConfigsKey = useSyncExternalStore(
+    subscribePartnerConfigs,
+    getPartnerConfigsSnapshot,
+    getPartnerConfigsSnapshot,
+  );
   const [profiles, setProfiles] = useState<ManufacturerProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -38,7 +56,9 @@ export function HqManufacturersView({ accounts, purchaseOrders, onAddManufacture
     try {
       const res = (await getManufacturerProfiles()) as { data?: Record<string, unknown>[] };
       const rows = Array.isArray(res.data) ? res.data : [];
-      setProfiles(rows.map((r) => mapApiRowToProfile(r)));
+      const mapped = rows.map((r) => mapApiRowToProfile(r));
+      hydratePartnerConfigsFromProfiles(mapped);
+      setProfiles(mapped);
     } catch {
       setProfiles([]);
     } finally {
@@ -48,11 +68,11 @@ export function HqManufacturersView({ accounts, purchaseOrders, onAddManufacture
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, accounts, partnerConfigsKey]);
 
   const { rows, useDesignDemo } = useMemo(
     () => buildHqManufacturerListRows(accounts, purchaseOrders, profiles),
-    [accounts, purchaseOrders, profiles],
+    [accounts, purchaseOrders, profiles, hiddenManufacturersKey, partnerConfigsKey],
   );
 
   const kpi = useMemo(
@@ -64,10 +84,10 @@ export function HqManufacturersView({ accounts, purchaseOrders, onAddManufacture
     <HqOperatorPage className="space-y-6">
       <HqOperatorPageHeader
         title="Manufacturers"
-        description="Kura partners producing Hajime SKUs · send production requests and track batches"
+        description="Manufacturer partners brewing Hajime SKUs · reorder production (qty + destination) and track batches"
         actions={
-            <HqBtnLink to="/purchase-orders/new" variant="accent" size="sm">
-              <Plus className="size-3.5" strokeWidth={1.75} /> {t("New production request")}
+            <HqBtnLink to="/production-requests/new" variant="accent" size="sm">
+              <Plus className="size-3.5" strokeWidth={1.75} /> {t("Reorder production")}
             </HqBtnLink>
         }
       />
@@ -78,7 +98,7 @@ export function HqManufacturersView({ accounts, purchaseOrders, onAddManufacture
           tone="gold"
           label="Active batches"
           value={String(kpi.activeBatches)}
-          sub={`${t("across")} ${kpi.kuraCount} ${t("kura")}`}
+          sub={`${t("across")} ${kpi.kuraCount} ${t("manufacturer partners")}`}
         />
         <HqOperatorKpiCard
           icon={Box}
@@ -99,12 +119,19 @@ export function HqManufacturersView({ accounts, purchaseOrders, onAddManufacture
           tone="red"
           label="Open requests"
           value={String(kpi.openRequests)}
-          sub={t("awaiting kura scheduling")}
+          sub={t("awaiting manufacturer scheduling")}
         />
       </HqOperatorKpiGrid>
 
       {loading ? (
         <p className="text-sm text-muted-foreground">{t("Loading manufacturers…")}</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {t("No manufacturer partners yet.")}{" "}
+          <HqBtnLink to="/manufacturer/profiles/kosapan" variant="outline" size="sm" className="ml-1">
+            {t("Open Kosapan")}
+          </HqBtnLink>
+        </p>
       ) : (
         rows.map((row) => (
           <HqOperatorCard key={row.id} className="hq-mfr-card overflow-hidden">
@@ -122,6 +149,9 @@ export function HqManufacturersView({ accounts, purchaseOrders, onAddManufacture
                 <Stat label={t("On-time")} value={row.onTime} valueClass="font-mono" />
                 <Stat label={t("Capacity")} value={row.cap} valueClass="font-mono" />
                 <HqOperatorPill tone={row.statusTone}>{row.statusLabel}</HqOperatorPill>
+                <HqBtnLink to={manufacturerPartnerEditPath(row.id)} variant="outline" size="sm">
+                  {t("Edit")}
+                </HqBtnLink>
                 <HqBtnLink to={manufacturerPartnerPath(row.id)} variant="outline" size="sm">
                   {t("Manage")}
                 </HqBtnLink>
@@ -133,7 +163,7 @@ export function HqManufacturersView({ accounts, purchaseOrders, onAddManufacture
 
       <div className="rounded-[14px] border border-dashed border-border px-6 py-6 text-center text-muted-foreground">
         <FlaskConical className="mx-auto size-7" strokeWidth={1.5} />
-        <p className="mt-3 text-[13px]">{t("Onboard a new kura partner to expand production capacity")}</p>
+        <p className="mt-3 text-[13px]">{t("Onboard a new manufacturer partner to expand production capacity")}</p>
         <HqBtn variant="outline" className="mt-3" onClick={onAddManufacturer}>
           <Plus className="size-3.5" strokeWidth={1.75} /> {t("Add manufacturer")}
         </HqBtn>

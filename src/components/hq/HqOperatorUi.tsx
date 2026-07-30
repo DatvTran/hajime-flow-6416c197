@@ -233,7 +233,7 @@ export function HqOperatorSearchWrap({
 }) {
   const { t } = useLanguage();
   return (
-    <div className="hq-search-wrap relative ml-auto max-w-[320px] flex-1">
+    <div className="hq-search-wrap relative ml-0 w-full max-w-none flex-1 sm:ml-auto sm:max-w-[320px]">
       <Search className="pointer-events-none absolute left-2.5 top-1/2 size-[15px] -translate-y-1/2 text-muted-foreground" strokeWidth={1.75} />
       <input
         type="search"

@@ -6,11 +6,20 @@ export function hqRouteChrome(pathname: string, search = ""): { section: string;
   if (path === "/" || path === "") {
     return { section: "HQ", page: "Dashboard" };
   }
-  if (path.startsWith("/purchase-orders/new")) {
-    return { section: "Command", page: "New production request" };
+  if (path.startsWith("/production-requests/new") || path.startsWith("/purchase-orders/new")) {
+    return { section: "Command", page: "Reorder production" };
   }
-  if (path.startsWith("/purchase-orders")) {
+  if (path.startsWith("/production-requests") || path.startsWith("/purchase-orders")) {
     return { section: "Command", page: "Production requests" };
+  }
+  if (path.startsWith("/product-development/new")) {
+    return { section: "Command", page: "New alcohol concept" };
+  }
+  if (/^\/product-development\/[^/]+$/.test(path) && path !== "/product-development/new") {
+    return { section: "Command", page: "Concept brief" };
+  }
+  if (path.startsWith("/product-development")) {
+    return { section: "Command", page: "Product Development" };
   }
   if (path.startsWith("/orders")) {
     if (params.get("view") === "replenishment") {
@@ -41,12 +50,6 @@ export function hqRouteChrome(pathname: string, search = ""): { section: string;
   }
   if (path.startsWith("/incentives")) {
     return { section: "Brand", page: "Incentive programs" };
-  }
-  if (path.startsWith("/product-development/new")) {
-    return { section: "Brand", page: "New product request" };
-  }
-  if (path.startsWith("/product-development")) {
-    return { section: "Brand", page: "Product development" };
   }
   if (path.startsWith("/inventory/add")) {
     return { section: "Brand", page: "Add SKU" };

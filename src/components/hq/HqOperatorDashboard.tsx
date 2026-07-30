@@ -156,7 +156,7 @@ export default function HqOperatorDashboard() {
             <HqBtnLink to="/reports" variant="outline">
               {t("Full analytics")}
             </HqBtnLink>
-            <HqBtnLink to="/purchase-orders" variant="ink">
+            <HqBtnLink to="/production-requests" variant="ink">
               {t("Review production")}
             </HqBtnLink>
           </>
@@ -171,7 +171,7 @@ export default function HqOperatorDashboard() {
               <HqBtnLink to="/markets" variant="outline" size="sm">
                 {t("View market")}
               </HqBtnLink>
-              <HqBtnLink to="/purchase-orders" variant="accent" size="sm">
+              <HqBtnLink to="/production-requests" variant="accent" size="sm">
                 {t("Approve production")}
               </HqBtnLink>
             </>
@@ -208,7 +208,7 @@ export default function HqOperatorDashboard() {
           label="Production requests"
           value={String(openProduction.length)}
           sub={`${openProduction.filter((p) => p.status === "delayed").length} urgent · rebuilds allocation`}
-          to="/purchase-orders"
+          to="/production-requests"
         />
         <HqOperatorKpiCard
           icon={Box}
@@ -244,7 +244,7 @@ export default function HqOperatorDashboard() {
               icon: Factory,
               color: "text-[hsl(280_40%_48%)]",
               name: "Manufacturers",
-              meta: `${commandData.accounts.filter((a) => a.type === "manufacturer").length} kura · batches brewing`,
+              meta: `${commandData.accounts.filter((a) => a.type === "manufacturer").length} manufacturer partners · batches brewing`,
               count: `${openProduction.length} requests open`,
               countStyle: "bg-[hsl(280_40%_50%/0.1)] text-[hsl(280_40%_48%)]",
             },
@@ -315,9 +315,9 @@ export default function HqOperatorDashboard() {
         <HqOperatorCard>
           <HqOperatorCardHead
             title="Production requests"
-            subtitle="From kura partners — your sign-off"
+            subtitle="From manufacturer partners — your sign-off"
             actions={
-              <HqBtnLink to="/purchase-orders" variant="outline" size="sm">
+              <HqBtnLink to="/production-requests" variant="outline" size="sm">
                 {t("View all")} ({openProduction.length})
               </HqBtnLink>
             }
@@ -328,12 +328,12 @@ export default function HqOperatorDashboard() {
             openProduction.slice(0, 4).map((po) => (
               <Link
                 key={po.id}
-                to={`/purchase-orders?po=${po.id}`}
+                to={`/production-requests?po=${po.id}`}
                 className="flex items-center gap-3 border-b border-border/40 px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40 no-underline"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <HqOperatorSrcChip variant="kura">{t("Kura")}</HqOperatorSrcChip>
+                    <HqOperatorSrcChip variant="kura">{t("Manufacturer")}</HqOperatorSrcChip>
                     {po.status === "delayed" ? <HqOperatorPill tone="red">{t("urgent")}</HqOperatorPill> : null}
                   </div>
                   <div className="mt-1 text-[13px] font-medium text-foreground">

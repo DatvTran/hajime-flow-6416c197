@@ -3,10 +3,12 @@ import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
 import { StatusBadge } from "@/components/StatusBadge";
 import { NewSalesOrderDialog } from "@/components/NewSalesOrderDialog";
 import { SalesOrderDetailDialog } from "@/components/SalesOrderDetailDialog";
-import type { SalesOrder } from "@/data/mockData";
+import type { PurchaseOrder, SalesOrder } from "@/data/mockData";
 import { isRetailChannelOrder } from "@/lib/hajime-metrics";
 import { effectiveRepApprovalStatus, routingTargetLabel } from "@/lib/order-routing";
-import { useAccounts, useAppData, useFinancingLedger, useSalesOrders } from "@/contexts/AppDataContext";
+import { useAccounts, useAppData, useFinancingLedger, useInventory, usePurchaseOrders, useSalesOrders } from "@/contexts/AppDataContext";
+import { nextPoId } from "@/lib/po-ids";
+import { buildReplenishmentStock, REPLENISHMENT_CASE_SIZE } from "@/lib/hq-replenishment-stock";
 import { OrdersSkeleton } from "@/components/skeletons";
 import {
   computeOrderTabCounts,
@@ -57,7 +59,9 @@ export default function Orders() {
   const orders = hqOrderContext.orders;
   const hqDisplayAccounts = hqOrderContext.accounts;
   const { appendEntry } = useFinancingLedger();
-  const { updateData, loading } = useAppData();
+  const { updateData, loading, data } = useAppData();
+  const { availableBottlesForSku } = useInventory();
+  const { purchaseOrders, addPurchaseOrder } = usePurchaseOrders();
   
   // Only brand_operator can approve/reject draft orders (HQ allocation authority)
   const canApproveDraftQueue = user?.role === "brand_operator";
@@ -101,6 +105,11 @@ export default function Orders() {
   const detailOrder = useMemo(
     () => (selectedOrderId ? orders.find((o) => o.id === selectedOrderId) ?? null : null),
     [orders, selectedOrderId],
+  );
+
+  const replenishmentStock = useMemo(
+    () => buildReplenishmentStock(orders, availableBottlesForSku),
+    [orders, availableBottlesForSku],
   );
 
   useEffect(() => {
@@ -314,6 +323,47 @@ export default function Orders() {
     return result;
   };
 
+  /** Step 5 loop-closer: a short replenishment order drafts a production request back to the kura. */
+  const handleTriggerProduction = async (order: SalesOrder) => {
+    const stock = replenishmentStock.get(order.id);
+    const shortfallCases = stock?.shortfallCases ?? 0;
+    const sku = stock?.sku ?? order.sku;
+    if (shortfallCases <= 0) {
+      toast.info(t("In stock — no production needed"), { description: order.id });
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const leadDays = data.operationalSettings?.manufacturerLeadTimeDays ?? 45;
+    const required = new Date(Date.now() + leadDays * 86_400_000).toISOString().slice(0, 10);
+    const manufacturer = data.operationalSettings?.manufacturerName || "Kirin Brewery Co.";
+    const po: PurchaseOrder = {
+      id: nextPoId(purchaseOrders),
+      manufacturer,
+      issueDate: today,
+      requiredDate: required,
+      requestedShipDate: required,
+      sku,
+      quantity: shortfallCases * REPLENISHMENT_CASE_SIZE,
+      packagingInstructions: "Standard 12-bottle case",
+      labelVersion: "v3.1",
+      marketDestination: order.market || "—",
+      status: "draft",
+      notes: `Replenishment ${order.id} (${order.account}) short ${shortfallCases} cs — issue to manufacturer partner to cover`,
+      poType: "production",
+    };
+    const res = await addPurchaseOrder(po);
+    if (res?.success) {
+      toast.success(t("Production request drafted"), {
+        description: t("{{po}} · {{cases}} cs {{sku}} — issue it in Production requests", {
+          po: po.id,
+          cases: shortfallCases,
+          sku,
+        }),
+      });
+      navigate("/production-requests");
+    }
+  };
+
   if (loading) {
     return <OrdersSkeleton />;
   }
@@ -363,9 +413,11 @@ export default function Orders() {
           <HqReplenishmentOrdersView
             orders={orders}
             accounts={hqDisplayAccounts}
+            stockByOrder={replenishmentStock}
             onApprove={(o) => void patchOrder(o.id, { status: "confirmed" })}
             onDecline={(o) => void patchOrder(o.id, { status: "cancelled" })}
             onSelect={setSelectedOrderId}
+            onTriggerProduction={handleTriggerProduction}
           />
           {orderDialogs}
         </>
