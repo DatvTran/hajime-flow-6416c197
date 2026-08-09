@@ -306,8 +306,11 @@ fi
 
 # ── 3e. Registration role guard ───────────────────────────────────────────────
 step "3e. Self-registration role guard"
-# SELF_REGISTERABLE_ROLES must not contain founder_admin or brand_operator
-PRIV_IN_SELF_REG=$(grep -A 20 "SELF_REGISTERABLE_ROLES" \
+# SELF_REGISTERABLE_ROLES must not contain founder_admin or brand_operator.
+# Bound the scan to the array's own declaration (open bracket to its closing
+# "];") — a fixed -A N line count bleeds into the next array
+# (ADMIN_ASSIGNABLE_ROLES), which legitimately contains those roles.
+PRIV_IN_SELF_REG=$(sed -n '/SELF_REGISTERABLE_ROLES = \[/,/\];/p' \
   server/routes/auth.schemas.mjs 2>/dev/null \
   | grep -iE "founder_admin|brand_operator" || true)
 if [[ -z "$PRIV_IN_SELF_REG" ]]; then
