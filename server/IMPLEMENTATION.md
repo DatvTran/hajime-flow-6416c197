@@ -316,13 +316,8 @@ Response:
 ```json
 {
   "ok": true,
-  "stripe": true,
-  "database": "connected",
-  "features": {
-    "auth": true,
-    "csv": true
-  },
-  "migrationStage": 3
+  "database": "up",
+  "dbNow": "2026-08-17T13:18:06.000Z"
 }
 ```
 

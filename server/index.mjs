@@ -270,31 +270,12 @@ app.put('/api/app', authenticateToken, async (req, res) => {
   }
 });
 
-// ===== HEALTH CHECK =====
-app.get('/api/health', async (_req, res) => {
-  let dbStatus = 'unknown';
-  try {
-    await db.raw('SELECT 1');
-    dbStatus = 'connected';
-  } catch (err) {
-    dbStatus = 'disconnected';
-  }
-
-  res.json({
-    ok: true,
-    stripe: Boolean(stripe),
-    database: dbStatus,
-    features: {
-      auth: FEATURE_FLAG_AUTH_ENABLED,
-      csv: FEATURE_FLAG_CSV_ENABLED,
-    },
-    migration: {
-      activeStage: dataMigrationService.stage,
-      dbPrimaryModeEnabled: dataMigrationService.stage >= 3,
-    },
-    migrationStage: dataMigrationService.stage,
-  });
-});
+// NOTE: a second `/api/health` handler used to live here. Express only ever
+// dispatches to the first route registered for a given path (see the public
+// readiness check above), so this one was permanently unreachable dead code —
+// it never actually returned `stripe`/`features`/`migration` to any caller.
+// Removed rather than merged: nothing in the frontend consumed those fields
+// (src/lib/api-health.ts only reads `ok`/`database`/`dbNow`/`error`).
 
 // ===== STRIPE ROUTES (existing) =====
 app.post('/api/stripe/customer', requireStripe, async (req, res) => {

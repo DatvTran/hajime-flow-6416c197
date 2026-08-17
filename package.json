@@ -24,8 +24,6 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "check:legacy-startup": "node scripts/validate-legacy-startup.mjs",
-    "audit:sidebar": "node scripts/audit-sidebar-links.mjs",
-    "audit:imports": "node scripts/audit-imports.mjs",
     "check:daily": "bash scripts/daily-check.sh"
   },
   "dependencies": {
@@ -74,7 +72,7 @@
     "react-hook-form": "^7.61.1",
     "react-qr-code": "^2.0.18",
     "react-resizable-panels": "^2.1.9",
-    "react-router-dom": "^6.30.1",
+    "react-router-dom": "^6.30.4",
     "recharts": "^2.15.4",
     "sonner": "^1.7.4",
     "tailwind-merge": "^2.6.0",
