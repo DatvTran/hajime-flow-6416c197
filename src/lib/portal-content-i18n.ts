@@ -73,7 +73,6 @@ const fr: Dict = {
   "Delivery details": "Détails de livraison",
   "Pick queue": "File de prélèvement",
   "Click an order to load it for picking": "Cliquez sur une commande pour la charger",
-  "In transit": "En transit",
   "Shipped — tap to update tracking or delivery":
     "Expédié — appuyez pour mettre à jour le suivi ou la livraison",
   "Pick queue is clear": "File de prélèvement vide",
@@ -163,7 +162,6 @@ const fr: Dict = {
   "All deliveries →": "Toutes les livraisons →",
   Placed: "Passée",
   Approved: "Approuvée",
-  Packed: "Emballée",
   "In transit": "En transit",
   Delivered: "Livrée",
   "Reorder now": "Commander maintenant",
@@ -244,7 +242,6 @@ const fr: Dict = {
   Completed: "Terminé",
   "needs follow-up": "nécessite suivi",
   "in transit": "en transit",
-  "total {{count}} shipments": "{{count}} expéditions au total",
   "Filter shipments by ID, origin, destination, carrier…":
     "Filtrer par ID, origine, destination, transporteur…",
   "In transit & pending": "En transit et en attente",

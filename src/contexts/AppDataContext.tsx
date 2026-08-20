@@ -475,7 +475,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     const hadLocalOnStart = Boolean(loadLocalAppData());
 
     const applyServer = (serverData: AppData) => {
-      let merged = mergeServerWithLocal(serverData, loadLocalAppData());
+      const merged = mergeServerWithLocal(serverData, loadLocalAppData());
       syncHiddenManufacturerIdsFromSettings(merged.operationalSettings?.hqHiddenManufacturerIds);
       syncPartnerConfigsFromSettings(merged.operationalSettings?.hqManufacturerPartnerConfigs);
       let normalized = normalizeAppData(applyCatalogToAppData(merged));
