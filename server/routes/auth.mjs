@@ -11,6 +11,14 @@ import {
   passwordResetRequestSchema,
   passwordResetSchema,
 } from './auth.schemas.mjs';
+import {
+  ensureSupabaseAuthUser,
+  isSupabaseAuthEnabled,
+  refreshSupabaseSession,
+  requestPasswordReset,
+  signInWithPassword,
+  updatePasswordWithAccessToken,
+} from '../services/supabase-auth.mjs';
 
 const router = express.Router();
 
@@ -137,13 +145,28 @@ router.post('/register', async (req, res) => {
           throw err;
         }
 
-        const passwordHash = await authService.hashPassword(password);
+        const passwordHash = isSupabaseAuthEnabled()
+          ? null
+          : await authService.hashPassword(password);
+
+        let externalId = null;
+        if (isSupabaseAuthEnabled()) {
+          const sbUser = await ensureSupabaseAuthUser({
+            email: normalizedEmail,
+            password,
+            displayName,
+            emailConfirm: Boolean(inviteToken),
+          });
+          externalId = sbUser?.id || null;
+        }
 
         const [created] = await trx('users')
           .insert({
             tenant_id: userTenantId,
             email: normalizedEmail,
             password_hash: passwordHash,
+            auth_provider: isSupabaseAuthEnabled() ? 'supabase' : 'local',
+            external_id: externalId,
             role: normalizeRole(role),
             display_name: displayName,
             email_verified: Boolean(inviteToken),
@@ -172,11 +195,19 @@ router.post('/register', async (req, res) => {
       throw err;
     }
 
-    const accessToken = authService.generateAccessToken(user);
-    const refreshToken = await authService.generateRefreshToken(user.id, {
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
+    let accessToken;
+    let refreshToken;
+    if (isSupabaseAuthEnabled()) {
+      const session = await signInWithPassword(normalizedEmail, password);
+      accessToken = session.accessToken;
+      refreshToken = session.refreshToken;
+    } else {
+      accessToken = authService.generateAccessToken(user);
+      refreshToken = await authService.generateRefreshToken(user.id, {
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
 
     await authService.logAuthEvent({
       userId: user.id,
@@ -240,13 +271,28 @@ router.post(
         return res.status(409).json({ error: 'Email already registered' });
       }
 
-      const passwordHash = await authService.hashPassword(password);
+      const passwordHash = isSupabaseAuthEnabled()
+        ? null
+        : await authService.hashPassword(password);
+
+      let externalId = null;
+      if (isSupabaseAuthEnabled()) {
+        const sbUser = await ensureSupabaseAuthUser({
+          email: email.toLowerCase(),
+          password,
+          displayName,
+          emailConfirm: true,
+        });
+        externalId = sbUser?.id || null;
+      }
 
       const [user] = await db('users')
         .insert({
           tenant_id: userTenantId,
           email: email.toLowerCase(),
           password_hash: passwordHash,
+          auth_provider: isSupabaseAuthEnabled() ? 'supabase' : 'local',
+          external_id: externalId,
           role: normalizeRole(role),
           display_name: displayName,
           email_verified: true, // Admin-created users are pre-verified
@@ -319,11 +365,24 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Verify password
-    const validPassword = await authService.verifyPassword(
-      user.password_hash,
-      password
-    );
+    let validPassword = false;
+    let supabaseSession = null;
+    if (isSupabaseAuthEnabled()) {
+      try {
+        supabaseSession = await signInWithPassword(email, password);
+        validPassword = Boolean(supabaseSession?.accessToken);
+        if (supabaseSession?.supabaseUser?.id && user.external_id !== supabaseSession.supabaseUser.id) {
+          await db('users').where({ id: user.id }).update({
+            external_id: supabaseSession.supabaseUser.id,
+            auth_provider: 'supabase',
+          });
+        }
+      } catch {
+        validPassword = false;
+      }
+    } else {
+      validPassword = await authService.verifyPassword(user.password_hash, password);
+    }
 
     if (!validPassword) {
       await authService.recordFailedLogin(user.id);
@@ -345,12 +404,18 @@ router.post('/login', async (req, res) => {
     // Clear failed logins and update last login
     await authService.clearFailedLogins(user.id);
 
-    // Generate tokens
-    const accessToken = authService.generateAccessToken(user);
-    const refreshToken = await authService.generateRefreshToken(user.id, {
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
+    let accessToken;
+    let refreshToken;
+    if (isSupabaseAuthEnabled() && supabaseSession) {
+      accessToken = supabaseSession.accessToken;
+      refreshToken = supabaseSession.refreshToken;
+    } else {
+      accessToken = authService.generateAccessToken(user);
+      refreshToken = await authService.generateRefreshToken(user.id, {
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
 
     // Log successful login
     await authService.logAuthEvent({
@@ -412,6 +477,20 @@ router.post('/refresh', async (req, res) => {
     }
 
     const { refreshToken } = result.data;
+
+    if (isSupabaseAuthEnabled()) {
+      const session = await refreshSupabaseSession(refreshToken);
+      if (!session) {
+        return res.status(401).json({
+          error: 'Invalid or expired refresh token',
+          code: 'REFRESH_INVALID',
+        });
+      }
+      return res.json({
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+      });
+    }
 
     // Verify refresh token
     const user = await authService.verifyRefreshToken(refreshToken);
@@ -487,6 +566,18 @@ router.post('/password-reset-request', async (req, res) => {
     }
 
     const { email } = result.data;
+
+    if (isSupabaseAuthEnabled()) {
+      try {
+        await requestPasswordReset(email);
+      } catch (e) {
+        console.error('[auth] Supabase password reset request failed:', e);
+      }
+      return res.json({
+        message: 'If an account exists with this email, a password reset link has been sent',
+        delivery: 'email',
+      });
+    }
 
     // Always return success to prevent email enumeration
     let resetToken;
@@ -593,7 +684,11 @@ router.post('/password-reset', async (req, res) => {
 
     const { token, newPassword } = result.data;
 
-    await authService.resetPassword(token, newPassword);
+    if (isSupabaseAuthEnabled()) {
+      await updatePasswordWithAccessToken(token, newPassword);
+    } else {
+      await authService.resetPassword(token, newPassword);
+    }
 
     res.json({
       message: 'Password has been reset successfully',

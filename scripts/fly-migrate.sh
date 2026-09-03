@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Run Knex migrations against Fly.io Postgres (hajime-db) via fly proxy.
-# Use this when you do not run a local Postgres container.
+# Run Knex migrations against the DATABASE_URL on the Fly app.
+# If that URL is still Fly Postgres, proxy hajime-db. If it is Supabase, migrate directly.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,8 +22,18 @@ RAW_URL="$(
 )"
 if [[ -z "$RAW_URL" ]]; then
   echo "ERROR: DATABASE_URL not found on ${APP}."
-  echo "Attach Postgres: fly postgres attach ${DB_APP} --app ${APP}"
+  echo "Set the Supabase URI: fly secrets set DATABASE_URL=postgresql://... --app ${APP}"
   exit 1
+fi
+
+if [[ "$RAW_URL" == *supabase* ]]; then
+  echo "==> DATABASE_URL is Supabase — running migrations without Fly Postgres proxy"
+  export DATABASE_URL="$RAW_URL"
+  cd "$ROOT/server"
+  export NODE_ENV=production
+  npx knex migrate:latest --knexfile knexfile.mjs
+  echo "==> Done."
+  exit 0
 fi
 
 export DATABASE_URL="$(

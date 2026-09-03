@@ -32,11 +32,11 @@ async function main() {
   console.error(`
 Cannot reach PostgreSQL at ${host}:${port}.
 
-This project uses Fly.io Postgres by default — run migrations against Fly:
+This project uses PostgreSQL. For local Docker:
 
-  npm run db:migrate:fly
+  npm run db:up && npm run db:migrate
 
-Migrations also run automatically on every \`fly deploy\` (release_command).
+Production Postgres is on Supabase (see DEPLOY_SUPABASE.md). Migrations also run on \`fly deploy\` (release_command).
 
 Optional local Postgres (Docker):
 

@@ -27,26 +27,10 @@ fi
 echo -e "${GREEN}✓ Authenticated with Fly.io${NC}"
 echo ""
 
-# Step 1: Create PostgreSQL database if not exists
-echo "📦 Step 1: PostgreSQL Database"
-if ! flyctl status --app hajime-db > /dev/null 2>&1; then
-    echo "Creating PostgreSQL database..."
-    flyctl postgres create \
-        --name hajime-db \
-        --region nrt \
-        --initial-cluster-size 1 \
-        --vm-size shared-cpu-1x \
-        --vm-memory 1024 \
-        --volume-size 1
-    echo -e "${GREEN}✓ Database created${NC}"
-else
-    echo -e "${GREEN}✓ Database already exists${NC}"
-fi
-
-# Attach database to app
-echo "Attaching database to app..."
-flyctl postgres attach hajime-db --app hajime-app || true
-echo -e "${GREEN}✓ Database attached${NC}"
+# Step 1: Postgres is on Supabase (see DEPLOY_SUPABASE.md)
+echo "📦 Step 1: PostgreSQL (Supabase)"
+echo "Set DATABASE_URL to the Supabase direct URI before deploy."
+echo "Do not create a new Fly Postgres cluster."
 echo ""
 
 # Step 2: Set secrets
@@ -99,22 +83,9 @@ flyctl deploy --app hajime-app --build-arg VITE_STRIPE_PUBLISHABLE_KEY=pk_test_p
 echo -e "${GREEN}✓ Deployment complete${NC}"
 echo ""
 
-# Step 4: Run migrations
-echo "🗄️  Step 4: Running Database Migrations"
-echo "Connecting to database..."
-
-# Get database connection string
-DB_URL=$(flyctl postgres connect --app hajime-db --command "echo done" 2>&1 | grep -o 'postgres://[^ ]*' || echo "")
-
-if [ -n "$DB_URL" ]; then
-    echo "Running migrations..."
-    flyctl ssh console --app hajime-app --command "cd /app/server && npx knex migrate:latest"
-    echo -e "${GREEN}✓ Migrations complete${NC}"
-else
-    echo -e "${YELLOW}⚠ Could not auto-detect database URL${NC}"
-    echo "Please run migrations manually:"
-    echo "  flyctl ssh console --app hajime-app"
-    echo "  cd /app/server && npx knex migrate:latest"
+# Step 4: Migrations run via fly.toml release_command against DATABASE_URL
+echo "🗄️  Step 4: Migrations run automatically on deploy (release_command)."
+echo "If needed: fly ssh console --app hajime-app -C 'cd /app/server && npx knex migrate:status'"
 fi
 
 echo ""

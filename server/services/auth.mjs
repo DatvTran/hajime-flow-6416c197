@@ -3,7 +3,8 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { db } from '../config/database.mjs';
 
-const ACCESS_TOKEN_EXPIRY = '15m';
+/** Long-lived enough for a workday; refresh token still rotates sessions. */
+const ACCESS_TOKEN_EXPIRY = process.env.ACCESS_TOKEN_EXPIRY || '12h';
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 const PASSWORD_RESET_EXPIRY_HOURS = 1;
 
@@ -24,6 +25,7 @@ export class AuthService {
    * Verify password against hash
    */
   async verifyPassword(hash, password) {
+    if (!hash || !password) return false;
     return argon2.verify(hash, password);
   }
 

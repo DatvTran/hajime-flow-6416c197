@@ -13,7 +13,18 @@ export default function ResetPassword() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const token = useMemo(() => searchParams.get("token")?.trim() || "", [searchParams]);
+  const token = useMemo(() => {
+    const fromQuery = searchParams.get("token")?.trim() || "";
+    if (fromQuery) return fromQuery;
+    if (typeof window === "undefined") return "";
+    const hash = window.location.hash.replace(/^#/, "");
+    const params = new URLSearchParams(hash);
+    return (
+      params.get("access_token")?.trim() ||
+      params.get("token")?.trim() ||
+      ""
+    );
+  }, [searchParams]);
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -71,7 +82,7 @@ export default function ResetPassword() {
       <div className="relative z-10 w-full max-w-md rounded-2xl border border-border/60 bg-card/40 p-6 backdrop-blur-sm sm:p-8">
         <h1 className="font-display text-lg font-semibold">Set a new password</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Choose a strong password you haven&apos;t used elsewhere.
+          Choose a strong password you haven&apos;t used elsewhere. If you opened a recovery link from email, this page reads the session from the URL automatically.
         </p>
 
         {!token ? (

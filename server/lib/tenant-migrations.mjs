@@ -37,7 +37,7 @@ export function createTenantMigrationSource() {
 }
 
 /**
- * Apply tenant/business migrations (001–027) to an isolated distributor database.
+ * Apply tenant/business migrations (001–027) to an isolated distributor schema/database.
  * @param {import('knex').Knex} knex
  */
 export async function runTenantMigrations(knex) {

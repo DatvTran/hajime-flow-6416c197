@@ -32,13 +32,14 @@ Stripe billing still uses the same server; configure `STRIPE_SECRET_KEY` in `ser
 
 If you use Bun, run `bun install` to generate a fresh `bun.lock` from the public npm registry.
 
-### Deploy on [Fly.io](https://fly.io/)
+### Production: [Railway](https://railway.app) + [Supabase](https://supabase.com/)
 
-1. Install the [Fly CLI](https://fly.io/docs/hands-on/install-flyctl/) and run `fly auth login`.
-2. From the repo root: `fly launch` (set app name and region, or edit `fly.toml` first). Use the included `Dockerfile`.
-3. Set runtime secrets: `fly secrets set STRIPE_SECRET_KEY=sk_live_...` and optionally `ALLOWED_ORIGINS=https://your-domain.jp` if the browser origin differs from the API host.
-4. Deploy with a **build arg** for the Stripe publishable key (baked into the Vite bundle):  
-   `fly deploy --build-arg VITE_STRIPE_PUBLISHABLE_KEY=pk_live_...`
-5. **Persistent disk** (so `server/data` survives restarts): create a [volume](https://fly.io/docs/reference/configuration/#the-mounts-section) in the same region as the app, then add a `[mounts]` block in `fly.toml` with `destination = "/app/server/data"` (see comments in `fly.toml`).
+The Node API and UI run on Railway. Postgres is Supabase. See [`DEPLOY_SUPABASE.md`](DEPLOY_SUPABASE.md).
 
-Production serves the Vite `dist/` folder from the same Express process as `/api` when `dist/index.html` exists (see `server/index.mjs`). The container listens on `PORT` (8080 in `Dockerfile` / Fly `internal_port`).
+```bash
+railway login
+railway up --service hajime-app --yes
+```
+
+Production URL: https://hajime-app-production.up.railway.app  
+Custom domain: `supply.drinkhajime.jp` (CNAME in that doc).

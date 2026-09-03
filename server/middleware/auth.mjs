@@ -1,6 +1,11 @@
 import { authService } from '../services/auth.mjs';
 import { hasPermission, normalizeRole } from '../rbac/permissions.mjs';
 import { platformDb } from '../config/database.mjs';
+import {
+  findAppUserFromSupabasePayload,
+  isSupabaseAuthEnabled,
+  verifySupabaseAccessToken,
+} from '../services/supabase-auth.mjs';
 
 /**
  * Extract token from Authorization header
@@ -29,6 +34,36 @@ export async function authenticateToken(req, res, next) {
       error: 'Access token required',
       code: 'TOKEN_MISSING',
     });
+  }
+
+  if (isSupabaseAuthEnabled()) {
+    const sb = verifySupabaseAccessToken(token);
+    if (sb) {
+      const user = await findAppUserFromSupabasePayload(sb);
+      if (!user) {
+        return res.status(403).json({
+          error: 'User inactive or not found',
+          code: 'USER_INACTIVE',
+        });
+      }
+      const isLocked = await authService.isAccountLocked(user.id);
+      if (isLocked) {
+        return res.status(403).json({
+          error: 'Account temporarily locked due to failed login attempts',
+          code: 'ACCOUNT_LOCKED',
+        });
+      }
+      req.user = {
+        userId: user.id,
+        email: user.email,
+        role: normalizeRole(user.role),
+        tenantId: user.tenant_id,
+        displayName: user.display_name,
+        distributorOrgId: user.distributor_org_id ?? null,
+        managedByDistributorUserId: user.managed_by_distributor_user_id ?? null,
+      };
+      return next();
+    }
   }
 
   const decoded = authService.verifyAccessToken(token);
@@ -87,26 +122,34 @@ export async function optionalAuth(req, res, next) {
   const token = extractToken(req);
 
   if (token) {
-    const decoded = authService.verifyAccessToken(token);
-
-    if (decoded) {
-      const user = await platformDb('users')
-        .where({
-          id: decoded.userId,
-          is_active: true,
-        })
-        .whereNull('deleted_at')
-        .first();
-
-      if (user) {
-        req.user = {
-          userId: user.id,
-          email: user.email,
-          role: normalizeRole(user.role),
-          tenantId: user.tenant_id,
-          displayName: user.display_name,
-        };
+    let user = null;
+    if (isSupabaseAuthEnabled()) {
+      const sb = verifySupabaseAccessToken(token);
+      if (sb) {
+        user = await findAppUserFromSupabasePayload(sb);
       }
+    }
+    if (!user) {
+      const decoded = authService.verifyAccessToken(token);
+      if (decoded) {
+        user = await platformDb('users')
+          .where({
+            id: decoded.userId,
+            is_active: true,
+          })
+          .whereNull('deleted_at')
+          .first();
+      }
+    }
+
+    if (user) {
+      req.user = {
+        userId: user.id,
+        email: user.email,
+        role: normalizeRole(user.role),
+        tenantId: user.tenant_id,
+        displayName: user.display_name,
+      };
     }
   }
 
