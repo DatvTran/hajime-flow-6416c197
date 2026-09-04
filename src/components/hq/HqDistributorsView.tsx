@@ -17,12 +17,15 @@ import {
   HqOperatorPageHeader,
   HqOperatorPill,
 } from "@/components/hq/HqOperatorUi";
+import { Button } from "@/components/ui/button";
+import { SendTradePackDialog } from "@/components/SendTradePackDialog";
 import { cn } from "@/lib/utils";
 
 export function HqDistributorsView() {
   const { t } = useLanguage();
   const { data, loading } = useAppData();
   const [distributorOrgs, setDistributorOrgs] = useState<DistributorOrganizationRow[]>([]);
+  const [packOpen, setPackOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,10 +83,15 @@ export function HqDistributorsView() {
         title="Distributors"
         description="Distribution partners by market · monitor fill rate, on-time delivery, and partner tier"
         actions={
-          <HqBtnLink to="/accounts/add" variant="accent" size="sm">
-            <Plus className="size-3.5" strokeWidth={1.75} />
-            {t("Add distributor")}
-          </HqBtnLink>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={() => setPackOpen(true)}>
+              Send trade pack
+            </Button>
+            <HqBtnLink to="/accounts/add" variant="accent" size="sm">
+              <Plus className="size-3.5" strokeWidth={1.75} />
+              {t("Add distributor")}
+            </HqBtnLink>
+          </div>
         }
       />
 
@@ -153,6 +161,8 @@ export function HqDistributorsView() {
           {t("for downstream rep and retail performance.")}
         </p>
       ) : null}
+
+      <SendTradePackDialog open={packOpen} onOpenChange={setPackOpen} includeTerms />
     </HqOperatorPage>
   );
 }

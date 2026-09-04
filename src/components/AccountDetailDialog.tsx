@@ -19,6 +19,8 @@ import { Link } from "react-router-dom";
 import { CreditCard, ExternalLink, MapPin, Pencil, Calendar, MessageSquare } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { isHqOperatorRole } from "@/lib/hq-order-scope";
+import { SendTradePackDialog } from "@/components/SendTradePackDialog";
 import { useAppData } from "@/contexts/AppDataContext";
 import { AccountPortalUsersSection } from "@/components/retail/AccountPortalUsersSection";
 import { ON_PREMISE_ACCOUNT_TYPES } from "@/lib/retail-portal-constants";
@@ -47,7 +49,7 @@ type Props = {
   account: Account | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (account: Account) => void;
+  onSave: (account: Account) => void | Promise<{ success?: boolean } | void>;
 };
 
 function parseTags(s: string): string[] {
@@ -66,7 +68,7 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
   const [whVerifyNotes, setWhVerifyNotes] = useState("");
   const [brandTier, setBrandTier] = useState<NonNullable<Account["pricingTier"]>>("standard");
   const [brandCredit, setBrandCredit] = useState("");
-  const [portalEmail, setPortalEmail] = useState("");
+  const [packOpen, setPackOpen] = useState(false);
 
   // Get visit notes for this account (visible to all roles)
   const accountVisitNotes = useMemo(() => {
@@ -101,15 +103,17 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
     setEditing(false);
   };
 
-  const save = () => {
+  const save = async () => {
     if (!draft) return;
     const next: Account = {
       ...draft,
       tags: parseTags(tagsInput),
     };
-    onSave(next);
+    const result = await onSave(next);
+    if (result && typeof result === "object" && "success" in result && result.success === false) {
+      return;
+    }
     setEditing(false);
-    toast.success("Account updated", { description: next.tradingName });
   };
 
   const update = <K extends keyof Account>(key: K, value: Account[K]) => {
@@ -813,6 +817,20 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
                   View orders for this account
                 </Link>
               </Button>
+
+              {isHqOperatorRole(user?.role) || user?.role === "distributor" ? (
+                <Button type="button" variant="outline" className="w-full" onClick={() => setPackOpen(true)}>
+                  Send trade pack
+                </Button>
+              ) : null}
+
+              <SendTradePackDialog
+                open={packOpen}
+                onOpenChange={setPackOpen}
+                defaultEmail={draft.email || portalEmail}
+                defaultName={draft.tradingName || draft.name}
+                includeTerms={isHqOperatorRole(user?.role) && draft.type === "distributor"}
+              />
 
               {editing ? (
                 <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">

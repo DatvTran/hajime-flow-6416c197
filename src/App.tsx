@@ -25,6 +25,9 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import AcceptInvite from "./pages/AcceptInvite";
 import LicenseeApplicationPage from "./pages/LicenseeApplicationPage";
+import ConnectPage from "./pages/ConnectPage";
+import ConnectSignPage from "./pages/ConnectSignPage";
+import TradePackPage from "./pages/TradePackPage";
 import NotFound from "./pages/NotFound";
 
 // Lazy-loaded by route group for better chunking
@@ -53,7 +56,7 @@ const MarketsPage = lazyWithChunkReload(() => import("./pages/MarketsPage"));
 const GlobalMarketsPage = lazyWithChunkReload(() => import("./pages/GlobalMarketsPage"));
 const HqDistributorPartnerPage = lazyWithChunkReload(() => import("./pages/HqDistributorPartnerPage"));
 
-// Manufacturer routes
+// Distillery routes
 const ManufacturerMarketDemandPage = lazyWithChunkReload(() => import("./pages/ManufacturerMarketDemandPage"));
 const ManufacturerProfilePage = lazyWithChunkReload(() => import("./pages/ManufacturerProfilePage"));
 const ManufacturerProfilesListPage = lazyWithChunkReload(() => import("./pages/ManufacturerProfilesListPage"));
@@ -70,6 +73,14 @@ const IncentiveManagerPage = lazyWithChunkReload(() => import("./pages/Incentive
 const HqIncentiveProgramEditPage = lazyWithChunkReload(() => import("./pages/HqIncentiveProgramEditPage"));
 const HqIncentivePayoutSchedulePage = lazyWithChunkReload(() => import("./pages/HqIncentivePayoutSchedulePage"));
 const ProductDevelopmentPage = lazyWithChunkReload(() => import("./pages/ProductDevelopmentPage"));
+const HqExpoLeadsPage = lazyWithChunkReload(() => import("./pages/HqExpoLeadsPage"));
+const HqExportOrdersPage = lazyWithChunkReload(() => import("./pages/HqExportOrdersPage"));
+const HqExportOrderDocPage = lazyWithChunkReload(() => import("./pages/HqExportOrderDocPage"));
+const HqBrandKitPage = lazyWithChunkReload(() => import("./pages/HqBrandKitPage"));
+const DistributorInternationalOrdersPage = lazyWithChunkReload(
+  () => import("./pages/DistributorInternationalOrdersPage"),
+);
+const ManufacturerExportAuthPage = lazyWithChunkReload(() => import("./pages/ManufacturerExportAuthPage"));
 const HqNewProductRequestPage = lazyWithChunkReload(() => import("./pages/HqNewProductRequestPage"));
 const HqProductRequestDetailPage = lazyWithChunkReload(() => import("./pages/HqProductRequestDetailPage"));
 const HqNewProductionRequestPage = lazyWithChunkReload(() => import("./pages/HqNewProductionRequestPage"));
@@ -187,6 +198,9 @@ const App = () => {
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/accept-invite" element={<AcceptInvite />} />
               <Route path="/licensee-application" element={<LicenseeApplicationPage />} />
+              <Route path="/connect" element={<ConnectPage />} />
+              <Route path="/connect-sign" element={<ConnectSignPage />} />
+              <Route path="/trade-pack" element={<TradePackPage />} />
               <Route element={<RequireAuth />}>
                 <Route element={<RouteErrorOutlet />}>
                   <Route element={<AppDataShell />}>
@@ -210,6 +224,8 @@ const App = () => {
                     <Route path="/product-development/:requestId" element={<HqProductRequestDetailPage />} />
                     <Route path="/product-development" element={<ProductDevelopmentPage />} />
                     <Route path="/manufacturer" element={<ManufacturerHome />} />
+                    <Route path="/manufacturer/export-authorizations/:orderId" element={<ManufacturerExportAuthPage />} />
+                    <Route path="/manufacturer/export-authorizations" element={<ManufacturerExportAuthPage />} />
                     <Route path="/manufacturer/brew-batches" element={<ManufacturerBrewBatchesPage />} />
                     <Route path="/manufacturer/bottling-line" element={<ManufacturerBottlingLinePage />} />
                     <Route path="/manufacturer/materials" element={<ManufacturerRawMaterialsPage />} />
@@ -237,8 +253,17 @@ const App = () => {
                     <Route path="/incentives/:programId/edit" element={<HqIncentiveProgramEditPage />} />
                     <Route path="/incentives" element={<IncentiveManagerPage />} />
                     <Route path="/crm" element={<CrmPage />} />
+                    <Route path="/expo-leads/:leadId" element={<HqExpoLeadsPage />} />
+                    <Route path="/expo-leads" element={<HqExpoLeadsPage />} />
+                    <Route path="/export-orders/:orderId/docs/:docType" element={<HqExportOrderDocPage />} />
+                    <Route path="/export-orders/:orderId" element={<HqExportOrdersPage />} />
+                    <Route path="/export-orders" element={<HqExportOrdersPage />} />
+                    <Route path="/brand-kit" element={<HqBrandKitPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     {/* Distributor namespaced routes */}
+                    <Route path="/distributor/international-orders/:orderId/docs/:docType" element={<DistributorInternationalOrdersPage />} />
+                    <Route path="/distributor/international-orders/:orderId" element={<DistributorInternationalOrdersPage />} />
+                    <Route path="/distributor/international-orders" element={<DistributorInternationalOrdersPage />} />
                     <Route path="/distributor" element={<DistributorHomePage />} />
                     <Route path="/distributor/inventory" element={<Inventory />} />
                     <Route path="/distributor/pick-pack" element={<DistributorPickPackPage />} />

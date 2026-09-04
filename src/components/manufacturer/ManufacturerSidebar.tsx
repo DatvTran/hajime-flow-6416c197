@@ -1,5 +1,5 @@
 /**
- * Sidebar chrome from Hajime Design System manufacturer-app.html
+ * Sidebar chrome from Hajime Design System distillery-app.html
  * (.side, .logo-row, .perf-pill, Production / Supply / Quality nav)
  */
 import { memo, useId, useMemo } from "react";
@@ -47,6 +47,7 @@ type NavItem = {
 
 const productionItems: NavItem[] = [
   { to: "/manufacturer", label: "Dashboard", icon: Home },
+  { to: "/manufacturer/export-authorizations", label: "Export authorizations", icon: FileText, badgeTone: "gold" },
   { to: "/manufacturer/purchase-orders", label: "Production requests", icon: FileText, badgeTone: "red" },
   { to: "/manufacturer/brew-batches", label: "Brew batches", icon: FlaskConical, badgeTone: "gold", staticBadge: 4 },
   { to: "/manufacturer/bottling-line", label: "Bottling line", icon: Wine, badgeTone: "amber", staticBadge: 3 },
@@ -213,7 +214,7 @@ export const ManufacturerSidebar = memo(function ManufacturerSidebar({
   const orgLabel = useMemo(() => {
     const fromPartner = [...identity.labels][0];
     if (fromPartner) return fromPartner;
-    if (!user) return "Manufacturer";
+    if (!user) return "Distillery";
     const email = user.email?.toLowerCase() ?? "";
     const mfgAccount = data.accounts.find(
       (a) =>
@@ -221,7 +222,7 @@ export const ManufacturerSidebar = memo(function ManufacturerSidebar({
         (a.email?.toLowerCase() === email || a.portalLoginEmail?.toLowerCase() === email),
     );
     if (mfgAccount?.tradingName) return mfgAccount.tradingName;
-    return user.displayName?.trim() || "Manufacturer";
+    return user.displayName?.trim() || "Distillery";
   }, [data.accounts, identity, user]);
 
   const scopedPos = useMemo(
@@ -262,7 +263,7 @@ export const ManufacturerSidebar = memo(function ManufacturerSidebar({
             Hajime
           </div>
           <div className="logo-sub mt-px truncate text-[10px] tracking-[0.08em] text-[hsl(35_12%_42%)]">
-            {orgLabel} · Manufacturer partner
+            {orgLabel} · Distillery partner
           </div>
         </div>
       </Link>

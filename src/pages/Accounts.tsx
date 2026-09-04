@@ -19,12 +19,13 @@ import { Link, useSearchParams } from "react-router-dom";
 import { CSVImportButton } from "@/components/CSVImportButton";
 import { toast } from "@/components/ui/sonner";
 import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
-import { isHqOperatorRole, filterPlatformAccountsForHq, filterWholesaleOrdersForHq } from "@/lib/hq-order-scope";
+import { isHqOperatorRole, filterPlatformAccountsForHq, filterOnPremiseAccountsForHq, filterWholesaleOrdersForHq } from "@/lib/hq-order-scope";
 import { HqDistributorPartnerStrip } from "@/components/HqDistributorPartnerStrip";
 import { HqDistributorSalesView } from "@/components/hq/HqDistributorSalesView";
 import { HqDistributorsView } from "@/components/hq/HqDistributorsView";
 import { getDistributorOrganizations, type DistributorOrganizationRow } from "@/lib/api-v1-mutations";
 import { partnerPathForOrg, resolveDistributorOrgId } from "@/lib/hq-distributor-orgs";
+import { SendTradePackDialog } from "@/components/SendTradePackDialog";
 
 function channelLabel(type: Account["type"]): string {
   if (type === "distributor") return "Distributor";
@@ -53,6 +54,7 @@ export default function Accounts() {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [newAccountOpen, setNewAccountOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [tradePackOpen, setTradePackOpen] = useState(false);
   const [distributorOrgs, setDistributorOrgs] = useState<DistributorOrganizationRow[]>([]);
 
   useEffect(() => {
@@ -116,7 +118,7 @@ export default function Accounts() {
       );
       scopedAccounts = filterAccountsForDistributor(onPremise, user.id, teamMembers);
     } else if (user.role === "manufacturer") {
-      // Manufacturers: distributor accounts + direct retail chains (sell-in planning)
+      // Distilleries: distributor accounts + direct retail chains (sell-in planning)
       scopedAccounts = accounts.filter(
         (a) => a.type === "distributor" || a.type === "retail" || a.tags?.includes("direct"),
       );
@@ -130,6 +132,8 @@ export default function Accounts() {
             a.name?.toLowerCase().includes(user.displayName.toLowerCase()));
         return emailMatch || nameMatch;
       });
+    } else if (isHqOperatorRole(user.role) && searchParams.get("view") === "retail") {
+      scopedAccounts = filterOnPremiseAccountsForHq(accounts);
     } else if (isHqOperatorRole(user.role)) {
       scopedAccounts = filterPlatformAccountsForHq(accounts);
     }
@@ -155,7 +159,7 @@ export default function Accounts() {
     user.email,
     user.displayName,
     teamMembers,
-    user.role,
+    searchParams,
   ]);
 
   const clearStatusFilter = () => {
@@ -195,22 +199,28 @@ export default function Accounts() {
   }
 
   const hqSalesView = isHqOperatorRole(user?.role) && searchParams.get("view") === "sales";
+  const hqRetailView = isHqOperatorRole(user?.role) && searchParams.get("view") === "retail";
+  const canInviteRetail = user.role === "sales_rep" || user.role === "sales" || user.role === "distributor" || hqRetailView;
+  const canCreateVenueAccount =
+    (user.role !== "sales_rep" && user.role !== "sales" && user.role !== "distributor") || hqRetailView;
 
   if (hqSalesView) {
     return <HqDistributorSalesView />;
   }
 
-  if (isHqOperatorRole(user?.role)) {
+  if (isHqOperatorRole(user?.role) && !hqRetailView) {
     return <HqDistributorsView />;
   }
 
   return (
     <div>
       <PageHeader
-        title="Accounts"
+        title={hqRetailView ? "Retail accounts" : "Accounts"}
         variant={pageHeaderVariantForRole(user.role)}
         description={
-          user.role === "sales_rep" || user.role === "sales"
+          hqRetailView
+            ? "Hotels, restaurants, bars, and retail stores Hajime Canada fulfills as distributor — add a venue or send a portal invite."
+            : user.role === "sales_rep" || user.role === "sales"
             ? "Your assigned accounts — submit new retailer applications, track onboarding pipeline, and manage relationships."
             : user.role === "distributor"
               ? "On-premise accounts you fulfill — retail, bars, restaurants, and hotels in your territory."
@@ -228,7 +238,18 @@ export default function Accounts() {
               size="sm"
               onSuccess={() => toast.success("Accounts imported", { description: "Refresh to see changes" })}
             />
-            {user.role === "sales_rep" || user.role === "sales" || user.role === "distributor" ? (
+            {hqRetailView || user.role === "distributor" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full justify-center touch-manipulation sm:w-auto"
+                onClick={() => setTradePackOpen(true)}
+              >
+                Send trade pack
+              </Button>
+            ) : null}
+            {canInviteRetail ? (
               <Button
                 type="button"
                 size="sm"
@@ -239,9 +260,7 @@ export default function Accounts() {
                 Send invitation
               </Button>
             ) : null}
-            {user.role !== "sales_rep" &&
-            user.role !== "sales" &&
-            user.role !== "distributor" ? (
+            {canCreateVenueAccount ? (
               <Button type="button" size="sm" className="w-full justify-center touch-manipulation sm:w-auto" onClick={() => setNewAccountOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 New Account
@@ -251,13 +270,21 @@ export default function Accounts() {
         }
       />
 
-      {isHqOperatorRole(user?.role) ? <HqDistributorPartnerStrip /> : null}
+      {isHqOperatorRole(user?.role) && !hqRetailView ? <HqDistributorPartnerStrip /> : null}
 
-      {user.role === "sales_rep" || user.role === "sales" || user.role === "distributor" ? (
+      {hqRetailView || user.role === "distributor" ? (
+        <SendTradePackDialog
+          open={tradePackOpen}
+          onOpenChange={setTradePackOpen}
+          includeTerms={false}
+        />
+      ) : null}
+
+      {canInviteRetail ? (
         <AccountSetupInviteDialog
           open={inviteOpen}
           onOpenChange={setInviteOpen}
-          variant={user.role === "distributor" ? "distributor" : "sales_rep"}
+          variant={user.role === "sales_rep" || user.role === "sales" ? "sales_rep" : "distributor"}
           wholesalerLabel={wholesalerLabel}
           onAccountCreated={(account) => {
             updateData((d) => {
@@ -277,12 +304,13 @@ export default function Accounts() {
         />
       ) : null}
 
-      {user.role !== "sales_rep" && user.role !== "sales" && user.role !== "distributor" ? (
+      {canCreateVenueAccount ? (
         <NewAccountDialog
           open={newAccountOpen}
           onOpenChange={setNewAccountOpen}
           accounts={accounts}
           onCreate={addAccount}
+          venueTypesOnly={hqRetailView}
         />
       ) : null}
 
@@ -366,7 +394,9 @@ export default function Accounts() {
         <div className="card-elevated flex flex-col items-center gap-3 py-16 text-center">
           <Users className="h-10 w-10 text-muted-foreground/20" strokeWidth={1} />
           <p className="text-muted-foreground">
-            {user.role === "sales_rep" || user.role === "sales"
+            {hqRetailView
+              ? "No hotels, bars, restaurants, or retail stores yet. Use New Account to add Hajime Canada’s on-premise book."
+              : user.role === "sales_rep" || user.role === "sales"
               ? "No accounts assigned to you yet. Contact your manager to get accounts assigned."
               : user.role === "distributor"
                 ? "No on-premise accounts in your territory yet."

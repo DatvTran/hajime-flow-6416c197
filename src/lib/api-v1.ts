@@ -1,44 +1,12 @@
 /**
  * Granular API Client - v1
  * RESTful API wrapper for products, orders, accounts, inventory
+ *
+ * Uses shared auth fetch so expired access tokens are refreshed (15m JWT)
+ * instead of surfacing "Invalid or expired token" on reads like NPR list.
  */
 
-const API_URL = import.meta.env.VITE_API_URL || "";
-
-// Helper to get auth token from localStorage
-function getAuthToken(): string | null {
-  try {
-    return localStorage.getItem("hajime_access_token");
-  } catch {
-    return null;
-  }
-}
-
-// Generic fetch wrapper with auth
-async function apiFetch(endpoint: string, options: RequestInit = {}) {
-  const token = getAuthToken();
-  
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...((options.headers as Record<string, string>) || {}),
-  };
-  
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-  
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
-  
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Request failed" }));
-    throw new Error(error.error || `HTTP ${response.status}`);
-  }
-  
-  return response.json();
-}
+import { apiFetch } from "@/lib/api-auth-fetch";
 
 // ===== PRODUCTS =====
 
@@ -689,4 +657,97 @@ export function nudgeNewProductRequest(id: string): Promise<{
   return apiFetch(`/api/v1/new-product-requests/${id}/nudge`, {
     method: "POST",
   });
+}
+
+// ===== EXPO LEADS (HQ) =====
+
+export function getExpoLeads(params?: {
+  page?: number;
+  limit?: number;
+  event?: string;
+  score?: string;
+  status?: string;
+  q?: string;
+}): Promise<{
+  data: import("@/lib/expo-leads").ExpoLead[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.event) query.set("event", params.event);
+  if (params?.score) query.set("score", params.score);
+  if (params?.status) query.set("status", params.status);
+  if (params?.q) query.set("q", params.q);
+  const qs = query.toString();
+  return apiFetch(`/api/v1/expo-leads${qs ? `?${qs}` : ""}`) as Promise<{
+    data: import("@/lib/expo-leads").ExpoLead[];
+    pagination: { page: number; limit: number; total: number; totalPages: number };
+  }>;
+}
+
+export function getExpoLead(id: string): Promise<{ data: import("@/lib/expo-leads").ExpoLead }> {
+  return apiFetch(`/api/v1/expo-leads/${encodeURIComponent(id)}`) as Promise<{
+    data: import("@/lib/expo-leads").ExpoLead;
+  }>;
+}
+
+export function patchExpoLead(
+  id: string,
+  body: Record<string, unknown>,
+): Promise<{ data: import("@/lib/expo-leads").ExpoLead }> {
+  return apiFetch(`/api/v1/expo-leads/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  }) as Promise<{ data: import("@/lib/expo-leads").ExpoLead }>;
+}
+
+export type ExportOrderDto = Record<string, unknown> & {
+  id: string;
+  displayId: string;
+  stage?: string;
+  buyerCompany?: string;
+  buyerName?: string;
+  buyerEmail?: string;
+  origin?: "portal" | "hq";
+  lines?: unknown[];
+  subtotalUsd?: number;
+  depositDueUsd?: number;
+  balanceDueUsd?: number;
+};
+
+export function getExportOrders(): Promise<{ data: ExportOrderDto[] }> {
+  return apiFetch("/api/v1/export-orders");
+}
+
+export function getExportOrder(id: string): Promise<{ data: ExportOrderDto }> {
+  return apiFetch(`/api/v1/export-orders/${encodeURIComponent(id)}`);
+}
+
+export function createExportOrder(body: Record<string, unknown>): Promise<{ data: ExportOrderDto }> {
+  return apiFetch("/api/v1/export-orders", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function patchExportOrder(id: string, body: Record<string, unknown>): Promise<{ data: ExportOrderDto }> {
+  return apiFetch(`/api/v1/export-orders/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function issueExportDoc(
+  id: string,
+  doc: string,
+): Promise<{ data: ExportOrderDto; email?: { sent?: boolean; logged?: boolean } }> {
+  return apiFetch(`/api/v1/export-orders/${encodeURIComponent(id)}/docs/${encodeURIComponent(doc)}/issue`, {
+    method: "POST",
+  });
+}
+
+export function sendTradePack(body: {
+  to: string;
+  recipientName?: string;
+  items: string[];
+}): Promise<{ ok: boolean; email?: { sent?: boolean; logged?: boolean }; items: string[] }> {
+  return apiFetch("/api/v1/trade-pack/send", { method: "POST", body: JSON.stringify(body) });
 }

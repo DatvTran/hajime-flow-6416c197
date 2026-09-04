@@ -23,7 +23,7 @@ import {
   computeMarketPanelRows,
   computeBrandOperatorTopAccounts,
 } from "@/lib/brand-operator-metrics";
-import { scopeAppDataForHqOperator, filterWholesaleOrdersForHq } from "@/lib/hq-order-scope";
+import { scopeAppDataForHqOperator, filterWholesaleOrdersForHq, filterOnPremiseAccountsForHq } from "@/lib/hq-order-scope";
 import { portalTimeGreeting } from "@/lib/i18n-portal";
 import {
   HqBtnLink,
@@ -42,6 +42,7 @@ import {
 } from "@/components/hq/HqOperatorUi";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
+import { HqExpoPriorityStrip } from "@/components/hq/HqExpoPriorityStrip";
 
 function greetingName(displayName: string | undefined): string {
   const first = displayName?.trim().split(/\s+/)[0];
@@ -98,10 +99,6 @@ export default function HqOperatorDashboard() {
   );
 
   const marketRows = useMemo(() => computeMarketPanelRows(commandData, 30), [commandData]);
-  const activeAccounts = useMemo(
-    () => commandData.accounts.filter((a) => a.status === "active" && (a.type === "retail" || a.type === "distributor")).length,
-    [commandData.accounts],
-  );
 
   const revQ = useMemo(() => revenueInWindow(commandData.salesOrders, 90), [commandData.salesOrders]);
   const revPriorQ = useMemo(() => {
@@ -127,11 +124,15 @@ export default function HqOperatorDashboard() {
     [commandData.accounts],
   );
 
-  const pipelineValue = useMemo(() => {
-    return wholesaleOrders
-      .filter((o) => o.status !== "cancelled" && o.status !== "delivered")
-      .reduce((s, o) => s + o.price, 0);
-  }, [wholesaleOrders]);
+  const retailVenueCount = useMemo(
+    () => filterOnPremiseAccountsForHq(commandData.accounts).length,
+    [commandData.accounts],
+  );
+
+  const salesRepCount = useMemo(
+    () => (data.teamMembers ?? []).filter((m) => m.role === "sales_rep" && m.isActive !== false).length,
+    [data.teamMembers],
+  );
 
   const topAccounts = useMemo(
     () => computeBrandOperatorTopAccounts(commandData.salesOrders, commandData.accounts).slice(0, 3),
@@ -187,6 +188,8 @@ export default function HqOperatorDashboard() {
         </HqOperatorAlertBar>
       ) : null}
 
+      <HqExpoPriorityStrip />
+
       <HqOperatorKpiGrid>
         <HqOperatorKpiCard
           icon={ShoppingCart}
@@ -219,18 +222,12 @@ export default function HqOperatorDashboard() {
           to="/inventory"
         />
         <HqOperatorKpiCard
-          icon={Users}
+          icon={Store}
           tone="green"
-          label="Active accounts"
-          value={String(activeAccounts)}
-          sub="onboarded across network"
-          delta={
-            <>
-              <TrendingUp className="size-2.5" strokeWidth={2} /> 92% retention
-            </>
-          }
-          deltaTone="up"
-          to="/accounts"
+          label="Retail accounts"
+          value={String(retailVenueCount)}
+          sub="hotels, bars, restaurants, stores"
+          to="/accounts?view=retail"
         />
       </HqOperatorKpiGrid>
 
@@ -243,8 +240,8 @@ export default function HqOperatorDashboard() {
               to: "/manufacturer/profiles",
               icon: Factory,
               color: "text-[hsl(280_40%_48%)]",
-              name: "Manufacturers",
-              meta: `${commandData.accounts.filter((a) => a.type === "manufacturer").length} manufacturer partners · batches brewing`,
+              name: "Distilleries",
+              meta: `${commandData.accounts.filter((a) => a.type === "manufacturer").length} distillery partners · batches brewing`,
               count: `${openProduction.length} requests open`,
               countStyle: "bg-[hsl(280_40%_50%/0.1)] text-[hsl(280_40%_48%)]",
             },
@@ -268,21 +265,21 @@ export default function HqOperatorDashboard() {
               countStyle: "bg-[hsl(158_56%_36%/0.1)] text-[hsl(158_56%_30%)]",
             },
             {
-              to: "/accounts?view=sales",
+              to: "/crm?role=sales_rep",
               icon: Users,
               color: "text-[hsl(215_72%_42%)]",
               name: "Sales reps",
-              meta: "via distributors · read-only",
-              count: `$${Math.round(pipelineValue / 1000)}K pipeline`,
+              meta: `${salesRepCount} field reps · Hajime Canada`,
+              count: "add & invite",
               countStyle: "bg-[hsl(215_72%_50%/0.1)] text-[hsl(215_72%_42%)]",
             },
             {
-              to: "/accounts?view=sales",
+              to: "/accounts?view=retail",
               icon: Store,
               color: "text-[hsl(40_88%_36%)]",
               name: "Retail accounts",
-              meta: "via distributors · read-only",
-              count: `$${Math.round(revQ / 1000)}K Q2`,
+              meta: `${retailVenueCount} venues · add hotels, bars, stores`,
+              count: "new account",
               countStyle: "bg-[hsl(40_88%_42%/0.1)] text-[hsl(40_88%_34%)]",
             },
           ].map((node, i, arr) => (
@@ -315,7 +312,7 @@ export default function HqOperatorDashboard() {
         <HqOperatorCard>
           <HqOperatorCardHead
             title="Production requests"
-            subtitle="From manufacturer partners — your sign-off"
+            subtitle="From distillery partners — your sign-off"
             actions={
               <HqBtnLink to="/production-requests" variant="outline" size="sm">
                 {t("View all")} ({openProduction.length})
@@ -333,7 +330,7 @@ export default function HqOperatorDashboard() {
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <HqOperatorSrcChip variant="kura">{t("Manufacturer")}</HqOperatorSrcChip>
+                    <HqOperatorSrcChip variant="kura">{t("Distillery")}</HqOperatorSrcChip>
                     {po.status === "delayed" ? <HqOperatorPill tone="red">{t("urgent")}</HqOperatorPill> : null}
                   </div>
                   <div className="mt-1 text-[13px] font-medium text-foreground">

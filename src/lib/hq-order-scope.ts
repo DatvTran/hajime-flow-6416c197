@@ -54,9 +54,20 @@ export function filterRowsForOrg<T extends { distributorOrgId?: string }>(rows: 
   return rows.filter((r) => String(r.distributorOrgId ?? "") === String(orgId));
 }
 
+const ON_PREMISE_ACCOUNT_TYPES = new Set(["retail", "bar", "restaurant", "hotel"]);
+
+export function isOnPremiseAccountType(type: string | undefined): boolean {
+  return ON_PREMISE_ACCOUNT_TYPES.has(String(type || "").toLowerCase());
+}
+
 /** Platform CRM accounts only — network retail rows live under wholesaler partner detail. */
 export function filterPlatformAccountsForHq(accounts: Account[]): Account[] {
   return accounts.filter((a) => !a.distributorOrgId);
+}
+
+/** Hajime Canada (HQ as distributor): hotels, bars, restaurants, retail stores. */
+export function filterOnPremiseAccountsForHq(accounts: Account[]): Account[] {
+  return filterPlatformAccountsForHq(accounts).filter((a) => isOnPremiseAccountType(a.type));
 }
 
 /** Brand HQ warehouse inventory — partner stock lives under wholesaler detail. */

@@ -15,10 +15,13 @@ import {
   LogOut,
   Monitor,
   Package,
+  QrCode,
   Settings,
   Star,
+  Store,
   TrendingUp,
   Truck,
+  Users,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAppData, useNewProductRequests, usePurchaseOrders, useSalesOrders } from "@/contexts/AppDataContext";
@@ -47,6 +50,8 @@ type NavItem = {
 
 const commandItems: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/expo-leads", label: "Expo leads", icon: QrCode, badgeTone: "gold" },
+  { to: "/export-orders", label: "Export orders", icon: FileText, badgeTone: "amber" },
   { to: "/product-development", label: "Product Development", icon: Layers, badgeTone: "amber" },
   { to: "/production-requests", label: "Production requests", icon: Factory, badgeTone: "red" },
   { to: "/orders", label: "Replenishment orders", icon: Package, badgeTone: "amber", search: "?view=replenishment" },
@@ -56,13 +61,16 @@ const commandItems: NavItem[] = [
 ];
 
 const networkItems: NavItem[] = [
-  { to: "/manufacturer/profiles", label: "Manufacturers", icon: FlaskConical },
+  { to: "/manufacturer/profiles", label: "Distilleries", icon: FlaskConical },
   { to: "/accounts", label: "Distributors", icon: Truck },
+  { to: "/accounts", label: "Retail accounts", icon: Store, search: "?view=retail" },
+  { to: "/crm", label: "Sales reps", icon: Users, search: "?role=sales_rep" },
 ];
 
 const brandItems: NavItem[] = [
   { to: "/incentives", label: "Incentive programs", icon: Star },
   { to: "/inventory", label: "Product catalog", icon: Monitor },
+  { to: "/brand-kit", label: "Brand kit", icon: Layers },
   { to: "/reports", label: "Analytics", icon: BarChart3 },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
@@ -144,14 +152,26 @@ function NavSection({
     if (item.search === "?view=sales") {
       return path.startsWith("/accounts") && view === "sales";
     }
+    if (item.search === "?view=retail") {
+      return path.startsWith("/accounts") && view === "retail";
+    }
+    if (item.to === "/crm") {
+      return path.startsWith("/crm");
+    }
     if (item.to === "/accounts" && !item.search) {
-      return (path.startsWith("/accounts") && view !== "sales") || path.startsWith("/partners/distributor");
+      return (
+        (path.startsWith("/accounts") && view !== "sales" && view !== "retail") ||
+        path.startsWith("/partners/distributor")
+      );
     }
     if (item.to === "/orders" && !item.search) {
       return path.startsWith("/orders") && view !== "replenishment" && view !== "sales";
     }
     if (item.to === "/manufacturer/profiles") {
       return path.startsWith("/manufacturer");
+    }
+    if (item.to === "/expo-leads") {
+      return path.startsWith("/expo-leads");
     }
     const end = navPathEndFlag(item.to, ALL_HQ_NAV_URLS);
     return isSidebarNavItemActive(item.to, path, location.search, end);

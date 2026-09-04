@@ -37,6 +37,7 @@ import {
   assertManufacturerNprUpdateAllowed,
   applyNprStatusTimestamps,
   resolveManufacturerNotifyEmail,
+  canonicalizeManufacturerAssignmentId,
 } from '../lib/npr-manufacturer-scope.mjs';
 import { ensureManufacturerPortalAccess } from '../lib/manufacturer-account-provision.mjs';
 import {
@@ -83,9 +84,43 @@ import {
   hqFetchForScope,
   hqFetchFromAllSources,
   paginateMergedRows,
+  resolveHqEntityTarget,
+  isHqGlobalViewer,
 } from '../lib/hq-global-view.mjs';
 import { buildAppBootstrapPayload } from '../lib/app-bootstrap.mjs';
 import { attachSalesOrderItems } from '../lib/sales-order-items.mjs';
+import { rateLimiters } from '../middleware/security.mjs';
+import {
+  canManageExpoLeads,
+  ensureExpoLeadsTable,
+  insertExpoLead,
+  expoLeadListQuery,
+  resolveExpoTenant,
+  serializeExpoLead,
+  validateBuyerPayload,
+  validateInternalPatch,
+} from '../lib/expo-leads.mjs';
+import {
+  canManageExportOrders,
+  isManufacturer,
+  ensureExportOrdersTable,
+  serializeExportOrder,
+  toBuyerFacingOrder,
+  priceExportLines,
+  defaultChecklistState,
+  gateAdvance,
+  nextSeq,
+  padDoc,
+  isExportStageId,
+  isExportSku,
+  isBuyerExportDoc,
+  distributorCanViewStage,
+  findExportOrder,
+  applyIssueToChecklist,
+  requiredChecklistReady,
+  asJsonObject,
+} from '../lib/export-orders.mjs';
+import { sendExportDocIssuedEmail, sendTradePackEmail, clientBaseUrl } from '../services/export-notify.mjs';
 import {
   applyPortalOrdersScope,
   applyPortalShipmentsScope,
@@ -305,6 +340,34 @@ router.post('/licensee-application', attachDatabaseFromInviteToken, async (req, 
   }
 });
 
+router.post('/expo-leads', rateLimiters.expoLeads, async (req, res) => {
+  try {
+    const honeypot = String(req.body?.fax ?? req.body?.companyFax ?? '').trim();
+    if (honeypot) {
+      return res.status(201).json({
+        data: { displayId: 'HK26-000', submittedAt: new Date().toISOString() },
+      });
+    }
+    const parsed = validateBuyerPayload(req.body);
+    if (!parsed.ok) {
+      return res.status(400).json({ error: parsed.errors[0], errors: parsed.errors });
+    }
+    const db = platformDb;
+    if (!(await ensureExpoLeadsTable(db))) {
+      return res.status(503).json({ error: 'Lead capture is not available yet' });
+    }
+    const tenant = await resolveExpoTenant(db);
+    if (!tenant) {
+      return res.status(503).json({ error: 'Lead capture is not available yet' });
+    }
+    const row = await insertExpoLead(db, tenant.id, parsed.data);
+    res.status(201).json({ data: serializeExpoLead(row, { publicView: true }) });
+  } catch (err) {
+    console.error('[API v1] expo-leads submit:', err);
+    res.status(500).json({ error: 'Failed to submit registration' });
+  }
+});
+
 // Apply auth to all routes
 router.use(authenticateToken);
 router.use(attachDistributorDatabase);
@@ -319,6 +382,583 @@ function getTenantId(req, res) {
   }
   return tenantId;
 }
+
+/**
+ * HQ lists can prefix distributor-row ids (`orgId:rawId`). Writes must hit that DB.
+ */
+async function resolveEntityWrite(req, entityId) {
+  const platformTenantId = req.user?.tenantId ?? null;
+  const raw = String(entityId ?? '');
+  const hq = Boolean(req.hqGlobalView) || isHqGlobalViewer(req.user?.role);
+  if (hq && raw.includes(':')) {
+    const target = await resolveHqEntityTarget(raw);
+    if (!target) return null;
+    const tenantId =
+      target.org?.tenant_id != null ? String(target.org.tenant_id) : platformTenantId;
+    if (!tenantId) return null;
+    return { db: target.db, id: target.rawId, tenantId };
+  }
+  if (!platformTenantId) return null;
+  return { db: getDb(), id: raw, tenantId: platformTenantId };
+}
+
+function mergeContactIntoAddress(existing, contactName, contactRole) {
+  let base = {};
+  if (existing != null) {
+    if (typeof existing === 'string') {
+      try {
+        const parsed = JSON.parse(existing);
+        base = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : { line: existing };
+      } catch {
+        base = { line: existing };
+      }
+    } else if (typeof existing === 'object' && !Array.isArray(existing)) {
+      base = { ...existing };
+    }
+  }
+  if (contactName !== undefined) base.contactName = contactName == null ? '' : String(contactName);
+  if (contactRole !== undefined) base.contactRole = contactRole == null ? '' : String(contactRole);
+  return base;
+}
+
+function requireExpoLeadsHq(req, res) {
+  if (!canManageExpoLeads(req.user?.role)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return false;
+  }
+  return true;
+}
+
+router.get('/expo-leads', async (req, res) => {
+  try {
+    if (!requireExpoLeadsHq(req, res)) return;
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = platformDb;
+    if (!(await ensureExpoLeadsTable(db))) {
+      return res.json({ data: [], pagination: { page: 1, limit: 50, total: 0, totalPages: 0 } });
+    }
+    const page = Number(req.query.page) || 1;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const eventCode = req.query.event ? String(req.query.event).trim().toUpperCase() : null;
+    const score = req.query.score ? String(req.query.score).toUpperCase() : null;
+    const status = req.query.status ? String(req.query.status) : null;
+    const q = req.query.q ? String(req.query.q).trim() : '';
+
+    let base = expoLeadListQuery(db, tenantId);
+    if (eventCode) base = base.where('e.event_code', eventCode);
+    if (score) base = base.where('e.score', score);
+    if (status) base = base.where('e.status', status);
+    if (q) {
+      const like = `%${q}%`;
+      base = base.andWhere((qb) => {
+        qb.whereILike('e.full_name', like)
+          .orWhereILike('e.company_name', like)
+          .orWhereILike('e.business_email', like)
+          .orWhereILike('e.country_market', like)
+          .orWhereILike('e.display_id', like);
+      });
+    }
+
+    const offset = (page - 1) * limit;
+    const countRow = await base.clone().clearSelect().clearOrder().count('e.id as count').first();
+    const rows = await base.clone().orderBy('e.submitted_at', 'desc').limit(limit).offset(offset);
+    const total = Number(countRow?.count ?? 0);
+    res.json({
+      data: rows.map((r) => serializeExpoLead(r)),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 0 },
+    });
+  } catch (err) {
+    console.error('[API v1] expo-leads list:', err);
+    res.status(500).json({ error: 'Failed to load leads' });
+  }
+});
+
+router.get('/expo-leads/:id', async (req, res) => {
+  try {
+    if (!requireExpoLeadsHq(req, res)) return;
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = platformDb;
+    const id = req.params.id;
+    const row = await expoLeadListQuery(db, tenantId)
+      .andWhere((qb) => {
+        qb.where('e.display_id', id);
+        if (/^\d+$/.test(id)) qb.orWhere('e.id', Number(id));
+      })
+      .first();
+    if (!row) return res.status(404).json({ error: 'Lead not found' });
+    res.json({ data: serializeExpoLead(row) });
+  } catch (err) {
+    console.error('[API v1] expo-leads get:', err);
+    res.status(500).json({ error: 'Failed to load lead' });
+  }
+});
+
+router.patch('/expo-leads/:id', async (req, res) => {
+  try {
+    if (!requireExpoLeadsHq(req, res)) return;
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const parsed = validateInternalPatch(req.body ?? {});
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    if (Object.keys(parsed.patch).length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    const db = platformDb;
+    const id = req.params.id;
+    const existing = await db('expo_leads')
+      .where({ tenant_id: tenantId })
+      .andWhere((qb) => {
+        qb.where({ display_id: id });
+        if (/^\d+$/.test(id)) qb.orWhere({ id: Number(id) });
+      })
+      .first();
+    if (!existing) return res.status(404).json({ error: 'Lead not found' });
+
+    const patch = { ...parsed.patch, updated_at: new Date() };
+    if (patch.staff_user_id === undefined && req.user?.userId && !existing.staff_user_id) {
+      patch.staff_user_id = req.user.userId;
+    }
+    if (patch.score && existing.status === 'new') {
+      patch.status = 'met';
+    }
+
+    await db('expo_leads').where({ id: existing.id, tenant_id: tenantId }).update(patch);
+    const row = await expoLeadListQuery(db, tenantId).where('e.id', existing.id).first();
+    res.json({ data: serializeExpoLead(row) });
+  } catch (err) {
+    console.error('[API v1] expo-leads patch:', err);
+    res.status(500).json({ error: 'Failed to update lead' });
+  }
+});
+
+function exportSerializeForRole(req, row) {
+  const role = req.user?.role;
+  if (canManageExportOrders(role)) {
+    return serializeExportOrder(row, { includeInternalEconomics: true, buyerFacing: false });
+  }
+  if (isManufacturer(role)) {
+    return serializeExportOrder(row, { includeInternalEconomics: false, buyerFacing: false });
+  }
+  return toBuyerFacingOrder(serializeExportOrder(row, { includeInternalEconomics: false, buyerFacing: true }));
+}
+
+function parseExportLines(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((l) => isExportSku(l?.sku))
+    .map((l) => ({
+      sku: String(l.sku),
+      cases: Math.max(0, Math.floor(Number(l.cases) || 0)),
+      ...(l.unitFobUsd != null ? { unitFobUsd: Number(l.unitFobUsd) } : {}),
+    }))
+    .filter((l) => l.cases > 0);
+}
+
+router.get('/export-orders', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = platformDb;
+    if (!(await ensureExportOrdersTable(db))) {
+      return res.json({ data: [] });
+    }
+    const role = req.user?.role;
+    let q = db('export_orders').where({ tenant_id: tenantId }).orderBy('created_at', 'desc');
+    if (role === 'distributor') {
+      const orgId = req.user?.distributorOrgId || req.distributorOrg?.id;
+      if (!orgId) return res.json({ data: [] });
+      q = q.where({ distributor_org_id: orgId });
+    } else if (isManufacturer(role)) {
+      q = q.whereIn('deposit_status', ['cleared', 'exception']).whereNot('stage', '01_lead').whereNot('stage', '02_quotation').whereNot('stage', '03_buyer_po').whereNot('stage', '04_po_acceptance').whereNot('stage', '05_proforma').whereNot('stage', '06_deposit');
+    } else if (!canManageExportOrders(role)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const rows = await q.limit(200);
+    const data = rows
+      .filter((r) => (role === 'distributor' ? distributorCanViewStage(r.stage) : true))
+      .map((r) => exportSerializeForRole(req, r));
+    res.json({ data });
+  } catch (err) {
+    console.error('[API v1] export-orders list:', err);
+    res.status(500).json({ error: 'Failed to list export orders' });
+  }
+});
+
+router.post('/export-orders', async (req, res) => {
+  try {
+    const role = req.user?.role;
+    const isHq = canManageExportOrders(role);
+    const isDist = role === 'distributor';
+    if (!isHq && !isDist) return res.status(403).json({ error: 'Forbidden' });
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = platformDb;
+    if (!(await ensureExportOrdersTable(db))) {
+      return res.status(500).json({ error: 'Export orders table unavailable' });
+    }
+    const body = req.body || {};
+    let buyerName = String(body.buyerName || '').trim();
+    let buyerCompany = String(body.buyerCompany || buyerName).trim();
+    let buyerEmail = body.buyerEmail != null ? String(body.buyerEmail).trim().toLowerCase() : null;
+    let buyerAddress = body.buyerAddress != null ? String(body.buyerAddress).trim() : null;
+    let territory = String(body.territory || '').trim();
+    let destinationCountry = body.destinationCountry != null ? String(body.destinationCountry).trim() : null;
+    let expoLeadId = isHq && body.expoLeadId != null ? body.expoLeadId : null;
+    let distributorOrgId = isHq ? body.distributorOrgId || null : null;
+    let origin = 'hq';
+    let buyerPoNo = body.buyerPoNo != null ? String(body.buyerPoNo).trim() : null;
+    let forwarderName = body.forwarderName != null ? String(body.forwarderName).trim() : null;
+    let forwarderInstructions = body.forwarderInstructions != null ? String(body.forwarderInstructions) : null;
+
+    if (isDist) {
+      const orgId = req.user?.distributorOrgId || req.distributorOrg?.id;
+      if (!orgId) {
+        return res.status(400).json({ error: 'This login is not linked to a distributor organization.' });
+      }
+      distributorOrgId = orgId;
+      origin = 'portal';
+      expoLeadId = null;
+      const orgName = String(req.distributorOrg?.name || '').trim();
+      buyerName = String(req.user?.displayName || buyerName || orgName || 'Buyer').trim();
+      buyerCompany = orgName || buyerCompany || buyerName;
+      buyerEmail = String(req.user?.email || buyerEmail || '').trim().toLowerCase() || null;
+      territory = territory || destinationCountry || orgName || 'TBD';
+      destinationCountry = destinationCountry || territory || null;
+    }
+
+    if (expoLeadId) {
+      const lead = await db('expo_leads')
+        .where({ tenant_id: tenantId })
+        .andWhere((qb) => {
+          qb.where('display_id', String(expoLeadId));
+          if (/^\d+$/.test(String(expoLeadId))) qb.orWhere('id', Number(expoLeadId));
+        })
+        .first();
+      if (!lead) return res.status(404).json({ error: 'Expo lead not found' });
+      expoLeadId = lead.id;
+      buyerName = buyerName || String(lead.full_name || '').trim();
+      buyerCompany = buyerCompany || String(lead.company_name || buyerName).trim();
+      buyerEmail = buyerEmail || String(lead.business_email || '').trim().toLowerCase();
+      territory = territory || String(lead.country_market || lead.territory || 'TBD').trim();
+      destinationCountry = destinationCountry || String(lead.country_market || '').trim() || null;
+    }
+
+    if (!buyerName || !buyerCompany || !territory) {
+      return res.status(400).json({ error: 'buyerName, buyerCompany, and territory are required' });
+    }
+
+    let rawLines = Array.isArray(body.lines) ? body.lines : [];
+    if (isDist) {
+      rawLines = rawLines.map((l) => ({ sku: l?.sku, cases: l?.cases }));
+    } else if (!rawLines.length) {
+      rawLines = [{ sku: 'first_press_750', cases: 25 }];
+    }
+    const lines = parseExportLines(rawLines);
+    if (!lines.length) {
+      return res.status(400).json({ error: 'Add at least one SKU with cases' });
+    }
+    const priced = priceExportLines(lines);
+    const seq = await nextSeq(db, tenantId);
+    const displayId = padDoc('HX', seq);
+    const now = new Date();
+    const [row] = await db('export_orders')
+      .insert({
+        tenant_id: tenantId,
+        seq,
+        display_id: displayId,
+        quote_no: padDoc('Q', seq),
+        pi_no: padDoc('PI', seq),
+        deposit_no: padDoc('DP', seq),
+        pa_no: padDoc('PA', seq),
+        release_no: padDoc('SR', seq),
+        expo_lead_id: expoLeadId,
+        distributor_org_id: distributorOrgId,
+        origin,
+        buyer_name: buyerName,
+        buyer_company: buyerCompany,
+        buyer_address: buyerAddress,
+        buyer_email: buyerEmail,
+        territory,
+        destination_country: destinationCountry,
+        buyer_po_no: buyerPoNo,
+        forwarder_name: forwarderName,
+        forwarder_instructions: forwarderInstructions,
+        stage: '02_quotation',
+        lines: JSON.stringify(priced.lines.map((l) => ({ sku: l.sku, cases: l.cases, unitFobUsd: l.unitFobUsd }))),
+        subtotal_usd: priced.subtotalUsd,
+        deposit_due_usd: priced.depositDueUsd,
+        balance_due_usd: priced.balanceDueUsd,
+        checklist: JSON.stringify(defaultChecklistState()),
+        issued_docs: JSON.stringify({}),
+        created_at: now,
+        updated_at: now,
+      })
+      .returning('*');
+    res.status(201).json({ data: exportSerializeForRole(req, row) });
+  } catch (err) {
+    console.error('[API v1] export-orders create:', err);
+    res.status(500).json({ error: 'Failed to create export order' });
+  }
+});
+
+router.get('/export-orders/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = platformDb;
+    if (!(await ensureExportOrdersTable(db))) return res.status(404).json({ error: 'Not found' });
+    const row = await findExportOrder(db, tenantId, req.params.id);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    const role = req.user?.role;
+    if (role === 'distributor') {
+      const orgId = req.user?.distributorOrgId || req.distributorOrg?.id;
+      if (!orgId || String(row.distributor_org_id) !== String(orgId) || !distributorCanViewStage(row.stage)) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+    } else if (isManufacturer(role)) {
+      if (!['cleared', 'exception'].includes(row.deposit_status)) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+    } else if (!canManageExportOrders(role)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    res.json({ data: exportSerializeForRole(req, row) });
+  } catch (err) {
+    console.error('[API v1] export-orders get:', err);
+    res.status(500).json({ error: 'Failed to load export order' });
+  }
+});
+
+router.patch('/export-orders/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = platformDb;
+    const row = await findExportOrder(db, tenantId, req.params.id);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    const role = req.user?.role;
+    const body = req.body || {};
+    const updates = { updated_at: new Date() };
+
+    if (role === 'distributor') {
+      const orgId = req.user?.distributorOrgId || req.distributorOrg?.id;
+      if (!orgId || String(row.distributor_org_id) !== String(orgId)) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+      if (body.buyerPoNo != null) updates.buyer_po_no = String(body.buyerPoNo).trim();
+      if (body.forwarderName != null) updates.forwarder_name = String(body.forwarderName).trim();
+      if (body.forwarderInstructions != null) updates.forwarder_instructions = String(body.forwarderInstructions);
+    } else if (isManufacturer(role)) {
+      if (!['cleared', 'exception'].includes(row.deposit_status)) {
+        return res.status(403).json({ error: 'Production not authorized yet' });
+      }
+      if (body.productionSlot != null) updates.production_slot = String(body.productionSlot);
+      if (body.expectedCompletion != null) updates.expected_completion = body.expectedCompletion || null;
+      if (body.batchPlan != null) updates.batch_plan = String(body.batchPlan);
+      if (body.readyToShipOn != null) updates.ready_to_ship_on = body.readyToShipOn || null;
+      if (body.casesPerPallet != null) updates.cases_per_pallet = String(body.casesPerPallet);
+      if (body.estimatedPallets != null) updates.estimated_pallets = String(body.estimatedPallets);
+      if (body.estimatedGrossWeight != null) updates.estimated_gross_weight = String(body.estimatedGrossWeight);
+    } else if (canManageExportOrders(role)) {
+      const map = {
+        buyerName: 'buyer_name',
+        buyerCompany: 'buyer_company',
+        buyerAddress: 'buyer_address',
+        buyerEmail: 'buyer_email',
+        territory: 'territory',
+        destinationCountry: 'destination_country',
+        buyerPoNo: 'buyer_po_no',
+        distributorOrgId: 'distributor_org_id',
+        depositStatus: 'deposit_status',
+        depositReceivedUsd: 'deposit_received_usd',
+        wireFeesUsd: 'wire_fees_usd',
+        depositRef: 'deposit_ref',
+        depositValueDate: 'deposit_value_date',
+        depositNotes: 'deposit_notes',
+        balanceStatus: 'balance_status',
+        balanceReceivedUsd: 'balance_received_usd',
+        balanceRef: 'balance_ref',
+        manufacturerName: 'manufacturer_name',
+        requestedCompletion: 'requested_completion',
+        productionSlot: 'production_slot',
+        expectedCompletion: 'expected_completion',
+        batchPlan: 'batch_plan',
+        casesPerPallet: 'cases_per_pallet',
+        estimatedPallets: 'estimated_pallets',
+        estimatedGrossWeight: 'estimated_gross_weight',
+        factoryContact: 'factory_contact',
+        readyToShipOn: 'ready_to_ship_on',
+        forwarderName: 'forwarder_name',
+        forwarderInstructions: 'forwarder_instructions',
+        fobNamedPoint: 'fob_named_point',
+        plannedDeparture: 'planned_departure',
+        checklistOpenItems: 'checklist_open_items',
+        notes: 'notes',
+        quoteValidUntil: 'quote_valid_until',
+      };
+      for (const [k, col] of Object.entries(map)) {
+        if (body[k] !== undefined) updates[col] = body[k] === '' ? null : body[k];
+      }
+      if (body.lines) {
+        const lines = parseExportLines(body.lines);
+        const priced = priceExportLines(lines);
+        updates.lines = JSON.stringify(priced.lines.map((l) => ({ sku: l.sku, cases: l.cases, unitFobUsd: l.unitFobUsd })));
+        updates.subtotal_usd = priced.subtotalUsd;
+        updates.deposit_due_usd = priced.depositDueUsd;
+        updates.balance_due_usd = priced.balanceDueUsd;
+      }
+      if (body.checklist) updates.checklist = JSON.stringify(body.checklist);
+      if (body.checklistCleared === true) {
+        const cl = body.checklist || asJsonObject(row.checklist);
+        if (!requiredChecklistReady(cl)) {
+          return res.status(400).json({
+            error: 'Mark remaining required checklist items issued, complete, or N/A before clearing for release.',
+          });
+        }
+        updates.checklist_cleared = true;
+      } else if (body.checklistCleared === false) {
+        updates.checklist_cleared = false;
+      }
+      if (body.stage != null) {
+        if (!isExportStageId(body.stage)) return res.status(400).json({ error: 'Invalid stage' });
+        const gate = gateAdvance({
+          from: row.stage,
+          to: body.stage,
+          depositStatus: updates.deposit_status || row.deposit_status,
+          balanceStatus: updates.balance_status || row.balance_status,
+          checklistCleared:
+            updates.checklist_cleared != null ? updates.checklist_cleared : row.checklist_cleared,
+          fobNamedPoint: updates.fob_named_point != null ? updates.fob_named_point : row.fob_named_point,
+        });
+        if (!gate.ok) return res.status(400).json({ error: gate.error });
+        updates.stage = body.stage;
+      }
+    } else {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const [updated] = await db('export_orders')
+      .where({ id: row.id, tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+    res.json({ data: exportSerializeForRole(req, updated) });
+  } catch (err) {
+    console.error('[API v1] export-orders patch:', err);
+    res.status(500).json({ error: 'Failed to update export order' });
+  }
+});
+
+router.post('/export-orders/:id/docs/:doc/issue', async (req, res) => {
+  try {
+    if (!canManageExportOrders(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = platformDb;
+    const row = await findExportOrder(db, tenantId, req.params.id);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    const doc = String(req.params.doc || '');
+    const allowed = ['quotation', 'po_acceptance', 'proforma', 'deposit', 'production_auth', 'export_checklist', 'shipment_release'];
+    if (!allowed.includes(doc)) return res.status(400).json({ error: 'Unknown document' });
+    if (doc === 'production_auth' && !['cleared', 'exception'].includes(row.deposit_status)) {
+      return res.status(400).json({ error: 'Issue production authorization only after deposit clearance.' });
+    }
+    if (doc === 'shipment_release') {
+      const gate = gateAdvance({
+        from: row.stage,
+        to: '12_shipment_release',
+        depositStatus: row.deposit_status,
+        balanceStatus: row.balance_status,
+        checklistCleared: row.checklist_cleared,
+        fobNamedPoint: row.fob_named_point,
+      });
+      if (!gate.ok) return res.status(400).json({ error: gate.error });
+    }
+
+    const issued = { ...asJsonObject(row.issued_docs) };
+    issued[doc] = { issuedAt: new Date().toISOString(), issuedBy: req.user?.email || req.user?.userId };
+    const checklist = applyIssueToChecklist(row.checklist, doc);
+    const [updated] = await db('export_orders')
+      .where({ id: row.id, tenant_id: tenantId })
+      .update({
+        issued_docs: JSON.stringify(issued),
+        checklist: JSON.stringify(checklist),
+        updated_at: new Date(),
+      })
+      .returning('*');
+
+    let email = { sent: false, skipped: true };
+    if (isBuyerExportDoc(doc) && updated.buyer_email) {
+      const titles = {
+        quotation: 'International distributor quotation',
+        po_acceptance: 'Purchase order acceptance',
+        proforma: 'Pro forma invoice',
+        deposit: 'Deposit confirmation',
+        shipment_release: 'Final payment and shipment release',
+      };
+      const docUrl = `${clientBaseUrl()}/distributor/international-orders/${updated.display_id}/docs/${doc}`;
+      email = await sendExportDocIssuedEmail({
+        to: updated.buyer_email,
+        buyerName: updated.buyer_name,
+        docTitle: titles[doc] || doc,
+        displayId: updated.display_id,
+        docUrl,
+      });
+    }
+    res.json({ data: serializeExportOrder(updated, { includeInternalEconomics: true }), email });
+  } catch (err) {
+    console.error('[API v1] export-orders issue:', err);
+    res.status(500).json({ error: 'Failed to issue document' });
+  }
+});
+
+const TRADE_PACK_ITEMS = {
+  first_press_sheet: 'First Press Coffee Rhum sell sheet',
+  yuzu_mint_sheet: 'Yuzu Mint Rhum sell sheet',
+  portfolio: 'Portfolio card',
+  qr: 'Connect QR / buyer form',
+  press: 'Press and media kit (confirm contacts before public use)',
+  terms: 'Distributor terms',
+};
+
+router.post('/trade-pack/send', async (req, res) => {
+  try {
+    const role = req.user?.role;
+    const hq = canManageExportOrders(role);
+    const dist = role === 'distributor';
+    if (!hq && !dist) return res.status(403).json({ error: 'Forbidden' });
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const to = String(req.body?.to || '').trim().toLowerCase();
+    const recipientName = String(req.body?.recipientName || '').trim();
+    const requested = Array.isArray(req.body?.items) ? req.body.items.map(String) : [];
+    let keys = requested.filter((k) => TRADE_PACK_ITEMS[k]);
+    if (!hq) keys = keys.filter((k) => k !== 'terms' || dist);
+    if (dist) keys = keys.filter((k) => k !== 'terms' || true);
+    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      return res.status(400).json({ error: 'Valid recipient email is required' });
+    }
+    if (keys.length === 0) return res.status(400).json({ error: 'Select at least one item' });
+    const base = clientBaseUrl();
+    const links = [
+      { label: 'Trade pack', url: `${base}/trade-pack` },
+      { label: 'Connect form', url: `${base}/connect?event=HK26` },
+    ];
+    if (keys.includes('qr')) links.push({ label: 'Print QR sign', url: `${base}/connect-sign` });
+    const result = await sendTradePackEmail({
+      to,
+      recipientName,
+      items: keys.map((k) => TRADE_PACK_ITEMS[k]),
+      links,
+    });
+    res.json({ ok: true, email: result, items: keys });
+  } catch (err) {
+    console.error('[API v1] trade-pack send:', err);
+    res.status(500).json({ error: 'Failed to send trade pack' });
+  }
+});
+
 
 /** Brand HQ: merge list rows from platform + every distributor database. */
 async function respondHqPaginatedList(req, res, { page, limit, sortKey, fetchRows }) {
@@ -1442,7 +2082,7 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req
           companyName: account.trading_name || account.name,
         });
       } catch (provisionErr) {
-        console.error('[API v1] Manufacturer portal provision failed:', provisionErr);
+        console.error('[API v1] Distillery portal provision failed:', provisionErr);
         portalProvision = { ok: false, reason: 'provision_failed' };
       }
     }
@@ -1461,9 +2101,11 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req
 // PUT /api/v1/accounts/:id - Update account
 router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const { id } = req.params;
+    const loc = await resolveEntityWrite(req, req.params.id);
+    if (!loc) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    const { db, id, tenantId } = loc;
     const body = req.body || {};
 
     const updates = { updated_at: new Date() };
@@ -1471,7 +2113,9 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
     if (name != null && String(name).trim() !== '') updates.name = String(name).trim();
     if (body.tradingName != null) updates.trading_name = String(body.tradingName).trim();
     if (body.type != null) updates.type = String(body.type).trim();
+    const marketFromParts = [body.city, body.country].filter((p) => p != null && String(p).trim() !== '').join(', ');
     if (body.market != null) updates.market = String(body.market).trim();
+    else if (marketFromParts) updates.market = marketFromParts;
     if (body.status != null) updates.status = String(body.status).trim();
     if (body.email != null) updates.email = String(body.email).trim();
     if (body.phone != null) updates.phone = String(body.phone).trim();
@@ -1485,6 +2129,15 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
           ? String(body.portalLoginEmail).trim()
           : null;
     }
+
+    const current = await db('accounts')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .first();
+    if (!current) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+
     if (body.billingAddress != null) {
       updates.billing_address =
         typeof body.billingAddress === 'string'
@@ -1497,8 +2150,15 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
           ? body.shippingAddress
           : JSON.stringify(body.shippingAddress);
     }
+    if (body.contactName !== undefined || body.contactRole !== undefined) {
+      const existingBill = updates.billing_address ?? current.billing_address;
+      updates.billing_address = mergeContactIntoAddress(
+        existingBill,
+        body.contactName,
+        body.contactRole,
+      );
+    }
 
-    const db = getDb();
     if (updates.portal_login_email !== undefined) {
       const hasPortalCol = await db.schema.hasColumn('accounts', 'portal_login_email');
       if (!hasPortalCol) delete updates.portal_login_email;
@@ -1509,7 +2169,7 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
       .whereNull('deleted_at')
       .update(updates)
       .returning('*');
-    
+
     if (!account) {
       return res.status(404).json({ error: 'Account not found' });
     }
@@ -1527,11 +2187,11 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
           companyName: account.trading_name || account.name,
         });
       } catch (provisionErr) {
-        console.error('[API v1] Manufacturer portal provision failed:', provisionErr);
+        console.error('[API v1] Distillery portal provision failed:', provisionErr);
         portalProvision = { ok: false, reason: 'provision_failed' };
       }
     }
-    
+
     res.json({ data: account, portalProvision });
   } catch (err) {
     console.error('[API v1] Error updating account:', err);
@@ -3412,12 +4072,12 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
         Boolean(assigned_crm_member_id && String(assigned_crm_member_id).trim());
       if (!hasAssignee) {
         return res.status(400).json({
-          error: 'Assign a manufacturer partner before submitting a product development brief',
+          error: 'Assign a distillery partner before submitting a product development brief',
         });
       }
     }
 
-    // Manufacturers may only create briefs for themselves — never for another partner.
+    // Distilleries may only create briefs for themselves — never for another partner.
     if (req.user?.role === Role.MANUFACTURER) {
       const identity = await resolveManufacturerAssignmentIdentity(getDb(), tenantId, req.user);
       const selfLabels = [...identity.labels];
@@ -3440,10 +4100,15 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
         });
       if (!(emailOk && crmOk && labelOk)) {
         return res.status(403).json({
-          error: 'Product development briefs can only be assigned to your manufacturer facility',
+          error: 'Product development briefs can only be assigned to your distillery facility',
         });
       }
     }
+
+    const assignedLabelRaw = assigned_manufacturer ? String(assigned_manufacturer).trim() : '';
+    const assignedCrmCanonical =
+      canonicalizeManufacturerAssignmentId(assigned_crm_member_id, assignedLabelRaw) ||
+      (assigned_crm_member_id != null ? String(assigned_crm_member_id).trim() : null);
 
     const insertRow = {
       tenant_id: tenantId,
@@ -3455,11 +4120,11 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
       requested_at: new Date(),
       specs: normalizedSpecs,
       status: resolvedStatus,
-      assigned_manufacturer: assigned_manufacturer || null,
+      assigned_manufacturer: assignedLabelRaw || null,
       assigned_manufacturer_email: assigned_manufacturer_email
         ? String(assigned_manufacturer_email).trim().toLowerCase()
         : null,
-      assigned_crm_member_id: assigned_crm_member_id || null,
+      assigned_crm_member_id: assignedCrmCanonical || null,
       notes: notes || null,
       created_by: auditUserIdForDb(req.user?.userId),
     };
@@ -3552,7 +4217,7 @@ router.put('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_
         Boolean(assigneeCrm && String(assigneeCrm).trim());
       if (!hasAssignee) {
         return res.status(400).json({
-          error: 'Assign a manufacturer partner before submitting a product development brief',
+          error: 'Assign a distillery partner before submitting a product development brief',
         });
       }
     }
@@ -3604,7 +4269,7 @@ router.delete('/new-product-requests/:id', requirePermission(Permission.PRODUCTI
       return res.status(404).json({ error: 'New product request not found' });
     }
 
-    // Product briefs are manufacturer-assigned: manufacturers may only delete their own;
+    // Product briefs are distillery-assigned: distilleries may only delete their own;
     // HQ/ops may delete any.
     if (req.user?.role === Role.MANUFACTURER) {
       const identity = await resolveManufacturerAssignmentIdentity(getDb(), tenantId, req.user);
@@ -3634,7 +4299,7 @@ router.post('/new-product-requests/:id/nudge', requirePermission(Permission.PROD
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     if (req.user?.role === Role.MANUFACTURER) {
-      return res.status(403).json({ error: 'Only HQ can nudge manufacturers on product briefs' });
+      return res.status(403).json({ error: 'Only HQ can nudge distilleries on product briefs' });
     }
 
     const { id } = req.params;
@@ -3645,14 +4310,14 @@ router.post('/new-product-requests/:id/nudge', requirePermission(Permission.PROD
 
     if (!['submitted', 'under_review'].includes(String(existing.status))) {
       return res.status(400).json({
-        error: 'Nudge is only available while waiting on manufacturer feasibility review',
+        error: 'Nudge is only available while waiting on distillery feasibility review',
       });
     }
 
     const to = String(existing.assigned_manufacturer_email || '').trim().toLowerCase();
     if (!to) {
       return res.status(400).json({
-        error: 'No manufacturer email on this brief — edit the request and assign a contact email first',
+        error: 'No distillery email on this brief — edit the request and assign a contact email first',
       });
     }
 
@@ -3700,7 +4365,7 @@ router.post('/new-product-requests/:id/nudge', requirePermission(Permission.PROD
     });
   } catch (err) {
     console.error('[API v1] Error nudging new product request:', err);
-    res.status(500).json({ error: 'Failed to nudge manufacturer' });
+    res.status(500).json({ error: 'Failed to nudge distillery' });
   }
 });
 
@@ -4106,8 +4771,8 @@ router.post('/purchase-orders', requirePermission(Permission.PRODUCTION_WRITE), 
     } = body;
 
     const supplierLabel = String(
-      supplier_name || supplierName || body.supplier_name || body.manufacturerName || 'Manufacturer',
-    ).trim() || 'Manufacturer';
+      supplier_name || supplierName || body.supplier_name || body.manufacturerName || 'Distillery',
+    ).trim() || 'Distillery';
 
     if (!po_number) {
       await trx.rollback();
@@ -4115,23 +4780,28 @@ router.post('/purchase-orders', requirePermission(Permission.PRODUCTION_WRITE), 
     }
 
     const resolvedPoType = po_type || poType || 'production';
-    const mfgId =
+    const rawMfgId =
       manufacturer_id != null && String(manufacturer_id).trim() !== ''
         ? String(manufacturer_id).trim()
         : null;
+    // Prefer canonical partner ids (kosapan / kuramoto / echigo) so distillery login scoping matches.
+    const mfgId =
+      resolvedPoType !== 'sales'
+        ? canonicalizeManufacturerAssignmentId(rawMfgId, supplierLabel) || rawMfgId
+        : rawMfgId;
 
-    // Production reorders are manufacturer-only: HQ must assign a partner; manufacturers cannot issue for others.
+    // Production reorders are distillery-only: HQ must assign a partner; distilleries cannot issue for others.
     if (resolvedPoType !== 'sales') {
       if (!mfgId) {
         await trx.rollback();
         return res.status(400).json({
-          error: 'Assign a manufacturer partner before issuing a production request',
+          error: 'Assign a distillery partner before issuing a production request',
         });
       }
       if (req.user?.role === Role.MANUFACTURER) {
         await trx.rollback();
         return res.status(403).json({
-          error: 'Only HQ can issue production requests to manufacturer partners',
+          error: 'Only HQ can issue production requests to distillery partners',
         });
       }
     }
@@ -4853,7 +5523,7 @@ function manufacturerShipmentScopeDenied(existingRow) {
     return {
       status: 403,
       error:
-        'Manufacturer portal users may only work with inbound shipments tied to purchase orders.',
+        'Distillery portal users may only work with inbound shipments tied to purchase orders.',
     };
   }
   return null;
@@ -5051,7 +5721,7 @@ router.post('/shipments', shipmentWriteMiddleware, async (req, res) => {
       await trx.rollback();
       return res.status(403).json({
         error:
-          'Manufacturer portal users may only record shipments tied to purchase orders (inbound finished goods).',
+          'Distillery portal users may only record shipments tied to purchase orders (inbound finished goods).',
       });
     }
 
@@ -5955,11 +6625,11 @@ router.get('/team-members', async (req, res) => {
 });
 
 /**
- * GET /api/v1/purchase-order-manufacturer-options
- * Manufacturer profiles only (Manufacturers list). CRM team_members enrich a profile
- * when the email matches — CRM contacts without a manufacturer profile are omitted.
+ * GET /api/v1/purchase-order-distillery-options
+ * Distillery profiles only (Distilleries list). CRM team_members enrich a profile
+ * when the email matches — CRM contacts without a distillery profile are omitted.
  */
-router.get('/purchase-order-manufacturer-options', requirePermission(Permission.PO_READ), async (req, res) => {
+router.get('/purchase-order-distillery-options', requirePermission(Permission.PO_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -5998,13 +6668,24 @@ router.get('/purchase-order-manufacturer-options', requirePermission(Permission.
       const country = String(p.country ?? '').trim();
       const location = [city, country].filter(Boolean).join(', ');
       const subParts = [location, contact && contact !== label ? contact : ''].filter(Boolean);
+      const canonicalMid = canonicalizeManufacturerAssignmentId(mid || m?.id, label);
+      const optionKey = canonicalMid
+        ? `partner:${canonicalMid}`
+        : mid
+          ? `partner:${mid}`
+          : m
+            ? String(m.id)
+            : em
+              ? `prof:${em}`
+              : `prof:${labelKey}`;
 
       options.push({
-        key: m ? String(m.id) : mid ? `partner:${mid}` : em ? `prof:${em}` : `prof:${labelKey}`,
+        key: optionKey,
         label,
         email: em || undefined,
         sub: subParts.length ? subParts.join(' · ') : undefined,
-        crmMemberId: m ? String(m.id) : mid || null,
+        // Prefer partner id for scoping; keep CRM id only when no partner match.
+        crmMemberId: canonicalMid || mid || (m ? String(m.id) : null),
         hasProfile: true,
       });
 
@@ -6016,8 +6697,8 @@ router.get('/purchase-order-manufacturer-options', requirePermission(Permission.
 
     res.json({ data: options });
   } catch (err) {
-    console.error('[API v1] Error listing purchase-order manufacturer options:', err);
-    res.status(500).json({ error: 'Failed to load manufacturer options' });
+    console.error('[API v1] Error listing purchase-order distillery options:', err);
+    res.status(500).json({ error: 'Failed to load distillery options' });
   }
 });
 
@@ -6499,15 +7180,16 @@ router.post('/team-members/:id/resend-invite', async (req, res) => {
 // PATCH /api/v1/team-members/:id
 router.patch('/team-members/:id', async (req, res) => {
   try {
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const db = getDb();
-    const { id } = req.params;
+    const loc = await resolveEntityWrite(req, req.params.id);
+    if (!loc) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+    const { db, id, tenantId } = loc;
 
     const { name, email, role, phone, department, is_active } = req.body || {};
     const pwOpt = parseOptionalPrimaryWarehouseId(req.body);
 
-    const current = await getDb('team_members')
+    const current = await db('team_members')
       .where({ id, tenant_id: tenantId })
       .first();
     if (!current) {
@@ -6531,8 +7213,7 @@ router.patch('/team-members/:id', async (req, res) => {
       if (!normalizedEmail) {
         return res.status(400).json({ error: 'email must be non-empty' });
       }
-      // Ensure uniqueness within tenant (excluding current record).
-      const conflict = await getDb('team_members')
+      const conflict = await db('team_members')
         .where({ tenant_id: tenantId, email: normalizedEmail })
         .whereNot({ id })
         .first();
@@ -6554,7 +7235,7 @@ router.patch('/team-members/:id', async (req, res) => {
       }
       const wid = pwOpt === null || pwOpt === '' ? null : String(pwOpt).trim();
       try {
-        await getDb().transaction(async (trx) => {
+        await db.transaction(async (trx) => {
           if (Object.keys(updates).length > 0) {
             updates.updated_at = new Date();
             await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
@@ -6568,17 +7249,17 @@ router.patch('/team-members/:id', async (req, res) => {
         }
         throw e;
       }
-      const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
+      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
       return res.json({ data: member });
     }
 
     if (clearingByRole) {
-      await getDb().transaction(async (trx) => {
+      await db.transaction(async (trx) => {
         updates.updated_at = new Date();
         await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
         await setDistributorReceivingWarehouse(trx, tenantId, id, null);
       });
-      const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
+      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
       return res.json({ data: member });
     }
 
@@ -6588,7 +7269,7 @@ router.patch('/team-members/:id', async (req, res) => {
 
     updates.updated_at = new Date();
 
-    const [member] = await getDb('team_members')
+    const [member] = await db('team_members')
       .where({ id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
@@ -6603,15 +7284,36 @@ router.patch('/team-members/:id', async (req, res) => {
 // PATCH /api/v1/team-members/by-email/:email
 router.patch('/team-members/by-email/:email', async (req, res) => {
   try {
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const db = getDb();
     const emailParam = String(req.params.email || '').trim().toLowerCase();
     if (!emailParam) return res.status(400).json({ error: 'email is required' });
 
-    const current = await getDb('team_members')
+    let db = getDb();
+    let tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+
+    let current = await db('team_members')
       .where({ tenant_id: tenantId, email: emailParam })
       .first();
+
+    if (
+      !current &&
+      (req.hqGlobalView || isHqGlobalViewer(req.user?.role))
+    ) {
+      const merged = await hqFetchFromAllSources(req.user?.tenantId, async (srcDb, tid) => {
+        if (!tid) return [];
+        const row = await srcDb('team_members').where({ tenant_id: tid, email: emailParam }).first();
+        return row ? [row] : [];
+      });
+      const tagged = merged[0];
+      if (tagged) {
+        const loc = await resolveEntityWrite(req, tagged.id);
+        if (loc) {
+          db = loc.db;
+          tenantId = loc.tenantId;
+          current = await db('team_members').where({ id: loc.id, tenant_id: loc.tenantId }).first();
+        }
+      }
+    }
     if (!current) {
       return res.status(404).json({ error: 'Team member not found' });
     }
@@ -6637,7 +7339,7 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
       if (!normalizedEmail) {
         return res.status(400).json({ error: 'email must be non-empty' });
       }
-      const conflict = await getDb('team_members')
+      const conflict = await db('team_members')
         .where({ tenant_id: tenantId, email: normalizedEmail })
         .whereNot({ id: current.id })
         .first();
@@ -6659,7 +7361,7 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
       }
       const wid = pwOpt === null || pwOpt === '' ? null : String(pwOpt).trim();
       try {
-        await getDb().transaction(async (trx) => {
+        await db.transaction(async (trx) => {
           if (Object.keys(updates).length > 0) {
             updates.updated_at = new Date();
             await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
@@ -6673,17 +7375,17 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
         }
         throw e;
       }
-      const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
+      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
       return res.json({ data: member });
     }
 
     if (clearingByRole) {
-      await getDb().transaction(async (trx) => {
+      await db.transaction(async (trx) => {
         updates.updated_at = new Date();
         await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
         await setDistributorReceivingWarehouse(trx, tenantId, id, null);
       });
-      const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
+      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
       return res.json({ data: member });
     }
 
@@ -6693,7 +7395,7 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
 
     updates.updated_at = new Date();
 
-    const [member] = await getDb('team_members')
+    const [member] = await db('team_members')
       .where({ id: current.id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
@@ -7021,29 +7723,73 @@ router.put('/operational-settings', requirePermission(Permission.SETTINGS_WRITE)
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
-    const updates = req.body;
-    
-    delete updates.tenant_id;
-    delete updates.created_at;
-    updates.updated_at = new Date();
-    
-    const [settings] = await getDb('operational_settings')
-      .where({ tenant_id: tenantId })
-      .update(updates)
-      .returning('*');
-    
-    if (!settings) {
-      // Create if missing
-      const [created] = await getDb('operational_settings')
-        .insert({ ...updates, tenant_id: tenantId })
+
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const ALLOWED = new Set([
+      'lead_time_days',
+      'safety_stock_days',
+      'shelf_threshold',
+      'reorder_point_bottles',
+      'default_payment_terms',
+      'default_currency',
+      'auto_create_shipment',
+      'auto_alert_low_stock',
+      'company_name',
+      'primary_markets',
+      'manufacturer_name',
+      'support_email',
+      'hq_hidden_manufacturer_ids',
+      'hq_manufacturer_partner_configs',
+      'hq_ui_preferences',
+    ]);
+
+    const requested = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (!ALLOWED.has(key) || value === undefined) continue;
+      requested[key] = value;
+    }
+    requested.updated_at = new Date();
+
+    // HQ global viewers and normal tenants both use the request-bound DB (platform for HQ).
+    const db = getDb();
+    const columnInfo = await db('operational_settings').columnInfo();
+    const updates = {};
+    for (const [key, value] of Object.entries(requested)) {
+      if (key === 'updated_at' || columnInfo[key]) updates[key] = value;
+    }
+
+    if (Object.keys(updates).length <= 1 && updates.updated_at && Object.keys(requested).length > 1) {
+      const missing = Object.keys(requested).filter((k) => k !== 'updated_at' && !columnInfo[k]);
+      return res.status(500).json({
+        error: 'Operational settings schema is missing required columns',
+        missing,
+      });
+    }
+
+    let existing = await db('operational_settings').where({ tenant_id: tenantId }).first();
+    if (!existing) {
+      const [created] = await db('operational_settings')
+        .insert({ tenant_id: tenantId, ...updates })
         .returning('*');
       return res.json({ data: created });
     }
-    
+
+    const [settings] = await db('operational_settings')
+      .where({ tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+
+    if (!settings) {
+      return res.status(500).json({ error: 'Failed to update operational settings' });
+    }
+
     res.json({ data: settings });
   } catch (err) {
     console.error('[API v1] Error updating operational settings:', err);
-    res.status(500).json({ error: 'Failed to update operational settings' });
+    res.status(500).json({
+      error: 'Failed to update operational settings',
+      ...(process.env.NODE_ENV !== 'production' && err instanceof Error ? { detail: err.message } : {}),
+    });
   }
 });
 
@@ -7202,7 +7948,7 @@ router.patch('/support-tickets/:id/status', requirePermission(Permission.ORDERS_
 // ===== MANUFACTURER PROFILES =====
 
 /**
- * Saving a manufacturer profile must also unhide it on the HQ Manufacturers list.
+ * Saving a distillery profile must also unhide it on the HQ Distilleries list.
  * Clients may hold a stale (or empty) copy of hq_hidden_manufacturer_ids, so the
  * scrub happens here where the database is the source of truth.
  */
@@ -7239,7 +7985,7 @@ async function unhideManufacturerInSettings(tenantId, manufacturerId, companyNam
       .where({ tenant_id: tenantId })
       .update({ hq_hidden_manufacturer_ids: JSON.stringify(next), updated_at: new Date() });
   } catch (err) {
-    console.error('[API v1] Failed to unhide manufacturer in settings:', err?.message || err);
+    console.error('[API v1] Failed to unhide distillery in settings:', err?.message || err);
   }
 }
 
@@ -7255,8 +8001,8 @@ router.get('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_REA
     
     res.json({ data: profiles });
   } catch (err) {
-    console.error('[API v1] Error fetching manufacturer profiles:', err);
-    res.status(500).json({ error: 'Failed to fetch manufacturer profiles' });
+    console.error('[API v1] Error fetching distillery profiles:', err);
+    res.status(500).json({ error: 'Failed to fetch distillery profiles' });
   }
 });
 
@@ -7278,13 +8024,13 @@ router.get('/manufacturer-profiles/:id', requirePermission(Permission.PRODUCTION
         .first());
     
     if (!resolved) {
-      return res.status(404).json({ error: 'Manufacturer profile not found' });
+      return res.status(404).json({ error: 'Distillery profile not found' });
     }
     
     res.json({ data: resolved });
   } catch (err) {
-    console.error('[API v1] Error fetching manufacturer profile:', err);
-    res.status(500).json({ error: 'Failed to fetch manufacturer profile' });
+    console.error('[API v1] Error fetching distillery profile:', err);
+    res.status(500).json({ error: 'Failed to fetch distillery profile' });
   }
 });
 
@@ -7307,8 +8053,8 @@ router.post('/manufacturer-portal-access', requirePermission(Permission.ACCOUNTS
 
     res.json({ data: portalProvision });
   } catch (err) {
-    console.error('[API v1] Error provisioning manufacturer portal access:', err);
-    res.status(500).json({ error: 'Failed to provision manufacturer portal access' });
+    console.error('[API v1] Error provisioning distillery portal access:', err);
+    res.status(500).json({ error: 'Failed to provision distillery portal access' });
   }
 });
 
@@ -7376,8 +8122,8 @@ router.post('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_WR
     await unhideManufacturerInSettings(tenantId, profile.manufacturer_id, profile.company_name);
     res.status(201).json({ data: profile });
   } catch (err) {
-    console.error('[API v1] Error creating manufacturer profile:', err);
-    res.status(500).json({ error: 'Failed to create manufacturer profile' });
+    console.error('[API v1] Error creating distillery profile:', err);
+    res.status(500).json({ error: 'Failed to create distillery profile' });
   }
 });
 
@@ -7400,14 +8146,14 @@ router.put('/manufacturer-profiles/:id', requirePermission(Permission.PRODUCTION
       .returning('*');
     
     if (!profile) {
-      return res.status(404).json({ error: 'Manufacturer profile not found' });
+      return res.status(404).json({ error: 'Distillery profile not found' });
     }
     
     await unhideManufacturerInSettings(tenantId, profile.manufacturer_id, profile.company_name);
     res.json({ data: profile });
   } catch (err) {
-    console.error('[API v1] Error updating manufacturer profile:', err);
-    res.status(500).json({ error: 'Failed to update manufacturer profile' });
+    console.error('[API v1] Error updating distillery profile:', err);
+    res.status(500).json({ error: 'Failed to update distillery profile' });
   }
 });
 
@@ -7427,8 +8173,8 @@ router.delete('/manufacturer-profiles/:id', requirePermission(Permission.PRODUCT
 
     res.json({ data: { deleted } });
   } catch (err) {
-    console.error('[API v1] Error deleting manufacturer profile:', err);
-    res.status(500).json({ error: 'Failed to delete manufacturer profile' });
+    console.error('[API v1] Error deleting distillery profile:', err);
+    res.status(500).json({ error: 'Failed to delete distillery profile' });
   }
 });
 

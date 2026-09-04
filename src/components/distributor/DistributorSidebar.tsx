@@ -46,6 +46,7 @@ type NavItem = {
 
 const operationsItems: NavItem[] = [
   { to: "/distributor", label: "Dashboard", icon: Home },
+  { to: "/distributor/international-orders", label: "International orders", icon: FileText, badgeTone: "amber" },
   { to: "/distributor/purchase-orders", label: "Purchase orders", icon: FileText, badgeTone: "red" },
   { to: "/distributor/inventory", label: "Inventory", icon: Warehouse },
   { to: "/distributor/pick-pack", label: "Pick & pack", icon: Package, badgeTone: "amber" },
