@@ -306,6 +306,7 @@ export function getInventoryByLocation(
     in_transit: 0,
     retail_shelf: 0,
     export_origin: 0,
+  };
 
   for (const item of items) {
     if (sku && item.sku !== sku) continue;
