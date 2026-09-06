@@ -868,45 +868,20 @@ PAGES['order-detail']=()=>{
 };
 
 /* ── DISTRIBUTOR SALES (downstream visibility) ── */
-const DIST_SALES={
-  'Empire Wines':{market:'NYC',q2:'$182K',cases:1240,reps:[{n:'Mike Tan',terr:'Manhattan + Brooklyn',sales:'$94K',accts:14,quota:'61%'},{n:'Sofia Lim',terr:'Queens + Bronx',sales:'$48K',accts:10,quota:'48%'}],retail:[{n:'The Drake Hotel',type:'Hotel',rev:'$38.4K',orders:9,st:'green'},{n:'The Aviary',type:'Bar',rev:'$14.2K',orders:6,st:'green'},{n:'Dante',type:'Restaurant',rev:'$11.5K',orders:5,st:'amber'},{n:'Katana Kitten',type:'Bar',rev:'$8.6K',orders:4,st:'green'},{n:'Gramercy Tavern',type:'Restaurant',rev:'$21.6K',orders:7,st:'green'}]},
-  'Midwest Spirits':{market:'Chicago',q2:'$94K',cases:680,reps:[{n:'Carlos Reyes',terr:'Chicago metro',sales:'$72K',accts:18,quota:'72%'}],retail:[{n:'The Gage',type:'Restaurant',rev:'$18.2K',orders:6,st:'green'},{n:'Three Dots',type:'Bar',rev:'$9.4K',orders:4,st:'amber'},{n:'Kumiko',type:'Bar',rev:'$15.8K',orders:5,st:'green'}]},
-  'Kanto Beverage':{market:'Tokyo',q2:'¥4.8M',cases:1680,reps:[{n:'Yuki Tanaka',terr:'Tokyo 23 wards',sales:'¥6.2M',accts:31,quota:'88%'}],retail:[{n:'Kioi Sakaba',type:'Izakaya',rev:'¥1.2M',orders:11,st:'green'},{n:'Gen Yamamoto',type:'Bar',rev:'¥0.9M',orders:8,st:'green'}]},
-  'Cave Lumière':{market:'Paris',q2:'€19.6K',cases:280,reps:[{n:'Élise Marchand',terr:'Paris centre',sales:'€19.6K',accts:9,quota:'52%'}],retail:[{n:'Bar Hemingway',type:'Bar',rev:'€8.4K',orders:5,st:'green'},{n:'Le Syndicat',type:'Bar',rev:'€6.2K',orders:4,st:'amber'}]},
-};
-let currentDist='Empire Wines';
+const DIST_SALES={};
+let currentDist='';
 PAGES['distributor-sales']=()=>{
   const names=Object.keys(DIST_SALES);
   const d=DIST_SALES[currentDist];
-  const sc={green:'green',amber:'amber',red:'red'};
   return`
 <div class="pw enter">
   <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Distributor sales</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Downstream visibility into each distributor's sales-rep performance and retail-store revenue. Read-only — order handling stays with the distributor.</p></div>
     <button class="btn btn-outline btn-sm">Export report</button>
   </div>
-  <div class="filter-bar">${names.map(n=>`<button class="filter-btn${n===currentDist?' active':''}" onclick="currentDist='${n.replace(/'/g,"\\'")}';nav('distributor-sales')">${n}</button>`).join('')}</div>
-  <div class="kpi-row">
-    ${kpi(IC.truck,'ic-gold','Distributor',d.market,currentDist,'','')}
-    ${kpi(IC.cart,'ic-green','Sell-through Q2',d.q2,d.cases+' cases moved','','')}
-    ${kpi(IC.users,'ic-blue','Sales reps',d.reps.length+'',d.reps.reduce((a,r)=>a+r.accts,0)+' accounts covered','','')}
-    ${kpi(IC.store,'ic-ink','Retail accounts',d.retail.length+'',d.retail.filter(r=>r.st==='green').length+' active','','')}
-  </div>
-  <div class="two-col" style="margin-bottom:0">
-    <div class="card">
-      <div class="card-head"><div><div class="card-title">Sales-rep performance</div><div class="card-sub">Reps selling through ${currentDist}</div></div></div>
-      <table class="data-table">
-        <thead><tr><th>Rep</th><th>Territory</th><th>Q2 sales</th><th>Accounts</th><th>Quota</th></tr></thead>
-        <tbody>${d.reps.map(r=>`<tr><td style="font-weight:500">${r.n}</td><td style="font-size:12px;color:hsl(var(--muted-foreground))">${r.terr}</td><td class="mono" style="font-weight:600;color:hsl(var(--accent))">${r.sales}</td><td class="mono">${r.accts}</td><td class="mono" style="font-weight:600">${r.quota}</td></tr>`).join('')}</tbody>
-      </table>
-    </div>
-    <div class="card">
-      <div class="card-head"><div><div class="card-title">Retail-store sales</div><div class="card-sub">Top accounts by revenue</div></div></div>
-      <table class="data-table">
-        <thead><tr><th>Account</th><th>Type</th><th>Q2 revenue</th><th>Orders</th><th>Status</th></tr></thead>
-        <tbody>${d.retail.map(r=>`<tr><td style="font-weight:500">${r.n}</td><td style="font-size:12px;color:hsl(var(--muted-foreground))">${r.type}</td><td class="mono" style="font-weight:600">${r.rev}</td><td class="mono">${r.orders}</td><td>${pill(sc[r.st],r.st==='green'?'active':'watch')}</td></tr>`).join('')}</tbody>
-      </table>
-    </div>
-  </div>
+  ${!d?`<div class="card" style="padding:48px 24px;text-align:center">
+    <p style="font-size:14px;font-weight:600;margin:0 0 8px">No distributor networks yet</p>
+    <p style="font-size:13px;color:hsl(var(--muted-foreground));margin:0">Create distributor accounts under Network → Distributors, then open their partner portal.</p>
+  </div>`:''}
 </div>`;
 };
 
