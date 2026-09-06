@@ -919,12 +919,12 @@ router.get('/distributor-organizations', async (req, res) => {
         .flatMap((a) => [a.name, a.trading_name].filter(Boolean).map((s) => String(s).trim().toLowerCase()))
         .filter((n) => !isDemoDistributorOrg({ name: n })),
     );
-    const rows = await platformDb('distributor_organizations')
+    const rows = (await platformDb('distributor_organizations')
       .where({ is_active: true })
-      .orderBy('created_at', 'desc');
-    const visible = (liveNames.size
+      .orderBy('created_at', 'desc')).filter((o) => !isDemoDistributorOrg(o));
+    const visible = liveNames.size
       ? rows.filter((o) => liveNames.has(String(o.name || '').trim().toLowerCase()))
-      : []).filter((o) => !isDemoDistributorOrg(o));
+      : [];
     res.json({ data: visible });
   } catch (err) {
     console.error('[API v1] Error listing distributor organizations:', err);

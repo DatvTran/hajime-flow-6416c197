@@ -6,7 +6,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { getDistributorOrganizations, type DistributorOrganizationRow } from "@/lib/api-v1-mutations";
 import { computeDistributorSalesSnapshot } from "@/lib/hq-distributor-sales-metrics";
 import { mergeHqNetworkSalesForDisplay } from "@/lib/hq-orders-demo";
-import { isSeedDemoDistributorOrg, isSeedDemoPartnerName } from "@/lib/normalize-app-data";
+import { isSeedDemoAccount, isSeedDemoDistributorOrg, isSeedDemoPartnerName } from "@/lib/normalize-app-data";
 import { partnerPathForOrg, resolveDistributorOrgId } from "@/lib/hq-distributor-orgs";
 import {
   HqBtn,
@@ -45,7 +45,9 @@ export function HqDistributorSalesView({ fixedOrgId, fixedOrgName, showBackLink 
     let cancelled = false;
     void getDistributorOrganizations()
       .then((res) => {
-        if (!cancelled) setOrgs(res.data ?? []);
+        if (!cancelled) {
+          setOrgs((res.data ?? []).filter((o) => !isSeedDemoDistributorOrg(o)));
+        }
       })
       .catch(() => {
         /* optional API */
@@ -67,29 +69,25 @@ export function HqDistributorSalesView({ fixedOrgId, fixedOrgName, showBackLink 
 
   const orgOptions = useMemo((): OrgOption[] => {
     const map = new Map<string, string>();
-    for (const org of orgs) {
-      map.set(org.id, org.name);
-    }
+    const orgById = new Map(orgs.map((o) => [String(o.id), o]));
+    const add = (id: string | undefined, name: string | undefined, slug?: string) => {
+      const label = (name || "").trim();
+      const key = String(id || "").trim();
+      if (!key || !label) return;
+      if (isSeedDemoPartnerName(label)) return;
+      if (isSeedDemoDistributorOrg({ id: key, name: label, slug })) return;
+      if (!map.has(key)) map.set(key, label);
+    };
     for (const acc of networkData.accounts) {
       if (acc.type !== "distributor") continue;
-      const id = resolveDistributorOrgId(acc, orgs);
-      if (id && !map.has(id)) {
-        map.set(id, acc.tradingName || acc.legalName || acc.name || id);
-      }
+      if (isSeedDemoAccount(acc)) continue;
+      const resolved = resolveDistributorOrgId(acc, orgs);
+      const id = resolved || acc.distributorOrgId || acc.id;
+      const name = acc.tradingName || acc.legalName || acc.name;
+      add(id, name, orgById.get(String(id))?.slug);
     }
-    for (const o of networkData.salesOrders) {
-      if (!o.distributorOrgId) continue;
-      if (!map.has(o.distributorOrgId)) {
-        map.set(o.distributorOrgId, o.distributorOrgName || o.distributorOrgId);
-      }
-    }
-    return [...map.entries()]
-      .filter(
-        ([id, name]) =>
-          !isSeedDemoDistributorOrg({ id, name }) && !isSeedDemoPartnerName(name),
-      )
-      .map(([id, name]) => ({ id, name }));
-  }, [orgs, networkData.accounts, networkData.salesOrders]);
+    return [...map.entries()].map(([id, name]) => ({ id, name }));
+  }, [orgs, networkData.accounts]);
 
   useEffect(() => {
     if (fixedOrgId) {
