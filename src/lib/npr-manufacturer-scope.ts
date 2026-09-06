@@ -28,7 +28,7 @@ function addLabel(set: Set<string>, value: string | undefined | null) {
   if (trimmed) set.add(trimmed);
 }
 
-/** Client-side mirror of server manufacturer inbox matching (bootstrap / demo data). */
+/** Client-side mirror of server distillery inbox matching (bootstrap / demo data). */
 export function resolveManufacturerAssignmentIdentity(
   userEmail: string | undefined,
   teamMembers: TeamMember[] = [],
@@ -141,7 +141,7 @@ export function filterNprsForManufacturerUser(
   );
 }
 
-/** Best label for manufacturer-initiated NPR assignment (matches HQ brief assignment). */
+/** Best label for distillery-initiated NPR assignment (matches HQ brief assignment). */
 export function resolveManufacturerAssignmentLabel(
   identity: ManufacturerAssignmentIdentity,
   accounts: Account[] = [],
@@ -150,10 +150,10 @@ export function resolveManufacturerAssignmentLabel(
     if (acc.type !== "manufacturer" || acc.distributorOrgId) continue;
     const accEmail = normEmail(acc.email);
     if (accEmail && identity.emails.has(accEmail)) {
-      return acc.tradingName?.trim() || acc.legalName?.trim() || "Manufacturer";
+      return acc.tradingName?.trim() || acc.legalName?.trim() || "Distillery";
     }
   }
   const labels = [...identity.labels];
   const accountStyle = labels.find((l) => /brewery|distillery|brewing|kura/i.test(l));
-  return accountStyle ?? labels[0] ?? "Manufacturer";
+  return accountStyle ?? labels[0] ?? "Distillery";
 }

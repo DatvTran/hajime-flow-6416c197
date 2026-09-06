@@ -2,18 +2,16 @@ import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import { HqDistributorPartnerManageView } from "@/components/hq/HqDistributorPartnerManageView";
 import { useAppData } from "@/contexts/AppDataContext";
-import { HQ_DISTRIBUTORS_DEMO_ROWS } from "@/lib/hq-distributors-demo";
 
 export default function HqDistributorPartnerPage() {
   const { orgId = "" } = useParams<{ orgId: string }>();
   const { data } = useAppData();
 
   const orgName = useMemo(() => {
-    const demo = HQ_DISTRIBUTORS_DEMO_ROWS.find((r) => r.orgId === orgId);
-    if (demo) return demo.name;
     const fromOrder = data.salesOrders.find((o) => o.distributorOrgId === orgId)?.distributorOrgName;
     const fromAccount = data.accounts.find((a) => a.distributorOrgId === orgId)?.distributorOrgName;
-    return fromOrder || fromAccount || undefined;
+    const byId = data.accounts.find((a) => a.id === orgId);
+    return fromOrder || fromAccount || byId?.tradingName || byId?.legalName || undefined;
   }, [data, orgId]);
 
   if (!orgId) {

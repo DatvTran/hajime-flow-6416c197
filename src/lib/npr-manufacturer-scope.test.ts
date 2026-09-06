@@ -61,7 +61,7 @@ describe("npr-manufacturer-scope", () => {
     expect(nprMatchesManufacturerIdentity(sampleNpr(), identity)).toBe(true);
   });
 
-  it("matches scheduling contact on same manufacturer domain", () => {
+  it("matches scheduling contact on same distillery domain", () => {
     const identity = resolveManufacturerAssignmentIdentity(
       "scheduling@kirin.example",
       TEAM_ROSTER,
@@ -70,7 +70,7 @@ describe("npr-manufacturer-scope", () => {
     expect(nprMatchesManufacturerIdentity(sampleNpr(), identity)).toBe(true);
   });
 
-  it("excludes drafts and unrelated manufacturers", () => {
+  it("excludes drafts and unrelated distilleries", () => {
     const identity = resolveManufacturerAssignmentIdentity(
       "export@kirin.example",
       TEAM_ROSTER,

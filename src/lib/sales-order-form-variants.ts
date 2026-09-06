@@ -45,7 +45,7 @@ const VARIANT_CONFIG: Record<NewSalesOrderFormVariant, SalesOrderFormVariantConf
     title: "Sell-in reference (visibility)",
     description:
       "Optional mirror of partner sell-in for planning — primary production path remains Production orders. Use for cross-checking depletion vs. POs.",
-    badge: "Manufacturer",
+    badge: "Distillery",
     accent: "border-t-4 border-t-slate-500 bg-gradient-to-b from-slate-500/10 to-transparent",
     contextNote: "Defaults to draft; HQ may confirm. Does not reserve inventory until linked workflows run.",
     customerSectionLabel: "Partner / ship-to account",

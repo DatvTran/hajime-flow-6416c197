@@ -1329,7 +1329,7 @@ export default function Dashboard() {
 
           <Card className="card-elevated border-border/70 shadow-none">
             <CardHeader className="border-b border-border/50 p-5 pb-3 flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="font-display text-base">Manufacturer</CardTitle>
+              <CardTitle className="font-display text-base">Distillery</CardTitle>
               <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
                 <Link to="/manufacturer" className="gap-1">
                   Portal <ArrowRight className="h-3 w-3" />

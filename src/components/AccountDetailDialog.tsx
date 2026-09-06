@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { Link } from "react-router-dom";
-import { CreditCard, ExternalLink, MapPin, Pencil, Calendar, MessageSquare } from "lucide-react";
+import { CreditCard, ExternalLink, MapPin, Pencil, Calendar, MessageSquare, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { isHqOperatorRole } from "@/lib/hq-order-scope";
@@ -24,6 +24,17 @@ import { SendTradePackDialog } from "@/components/SendTradePackDialog";
 import { useAppData } from "@/contexts/AppDataContext";
 import { AccountPortalUsersSection } from "@/components/retail/AccountPortalUsersSection";
 import { ON_PREMISE_ACCOUNT_TYPES } from "@/lib/retail-portal-constants";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 function onboardingPipelineLabel(p: Account["onboardingPipeline"] | undefined): string {
   switch (p) {
@@ -50,6 +61,7 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (account: Account) => void | Promise<{ success?: boolean } | void>;
+  onDelete?: (account: Account) => void | Promise<{ success?: boolean } | void>;
 };
 
 function parseTags(s: string): string[] {
@@ -59,7 +71,7 @@ function parseTags(s: string): string[] {
     .filter(Boolean);
 }
 
-export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Props) {
+export function AccountDetailDialog({ account, open, onOpenChange, onSave, onDelete }: Props) {
   const { user } = useAuth();
   const { data } = useAppData();
   const [editing, setEditing] = useState(false);
@@ -69,6 +81,8 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
   const [brandTier, setBrandTier] = useState<NonNullable<Account["pricingTier"]>>("standard");
   const [brandCredit, setBrandCredit] = useState("");
   const [packOpen, setPackOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [portalEmail, setPortalEmail] = useState("");
 
   // Get visit notes for this account (visible to all roles)
   const accountVisitNotes = useMemo(() => {
@@ -118,6 +132,22 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
 
   const update = <K extends keyof Account>(key: K, value: Account[K]) => {
     setDraft((d) => (d ? { ...d, [key]: value } : null));
+  };
+
+  const canDeleteHq = Boolean(onDelete) && isHqOperatorRole(user?.role);
+
+  const handleDelete = async () => {
+    if (!draft || !onDelete) return;
+    setDeleting(true);
+    try {
+      const result = await onDelete(draft);
+      if (result && typeof result === "object" && "success" in result && result.success === false) {
+        return;
+      }
+      handleClose(false);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -831,6 +861,35 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave }: Pro
                 defaultName={draft.tradingName || draft.name}
                 includeTerms={isHqOperatorRole(user?.role) && draft.type === "distributor"}
               />
+
+              {canDeleteHq && !editing ? (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      disabled={deleting}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete account
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete {draft.tradingName || "this account"}?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This removes the account from HQ. Linked CRM portal contacts for this email are deactivated.
+                        Orders already placed stay in history. This cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => void handleDelete()}>Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : null}
 
               {editing ? (
                 <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">

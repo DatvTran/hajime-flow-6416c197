@@ -1,7 +1,5 @@
 import type { Account, SalesOrder, Shipment } from "@/data/mockData";
 import { filterRowsForOrg } from "@/lib/hq-order-scope";
-import { HQ_DISTRIBUTORS_DEMO_ROWS, isHqDistributorDemoOrgId } from "@/lib/hq-distributors-demo";
-import { networkRetailCountForOrg } from "@/lib/hq-distributor-network-demo";
 
 const ON_PREMISE = new Set(["retail", "bar", "restaurant", "hotel", "lifestyle"]);
 
@@ -57,7 +55,7 @@ function computeFillAndOnTime(orders: SalesOrder[], shipments: Shipment[]): { fi
   const fill =
     fulfillable.length > 0
       ? Math.min(100, Math.round((fulfilled.length / fulfillable.length) * 1000) / 10)
-      : 97.5;
+      : 0;
 
   const relatedShipments = shipments.filter((s) => s.type === "outbound" || s.orderType === "sales_order");
   const delayed = relatedShipments.filter((s) => s.status === "delayed").length;
@@ -67,13 +65,16 @@ function computeFillAndOnTime(orders: SalesOrder[], shipments: Shipment[]): { fi
           100,
           Math.round(((relatedShipments.length - delayed) / relatedShipments.length) * 1000) / 10,
         )
-      : fill >= 96 ? 96.2 : 92.0;
+      : 0;
 
   return { fill, onTime };
 }
 
 function statusForPartner(fill: number, onTime: number, account: Account): { tone: DistributorPartnerRow["statusTone"]; label: string } {
   if (account.status === "inactive") return { tone: "neutral", label: "inactive" };
+  if (fill === 0 && onTime === 0) {
+    return { tone: "neutral", label: account.status === "prospect" ? "planned" : "no volume" };
+  }
   if (fill < 94 || onTime < 92) return { tone: "amber", label: "monitor" };
   if (fill >= 97 && onTime >= 94) return { tone: "green", label: "active" };
   if (account.status === "prospect") return { tone: "neutral", label: "planned" };
@@ -88,7 +89,7 @@ export function buildDistributorPartnerRows(
   orgIdByAccountId: Map<string, string>,
 ): DistributorPartnerRow[] {
   if (distributors.length === 0) {
-    return HQ_DISTRIBUTORS_DEMO_ROWS;
+    return [];
   }
 
   const rows = distributors.map((dist) => {
@@ -99,9 +100,6 @@ export function buildDistributorPartnerRows(
     let accountCount = 0;
     if (orgId) {
       accountCount = filterRowsForOrg(accounts, orgId).filter((a) => ON_PREMISE.has(String(a.type))).length;
-      if (accountCount === 0 && isHqDistributorDemoOrgId(orgId)) {
-        accountCount = networkRetailCountForOrg(orgId);
-      }
     } else {
       accountCount = accounts.filter(
         (a) =>
@@ -120,23 +118,19 @@ export function buildDistributorPartnerRows(
       id: dist.id,
       orgId,
       name: dist.tradingName || dist.legalName,
-      marketLine: `${dist.city || "—"} · ${contact}`,
+      marketLine: `${[dist.country, dist.city].filter(Boolean).join(" · ") || "—"} · ${contact}`,
       tier,
       tierIsGold: isGold,
       fillRate: fill,
       onTime,
-      accountCount: accountCount || Math.max(1, Math.round(partnerOrdersList.length / 2)),
+      accountCount,
       statusTone: tone,
       statusLabel: label,
       account: dist,
     };
   });
 
-  return rows.length > 0 ? rows : HQ_DISTRIBUTORS_DEMO_ROWS;
-}
-
-function rowKey(row: DistributorPartnerRow): string {
-  return (row.orgId || row.id || row.name).trim().toLowerCase();
+  return rows;
 }
 
 /** Live partner rows supplemented with design-system demo partners when data is sparse. */
@@ -147,10 +141,5 @@ export function mergeHqDistributorPartnerRows(
   shipments: Shipment[],
   orgIdByAccountId: Map<string, string>,
 ): DistributorPartnerRow[] {
-  const live = buildDistributorPartnerRows(distributors, accounts, orders, shipments, orgIdByAccountId);
-  if (live.length >= 4) return live;
-
-  const seen = new Set(live.map(rowKey));
-  const extras = HQ_DISTRIBUTORS_DEMO_ROWS.filter((demo) => !seen.has(rowKey(demo)));
-  return extras.length > 0 ? [...live, ...extras] : live;
+  return buildDistributorPartnerRows(distributors, accounts, orders, shipments, orgIdByAccountId);
 }

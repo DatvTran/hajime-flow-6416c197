@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
-import { useAppData } from "@/contexts/AppDataContext";
+import { Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, Trash2 } from "lucide-react";
+import { useAccounts, useAppData } from "@/contexts/AppDataContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getDistributorOrganizations, type DistributorOrganizationRow } from "@/lib/api-v1-mutations";
 import {
@@ -10,11 +10,12 @@ import {
   type DcInventoryRow,
 } from "@/lib/hq-distributor-partner-detail";
 import { mergeHqDistributorPartnerRows } from "@/lib/hq-distributors-metrics";
-import { HQ_DISTRIBUTORS_DEMO_ROWS, mergeHqDistributorAccountsForDisplay, mergeHqDistributorInventoryForDisplay } from "@/lib/hq-distributors-demo";
+import { mergeHqDistributorAccountsForDisplay } from "@/lib/hq-distributors-demo";
 import { filterPlatformAccountsForHq } from "@/lib/hq-order-scope";
 import { mergeHqWholesaleOrdersForDisplay, mergeHqNetworkSalesForDisplay } from "@/lib/hq-orders-demo";
 import { resolveDistributorOrgId } from "@/lib/hq-distributor-orgs";
 import {
+  HqBtn,
   HqBtnLink,
   HqOperatorCard,
   HqOperatorCardHead,
@@ -24,6 +25,17 @@ import {
   HqOperatorTwoCol,
 } from "@/components/hq/HqOperatorUi";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 type Props = {
   orgId: string;
@@ -44,8 +56,11 @@ function InventoryStatus({ row }: { row: DcInventoryRow }) {
 
 export function HqDistributorPartnerManageView({ orgId, orgName: orgNameProp }: Props) {
   const { data, loading } = useAppData();
+  const { deleteAccount } = useAccounts();
+  const navigate = useNavigate();
   const { t } = useLanguage();
   const [orgs, setOrgs] = useState<DistributorOrganizationRow[]>([]);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,9 +97,6 @@ export function HqDistributorPartnerManageView({ orgId, orgName: orgNameProp }: 
   }, [orgId, orgNameProp, orgs, data]);
 
   const metricsRow = useMemo(() => {
-    const demo = HQ_DISTRIBUTORS_DEMO_ROWS.find((r) => r.orgId === orgId);
-    if (demo) return demo;
-
     const distributors = filterPlatformAccountsForHq(displayContext.accounts).filter(
       (a) => a.type === "distributor",
     );
@@ -110,16 +122,39 @@ export function HqDistributorPartnerManageView({ orgId, orgName: orgNameProp }: 
         orgName,
         displayContext.accounts,
         displayContext.orders,
-        mergeHqDistributorInventoryForDisplay(data.inventory),
+        data.inventory,
         data.products,
         {
-          fillRate: metricsRow?.fillRate ?? 97.5,
-          onTime: metricsRow?.onTime ?? 96.2,
+          fillRate: metricsRow?.fillRate ?? 0,
+          onTime: metricsRow?.onTime ?? 0,
           accountCount: metricsRow?.accountCount ?? 0,
         },
       ),
     [orgId, orgName, displayContext, data.inventory, data.products, metricsRow],
   );
+
+  const liveAccount = useMemo(() => {
+    const distributors = filterPlatformAccountsForHq(displayContext.accounts).filter(
+      (a) => a.type === "distributor",
+    );
+    return (
+      distributors.find((a) => a.id === orgId) ||
+      distributors.find((a) => a.distributorOrgId === orgId) ||
+      distributors.find((a) => resolveDistributorOrgId(a, orgs) === orgId) ||
+      null
+    );
+  }, [displayContext.accounts, orgId, orgs]);
+
+  const handleDelete = async () => {
+    if (!liveAccount) return;
+    setDeleting(true);
+    try {
+      const result = await deleteAccount(liveAccount.id);
+      if (result.success) navigate("/accounts");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const salesHref = `/accounts?view=sales&org=${encodeURIComponent(orgId)}`;
   const replenHref = "/orders?view=replenishment";
@@ -139,6 +174,13 @@ export function HqDistributorPartnerManageView({ orgId, orgName: orgNameProp }: 
 
       {loading ? (
         <p className="text-sm text-muted-foreground">{t("Loading partner…")}</p>
+      ) : !liveAccount ? (
+        <p className="text-sm text-muted-foreground">
+          {t("This distributor is not in the network. It may have been deleted.")}{" "}
+          <Link to="/accounts" className="font-medium text-accent underline-offset-2 hover:underline">
+            {t("Back to distributors")}
+          </Link>
+        </p>
       ) : (
         <>
           <HqOperatorCard className="overflow-hidden">
@@ -169,6 +211,28 @@ export function HqDistributorPartnerManageView({ orgId, orgName: orgNameProp }: 
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
+                {liveAccount ? (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <HqBtn variant="outline" size="sm" disabled={deleting}>
+                        <Trash2 className="size-3.5" strokeWidth={1.75} />
+                        {t("Delete")}
+                      </HqBtn>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>{t("Delete distributor?")}</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {t("This removes")} {detail.name} {t("from HQ and deactivates their portal CRM contact. Orders already placed stay in history. This cannot be undone.")}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => void handleDelete()}>{t("Delete")}</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                ) : null}
                 <HqBtnLink to={salesHref} variant="outline" size="sm">
                   {t("View sales")}
                 </HqBtnLink>

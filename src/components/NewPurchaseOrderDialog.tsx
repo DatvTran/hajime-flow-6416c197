@@ -46,12 +46,12 @@ const PO_TYPES: { value: NonNullable<PurchaseOrder["poType"]>; label: string; de
   { 
     value: "sales", 
     label: "Sales PO", 
-    description: "Distributor ordering from manufacturer — brand operator approves" 
+    description: "Distributor ordering from distillery — brand operator approves" 
   },
   { 
     value: "production", 
     label: "Production PO", 
-    description: "Brand operator ordering directly from manufacturer — no inventory gate" 
+    description: "Brand operator ordering directly from distillery — no inventory gate" 
   },
 ];
 
@@ -71,7 +71,7 @@ type Props = {
   existing: PurchaseOrder[];
   /** Return false to signal save failure (dialog stays open). */
   onCreate: (po: PurchaseOrder) => boolean | Promise<boolean>;
-  /** Deep link from manufacturer / alerts — pre-fill SKU and bottle quantity. */
+  /** Deep link from distillery / alerts — pre-fill SKU and bottle quantity. */
   prefill?: { sku?: string; quantity?: string } | null;
   /**
    * Variant of the dialog. "replenishment" checks available inventory before creation.
@@ -135,15 +135,15 @@ export function NewPurchaseOrderDialog({
 
   // NEW: Filter accounts based on PO type and user role
   const availableAccounts = useMemo(() => {
-    // For Sales PO: distributor can only see manufacturer (but we handle that via PO type)
-    // For Production PO: brand operator sees manufacturer only
+    // For Sales PO: distributor can only see distillery (but we handle that via PO type)
+    // For Production PO: brand operator sees distillery only
     if (poType === "production") {
       // Production POs don't need account selection — brand operator orders directly
       return [];
     }
     
-    // For Sales PO: filter to manufacturer accounts only
-    // Distributor should only see manufacturer accounts
+    // For Sales PO: filter to distillery accounts only
+    // Distributor should only see distillery accounts
     return accounts.filter(a => a.type === "distributor" || a.networkRole?.includes("manufacturer"));
   }, [accounts, poType]);
 
@@ -296,7 +296,7 @@ export function NewPurchaseOrderDialog({
           <DialogTitle>New purchase order</DialogTitle>
           <DialogDescription>
             {variant === "replenishment" 
-              ? "Sales PO for the manufacturer. Before save we verify available inventory for the SKU." 
+              ? "Sales PO for the distillery. Before save we verify available inventory for the SKU." 
               : "Create a purchase order. Sales POs are distributor orders requiring brand approval; Production POs are direct brand orders."}
           </DialogDescription>
         </DialogHeader>
@@ -363,10 +363,10 @@ export function NewPurchaseOrderDialog({
           
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
-              <Label>Manufacturer</Label>
+              <Label>Distillery</Label>
               <Select value={manufacturerKey} onValueChange={setManufacturerKey}>
                 <SelectTrigger className="touch-manipulation">
-                  <SelectValue placeholder="Select manufacturer" />
+                  <SelectValue placeholder="Select distillery" />
                 </SelectTrigger>
                 <SelectContent>
                   {manufacturerChoices.map((row) => (
@@ -383,14 +383,14 @@ export function NewPurchaseOrderDialog({
               </Select>
               {manufacturerPickerHasCrm ? (
                 <p className="text-xs text-muted-foreground">
-                  Same contacts as <span className="font-medium text-foreground">Settings → CRM</span> (Manufacturer
-                  role). The label prefers <span className="font-medium">Company name</span> from Manufacturer → Profile
+                  Same contacts as <span className="font-medium text-foreground">Settings → CRM</span> (Distillery
+                  role). The label prefers <span className="font-medium">Company name</span> from Distillery → Profile
                   when the email matches.
                 </p>
               ) : manufacturerChoices.some((c) => c.key.startsWith("fallback:")) ? (
                 <p className="text-xs text-amber-700 dark:text-amber-500">
-                  No manufacturer contacts or profiles yet — demo name only. Add manufacturer users in CRM and have them
-                  save company details under Manufacturer → Profile.
+                  No distillery contacts or profiles yet — demo name only. Add distillery users in CRM and have them
+                  save company details under Distillery → Profile.
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">

@@ -40,7 +40,7 @@ function marketAssignment(account: Account): string {
 
 export default function Accounts() {
   const { user } = useAuth();
-  const { accounts, updateAccount, addAccount } = useAccounts();
+  const { accounts, updateAccount, addAccount, deleteAccount } = useAccounts();
   const { salesOrders } = useSalesOrders();
   const { loading, updateData, data } = useAppData();
   const teamMembers = data.teamMembers ?? [];
@@ -228,7 +228,7 @@ export default function Accounts() {
                 ? "Distributors and retail chains for sell-in planning and production forecasting."
                 : user.role === "retail"
                   ? "Your account profile and order history."
-                  : "Retailers and distributors — market assignment, sell-in history, onboarding pipeline, and account managers. Brand Operator: create distributor accounts and profiles here first, add warehouses in Settings, then send portal invite emails from Settings → CRM."
+                  : "Retailers and distributors — market assignment, sell-in history, onboarding pipeline, and account managers. Creating a distributor or retail account emails a portal invite to the contact. Resend from Settings → CRM if needed."
         }
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
@@ -321,6 +321,11 @@ export default function Accounts() {
           if (!o) setSelectedAccountId(null);
         }}
         onSave={updateAccount}
+        onDelete={
+          isHqOperatorRole(user?.role)
+            ? async (account) => deleteAccount(account.id)
+            : undefined
+        }
       />
 
       {activeOnly && (

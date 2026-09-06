@@ -6,7 +6,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { getDistributorOrganizations, type DistributorOrganizationRow } from "@/lib/api-v1-mutations";
 import { computeDistributorSalesSnapshot } from "@/lib/hq-distributor-sales-metrics";
 import { mergeHqNetworkSalesForDisplay } from "@/lib/hq-orders-demo";
-import { HQ_DISTRIBUTOR_DEMO_ORGANIZATIONS } from "@/lib/hq-distributors-demo";
+import { isSeedDemoDistributorOrg, isSeedDemoPartnerName } from "@/lib/normalize-app-data";
 import { partnerPathForOrg, resolveDistributorOrgId } from "@/lib/hq-distributor-orgs";
 import {
   HqBtn,
@@ -67,7 +67,7 @@ export function HqDistributorSalesView({ fixedOrgId, fixedOrgName, showBackLink 
 
   const orgOptions = useMemo((): OrgOption[] => {
     const map = new Map<string, string>();
-    for (const org of [...orgs, ...HQ_DISTRIBUTOR_DEMO_ORGANIZATIONS]) {
+    for (const org of orgs) {
       map.set(org.id, org.name);
     }
     for (const acc of networkData.accounts) {
@@ -83,7 +83,12 @@ export function HqDistributorSalesView({ fixedOrgId, fixedOrgName, showBackLink 
         map.set(o.distributorOrgId, o.distributorOrgName || o.distributorOrgId);
       }
     }
-    return [...map.entries()].map(([id, name]) => ({ id, name }));
+    return [...map.entries()]
+      .filter(
+        ([id, name]) =>
+          !isSeedDemoDistributorOrg({ id, name }) && !isSeedDemoPartnerName(name),
+      )
+      .map(([id, name]) => ({ id, name }));
   }, [orgs, networkData.accounts, networkData.salesOrders]);
 
   useEffect(() => {

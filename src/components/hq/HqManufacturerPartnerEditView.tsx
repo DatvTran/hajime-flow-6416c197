@@ -67,7 +67,7 @@ type Props = {
   profile?: ManufacturerProfile | null;
 };
 
-const TIERS = ["Preferred manufacturer partner", "Standard manufacturer partner"] as const;
+const TIERS = ["Preferred distillery partner", "Standard distillery partner"] as const;
 const STATUSES: Account["status"][] = ["active", "inactive", "prospect"];
 
 function toastPortalProvision(
@@ -88,12 +88,12 @@ function toastPortalProvision(
   if (provision.skipped) return;
   const email = provision.email || fallbackEmail;
   if (provision.action === "created_user" && provision.usesDemoPassword) {
-    toast.message("Manufacturer portal login ready", {
-      description: `Sign in as Manufacturer with ${email} · password admin123!`,
+    toast.message("Distillery portal login ready", {
+      description: `Sign in as Distillery with ${email} · password admin123!`,
     });
   } else if (provision.action === "updated_user") {
-    toast.message("Manufacturer portal login linked", {
-      description: `They can sign in at the Manufacturer portal with ${email}.`,
+    toast.message("Distillery portal login linked", {
+      description: `They can sign in at the Distillery portal with ${email}.`,
     });
   }
 }
@@ -129,9 +129,9 @@ export function HqManufacturerPartnerEditView({ manufacturerId, profile = null }
   if (!config) {
     return (
       <div className="p-6 text-[13px] text-muted-foreground">
-        {t("Manufacturer not found.")}{" "}
+        {t("Distillery not found.")}{" "}
         <Link to="/manufacturer/profiles" className="font-medium text-accent underline-offset-2 hover:underline">
-          {t("Back to Manufacturers")}
+          {t("Back to Distilleries")}
         </Link>
       </div>
     );
@@ -151,7 +151,7 @@ export function HqManufacturerPartnerEditView({ manufacturerId, profile = null }
   const save = async () => {
     const name = config.name.trim();
     if (!name) {
-      toast.error(t("Manufacturer name is required"));
+      toast.error(t("Distillery name is required"));
       return;
     }
     if (!config.email.trim()) {
@@ -186,7 +186,7 @@ export function HqManufacturerPartnerEditView({ manufacturerId, profile = null }
           }));
         } catch (persistErr) {
           const message =
-            persistErr instanceof Error ? persistErr.message : t("Failed to save manufacturer to server");
+            persistErr instanceof Error ? persistErr.message : t("Failed to save distillery to server");
           toast.error(t("Changes saved locally only"), { description: message });
         }
         const accountPayload = configToPlatformAccount(partnerConfig);
@@ -198,7 +198,7 @@ export function HqManufacturerPartnerEditView({ manufacturerId, profile = null }
         };
         const result = await updateAccount(merged, { silent: true });
         if (!result.success) {
-          toast.error(t("Failed to save manufacturer"), { description: result.error });
+          toast.error(t("Failed to save distillery"), { description: result.error });
           return;
         }
       } else if (next.editSource === "account" && linkedAccount) {
@@ -207,7 +207,7 @@ export function HqManufacturerPartnerEditView({ manufacturerId, profile = null }
           { silent: true },
         );
         if (!result.success) {
-          toast.error(t("Failed to save manufacturer"), { description: result.error });
+          toast.error(t("Failed to save distillery"), { description: result.error });
           return;
         }
       } else if (next.editSource === "profile" && next.profileId) {
@@ -227,7 +227,7 @@ export function HqManufacturerPartnerEditView({ manufacturerId, profile = null }
             { silent: true },
           );
           if (!result.success) {
-            toast.error(t("Failed to save manufacturer"), { description: result.error });
+            toast.error(t("Failed to save distillery"), { description: result.error });
             return;
           }
         }
@@ -249,12 +249,12 @@ export function HqManufacturerPartnerEditView({ manufacturerId, profile = null }
         }
       }
 
-      toast.success(t("Manufacturer saved"), { description: name });
+      toast.success(t("Distillery saved"), { description: name });
       const savedPartnerId = partnerId ?? resolvePartnerIdForSave(next, manufacturerId);
       navigate(manufacturerPartnerPath(savedPartnerId ?? canonicalManufacturerPartnerId(next.id)));
     } catch (err) {
-      const message = err instanceof Error ? err.message : t("Failed to save manufacturer");
-      toast.error(t("Failed to save manufacturer"), { description: message });
+      const message = err instanceof Error ? err.message : t("Failed to save distillery");
+      toast.error(t("Failed to save distillery"), { description: message });
     } finally {
       setSaving(false);
     }
@@ -272,7 +272,7 @@ export function HqManufacturerPartnerEditView({ manufacturerId, profile = null }
       // Hide first so the list updates immediately and stays hidden across reloads.
       await hideManufacturers(targets.ids);
 
-      // Remove the manufacturer's server-side profile row(s).
+      // Remove the distillery's server-side profile row(s).
       for (const id of targets.ids) {
         try {
           await deleteManufacturerProfile(id);
@@ -281,7 +281,7 @@ export function HqManufacturerPartnerEditView({ manufacturerId, profile = null }
         }
       }
 
-      // Remove manufacturer portal users linked to this manufacturer.
+      // Remove distillery portal users linked to this distillery.
       for (const email of targets.emails) {
         try {
           await deleteTeamMemberByEmail(email);
@@ -334,11 +334,11 @@ export function HqManufacturerPartnerEditView({ manufacturerId, profile = null }
         },
       }));
 
-      toast.message(t("Manufacturer removed"), { description: config.name });
+      toast.message(t("Distillery removed"), { description: config.name });
       navigate("/manufacturer/profiles");
     } catch (err) {
-      const message = err instanceof Error ? err.message : t("Failed to remove manufacturer");
-      toast.error(t("Failed to remove manufacturer"), { description: message });
+      const message = err instanceof Error ? err.message : t("Failed to remove distillery");
+      toast.error(t("Failed to remove distillery"), { description: message });
     } finally {
       setDeleting(false);
     }
@@ -359,9 +359,9 @@ export function HqManufacturerPartnerEditView({ manufacturerId, profile = null }
 
       <div className="hq-ph-row flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="font-display text-[26px] font-semibold tracking-[-0.02em]">{t("Edit manufacturer")}</h1>
+          <h1 className="font-display text-[26px] font-semibold tracking-[-0.02em]">{t("Edit distillery")}</h1>
           <p className="mt-1 max-w-[60ch] text-[13px] text-muted-foreground">
-            {t("Update manufacturer partner details, contact info, and contract terms. Changes sync to the CRM account.")}
+            {t("Update distillery partner details, contact info, and contract terms. Changes sync to the CRM account.")}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -375,7 +375,7 @@ export function HqManufacturerPartnerEditView({ manufacturerId, profile = null }
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>{t("Delete manufacturer?")}</AlertDialogTitle>
+                  <AlertDialogTitle>{t("Delete distillery?")}</AlertDialogTitle>
                   <AlertDialogDescription>
                     {t("This permanently removes")} {config.name}{" "}
                     {t(
@@ -490,11 +490,11 @@ export function HqManufacturerPartnerEditView({ manufacturerId, profile = null }
                   onChange={(e) =>
                     setConfig((c) => (c ? { ...c, portalLoginEmail: e.target.value } : c))
                   }
-                  placeholder={config.email || "login@manufacturer.example"}
+                  placeholder={config.email || "login@distillery.example"}
                 />
                 <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
                   {t(
-                    "The email this manufacturer signs in with. Connects their portal login to this HQ record — production requests and product briefs assigned here appear in their portal.",
+                    "The email this distillery signs in with. Connects their portal login to this HQ record — production requests and product briefs assigned here appear in their portal.",
                   )}
                 </p>
               </div>

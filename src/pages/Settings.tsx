@@ -694,9 +694,9 @@ export default function SettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="hq-manufacturer">Manufacturer</Label>
+              <Label htmlFor="hq-distillery">Distillery</Label>
               <Input
-                id="hq-manufacturer"
+                id="hq-distillery"
                 value={manufacturerName}
                 onChange={(e) => setManufacturerName(e.target.value)}
                 placeholder="Kirin Brewery Co."
@@ -715,12 +715,12 @@ export default function SettingsPage() {
                 autoComplete="email"
               />
               <p className="text-xs text-muted-foreground">
-                The contact email manufacturers and distributors see on their Support pages.
+                The contact email distilleries and distributors see on their Support pages.
               </p>
             </div>
             <Separator />
             <div className="space-y-2">
-              <Label htmlFor="lead-days">Manufacturer lead time (days)</Label>
+              <Label htmlFor="lead-days">Distillery lead time (days)</Label>
               <Input
                 id="lead-days"
                 type="number"
@@ -856,7 +856,7 @@ export default function SettingsPage() {
             </div>
             <Separator />
             <div className="flex items-center justify-between">
-              <div><p className="text-sm font-medium">Production Delays</p><p className="text-xs text-muted-foreground">Alert when manufacturer flags issues</p></div>
+              <div><p className="text-sm font-medium">Production Delays</p><p className="text-xs text-muted-foreground">Alert when distillery flags issues</p></div>
               <Button variant="outline" size="sm">Enabled</Button>
             </div>
             <Separator />

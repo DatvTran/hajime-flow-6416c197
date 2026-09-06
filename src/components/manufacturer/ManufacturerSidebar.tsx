@@ -1,6 +1,7 @@
 /**
  * Sidebar chrome from Hajime Design System distillery-app.html
  * (.side, .logo-row, .perf-pill, Production / Supply / Quality nav)
+ * Menu order is locked — see docs/portal-menus.md
  */
 import { memo, useId, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";

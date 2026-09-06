@@ -67,7 +67,7 @@ function formatLongDate(date: string): string {
   }
 }
 
-/** Strip auto-appended manufacturer/HQ status note blocks from the visible HQ note. */
+/** Strip auto-appended distillery/HQ status note blocks from the visible HQ note. */
 function cleanNotes(notes: string): string {
   const trimmed = (notes ?? "").trim();
   if (!trimmed) return "";

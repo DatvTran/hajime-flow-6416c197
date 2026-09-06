@@ -87,7 +87,7 @@ function signedByLabel(s: Shipment): string | null {
 
 function inboundRouteLabel(s: Shipment): string {
   const dest = s.destinationWarehouseName?.trim() || s.destination?.trim();
-  const origin = s.origin?.trim() || "Manufacturer";
+  const origin = s.origin?.trim() || "Distillery";
   if (dest && origin !== dest) return `${origin} → ${dest}`;
   return dest || origin || "Inbound shipment";
 }
@@ -203,7 +203,7 @@ export function DistributorShipmentsView({
     <DistributorPage className="space-y-5">
       <DistributorPageHeader
         title="Shipments"
-        description="Track inbound stock from manufacturers and outbound deliveries to accounts"
+        description="Track inbound stock from distilleries and outbound deliveries to accounts"
         actions={
           <Link to="/distributor/pick-pack" className="dist-btn dist-btn-accent dist-btn-sm no-underline">
             + {t("Log new shipment")}
@@ -224,7 +224,7 @@ export function DistributorShipmentsView({
 
       {direction === "inbound" ? (
         <p className="mb-3 text-xs text-muted-foreground">
-          {t("Pallets en route from manufacturers & HQ to your depot — from approved replenishment requests.")}
+          {t("Pallets en route from distilleries & HQ to your depot — from approved replenishment requests.")}
         </p>
       ) : (
         <p className="mb-3 text-xs text-muted-foreground">

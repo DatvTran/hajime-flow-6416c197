@@ -182,7 +182,7 @@ function WorldMap({geo, maxRev}) {
 }
 
 function ShipmentArcs({geo, W, H}) {
-  // top manufacturer is Japan; arcs go from JP to markets with in-transit > 0
+  // top distillery is Japan; arcs go from JP to markets with in-transit > 0
   const src = geo.JP;
   const sx = src.x/100*W, sy = src.y/100*H;
   return (

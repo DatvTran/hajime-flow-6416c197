@@ -10,7 +10,7 @@ function slugify(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
-/** Every identifier / label / email connected to a manufacturer being deleted. */
+/** Every identifier / label / email connected to a distillery being deleted. */
 export type ManufacturerDeletionTargets = {
   /** ids to hide + attempt profile/account deletion (partner id, account id, profile id, route id). */
   ids: string[];
@@ -20,7 +20,7 @@ export type ManufacturerDeletionTargets = {
   nameKeys: string[];
 };
 
-/** Collect all connected identifiers for a manufacturer from its edit form + linked account. */
+/** Collect all connected identifiers for a distillery from its edit form + linked account. */
 export function computeManufacturerDeletionTargets(
   manufacturerId: string,
   form: HqManufacturerEditForm,
@@ -70,7 +70,7 @@ function buildMatchers(targets: ManufacturerDeletionTargets) {
   return { matchesName, matchesId, matchesEmail };
 }
 
-/** A production PO is connected when its manufacturer id or name matches the deleted manufacturer. */
+/** A production PO is connected when its distillery id or name matches the deleted distillery. */
 export function isPurchaseOrderConnected(
   po: PurchaseOrder,
   targets: ManufacturerDeletionTargets,
@@ -80,7 +80,7 @@ export function isPurchaseOrderConnected(
   return matchesId(po.manufacturerId) || matchesName(po.manufacturer);
 }
 
-/** Client ids of production POs connected to the deleted manufacturer. */
+/** Client ids of production POs connected to the deleted distillery. */
 export function connectedPurchaseOrderIds(
   data: AppData,
   targets: ManufacturerDeletionTargets,
@@ -90,7 +90,7 @@ export function connectedPurchaseOrderIds(
     .map((po) => po.id);
 }
 
-/** An NPR is connected when its assigned manufacturer matches the deleted manufacturer. */
+/** An NPR is connected when its assigned distillery matches the deleted distillery. */
 export function isNprConnected(
   npr: NewProductRequest,
   targets: ManufacturerDeletionTargets,
@@ -104,7 +104,7 @@ export function isNprConnected(
 }
 
 /**
- * Remove everything connected to a deleted manufacturer from local app data:
+ * Remove everything connected to a deleted distillery from local app data:
  * its production POs, NPR assignments, portal users, and profile snapshot.
  */
 export function applyManufacturerDeletionToAppData(

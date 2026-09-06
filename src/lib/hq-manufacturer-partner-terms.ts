@@ -1,4 +1,4 @@
-/** Partner-term dropdown options for HQ manufacturer edit. */
+/** Partner-term dropdown options for HQ distillery edit. */
 
 export const HQ_QUALITY_PREMIUM_OPTIONS = [
   "—",

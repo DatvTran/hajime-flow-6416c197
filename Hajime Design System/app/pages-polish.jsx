@@ -530,7 +530,7 @@ function PODetail() {
   const timeline = [
     {s:'Requested', t:po.requested, done:true},
     {s:'Approved by HQ', t:po.status!=='pending'?po.requested:'—', done:po.status!=='pending'},
-    {s:'Acknowledged by manufacturer', t:po.status==='in-production'||po.status==='shipped'||po.status==='delivered'?po.requested:'—', done:['in-production','shipped','delivered'].includes(po.status)},
+    {s:'Acknowledged by distillery', t:po.status==='in-production'||po.status==='shipped'||po.status==='delivered'?po.requested:'—', done:['in-production','shipped','delivered'].includes(po.status)},
     {s:'In production', t:po.status==='in-production'?'In progress':po.status==='shipped'||po.status==='delivered'?po.shipDate:'—', done:['shipped','delivered'].includes(po.status), current:po.status==='in-production'},
     {s:'Shipped', t:po.shipDate||'—', done:po.status==='delivered', current:po.status==='shipped'},
     {s:'Delivered', t:po.status==='delivered'?po.shipDate:'—', done:po.status==='delivered'},
@@ -583,7 +583,7 @@ function PODetail() {
         <div style={{display:'flex', flexDirection:'column', gap:14}}>
           <Card>
             <div style={{fontFamily:T.display, fontSize:16, fontWeight:500, marginBottom:14}}>Order details</div>
-            {[['PO ID',po.id],['SKU',po.sku],['Manufacturer',po.mfr],['Destination',po.region],['Requested',po.requested],['Target ship',po.shipDate||'—'],['Status',po.status]].map(([l,v])=>(
+            {[['PO ID',po.id],['SKU',po.sku],['Distillery',po.mfr],['Destination',po.region],['Requested',po.requested],['Target ship',po.shipDate||'—'],['Status',po.status]].map(([l,v])=>(
               <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:`1px solid ${T.borderQ}`,fontSize:13}}>
                 <span style={{color:T.muted}}>{l}</span>
                 <span style={{fontFamily:['PO ID','SKU'].includes(l)?T.mono:T.body,fontSize:12,fontWeight:500}}>{v}</span>
@@ -749,4 +749,4 @@ function Eyebrow({children, style={}}) {
   return <div style={{fontSize:10, textTransform:'uppercase', letterSpacing:'.14em', fontWeight:500, color:T.muted, fontFamily:T.body, ...style}}>{children}</div>;
 }
 
-Object.assign(window, { AccountDetail, NewOrderFlow, InventoryDetail, PODetail, SettingsRBAC, Eyebrow });
+Object.assign(window, { AccountDetail, NewOrderFlow, InventoryDetail, PODetail, SettingsRBAC, Eyebrow });'

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PurchaseOrderDetailDialog } from "@/components/PurchaseOrderDetailDialog";
@@ -18,7 +18,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { pageHeaderVariantForRole } from "@/lib/page-header-variant";
 import { isHqOperatorRole } from "@/lib/hq-order-scope";
-import { HqProductionRequestsView, type ProductionChangeRequest } from "@/components/hq/HqProductionRequestsView";
 import { DistributorPurchaseOrdersView } from "@/components/distributor/DistributorPurchaseOrdersView";
 import { ManufacturerProductionRequestsView } from "@/components/manufacturer/ManufacturerProductionRequestsView";
 import { resolveManufacturerAssignmentIdentity } from "@/lib/npr-manufacturer-scope";
@@ -26,7 +25,7 @@ import { filterPosForManufacturerUser } from "@/lib/po-manufacturer-scope";
 import { TEAM_ROSTER } from "@/data/team-roster";
 
 function shouldAddInventoryForTransition(p: PurchaseOrder, nextStatus: PurchaseOrder["status"]): boolean {
-  // Production POs ADD inventory when delivered (manufacturer shipment arrives)
+  // Production POs ADD inventory when delivered (distillery shipment arrives)
   if (nextStatus !== "delivered") return false;
   if (p.status === "delivered") return false; // Already counted
   return true;
@@ -157,7 +156,7 @@ export default function PurchaseOrders() {
     if (!p) return;
     const merged = { ...p, ...patch };
     
-    // Production POs ADD inventory when delivered (manufacturer shipment arrives)
+    // Production POs ADD inventory when delivered (distillery shipment arrives)
     if (patch.status !== undefined && shouldAddInventoryForTransition(p, patch.status)) {
       // Determine destination warehouse based on market
       const destinationWarehouse = resolveReceivingLocationForPo(p.marketDestination, data.warehouses);
@@ -317,6 +316,10 @@ export default function PurchaseOrders() {
     return <PurchaseOrdersSkeleton />;
   }
 
+  if (isHqOperatorRole(user.role)) {
+    return <Navigate to="/manufacturer/profiles" replace />;
+  }
+
   if (user.role === "distributor") {
     return (
       <>
@@ -339,7 +342,7 @@ export default function PurchaseOrders() {
   }
 
   const handleManufacturerChangeRequest = async (po: PurchaseOrder, message: string) => {
-    const noteBlock = `[Change requested by manufacturer · ${new Date().toISOString().slice(0, 10)}]\n${message}`;
+    const noteBlock = `[Change requested by distillery · ${new Date().toISOString().slice(0, 10)}]\n${message}`;
     const notes = po.notes?.trim() ? `${po.notes.trim()}\n\n${noteBlock}` : noteBlock;
     await patchPurchaseOrder(po.id, { notes });
     toast.success(t("Change request sent"), {
@@ -365,7 +368,7 @@ export default function PurchaseOrders() {
         poId: po.id,
         stage: "Scheduled",
         updatedAt: today,
-        notes: "Accepted by manufacturer · scheduled on brew floor",
+        notes: "Accepted by distillery · scheduled on brew floor",
       });
     }
 
@@ -386,43 +389,6 @@ export default function PurchaseOrders() {
     );
   }
 
-  const handleProductionChangeRequest = async (po: PurchaseOrder, change: ProductionChangeRequest) => {
-    const kura = po.manufacturer.split(" ")[0] || po.manufacturer;
-    const noteBlock = `[Change requested · ${change.changeType} · respond by ${change.respondBy}]\n${change.message}`;
-    const notes = po.notes?.trim() ? `${po.notes.trim()}\n\n${noteBlock}` : noteBlock;
-    await patchPurchaseOrder(po.id, { notes });
-    toast.success(t("Change request sent"), {
-      description: `${kura} ${t("will review your notes before scheduling the batch.")}`,
-    });
-  };
-
-  if (isHqOperatorRole(user.role)) {
-    return (
-      <>
-        <HqProductionRequestsView
-          purchaseOrders={purchaseOrders}
-          onSelect={(id) => setSelectedPoId(id)}
-          onApprove={(po) => void patchPo(po.id, { status: "approved" })}
-          onDecline={(po) => {
-            void patchPo(po.id, { status: "draft" });
-            toast.info(t("Draft request cancelled"), { description: po.id });
-          }}
-          onRequestChange={handleProductionChangeRequest}
-          canEdit={canEditPoStatus}
-        />
-        <PurchaseOrderDetailDialog
-          purchaseOrder={detailPo}
-          open={detailPo !== null}
-          onOpenChange={(o) => {
-            if (!o) setSelectedPoId(null);
-          }}
-          onPatch={patchPo}
-          readOnly={!canEditPoStatus}
-        />
-      </>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -430,8 +396,8 @@ export default function PurchaseOrders() {
         variant={pageHeaderVariantForRole(user.role)}
         description={
           isHqOperatorRole(user.role)
-            ? "Batch requests from manufacturer partners — your sign-off confirms spec, lot, and allocation before they schedule production. Retail and rep orders are approved by distributors, not HQ."
-            : "Manage production requests to the manufacturer and transfer orders that move existing stock to distributors or retail accounts."
+            ? "Batch requests from distillery partners — your sign-off confirms spec, lot, and allocation before they schedule production. Retail and rep orders are approved by distributors, not HQ."
+            : "Manage production requests to the distillery and transfer orders that move existing stock to distributors or retail accounts."
         }
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
@@ -504,7 +470,7 @@ export default function PurchaseOrders() {
             readOnly={!canEditPoStatus}
             readOnlyHint={
               user.role === "manufacturer"
-                ? "Read-only — log production stages on the Manufacturer overview. PO status changes are HQ-only on this screen."
+                ? "Read-only — log production stages on the Distillery overview. PO status changes are HQ-only on this screen."
                 : user.role === "distributor"
                 ? "Read-only — planning reference for inbound stock; receiving lives under Shipments and Inventory."
                 : undefined
@@ -520,7 +486,7 @@ export default function PurchaseOrders() {
                       <th className="pb-3 font-medium text-muted-foreground">{t("Request")}</th>
                       <th className="pb-3 font-medium text-muted-foreground">{t("Qty (btl)")}</th>
                       <th className="pb-3 font-medium text-muted-foreground">{t("Destination warehouse")}</th>
-                      <th className="pb-3 font-medium text-muted-foreground">{t("Manufacturer")}</th>
+                      <th className="pb-3 font-medium text-muted-foreground">{t("Distillery")}</th>
                       <th className="pb-3 font-medium text-muted-foreground">{t("SKU")}</th>
                       <th className="pb-3 font-medium text-muted-foreground">{t("Status")}</th>
                       <th className="pb-3 font-medium text-muted-foreground">{t("Expected ship")}</th>

@@ -1,12 +1,12 @@
 /**
  * Sidebar chrome from Hajime Design System hq-operator-app.html
+ * Menu order is locked — see docs/portal-menus.md
  */
 import { memo, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
-  Factory,
   FileText,
   FlaskConical,
   Globe,
@@ -53,7 +53,6 @@ const commandItems: NavItem[] = [
   { to: "/expo-leads", label: "Expo leads", icon: QrCode, badgeTone: "gold" },
   { to: "/export-orders", label: "Export orders", icon: FileText, badgeTone: "amber" },
   { to: "/product-development", label: "Product Development", icon: Layers, badgeTone: "amber" },
-  { to: "/production-requests", label: "Production requests", icon: Factory, badgeTone: "red" },
   { to: "/orders", label: "Replenishment orders", icon: Package, badgeTone: "amber", search: "?view=replenishment" },
   { to: "/orders", label: "Distributor orders", icon: FileText },
   { to: "/accounts", label: "Distributor sales", icon: TrendingUp, search: "?view=sales" },
@@ -142,9 +141,6 @@ function NavSection({
     }
     if (item.to === "/product-development") {
       return path.startsWith("/product-development");
-    }
-    if (item.to === "/production-requests") {
-      return path.startsWith("/production-requests") || path.startsWith("/purchase-orders");
     }
     if (item.search === "?view=replenishment") {
       return path.startsWith("/orders") && view === "replenishment";

@@ -41,7 +41,7 @@ import { useProducts, usePurchaseOrders } from "@/contexts/AppDataContext";
 const STATUS_VALUES: InventoryItem["status"][] = ["available", "reserved", "damaged"];
 
 const LOCATION_TYPE_LABELS: Record<InventoryItem["locationType"], string> = {
-  manufacturer: "Manufacturer",
+  manufacturer: "Distillery",
   distributor_warehouse: "Warehouse",
   in_transit: "In Transit",
   retail_shelf: "Retail Shelf",
@@ -62,7 +62,7 @@ const LOCATION_TYPE_COLORS: Record<InventoryItem["locationType"], string> = {
 };
 
 /** Roles allowed to receive stock (matches server-side inventory:write permission)
- * Distributors receive from manufacturers, brand/ops receive from production.
+ * Distributors receive from distilleries, brand/ops receive from production.
  */
 const CAN_RECEIVE_STOCK_ROLES = new Set(["brand_operator", "operations", "distributor"]);
 
@@ -113,7 +113,7 @@ function parseLocationTypeParam(raw: string | null): InventoryItem["locationType
 export default function Inventory() {
   const { t } = useLanguage();
   const { data, loading } = useAppData();
-  const { products } = useProducts();
+  const { products, removeProduct } = useProducts();
   const { purchaseOrders } = usePurchaseOrders();
   const { 
     items, 
@@ -193,7 +193,7 @@ export default function Inventory() {
 
   const locationChips: { id: InventoryItem["locationType"] | "all"; label: string; icon: typeof Package }[] = [
     { id: "all", label: "All locations", icon: Package },
-    { id: "manufacturer", label: "Manufacturer", icon: Factory },
+    { id: "manufacturer", label: "Distillery", icon: Factory },
     { id: "distributor_warehouse", label: "Warehouse", icon: Package },
     { id: "in_transit", label: "In Transit", icon: Truck },
     { id: "retail_shelf", label: "Retail", icon: Store },
@@ -208,6 +208,7 @@ export default function Inventory() {
       <HqProductCatalogView
         products={products}
         purchaseOrders={purchaseOrders}
+        onDeleteSku={removeProduct}
       />
     );
   }
@@ -307,7 +308,7 @@ export default function Inventory() {
           isActive={statusFilter === "reserved"}
         />
         <StatCard
-          label="At Mfg"
+          label="At Distillery"
           value={summary.atManufacturer.toLocaleString()}
           subtitle="bottles"
           icon={Factory}

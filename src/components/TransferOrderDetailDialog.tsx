@@ -41,7 +41,7 @@ type Props = {
 
 function LocationBadge({ type }: { type: InventoryItem["locationType"] }) {
   const config = {
-    manufacturer: { icon: Factory, label: "Manufacturer", className: "bg-amber-100 text-amber-800" },
+    manufacturer: { icon: Factory, label: "Distillery", className: "bg-amber-100 text-amber-800" },
     distributor_warehouse: { icon: Package, label: "Warehouse", className: "bg-blue-100 text-blue-800" },
     in_transit: { icon: Truck, label: "In Transit", className: "bg-purple-100 text-purple-800" },
     retail_shelf: { icon: Store, label: "Retail Shelf", className: "bg-green-100 text-green-800" },
@@ -177,7 +177,7 @@ export function TransferOrderDetailDialog({ transferOrder, open, onOpenChange, o
             <p className="text-sm font-medium">{transferOrder.sku} Inventory by Location</p>
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-lg border p-2">
-                <p className="text-xs text-muted-foreground">Manufacturer</p>
+                <p className="text-xs text-muted-foreground">Distillery</p>
                 <p className="text-lg font-semibold">{breakdown.manufacturer.toLocaleString()}</p>
               </div>
               <div className="rounded-lg border p-2">

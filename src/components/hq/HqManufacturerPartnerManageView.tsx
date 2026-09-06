@@ -34,7 +34,7 @@ export function HqManufacturerPartnerManageView({ manufacturerId, purchaseOrders
   const detail = useMemo(
     () => {
       const d = buildManufacturerPartnerDetail(manufacturerId, purchaseOrders, profile ?? null);
-      if (orgName && d.name === "Manufacturer") return { ...d, name: orgName };
+      if (orgName && d.name === "Distillery") return { ...d, name: orgName };
       return d;
     },
     [manufacturerId, purchaseOrders, profile, orgName],
@@ -48,7 +48,7 @@ export function HqManufacturerPartnerManageView({ manufacturerId, purchaseOrders
           className="hq-btn hq-btn-outline hq-btn-sm inline-flex items-center gap-1.5 no-underline"
         >
           <ArrowLeft className="size-3.5" strokeWidth={1.75} />
-          {t("Manufacturers")}
+          {t("Distilleries")}
         </Link>
         <span className="text-xs text-muted-foreground">/ {detail.name}</span>
       </div>
@@ -145,7 +145,7 @@ export function HqManufacturerPartnerManageView({ manufacturerId, purchaseOrders
           />
           {detail.batches.length === 0 ? (
             <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-              {t("No active batches for this manufacturer partner.")}
+              {t("No active batches for this distillery partner.")}
             </div>
           ) : (
             <HqOperatorDataTable>

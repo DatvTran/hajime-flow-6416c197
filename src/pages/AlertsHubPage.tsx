@@ -21,7 +21,7 @@ export default function AlertsHubPage() {
   const alerts = useMemo(() => {
     const all = deriveAlerts(data);
     if (user.role === "manufacturer") {
-      // Manufacturers see: inventory low-stock, delays, shipments, reorders
+      // Distilleries see: inventory low-stock, delays, shipments, reorders
       // Exclude: retailer payments AND retailer shelf stock alerts
       return all.filter((a) => a.type !== "payment" && !a.id.startsWith("retail-shelf-"));
     }
@@ -72,7 +72,7 @@ export default function AlertsHubPage() {
           </CardTitle>
           <p className="text-sm text-muted-foreground">
             {user.role === "manufacturer"
-              ? "Manufacturer view: warehouse inventory, production delays, and shipments. Excludes retailer-specific alerts and payments."
+              ? "Distillery view: warehouse inventory, production delays, and shipments. Excludes retailer-specific alerts and payments."
               : user.role === "retail"
                 ? "Retail view: your shelf stock, shipments, and demand signals. Hides other retailers' data and HQ reorder suggestions."
                 : user.role === "distributor"

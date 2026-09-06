@@ -3,7 +3,7 @@
 // ─── Role definitions ────────────────────────────────────────
 const ROLES_CFG = {
   hq:     { label:'Brand Operator (HQ)', sub:'Hajime HQ', color:T.gold,              initials:'SO', name:'Sora Okuda'      },
-  manuf:  { label:'Manufacturer',        sub:'Yamato Distillery', color:'hsl(15 60% 45%)', initials:'YI', name:'Yui Imanishi'  },
+  manuf:  { label:'Distillery',        sub:'Yamato Distillery', color:'hsl(15 60% 45%)', initials:'YI', name:'Yui Imanishi'  },
   dist:   { label:'Distributor',         sub:'Empire Wines · Brooklyn', color:'hsl(215 50% 40%)', initials:'LB', name:'Léa Bardot' },
   rep:    { label:'Sales Rep',           sub:'NYC territory', color:'hsl(158 50% 30%)', initials:'MT', name:'Mike Tan'       },
   retail: { label:'Retail Store',        sub:'Mace · Brooklyn', color:'hsl(280 30% 40%)', initials:'KZ', name:'Kazu Saito'  },
@@ -262,7 +262,7 @@ function LoginPage() {
 
   const ROLE_OPTS = [
     { id:'hq',     icon:IC.dash,    label:'Brand Operator', sub:'Hajime HQ — command center',  mark:'◉' },
-    { id:'manuf',  icon:IC.factory, label:'Manufacturer',    sub:'Production & export',          mark:'⚙' },
+    { id:'manuf',  icon:IC.factory, label:'Distillery',    sub:'Production & export',          mark:'⚙' },
     { id:'dist',   icon:IC.whouse,  label:'Distributor',     sub:'Warehouse & fulfillment',      mark:'◫' },
     { id:'rep',    icon:IC.users,   label:'Sales Rep',       sub:'Field accounts & drafts',      mark:'◈' },
     { id:'retail', icon:IC.store,   label:'Retail Store',    sub:'Order & track deliveries',     mark:'◻' },

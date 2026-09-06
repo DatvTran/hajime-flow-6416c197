@@ -83,8 +83,8 @@ export function HqManufacturersView({ accounts, purchaseOrders, onAddManufacture
   return (
     <HqOperatorPage className="space-y-6">
       <HqOperatorPageHeader
-        title="Manufacturers"
-        description="Manufacturer partners brewing Hajime SKUs · reorder production (qty + destination) and track batches"
+        title="Distilleries"
+        description="Distillery partners brewing Hajime SKUs · reorder production (qty + destination) and track batches"
         actions={
             <HqBtnLink to="/production-requests/new" variant="accent" size="sm">
               <Plus className="size-3.5" strokeWidth={1.75} /> {t("Reorder production")}
@@ -98,7 +98,7 @@ export function HqManufacturersView({ accounts, purchaseOrders, onAddManufacture
           tone="gold"
           label="Active batches"
           value={String(kpi.activeBatches)}
-          sub={`${t("across")} ${kpi.kuraCount} ${t("manufacturer partners")}`}
+          sub={`${t("across")} ${kpi.kuraCount} ${t("distillery partners")}`}
         />
         <HqOperatorKpiCard
           icon={Box}
@@ -119,15 +119,15 @@ export function HqManufacturersView({ accounts, purchaseOrders, onAddManufacture
           tone="red"
           label="Open requests"
           value={String(kpi.openRequests)}
-          sub={t("awaiting manufacturer scheduling")}
+          sub={t("awaiting distillery scheduling")}
         />
       </HqOperatorKpiGrid>
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">{t("Loading manufacturers…")}</p>
+        <p className="text-sm text-muted-foreground">{t("Loading distilleries…")}</p>
       ) : rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          {t("No manufacturer partners yet.")}{" "}
+          {t("No distillery partners yet.")}{" "}
           <HqBtnLink to="/manufacturer/profiles/kosapan" variant="outline" size="sm" className="ml-1">
             {t("Open Kosapan")}
           </HqBtnLink>
@@ -163,9 +163,9 @@ export function HqManufacturersView({ accounts, purchaseOrders, onAddManufacture
 
       <div className="rounded-[14px] border border-dashed border-border px-6 py-6 text-center text-muted-foreground">
         <FlaskConical className="mx-auto size-7" strokeWidth={1.5} />
-        <p className="mt-3 text-[13px]">{t("Onboard a new manufacturer partner to expand production capacity")}</p>
+        <p className="mt-3 text-[13px]">{t("Onboard a new distillery partner to expand production capacity")}</p>
         <HqBtn variant="outline" className="mt-3" onClick={onAddManufacturer}>
-          <Plus className="size-3.5" strokeWidth={1.75} /> {t("Add manufacturer")}
+          <Plus className="size-3.5" strokeWidth={1.75} /> {t("Add distillery")}
         </HqBtn>
       </div>
     </HqOperatorPage>

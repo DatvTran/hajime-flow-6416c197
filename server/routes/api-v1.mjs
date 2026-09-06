@@ -19,6 +19,7 @@ import {
   createDistributorOrganization,
   registerInviteTokenRoute,
 } from '../lib/distributor-organization.mjs';
+import { isDemoDistributorOrg } from '../lib/demo-distributor-orgs.mjs';
 import { Permission, Role, hasPermission } from '../rbac/permissions.mjs';
 import {
   createCrmUserInvite,
@@ -913,28 +914,17 @@ router.get('/distributor-organizations', async (req, res) => {
     const liveDist = await getDb('accounts')
       .where({ tenant_id: tenantId, type: 'distributor' })
       .whereNull('deleted_at');
-    const DEMO_DISTRIBUTOR_NAMES = new Set([
-      'metro logistics',
-      'empire wines & spirits',
-      'empire wines',
-      'midwest spirits co.',
-      'midwest spirits co',
-      'kanto beverage',
-      'cave lumière',
-      'cave lumiere',
-      'vino nord',
-    ]);
     const liveNames = new Set(
       liveDist
         .flatMap((a) => [a.name, a.trading_name].filter(Boolean).map((s) => String(s).trim().toLowerCase()))
-        .filter((n) => !DEMO_DISTRIBUTOR_NAMES.has(n)),
+        .filter((n) => !isDemoDistributorOrg({ name: n })),
     );
     const rows = await platformDb('distributor_organizations')
       .where({ is_active: true })
       .orderBy('created_at', 'desc');
-    const visible = liveNames.size
+    const visible = (liveNames.size
       ? rows.filter((o) => liveNames.has(String(o.name || '').trim().toLowerCase()))
-      : [];
+      : []).filter((o) => !isDemoDistributorOrg(o));
     res.json({ data: visible });
   } catch (err) {
     console.error('[API v1] Error listing distributor organizations:', err);

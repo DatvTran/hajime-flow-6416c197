@@ -1,12 +1,6 @@
 import type { Account, SalesOrder } from "@/data/mockData";
 import type { TeamMember } from "@/types/app-data";
-import { filterWholesaleOrdersForHq } from "@/lib/hq-order-scope";
-import { mergeHqDistributorAccountsForDisplay } from "@/lib/hq-distributors-demo";
-import {
-  HQ_DISTRIBUTOR_NETWORK_RETAIL_ACCOUNTS,
-  HQ_DISTRIBUTOR_NETWORK_REPS,
-  HQ_DISTRIBUTOR_NETWORK_SALES_ORDERS,
-} from "@/lib/hq-distributor-network-demo";
+import { isSeedDemoDistributorOrg, isSeedDemoPartnerName } from "@/lib/normalize-app-data";
 
 const CASE = 12;
 
@@ -227,18 +221,7 @@ export function mergeHqWholesaleOrdersForDisplay(
   orders: SalesOrder[],
   accounts: Account[],
 ): { orders: SalesOrder[]; accounts: Account[] } {
-  const mergedAccounts = mergeUniqueAccounts(
-    mergeHqDistributorAccountsForDisplay(accounts),
-    [VINO_NORD_ACCOUNT],
-  );
-  const wholesale = filterWholesaleOrdersForHq(orders, mergedAccounts);
-  if (wholesale.length >= 5) {
-    return { orders, accounts: mergedAccounts };
-  }
-  return {
-    orders: mergeUniqueOrders(orders, HQ_WHOLESALE_DEMO_ORDERS),
-    accounts: mergedAccounts,
-  };
+  return { orders, accounts };
 }
 
 /** Network retail sell-through for Distributor sales visibility. */
@@ -247,12 +230,16 @@ export function mergeHqNetworkSalesForDisplay(
   accounts: Account[],
   teamMembers: TeamMember[],
 ): { salesOrders: SalesOrder[]; accounts: Account[]; teamMembers: TeamMember[] } {
+  const keepOrg = (id?: string, name?: string) => !isSeedDemoDistributorOrg({ id, name });
   return {
-    salesOrders: mergeUniqueOrders(salesOrders, HQ_DISTRIBUTOR_NETWORK_SALES_ORDERS),
-    accounts: mergeUniqueAccounts(
-      mergeHqDistributorAccountsForDisplay(accounts),
-      HQ_DISTRIBUTOR_NETWORK_RETAIL_ACCOUNTS,
+    salesOrders: salesOrders.filter((o) =>
+      keepOrg(o.distributorOrgId, o.distributorOrgName || o.account),
     ),
-    teamMembers: mergeUniqueTeam(teamMembers, HQ_DISTRIBUTOR_NETWORK_REPS),
+    accounts: accounts.filter(
+      (a) =>
+        keepOrg(a.distributorOrgId, a.distributorOrgName) &&
+        !(a.type === "distributor" && isSeedDemoPartnerName(a.tradingName || a.legalName || a.name)),
+    ),
+    teamMembers: teamMembers.filter((m) => keepOrg(m.distributorOrgId, m.distributorOrgName)),
   };
 }

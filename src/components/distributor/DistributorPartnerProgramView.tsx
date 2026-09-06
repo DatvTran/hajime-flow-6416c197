@@ -18,6 +18,8 @@ import {
 } from "@/lib/distributor-partner-metrics";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAppData } from "@/contexts/AppDataContext";
+import { SUPPORT_LIAISON } from "@/lib/manufacturer-support";
 
 const COOP_BUDGET = 5000;
 
@@ -80,6 +82,8 @@ type Props = {
 
 export function DistributorPartnerProgramView({ accountName, shipments, salesOrders }: Props) {
   const { t } = useLanguage();
+  const { data: appData } = useAppData();
+  const supportEmail = appData.operationalSettings?.supportEmail?.trim() || SUPPORT_LIAISON.email;
   const [data, setData] = useState<MyIncentiveProgressData | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -188,7 +192,7 @@ export function DistributorPartnerProgramView({ accountName, shipments, salesOrd
     },
     {
       title: t("Dedicated Hajime liaison"),
-      sub: partner?.market ? t("{{market}} market · HQ support", { market: partner.market }) : t("HQ partner support"),
+      sub: `${partner?.market ? t("{{market}} market · HQ support", { market: partner.market }) : t("HQ partner support")} · ${supportEmail}`,
       value: t("Active"),
       valueClass: "bv-green",
       rowClass: "br-active",

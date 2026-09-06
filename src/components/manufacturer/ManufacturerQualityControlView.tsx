@@ -82,7 +82,7 @@ export function ManufacturerQualityControlView({
     <DistributorPage className="space-y-5">
       <DistributorPageHeader
         title="Quality control"
-        description="Lab analysis per batch · results feed directly into your manufacturer partner quality score"
+        description="Lab analysis per batch · results feed directly into your distillery partner quality score"
         actions={
           <button type="button" className="dist-btn dist-btn-accent dist-btn-sm" onClick={onLogSample}>
             {t("+ Log QC sample")}

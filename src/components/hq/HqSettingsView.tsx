@@ -21,7 +21,7 @@ const APPROVAL_TOGGLES: ToggleRow[] = [
   { id: "auto-reorder", label: "Auto-approve reorders under $2,000", sub: "From accounts in good standing within cadence", defaultOn: true },
   { id: "new-accounts", label: "Require approval for new accounts", sub: "All onboarding routes through HQ", defaultOn: true },
   { id: "cover-floor", label: "Hold orders that breach cover floor", sub: "Flag when a market drops below 21 days", defaultOn: true },
-  { id: "auto-route", label: "Auto-route production requests", sub: "Assign to manufacturer partners by capacity and SKU", defaultOn: false },
+  { id: "auto-route", label: "Auto-route production requests", sub: "Assign to distillery partners by capacity and SKU", defaultOn: false },
 ];
 
 const NOTIFICATION_TOGGLES: ToggleRow[] = [
@@ -57,8 +57,14 @@ export function HqSettingsView() {
     for (const row of [...APPROVAL_TOGGLES, ...NOTIFICATION_TOGGLES]) {
       initial[row.id] = row.defaultOn ?? false;
     }
+    const saved = os.hqUiPreferences;
+    if (saved) {
+      for (const [key, value] of Object.entries(saved)) {
+        if (typeof value === "boolean") initial[key] = value;
+      }
+    }
     setToggles(initial);
-  }, []);
+  }, [os.hqUiPreferences]);
 
   useEffect(() => {
     setCompanyName(os.companyName ?? "Hajime");
@@ -70,7 +76,7 @@ export function HqSettingsView() {
     const accounts = filterPlatformAccountsForHq(data.accounts);
     const reps = (data.teamMembers ?? []).filter((m) => m.role === "sales_rep").length;
     return [
-      { label: "Manufacturer partners", count: accounts.filter((a) => a.type === "manufacturer").length, tone: "green" as const },
+      { label: "Distillery partners", count: accounts.filter((a) => a.type === "manufacturer").length, tone: "green" as const },
       { label: "Distributor", count: accounts.filter((a) => a.type === "distributor").length, tone: "green" as const },
       { label: "Sales Rep", count: reps, tone: "green" as const },
       { label: "Retail Store", count: accounts.filter((a) => ["retail", "bar", "restaurant", "hotel"].includes(String(a.type))).length, tone: "green" as const },
@@ -80,25 +86,51 @@ export function HqSettingsView() {
   const save = async () => {
     setSaving(true);
     try {
-      await updateOperationalSettings({
+      const safetyDefault =
+        Object.values(os.safetyStockBySku ?? {}).find((n) => Number.isFinite(n)) ?? 200;
+      const res = await updateOperationalSettings({
         company_name: companyName.trim(),
         primary_markets: hqLocation.trim(),
         support_email: supportEmail.trim(),
         lead_time_days: os.manufacturerLeadTimeDays,
-        shelf_threshold: os.retailerStockThresholdBottles,
+        shelf_threshold: os.retailerStockThresholdBottles ?? 48,
+        reorder_point_bottles: safetyDefault,
+        hq_ui_preferences: JSON.stringify({ toggles }),
       });
+
+      const row = res?.data ?? {};
       updateData((d) => ({
         ...d,
         operationalSettings: {
           ...d.operationalSettings!,
-          companyName,
-          primaryMarkets: hqLocation,
-          supportEmail: supportEmail.trim() || undefined,
+          companyName:
+            typeof row.company_name === "string" ? row.company_name : companyName.trim() || undefined,
+          primaryMarkets:
+            typeof row.primary_markets === "string"
+              ? row.primary_markets
+              : hqLocation.trim() || undefined,
+          supportEmail:
+            typeof row.support_email === "string"
+              ? row.support_email
+              : supportEmail.trim() || undefined,
+          manufacturerLeadTimeDays: Math.max(
+            1,
+            Number(row.lead_time_days) || d.operationalSettings!.manufacturerLeadTimeDays,
+          ),
+          retailerStockThresholdBottles: Math.max(
+            0,
+            Number(row.shelf_threshold) || d.operationalSettings!.retailerStockThresholdBottles || 48,
+          ),
+          hqUiPreferences: toggles,
         },
       }));
-      toast.success(t("Settings saved"));
+      toast.success(t("Settings saved"), {
+        description: t("Brand profile and preferences were saved to the database."),
+      });
     } catch (e) {
-      toast.error(t("Could not save settings"), { description: String(e) });
+      toast.error(t("Could not save settings"), {
+        description: e instanceof Error ? e.message : String(e),
+      });
     } finally {
       setSaving(false);
     }
@@ -154,7 +186,7 @@ export function HqSettingsView() {
                 placeholder="support@drinkhajime.jp"
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                {t("Shown to manufacturers and distributors on their Support pages.")}
+                {t("Shown to distilleries and distributors on their Support pages.")}
               </p>
             </div>
             <div className="hq-form-group mb-0">

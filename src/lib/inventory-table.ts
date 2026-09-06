@@ -17,7 +17,7 @@ export type InventoryStockBuckets = {
   /** Allocated / held for orders (reserved rows) */
   allocatedBottles: number;
   reservedBottles: number;
-  /** Inbound pipeline: in transit or still at manufacturer */
+  /** Inbound pipeline: in transit or still at distillery */
   incomingBottles: number;
 };
 

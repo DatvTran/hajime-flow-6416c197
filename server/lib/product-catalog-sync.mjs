@@ -1,4 +1,4 @@
-/** Keep manufacturer / distributor views aligned with Brand Operator catalog (products table). */
+/** Keep distillery / distributor views aligned with Brand Operator catalog (products table). */
 
 function parseJsonObject(raw) {
   if (raw == null) return {};

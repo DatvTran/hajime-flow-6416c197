@@ -127,6 +127,7 @@ export async function createAccount(accountData: {
   notes?: string;
   status?: string;
   portalLoginEmail?: string;
+  contactName?: string;
 }) {
   return apiFetch("/api/v1/accounts", {
     method: "POST",
@@ -139,6 +140,8 @@ export async function updateAccount(id: string, accountData: Partial<{
   tradingName: string;
   type: string;
   market: string;
+  city: string;
+  country: string;
   email: string;
   phone: string;
   billingAddress: string;
@@ -149,8 +152,10 @@ export async function updateAccount(id: string, accountData: Partial<{
   notes: string;
   status: string;
   portalLoginEmail: string;
+  contactName: string;
+  contactRole: string;
 }>) {
-  return apiFetch(`/api/v1/accounts/${id}`, {
+  return apiFetch(`/api/v1/accounts/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(accountData),
   });
@@ -806,7 +811,7 @@ export async function updateTeamMember(
     primary_warehouse_id?: string | null;
   },
 ) {
-  return apiFetch(`/api/v1/team-members/${id}`, {
+  return apiFetch(`/api/v1/team-members/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });
@@ -893,11 +898,12 @@ export async function updateOperationalSettings(settings: {
   support_email?: string;
   hq_hidden_manufacturer_ids?: string;
   hq_manufacturer_partner_configs?: string;
+  hq_ui_preferences?: string;
 }) {
   return apiFetch("/api/v1/operational-settings", {
     method: "PUT",
     body: JSON.stringify(settings),
-  });
+  }) as Promise<{ data: Record<string, unknown> }>;
 }
 
 // ===== SUPPORT TICKETS (Phase 2) =====
@@ -957,9 +963,9 @@ export async function updateTicketStatus(
 
 // ===== MANUFACTURER PROFILES (Phase 2) =====
 
-/** CRM manufacturers + profile labels for Production PO picker (PO_READ). */
+/** CRM distilleries + profile labels for Production PO picker (PO_READ). */
 export async function getPurchaseOrderManufacturerOptions() {
-  return apiFetch("/api/v1/purchase-order-manufacturer-options");
+  return apiFetch("/api/v1/purchase-order-distillery-options");
 }
 
 export async function getManufacturerProfiles() {

@@ -66,8 +66,8 @@ export function buildHqIncentivePayoutSchedule(counts: {
     },
     {
       date: "15 Jul 2026",
-      program: "Manufacturer Partner Program",
-      detail: `Q2 quality premium · ${kura} manufacturer partners`,
+      program: "Distillery Partner Program",
+      detail: `Q2 quality premium · ${kura} distillery partners`,
       amount: "¥3,200,000",
       status: "pending close",
       statusTone: "neutral",
@@ -101,8 +101,8 @@ export function buildHqIncentivePayoutSchedule(counts: {
     },
     {
       date: "15 Apr 2026",
-      program: "Manufacturer Partner Program",
-      detail: `Q1 quality premium · ${kura} manufacturer partners`,
+      program: "Distillery Partner Program",
+      detail: `Q1 quality premium · ${kura} distillery partners`,
       amount: "¥2,900,000",
       status: "paid",
       statusTone: "green",
@@ -118,11 +118,11 @@ export function buildHqIncentivePayoutSchedule(counts: {
       nextPayoutDate: "30 Jun",
       nextPayoutSub: "$68.8K across 3 programs",
       scheduledQ2: "$92.2K",
-      scheduledQ2Sub: "+ ¥3.2M Manufacturer premium",
+      scheduledQ2Sub: "+ ¥3.2M Distillery premium",
       paidYtd: "$60.7K",
       paidYtdSub: "+ ¥2.9M · Q1 settled",
       programs: "4",
-      programsSub: "retail · rep · distributor · manufacturer",
+      programsSub: "retail · rep · distributor · distillery",
     },
   };
 }

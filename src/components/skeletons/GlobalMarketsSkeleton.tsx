@@ -58,7 +58,7 @@ export function GlobalMarketsSkeleton() {
         </CardContent>
       </Card>
 
-      {/* Manufacturers table */}
+      {/* Distilleries table */}
       <Card className="card-elevated border-border/70 shadow-none">
         <CardHeader className="border-b border-border/50 p-5 pb-3">
           <Skeleton className="h-5 w-40 rounded" />

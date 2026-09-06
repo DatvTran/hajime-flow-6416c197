@@ -161,21 +161,9 @@ function accountKey(a: Account): string {
   return (a.id || a.tradingName || a.legalName).trim().toLowerCase();
 }
 
-/** Ensures design-system distributor partners exist for HQ list / partner detail previews. */
+/** Live distributor accounts only — no Empire/Midwest/Kanto/Cave fill. */
 export function mergeHqDistributorAccountsForDisplay(accounts: Account[]): Account[] {
-  const platform = accounts.filter((a) => !a.distributorOrgId);
-  const seen = new Set(platform.map(accountKey));
-  const extras: Account[] = [];
-  for (const acc of HQ_DISTRIBUTOR_PLATFORM_ACCOUNTS) {
-    const key = accountKey(acc);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    extras.push(acc);
-  }
-  const liveDistributors = platform.filter((a) => a.type === "distributor").length;
-  if (liveDistributors >= 4 && extras.length === 0) return accounts;
-  if (extras.length === 0) return accounts;
-  return [...accounts, ...extras];
+  return accounts;
 }
 
 const DEMO_DC: Record<HqDistributorDemoOrgId, DcInventoryRow[]> = {
@@ -316,25 +304,10 @@ export function buildHqDistributorDemoDetail(orgId: HqDistributorDemoOrgId): Dis
 
 export function manageOrgIdForRow(row: DistributorPartnerRow): string {
   if (row.orgId) return row.orgId;
-  return demoOrgIdForDistributorName(row.name) ?? row.id;
-}
-
-function inventoryKey(item: InventoryItem): string {
-  return `${item.distributorOrgId ?? ""}:${item.id}`;
+  return row.id;
 }
 
 /** Partner-scoped DC stock for wholesaler detail pages. */
 export function mergeHqDistributorInventoryForDisplay(inventory: InventoryItem[]): InventoryItem[] {
-  const demo = buildHqDistributorNetworkInventory();
-  const seen = new Set(inventory.map(inventoryKey));
-  const extras: InventoryItem[] = [];
-  for (const row of demo) {
-    const key = inventoryKey(row);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    extras.push(row);
-  }
-  const orgScoped = inventory.filter((i) => i.distributorOrgId).length;
-  if (orgScoped >= 8 && extras.length === 0) return inventory;
-  return extras.length > 0 ? [...inventory, ...extras] : inventory;
+  return inventory;
 }

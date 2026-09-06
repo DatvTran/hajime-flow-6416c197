@@ -1,11 +1,11 @@
-// journeys/role-manuf.jsx — Manufacturer journey
+// journeys/role-manuf.jsx — Distillery journey
 const MF = ROLES.manuf;
 
 function ManufContextSlide(){
   return (
-    <Slide label="06 Manufacturer · Context">
+    <Slide label="06 Distillery · Context">
       <SlideHeader
-        roleColor={MF.color} role="Manufacturer" stage="Context · Yamato Distillery"
+        roleColor={MF.color} role="Distillery" stage="Context · Yamato Distillery"
         title="Imanishi-san needs the production queue, not the dashboard"
         subtitle="The current portal mirrors HQ's chrome but most fields don't apply. Imanishi-san wants three things on screen: what's approved, what's running, what ships this week."
         slideNo="06" totalForRole="14"
@@ -85,7 +85,7 @@ function PainItem({text}){
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 07 — Manufacturer production board
+// 07 — Distillery production board
 // ═══════════════════════════════════════════════════════════════
 function ManufBoardSlide(){
   const stages = [
@@ -106,9 +106,9 @@ function ManufBoardSlide(){
   };
 
   return (
-    <Slide label="07 Manufacturer · Production board">
+    <Slide label="07 Distillery · Production board">
       <SlideHeader
-        roleColor={MF.color} role="Manufacturer" stage="Screen 01 · Production board"
+        roleColor={MF.color} role="Distillery" stage="Screen 01 · Production board"
         title="A pipeline she drags batches through, not a CRM"
         subtitle="Every approved PO is a tile. Imanishi-san moves it across the still → bottle → label → pack → ship pipe. Status changes auto-publish to HQ and the receiving distributor."
         slideNo="07" totalForRole="14"
@@ -210,7 +210,7 @@ function ManufTopbar(){
         </div>
         <div>
           <div style={{fontSize:13, fontWeight:600, lineHeight:1.1}}>Yamato Distillery</div>
-          <div style={{fontSize:10, color:J.muted, letterSpacing:'.1em', textTransform:'uppercase'}}>Manufacturer portal</div>
+          <div style={{fontSize:10, color:J.muted, letterSpacing:'.1em', textTransform:'uppercase'}}>Distillery portal</div>
         </div>
       </div>
       <div style={{flex:1}}/>
@@ -251,4 +251,4 @@ function ProdCard({c, stageColor}){
   );
 }
 
-Object.assign(window, { ManufContextSlide, ManufBoardSlide });
+Object.assign(window, { ManufContextSlide, ManufBoardSlide });'

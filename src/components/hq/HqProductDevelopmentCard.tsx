@@ -48,8 +48,8 @@ export function HqProductDevelopmentCard({ request, defaultOpen, onPatch, onNudg
 
   const handleSubmit = async () => {
     if (!request.assignedManufacturer?.trim()) {
-      toast.error(t("Manufacturer required"), {
-        description: t("Assign a manufacturer before sending for feasibility review."),
+      toast.error(t("Distillery required"), {
+        description: t("Assign a distillery before sending for feasibility review."),
       });
       return;
     }
@@ -90,7 +90,7 @@ export function HqProductDevelopmentCard({ request, defaultOpen, onPatch, onNudg
   };
 
   const handleRevision = async () => {
-    if (!window.confirm(t("Send this proposal back to the manufacturer for revision?"))) return;
+    if (!window.confirm(t("Send this proposal back to the distillery for revision?"))) return;
     const stamp = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
     const result = await onPatch(request.id, {
       status: "under_review",
@@ -150,7 +150,7 @@ export function HqProductDevelopmentCard({ request, defaultOpen, onPatch, onNudg
               : hqMove
                 ? t("Your move")
                 : waitingOnMfr
-                  ? t("Waiting on manufacturer")
+                  ? t("Waiting on distillery")
                   : t("In progress")}
           </span>
           {urgent ? <HqOperatorPill tone="red">{t("priority")}</HqOperatorPill> : null}
@@ -207,7 +207,7 @@ export function HqProductDevelopmentCard({ request, defaultOpen, onPatch, onNudg
         </div>
         <div className="hq-detail-panel">
           <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            {t("Manufacturer feasibility")}
+            {t("Distillery feasibility")}
           </div>
           <div
             className={`text-[13px] leading-relaxed ${nprFeasibilitySummary(request) ? "text-foreground" : "text-muted-foreground"}`}
@@ -245,7 +245,7 @@ export function HqProductDevelopmentCard({ request, defaultOpen, onPatch, onNudg
             disabled={nudging || !onNudge}
             onClick={handleNudge}
           >
-            {nudging ? t("Sending…") : t("Nudge manufacturer")}
+            {nudging ? t("Sending…") : t("Nudge distillery")}
           </HqBtn>
         ) : null}
         {request.status === "proposed" ? (

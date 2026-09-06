@@ -16,6 +16,7 @@ import { toast } from "@/components/ui/sonner";
 import { StripeSetupLinkQr } from "@/components/StripeSetupLinkQr";
 import { nextAccountId } from "@/lib/account-ids";
 import { stripePublishableConfigured } from "@/lib/stripe-client";
+import { portalInviteUserMessage } from "@/lib/portal-invite-status";
 import { useAuth } from "@/contexts/AuthContext";
 import { CheckCircle2, Loader2, QrCode } from "lucide-react";
 
@@ -24,7 +25,12 @@ const ACCOUNT_TYPES: Account["type"][] = ["retail", "bar", "restaurant", "hotel"
 const DISTRIBUTOR_ACCOUNT_TYPES: Account["type"][] = ["retail", "bar", "restaurant", "hotel"];
 const ACCOUNT_STATUSES: Account["status"][] = ["active", "prospect", "inactive"];
 
-type CreateResult = Promise<{ success: boolean; data?: { id?: string }; error?: string }>;
+type CreateResult = Promise<{
+  success: boolean;
+  data?: { id?: string };
+  error?: string;
+  invite?: import("@/lib/portal-invite-status").PortalInviteStatus;
+}>;
 
 function parseTags(s: string): string[] {
   return s
@@ -38,15 +44,18 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   accounts: Account[];
   onCreate: (account: Account) => CreateResult;
+  /** Restrict types to retail / bar / restaurant / hotel (HQ acting as Canada distributor). */
+  venueTypesOnly?: boolean;
 };
 
-export function NewAccountDialog({ open, onOpenChange, accounts, onCreate }: Props) {
+export function NewAccountDialog({ open, onOpenChange, accounts, onCreate, venueTypesOnly }: Props) {
   const { user } = useAuth();
   const isDistributor = user?.role === "distributor";
-  const typeOptions = isDistributor ? DISTRIBUTOR_ACCOUNT_TYPES : ACCOUNT_TYPES;
+  const typeOptions = isDistributor || venueTypesOnly ? DISTRIBUTOR_ACCOUNT_TYPES : ACCOUNT_TYPES;
 
   const [step, setStep] = useState<"form" | "qr">("form");
   const [created, setCreated] = useState<Account | null>(null);
+  const [inviteNote, setInviteNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const [tradingName, setTradingName] = useState("");
@@ -68,6 +77,7 @@ export function NewAccountDialog({ open, onOpenChange, accounts, onCreate }: Pro
     if (!open) {
       setStep("form");
       setCreated(null);
+      setInviteNote("");
       setSubmitting(false);
       setTradingName("");
       setLegalName("");
@@ -132,6 +142,7 @@ export function NewAccountDialog({ open, onOpenChange, accounts, onCreate }: Pro
       const serverId = result.data?.id ? String(result.data.id) : account.id;
       const saved = { ...account, id: serverId };
       setCreated(saved);
+      setInviteNote(portalInviteUserMessage(result.invite));
       setStep("qr");
     } finally {
       setSubmitting(false);
@@ -146,9 +157,9 @@ export function NewAccountDialog({ open, onOpenChange, accounts, onCreate }: Pro
             <DialogHeader>
               <DialogTitle>New account</DialogTitle>
               <DialogDescription>
-                {isDistributor
-                  ? "Add an on-premise retail account. It is saved to the server immediately; card setup on the next step is optional."
-                  : "Add a customer or distributor account (Brand Operator). Complete profile and contact email here. For distributors and warehouse partners, go to Settings → CRM afterward to send the portal invite. You can share a Stripe link and QR code on the next step."}
+                {isDistributor || venueTypesOnly
+                  ? "Add a hotel, restaurant, bar, or retail store. Saved immediately; card setup on the next step is optional."
+                  : "Add a customer or distributor account (Brand Operator). A portal invite is emailed to the contact when the account is created."}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3">
@@ -354,7 +365,8 @@ export function NewAccountDialog({ open, onOpenChange, accounts, onCreate }: Pro
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
               <p>
                 <strong className="font-medium text-foreground">{created.tradingName}</strong> is saved on the server (
-                <span className="font-mono text-xs">{created.id}</span>). You can close this dialog or continue with optional card setup below.
+                <span className="font-mono text-xs">{created.id}</span>). {inviteNote} You can close this dialog or
+                continue with optional card setup below.
               </p>
             </div>
             <DialogHeader className="pt-2">
@@ -376,7 +388,7 @@ export function NewAccountDialog({ open, onOpenChange, accounts, onCreate }: Pro
             />
             {isDistributor ? (
               <p className="text-xs text-muted-foreground">
-                To add retail portal logins, open this account from the list → Retail portal users.
+                Portal users for this store can also be managed from the account → Retail portal users.
               </p>
             ) : null}
             <DialogFooter>

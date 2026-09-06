@@ -1,8 +1,8 @@
 import type { AppData } from "@/types/app-data";
 
-/** Bumped when manufacturer portal demo seed must not rehydrate from an old browser cache. */
-const KEY = "hajime-app-data-v2";
-const LEGACY_KEYS = ["hajime-app-data-v1"];
+/** Bumped when live-mode must not rehydrate a seed/demo snapshot from this browser. */
+const KEY = "hajime-app-data-v4";
+const LEGACY_KEYS = ["hajime-app-data-v1", "hajime-app-data-v2", "hajime-app-data-v3"];
 
 export function loadLocalAppData(): AppData | null {
   try {

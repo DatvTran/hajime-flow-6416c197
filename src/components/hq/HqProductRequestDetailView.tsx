@@ -19,6 +19,10 @@ import {
   HqOperatorPill,
   HqOperatorSrcChip,
 } from "@/components/hq/HqOperatorUi";
+import {
+  hasProductionSpecContent,
+  NprProductionSpecPanel,
+} from "@/components/npr/NprProductionSpecPanel";
 
 type Props = {
   request: NewProductRequest;
@@ -147,7 +151,7 @@ export function HqProductRequestDetailView({ request, onPatch }: Props) {
 
   const summaryRows = [
     { label: "Request ID", value: request.id },
-    { label: "Manufacturer", value: request.assignedManufacturer || "—" },
+    { label: "Distillery", value: request.assignedManufacturer || "—" },
     {
       label: "Spirit / ABV",
       value: `${formatBaseSpiritLabel(request.specs.baseSpirit)} · ${request.specs.targetAbv}%`,
@@ -204,7 +208,7 @@ export function HqProductRequestDetailView({ request, onPatch }: Props) {
           <HqOperatorCard className="hq-settings-panel">
             <div className="hq-settings-title">{t("Product brief")}</div>
             <p className="mb-3 text-[12px] text-muted-foreground">
-              {t("Brief sent to the manufacturer")}
+              {t("Brief sent to the distillery")}
             </p>
             <div className="hq-detail-panel grid gap-4 sm:grid-cols-2">
               <DetailCell label={t("Base spirit")} value={formatBaseSpiritLabel(request.specs.baseSpirit)} />
@@ -246,8 +250,18 @@ export function HqProductRequestDetailView({ request, onPatch }: Props) {
             </div>
           </HqOperatorCard>
 
+          {hasProductionSpecContent(request.specs.productionSpec) ? (
+            <HqOperatorCard className="hq-settings-panel">
+              <div className="hq-settings-title">Production specification</div>
+              <p className="mb-3 text-[12px] text-muted-foreground">
+                Bench-trial brief sent with this concept
+              </p>
+              <NprProductionSpecPanel productionSpec={request.specs.productionSpec} />
+            </HqOperatorCard>
+          ) : null}
+
           <HqOperatorCard className="hq-settings-panel">
-            <div className="hq-settings-title">{t("Manufacturer proposal")}</div>
+            <div className="hq-settings-title">{t("Distillery proposal")}</div>
             {hasProposal ? (
               <div className="hq-detail-panel border-[hsl(158_56%_36%/0.25)] bg-[hsl(158_56%_36%/0.06)]">
                 <div className="mb-3 flex items-center gap-2 text-[13px] font-medium text-[hsl(158_56%_32%)]">
@@ -318,7 +332,7 @@ export function HqProductRequestDetailView({ request, onPatch }: Props) {
             ) : (
               <p className="text-[13px] leading-relaxed text-muted-foreground">
                 {request.status === "draft"
-                  ? t("Send this concept for feasibility review by the manufacturer.")
+                  ? t("Send this concept for feasibility review by the distillery.")
                   : request.status === "submitted" || request.status === "under_review"
                     ? `${t("In feasibility review with")} ${request.assignedManufacturer}…`
                     : request.requestedBy === "manufacturer"
@@ -408,7 +422,7 @@ export function HqProductRequestDetailView({ request, onPatch }: Props) {
             <div className="rounded-[14px] border border-[hsl(280_40%_50%/0.2)] bg-[hsl(280_40%_50%/0.06)] p-4 text-xs leading-relaxed text-[hsl(280_30%_42%)]">
               <strong className="text-[hsl(280_40%_44%)]">{t("Next:")}</strong>{" "}
               {t(
-                "approving adds the SKU to your catalog. Rejecting returns the brief to the manufacturer with your feedback.",
+                "approving adds the SKU to your catalog. Rejecting returns the brief to the distillery with your feedback.",
               )}
             </div>
           ) : null}

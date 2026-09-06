@@ -16,7 +16,7 @@ function slugify(value: string | undefined | null): string {
     .replace(/^-|-$/g, "");
 }
 
-/** Lookup of every manufacturer that currently exists (excludes hidden/deleted). */
+/** Lookup of every distillery that currently exists (excludes hidden/deleted). */
 export type ExistingManufacturerIndex = {
   emails: Set<string>;
   labels: Set<string>;
@@ -83,7 +83,7 @@ export function buildExistingManufacturerIndex(
   return { emails, labels, ids };
 }
 
-/** True when the NPR has been assigned to a manufacturer (i.e. sent for feasibility). */
+/** True when the NPR has been assigned to a distillery (i.e. sent for feasibility). */
 export function nprHasManufacturerAssignment(npr: NewProductRequest): boolean {
   return Boolean(
     norm(npr.assignedManufacturer) ||
@@ -92,7 +92,7 @@ export function nprHasManufacturerAssignment(npr: NewProductRequest): boolean {
   );
 }
 
-/** True when the NPR's assigned manufacturer still exists in the index. */
+/** True when the NPR's assigned distillery still exists in the index. */
 export function nprManufacturerExists(
   npr: NewProductRequest,
   index: ExistingManufacturerIndex,
@@ -110,8 +110,8 @@ export function nprManufacturerExists(
 }
 
 /**
- * NPRs whose assigned manufacturer no longer exists (orphaned).
- * Concepts that were never assigned to a manufacturer are kept.
+ * NPRs whose assigned distillery no longer exists (orphaned).
+ * Concepts that were never assigned to a distillery are kept.
  */
 export function findOrphanedNprs(
   nprs: NewProductRequest[],

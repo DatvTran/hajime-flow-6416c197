@@ -22,21 +22,58 @@ const HQ_PARTNERS = [
     id: 'kosapan',
     accountId: 'demo-kosapan',
     names: ['Kosapan Distillery', 'Kosapan Distillery Co., Ltd.'],
+    aliases: ['kosapan', 'demo-kosapan', 'kosapan-distillery'],
   },
   {
     id: 'kuramoto',
     accountId: 'demo-kuramoto',
     names: ['Kuramoto Brewing', 'Kuramoto Brewing Co.'],
+    aliases: ['kuramoto', 'demo-kuramoto', 'kuramoto-brewing'],
   },
   {
     id: 'echigo',
     accountId: 'demo-echigo',
     names: ['Echigo Kura', 'Echigo Kura Ltd.'],
+    aliases: ['echigo', 'demo-echigo', 'echigo-kura'],
   },
 ];
 
 /**
- * Resolve which manufacturer labels / emails belong to the signed-in manufacturer user.
+ * Map a picker key / manufacturer_id / supplier label to a canonical partner id
+ * (kosapan / kuramoto / echigo) so distillery portal scoping always matches.
+ */
+export function canonicalizeManufacturerAssignmentId(manufacturerId, supplierName) {
+  const raw = String(manufacturerId ?? '').trim();
+  const label = String(supplierName ?? '').trim().toLowerCase();
+  const candidates = [];
+  if (raw) {
+    const stripped = raw.replace(/^(partner|account|prof):/i, '');
+    candidates.push(raw.toLowerCase(), stripped.toLowerCase());
+  }
+  if (label) candidates.push(label);
+
+  for (const partner of HQ_PARTNERS) {
+    const aliases = new Set([
+      partner.id,
+      partner.accountId,
+      ...(partner.aliases || []),
+      ...partner.names.map((n) => n.toLowerCase()),
+    ]);
+    for (const c of candidates) {
+      if (!c) continue;
+      if (aliases.has(c)) return partner.id;
+      if (c.includes(partner.id)) return partner.id;
+      for (const name of partner.names) {
+        const n = name.toLowerCase();
+        if (c.includes(n) || n.includes(c)) return partner.id;
+      }
+    }
+  }
+  return raw || null;
+}
+
+/**
+ * Resolve which distillery labels / emails belong to the signed-in distillery user.
  * @returns {Promise<{ email: string, emails: Set<string>, labels: Set<string>, crmMemberIds: Set<string> }>}
  */
 export async function resolveManufacturerAssignmentIdentity(db, tenantId, user) {
@@ -167,7 +204,7 @@ export async function resolveManufacturerAssignmentIdentity(db, tenantId, user) 
   return { email, emails, labels, crmMemberIds };
 }
 
-/** Whether an NPR row is assigned to the given manufacturer identity. */
+/** Whether an NPR row is assigned to the given distillery identity. */
 export function nprMatchesManufacturerIdentity(row, identity) {
   if (!row || !identity) return false;
 
@@ -230,7 +267,7 @@ export function applyManufacturerNprScopeToQuery(query, identity) {
   return query;
 }
 
-/** Whether a production PO row is assigned to the signed-in manufacturer. */
+/** Whether a production PO row is assigned to the signed-in distillery. */
 export function poMatchesManufacturerIdentity(row, identity) {
   if (!row || !identity) return false;
 
@@ -257,7 +294,7 @@ export function filterPosForManufacturerUser(rows, identity) {
   );
 }
 
-/** Restrict PO list to rows issued to this manufacturer (excludes HQ drafts). */
+/** Restrict PO list to rows issued to this distillery (excludes HQ drafts). */
 export function applyManufacturerPoScopeToQuery(query, identity) {
   query.whereNot('status', 'draft');
 
@@ -346,7 +383,7 @@ const MANUFACTURER_WRITABLE = new Set([
 
 const MANUFACTURER_STATUSES = new Set(['under_review', 'proposed', 'declined']);
 
-/** Strip fields a manufacturer user may not mutate on an NPR row. */
+/** Strip fields a distillery user may not mutate on an NPR row. */
 export function sanitizeManufacturerNprUpdate(updates) {
   const out = {};
   for (const key of MANUFACTURER_WRITABLE) {
@@ -358,15 +395,15 @@ export function sanitizeManufacturerNprUpdate(updates) {
 /** @returns {string|null} denial reason */
 export function assertManufacturerNprUpdateAllowed(existing, updates) {
   if (!existing || existing.status === 'draft') {
-    return 'Draft briefs are not visible to manufacturers';
+    return 'Draft briefs are not visible to distilleries';
   }
   if (updates.status && !MANUFACTURER_STATUSES.has(String(updates.status))) {
-    return `Manufacturer cannot set status to ${updates.status}`;
+    return `Distillery cannot set status to ${updates.status}`;
   }
   return null;
 }
 
-/** Apply workflow timestamps when status advances (HQ ↔ manufacturer handshake). */
+/** Apply workflow timestamps when status advances (HQ ↔ distillery handshake). */
 export function applyNprStatusTimestamps(existing, updates) {
   const next = { ...updates };
   if (next.status === 'submitted' && existing.status !== 'submitted' && !next.submitted_at) {

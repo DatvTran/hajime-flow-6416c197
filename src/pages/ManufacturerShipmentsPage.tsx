@@ -59,7 +59,7 @@ export default function ManufacturerShipmentsPage() {
   );
   const facilityOrigin = useMemo(() => {
     const label = [...identity.labels][0];
-    return label || "Manufacturer facility";
+    return label || "Distillery facility";
   }, [identity]);
 
   const shipments = useMemo(

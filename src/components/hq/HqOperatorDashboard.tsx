@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Box,
   Factory,
+  Layers,
   ShoppingCart,
   Star,
   Store,
@@ -12,7 +13,7 @@ import {
   Truck,
   Users,
 } from "lucide-react";
-import { useAppData, usePurchaseOrders, useSalesOrders } from "@/contexts/AppDataContext";
+import { useAppData, useNewProductRequests, useSalesOrders } from "@/contexts/AppDataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   computeInventorySummary,
@@ -23,7 +24,7 @@ import {
   computeMarketPanelRows,
   computeBrandOperatorTopAccounts,
 } from "@/lib/brand-operator-metrics";
-import { scopeAppDataForHqOperator, filterWholesaleOrdersForHq, filterOnPremiseAccountsForHq } from "@/lib/hq-order-scope";
+import { scopeAppDataForHqOperator, filterWholesaleOrdersForHq } from "@/lib/hq-order-scope";
 import { portalTimeGreeting } from "@/lib/i18n-portal";
 import {
   HqBtnLink,
@@ -35,7 +36,6 @@ import {
   HqOperatorMarketCard,
   HqOperatorPage,
   HqOperatorPageHeader,
-  HqOperatorPill,
   HqOperatorSectionHead,
   HqOperatorSrcChip,
   HqOperatorTwoCol,
@@ -64,23 +64,19 @@ function healthPill(h: "healthy" | "watch" | "low"): { tone: "green" | "amber" |
 
 export default function HqOperatorDashboard() {
   const { data } = useAppData();
-  const { purchaseOrders } = usePurchaseOrders();
+  const { newProductRequests } = useNewProductRequests();
   const { salesOrders } = useSalesOrders();
   const { user } = useAuth();
   const { t } = useLanguage();
 
   const commandData = useMemo(() => scopeAppDataForHqOperator(data), [data]);
 
-  const openProduction = useMemo(
+  const openConcepts = useMemo(
     () =>
-      purchaseOrders.filter(
-        (p) =>
-          p.poType !== "sales" &&
-          p.status !== "delivered" &&
-          p.status !== "completed" &&
-          p.status !== "shipped",
+      newProductRequests.filter(
+        (n) => n.status === "draft" || n.status === "proposed" || n.status === "under_review" || n.status === "submitted",
       ),
-    [purchaseOrders],
+    [newProductRequests],
   );
 
   const wholesaleOrders = useMemo(
@@ -124,11 +120,6 @@ export default function HqOperatorDashboard() {
     [commandData.accounts],
   );
 
-  const retailVenueCount = useMemo(
-    () => filterOnPremiseAccountsForHq(commandData.accounts).length,
-    [commandData.accounts],
-  );
-
   const salesRepCount = useMemo(
     () => (data.teamMembers ?? []).filter((m) => m.role === "sales_rep" && m.isActive !== false).length,
     [data.teamMembers],
@@ -148,17 +139,17 @@ export default function HqOperatorDashboard() {
         title={`${greeting}, ${greetingName(user?.displayName)}.`}
         rawDescription
         description={
-          pendingReplen > 0 || openProduction.length > 0
-            ? `${openProduction.length} production request${openProduction.length !== 1 ? "s" : ""} waiting on your sign-off.${lowCoverMarket ? ` ${lowCoverMarket.label} is at ${lowCoverMarket.daysCover ?? "—"} days cover and needs a production decision.` : ""} Order fulfillment runs at the distributor level — everything else across the network is healthy.`
-            : "Network overview — production, replenishment, markets, and downstream sell-through in one command view."
+          pendingReplen > 0 || openConcepts.length > 0
+            ? `${openConcepts.length} product concept${openConcepts.length !== 1 ? "s" : ""} in development.${lowCoverMarket ? ` ${lowCoverMarket.label} is at ${lowCoverMarket.daysCover ?? "—"} days cover.` : ""} Order fulfillment runs at the distributor level.`
+            : "Network overview — product development, replenishment, markets, and downstream sell-through in one command view."
         }
         actions={
           <>
             <HqBtnLink to="/reports" variant="outline">
               {t("Full analytics")}
             </HqBtnLink>
-            <HqBtnLink to="/production-requests" variant="ink">
-              {t("Review production")}
+            <HqBtnLink to="/product-development" variant="ink">
+              {t("Product development")}
             </HqBtnLink>
           </>
         }
@@ -172,8 +163,8 @@ export default function HqOperatorDashboard() {
               <HqBtnLink to="/markets" variant="outline" size="sm">
                 {t("View market")}
               </HqBtnLink>
-              <HqBtnLink to="/production-requests" variant="accent" size="sm">
-                {t("Approve production")}
+              <HqBtnLink to="/markets" variant="accent" size="sm">
+                {t("View markets")}
               </HqBtnLink>
             </>
           }
@@ -182,7 +173,7 @@ export default function HqOperatorDashboard() {
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[hsl(0_68%_44%)]" strokeWidth={1.75} />
             <span>
               <strong className="text-[hsl(0_68%_36%)]">{lowCoverMarket.label} at {lowCoverMarket.daysCover ?? "—"} days cover</strong>
-              <span className="text-[hsl(30_70%_35%)]"> — below the 21-day floor. Review open production requests to rebuild allocation.</span>
+              <span className="text-[hsl(30_70%_35%)]"> — below the 21-day floor. Review market allocation.</span>
             </span>
           </div>
         </HqOperatorAlertBar>
@@ -206,12 +197,12 @@ export default function HqOperatorDashboard() {
           deltaTone={revDelta >= 0 ? "up" : "down"}
         />
         <HqOperatorKpiCard
-          icon={Factory}
+          icon={Layers}
           tone="red"
-          label="Production requests"
-          value={String(openProduction.length)}
-          sub={`${openProduction.filter((p) => p.status === "delayed").length} urgent · rebuilds allocation`}
-          to="/production-requests"
+          label="Product development"
+          value={String(openConcepts.length)}
+          sub="concepts in review"
+          to="/product-development"
         />
         <HqOperatorKpiCard
           icon={Box}
@@ -222,12 +213,12 @@ export default function HqOperatorDashboard() {
           to="/inventory"
         />
         <HqOperatorKpiCard
-          icon={Store}
+          icon={Users}
           tone="green"
-          label="Retail accounts"
-          value={String(retailVenueCount)}
-          sub="hotels, bars, restaurants, stores"
-          to="/accounts?view=retail"
+          label="Sales reps"
+          value={String(salesRepCount)}
+          sub="field team · Hajime Canada"
+          to="/crm?role=sales_rep"
         />
       </HqOperatorKpiGrid>
 
@@ -242,7 +233,7 @@ export default function HqOperatorDashboard() {
               color: "text-[hsl(280_40%_48%)]",
               name: "Distilleries",
               meta: `${commandData.accounts.filter((a) => a.type === "manufacturer").length} distillery partners · batches brewing`,
-              count: `${openProduction.length} requests open`,
+              count: `${commandData.accounts.filter((a) => a.type === "manufacturer").length} partners`,
               countStyle: "bg-[hsl(280_40%_50%/0.1)] text-[hsl(280_40%_48%)]",
             },
             {
@@ -251,7 +242,7 @@ export default function HqOperatorDashboard() {
               color: "text-[hsl(40_88%_38%)]",
               iconBg: "bg-[hsl(40_88%_42%/0.06)] border-[hsl(40_88%_42%/0.3)]",
               name: "Hajime HQ",
-              meta: `You · ${openProduction.length} production sign-offs`,
+              meta: `You · ${openConcepts.length} concepts in development`,
               count: "command center",
               countStyle: "bg-[hsl(40_88%_42%/0.12)] text-[hsl(40_88%_34%)]",
             },
@@ -272,15 +263,6 @@ export default function HqOperatorDashboard() {
               meta: `${salesRepCount} field reps · Hajime Canada`,
               count: "add & invite",
               countStyle: "bg-[hsl(215_72%_50%/0.1)] text-[hsl(215_72%_42%)]",
-            },
-            {
-              to: "/accounts?view=retail",
-              icon: Store,
-              color: "text-[hsl(40_88%_36%)]",
-              name: "Retail accounts",
-              meta: `${retailVenueCount} venues · add hotels, bars, stores`,
-              count: "new account",
-              countStyle: "bg-[hsl(40_88%_42%/0.1)] text-[hsl(40_88%_34%)]",
             },
           ].map((node, i, arr) => (
             <div key={node.name} className="flex flex-1 items-center gap-0 min-w-[120px]">
@@ -311,37 +293,31 @@ export default function HqOperatorDashboard() {
       <HqOperatorTwoCol>
         <HqOperatorCard>
           <HqOperatorCardHead
-            title="Production requests"
-            subtitle="From distillery partners — your sign-off"
+            title="Product development"
+            subtitle="Concepts with distillery partners"
             actions={
-              <HqBtnLink to="/production-requests" variant="outline" size="sm">
-                {t("View all")} ({openProduction.length})
+              <HqBtnLink to="/product-development" variant="outline" size="sm">
+                {t("View all")} ({openConcepts.length})
               </HqBtnLink>
             }
           />
-          {openProduction.length === 0 ? (
-            <div className="px-5 py-10 text-center text-sm text-muted-foreground">{t("No open production requests")}</div>
+          {openConcepts.length === 0 ? (
+            <div className="px-5 py-10 text-center text-sm text-muted-foreground">{t("No open concepts")}</div>
           ) : (
-            openProduction.slice(0, 4).map((po) => (
+            openConcepts.slice(0, 4).map((npr) => (
               <Link
-                key={po.id}
-                to={`/production-requests?po=${po.id}`}
+                key={npr.id}
+                to={`/product-development/${npr.id}`}
                 className="flex items-center gap-3 border-b border-border/40 px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40 no-underline"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <HqOperatorSrcChip variant="kura">{t("Distillery")}</HqOperatorSrcChip>
-                    {po.status === "delayed" ? <HqOperatorPill tone="red">{t("urgent")}</HqOperatorPill> : null}
+                    <HqOperatorSrcChip variant="kura">{t("Concept")}</HqOperatorSrcChip>
                   </div>
-                  <div className="mt-1 text-[13px] font-medium text-foreground">
-                    {po.quantity}× {po.sku}
-                  </div>
+                  <div className="mt-1 text-[13px] font-medium text-foreground">{npr.title}</div>
                   <div className="mt-px text-[11px] text-muted-foreground">
-                    {po.id} · {po.manufacturer} · {po.marketDestination ?? "—"}
+                    {npr.status} · {npr.assignedManufacturer ?? "Unassigned"}
                   </div>
-                </div>
-                <div className="shrink-0 text-right">
-                  <div className="font-mono text-[13px] font-semibold">{po.quantity} cs</div>
                 </div>
               </Link>
             ))
@@ -375,6 +351,11 @@ export default function HqOperatorDashboard() {
 
       <HqOperatorSectionHead title="Markets" linkLabel="Manage allocation →" linkTo="/markets" />
 
+      {topMarkets.length === 0 ? (
+        <p className="rounded-xl border border-border bg-card px-5 py-8 text-center text-sm text-muted-foreground">
+          {t("No live markets yet")}
+        </p>
+      ) : (
       <div className="hq-markets-grid grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
         {topMarkets.map((m) => {
           const pill = healthPill(m.health);
@@ -395,6 +376,7 @@ export default function HqOperatorDashboard() {
           );
         })}
       </div>
+      )}
     </HqOperatorPage>
   );
 }

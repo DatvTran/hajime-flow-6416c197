@@ -29,7 +29,7 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPatch: (id: string, patch: Partial<Pick<PurchaseOrder, "status">>) => void | Promise<void>;
-  /** When true, line details are view-only (manufacturer / distributor). Status changes are Brand Operator only. */
+  /** When true, line details are view-only (distillery / distributor). Status changes are Brand Operator only. */
   readOnly?: boolean;
   readOnlyHint?: string;
 };
@@ -123,7 +123,7 @@ export function PurchaseOrderDetailDialog({
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <Factory className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Manufacturer</p>
+                    <p className="text-sm text-muted-foreground">Distillery</p>
                   </div>
                   <p className="font-medium">{purchaseOrder.manufacturer}</p>
                 </div>
@@ -161,7 +161,7 @@ export function PurchaseOrderDetailDialog({
           {readOnly ? (
             <p className="text-xs text-muted-foreground">
               {readOnlyHint ??
-                "View only. PO status is updated by Hajime HQ; production execution belongs on the Manufacturer portal."}
+                "View only. PO status is updated by Hajime HQ; production execution belongs on the Distillery portal."}
             </p>
           ) : (
             <div className="space-y-2">

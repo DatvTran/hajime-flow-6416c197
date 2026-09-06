@@ -84,7 +84,7 @@ export function ManufacturerNewProductDialog({
   const [markets, setMarkets] = useState("Ontario, EU, US");
   const [notes, setNotes] = useState("");
 
-  // Manufacturer proposal (prefilled)
+  // Distillery proposal (prefilled)
   const [batchSize, setBatchSize] = useState("2400");
   const [minBatch, setMinBatch] = useState("2400");
   const [prodCost, setProdCost] = useState("8.50");

@@ -21,7 +21,7 @@ const ROLE_CONFIG: {
   wide?: boolean;
 }[] = [
   { id: "brand_operator", label: "Brand Operator", sublabel: "Hajime HQ — command center", glyph: "◉" },
-  { id: "manufacturer", label: "Manufacturer", sublabel: "Production & export", glyph: "⚙" },
+  { id: "manufacturer", label: "Distillery", sublabel: "Production & export", glyph: "⚙" },
   { id: "distributor", label: "Distributor", sublabel: "Warehouse & fulfillment", glyph: "◫" },
   { id: "sales_rep", label: "Sales Rep", sublabel: "Field accounts & drafts", glyph: "◈" },
   { id: "retail", label: "Retail Store", sublabel: "Order & track deliveries", glyph: "◻", wide: true },
@@ -46,12 +46,13 @@ const DEMO_SALES_REP_PASSWORD = "admin123!";
 /** Demo distributor — migration `026_demo_sales_rep_users` (Metro Logistics). */
 const DEMO_DISTRIBUTOR_PASSWORD = "admin123!";
 
-/** Demo manufacturer — migration `038_demo_manufacturer_users` (Kirin contacts). */
+/** Demo distillery — migrations `038` (Kirin) + `045` (Kosapan). */
 const DEMO_MANUFACTURER_PASSWORD = "admin123!";
 
 const DEFAULT_SALES_REP_PERSONA_ID = "tm-seed-2";
 const DEFAULT_DISTRIBUTOR_PERSONA_ID = "tm-seed-7";
-const DEFAULT_MANUFACTURER_PERSONA_ID = "tm-seed-9";
+/** Default distillery login is Kosapan so HQ production requests are visible end-to-end. */
+const DEFAULT_MANUFACTURER_PERSONA_ID = "tm-kosapan-portal";
 
 function authRoleToTeamRole(r: HajimeRole): TeamMemberPortalRole | null {
   if (r === "sales_rep" || r === "retail" || r === "distributor" || r === "manufacturer") return r;
@@ -147,8 +148,8 @@ export default function Login() {
         setEmail(m.email);
         setDisplayName(m.displayName);
       } else {
-        setEmail("export@kirin.example");
-        setDisplayName("Kirin Production Liaison");
+        setEmail("portal@kosapan.example");
+        setDisplayName("Kosapan Distillery");
       }
       setPassword(DEMO_MANUFACTURER_PASSWORD);
     }

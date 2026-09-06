@@ -167,7 +167,7 @@ export default function Shipments() {
     <div>
       <PageHeader
         title="Shipments"
-        description="Inbound production freight and outbound deliveries in one view. HQ can ship from a Hajime depot to a distributor DC (sales-order linked); inbound PO legs can be filed by HQ or manufacturers. Lists refresh periodically while this page is visible."
+        description="Inbound production freight and outbound deliveries in one view. HQ can ship from a Hajime depot to a distributor DC (sales-order linked); inbound PO legs can be filed by HQ or distilleries. Lists refresh periodically while this page is visible."
         variant={user.role === "retail" ? "retail" : "default"}
         actions={
           canRecordInbound || canRecordOutboundToDistributor ? (

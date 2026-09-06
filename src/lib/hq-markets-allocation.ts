@@ -33,131 +33,6 @@ export type SkuAllocationRow = {
   lowHub?: HqAllocationHub;
 };
 
-const DESIGN_MARKET_CARDS: HqMarketCardRow[] = [
-  {
-    id: "nyc",
-    name: "NYC",
-    sub: "Empire Wines · 24 accounts",
-    coverLabel: "32 days cover",
-    revenue: "$51,400",
-    revenueSuffix: " Q2",
-    coverPct: 64,
-    coverTone: "ok",
-    statusTone: "green",
-    statusLabel: "healthy",
-    skuCount: 6,
-    manageTo: "/accounts",
-    daysCover: 32,
-  },
-  {
-    id: "chicago",
-    name: "Chicago",
-    sub: "Midwest Spirits · 12 accounts",
-    coverLabel: "14 days cover",
-    revenue: "$28,200",
-    revenueSuffix: " Q2",
-    coverPct: 28,
-    coverTone: "low",
-    statusTone: "red",
-    statusLabel: "low stock",
-    skuCount: 5,
-    manageTo: "/accounts",
-    daysCover: 14,
-  },
-  {
-    id: "tokyo",
-    name: "Tokyo",
-    sub: "Kanto Beverage · 31 accounts",
-    coverLabel: "45 days cover",
-    revenue: "¥4.8M",
-    revenueSuffix: " Q2",
-    coverPct: 90,
-    coverTone: "ok",
-    statusTone: "green",
-    statusLabel: "healthy",
-    skuCount: 8,
-    manageTo: "/accounts",
-    daysCover: 45,
-  },
-  {
-    id: "paris",
-    name: "Paris",
-    sub: "Cave Lumière · 9 accounts",
-    coverLabel: "18 days cover",
-    revenue: "€19,600",
-    revenueSuffix: " Q2",
-    coverPct: 36,
-    coverTone: "med",
-    statusTone: "amber",
-    statusLabel: "monitor",
-    skuCount: 4,
-    manageTo: "/accounts",
-    daysCover: 18,
-  },
-  {
-    id: "milan",
-    name: "Milan",
-    sub: "Vino Nord · 7 accounts",
-    coverLabel: "38 days cover",
-    revenue: "€14,200",
-    revenueSuffix: " Q2",
-    coverPct: 76,
-    coverTone: "ok",
-    statusTone: "green",
-    statusLabel: "healthy",
-    skuCount: 4,
-    manageTo: "/accounts",
-    daysCover: 38,
-  },
-  {
-    id: "london",
-    name: "London",
-    sub: "Prospect market",
-    coverLabel: "Not yet live",
-    revenue: "—",
-    revenueSuffix: "",
-    coverPct: 0,
-    coverTone: "low",
-    statusTone: "neutral",
-    statusLabel: "planned",
-    skuCount: 0,
-    manageTo: "/accounts",
-    daysCover: null,
-  },
-];
-
-const DESIGN_SKU_ALLOCATION: SkuAllocationRow[] = [
-  {
-    sku: "HJM-FP-750",
-    name: "Florin Peaks",
-    total: 1240,
-    byHub: { NYC: 480, Chicago: 180, Tokyo: 320, Paris: 80, Milan: 120 },
-    unallocated: 60,
-    lowHub: "Chicago",
-  },
-  {
-    sku: "HJM-JN-720",
-    name: "Junmai Shiro",
-    total: 820,
-    byHub: { NYC: 220, Chicago: 140, Tokyo: 280, Paris: 60, Milan: 80 },
-    unallocated: 40,
-  },
-  {
-    sku: "HJM-RY-500",
-    name: "Ryusui Reserve",
-    total: 340,
-    byHub: { NYC: 120, Chicago: 40, Tokyo: 100, Paris: 20, Milan: 40 },
-    unallocated: 20,
-  },
-  {
-    sku: "EU-FP-750",
-    name: "First Press",
-    total: 240,
-    byHub: { NYC: 96, Chicago: 40, Tokyo: 60, Paris: 0, Milan: 44 },
-    unallocated: 0,
-  },
-];
-
 function coverTone(days: number | null): "low" | "med" | "ok" {
   if (days == null || days <= 0) return "low";
   if (days < 21) return "low";
@@ -235,7 +110,7 @@ export function buildHqMarketCards(
   mode: MarketsHqMode,
   asOf: Date,
 ): HqMarketCardRow[] {
-  if (mode !== "live") return DESIGN_MARKET_CARDS;
+  if (mode !== "live") return [];
 
   const cards: HqMarketCardRow[] = [];
   const seen = new Set<string>();
@@ -266,18 +141,17 @@ export function buildHqMarketCards(
       coverTone: coverTone(row.daysCover),
       statusTone: pill.tone,
       statusLabel: pill.label,
-      skuCount: skuCountForHub(data.inventory, hub) || Math.max(1, Math.round(row.stockCases / 20)),
+      skuCount: skuCountForHub(data.inventory, hub),
       manageTo: "/accounts",
       daysCover: row.daysCover,
     });
   }
 
-  if (cards.length < 3) return DESIGN_MARKET_CARDS;
   return cards;
 }
 
 export function buildSkuAllocationRows(data: AppData, mode: MarketsHqMode): SkuAllocationRow[] {
-  if (mode !== "live") return DESIGN_SKU_ALLOCATION;
+  if (mode !== "live") return [];
 
   const bySku = new Map<
     string,
@@ -317,25 +191,17 @@ export function buildSkuAllocationRows(data: AppData, mode: MarketsHqMode): SkuA
     .sort((a, b) => b.total - a.total)
     .slice(0, 8);
 
-  if (rows.length < 2) return DESIGN_SKU_ALLOCATION;
   return rows;
 }
 
 export function hqMarketsLowCoverAlert(
   cards: HqMarketCardRow[],
-  mode: MarketsHqMode,
+  _mode: MarketsHqMode,
 ): { market: string; message: string } | null {
   const low = cards.find((c) => c.daysCover != null && c.daysCover < 21 && c.daysCover > 0);
   if (!low) return null;
-  if (mode !== "live" && low.name === "Chicago") {
-    return {
-      market: low.name,
-      message:
-        "14 days of Florin Peaks remaining vs 21-day floor. Recommend approving the Kuramoto production request and reallocating 60cs from NYC surplus.",
-    };
-  }
   return {
     market: low.name,
-    message: `${low.daysCover} days remaining vs 21-day floor. Review production requests and reallocate surplus.`,
+    message: `${low.daysCover} days remaining vs 21-day floor. Review stock and reallocate surplus.`,
   };
 }

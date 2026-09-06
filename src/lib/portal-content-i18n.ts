@@ -202,7 +202,7 @@ const fr: Dict = {
   Inactive: "Inactif",
   Alerts: "Alertes",
   "Supply orders": "Commandes d'approvisionnement",
-  "Manage production requests to the manufacturer and transfer orders that move existing stock to distributors or retail accounts.":
+  "Manage production requests to the distillery and transfer orders that move existing stock to distributors or retail accounts.":
     "Gérez les demandes de production et les transferts de stock vers distributeurs ou comptes retail.",
   Export: "Exporter",
   "New production request": "Nouvelle demande de production",
@@ -212,7 +212,9 @@ const fr: Dict = {
   Request: "Demande",
   "Qty (btl)": "Qté (btl)",
   "Destination warehouse": "Entrepôt de destination",
-  Manufacturer: "Fabricant",
+  Distillery: "Distillerie",
+  Distilleries: "Distilleries",
+  Manufacturer: "Distillerie",
   SKU: "SKU",
   "Expected ship": "Expédition prévue",
   "SKU-level positions by market hub — available, allocated, reserved, and incoming pipeline with health vs safety stock.":
@@ -228,7 +230,7 @@ const fr: Dict = {
   rows: "lignes",
   Total: "Total",
   Reserved: "Réservé",
-  "At Mfg": "Chez fabricant",
+  "At Distillery": "Chez distillerie",
   Warehouse: "Entrepôt",
   Retail: "Retail",
   Damaged: "Endommagé",
@@ -236,7 +238,7 @@ const fr: Dict = {
   "Retail Shelf": "Rayon retail",
   "Clear filters": "Effacer les filtres",
   "Search SKU, product, batch, or warehouse...": "Rechercher SKU, produit, lot ou entrepôt…",
-  "Inbound production freight and outbound deliveries in one view. HQ can ship from a Hajime depot to a distributor DC (sales-order linked); inbound PO legs can be filed by HQ or manufacturers. Lists refresh periodically while this page is visible.":
+  "Inbound production freight and outbound deliveries in one view. HQ can ship from a Hajime depot to a distributor DC (sales-order linked); inbound PO legs can be filed by HQ or distilleries. Lists refresh periodically while this page is visible.":
     "Fret entrant et livraisons sortantes en une vue. Les listes se rafraîchissent périodiquement.",
   "Record inbound (PO → warehouse)": "Enregistrer entrant (BC → entrepôt)",
   "Ship to distributor (warehouse → DC)": "Expédier au distributeur (entrepôt → DC)",
@@ -497,7 +499,7 @@ const ja: Dict = {
   Inactive: "無効",
   Alerts: "アラート",
   "Supply orders": "供給注文",
-  "Manage production requests to the manufacturer and transfer orders that move existing stock to distributors or retail accounts.":
+  "Manage production requests to the distillery and transfer orders that move existing stock to distributors or retail accounts.":
     "製造への生産依頼と在庫転送注文を管理します。",
   Export: "エクスポート",
   "New production request": "新規生産依頼",
@@ -507,7 +509,9 @@ const ja: Dict = {
   Request: "依頼",
   "Qty (btl)": "数量（本）",
   "Destination warehouse": "配送先倉庫",
-  Manufacturer: "製造元",
+  Distillery: "蒸留所",
+  Distilleries: "蒸留所",
+  Manufacturer: "蒸留所",
   SKU: "SKU",
   "Expected ship": "出荷予定",
   "SKU-level positions by market hub — available, allocated, reserved, and incoming pipeline with health vs safety stock.":
@@ -517,7 +521,7 @@ const ja: Dict = {
   "Role-based view": "ロール別表示",
   Total: "合計",
   Reserved: "予約済み",
-  "At Mfg": "製造元",
+  "At Distillery": "製造元",
   Warehouse: "倉庫",
   Retail: "小売",
   Damaged: "破損",
@@ -525,7 +529,7 @@ const ja: Dict = {
   "Retail Shelf": "小売棚",
   "Clear filters": "フィルターをクリア",
   "Search SKU, product, batch, or warehouse...": "SKU、商品、ロット、倉庫を検索…",
-  "Inbound production freight and outbound deliveries in one view. HQ can ship from a Hajime depot to a distributor DC (sales-order linked); inbound PO legs can be filed by HQ or manufacturers. Lists refresh periodically while this page is visible.":
+  "Inbound production freight and outbound deliveries in one view. HQ can ship from a Hajime depot to a distributor DC (sales-order linked); inbound PO legs can be filed by HQ or distilleries. Lists refresh periodically while this page is visible.":
     "入荷と出荷を一覧表示。リストは定期的に更新されます。",
   "Record inbound (PO → warehouse)": "入荷登録（PO→倉庫）",
   "Ship to distributor (warehouse → DC)": "ディストリビューターへ出荷",
@@ -776,7 +780,7 @@ const zh: Dict = {
   Inactive: "未激活",
   Alerts: "提醒",
   "Supply orders": "供应订单",
-  "Manage production requests to the manufacturer and transfer orders that move existing stock to distributors or retail accounts.":
+  "Manage production requests to the distillery and transfer orders that move existing stock to distributors or retail accounts.":
     "管理向制造商的生产请求和向经销商/零售账户的库存转移。",
   Export: "导出",
   "New production request": "新建生产请求",
@@ -786,7 +790,9 @@ const zh: Dict = {
   Request: "请求",
   "Qty (btl)": "数量（瓶）",
   "Destination warehouse": "目标仓库",
-  Manufacturer: "制造商",
+  Distillery: "酒厂",
+  Distilleries: "酒厂",
+  Manufacturer: "酒厂",
   SKU: "SKU",
   "Expected ship": "预计发货",
   "SKU-level positions by market hub — available, allocated, reserved, and incoming pipeline with health vs safety stock.":
@@ -796,7 +802,7 @@ const zh: Dict = {
   "Role-based view": "按角色查看",
   Total: "合计",
   Reserved: "已预留",
-  "At Mfg": "在制造商",
+  "At Distillery": "在酒厂",
   Warehouse: "仓库",
   Retail: "零售",
   Damaged: "损坏",
@@ -804,7 +810,7 @@ const zh: Dict = {
   "Retail Shelf": "零售货架",
   "Clear filters": "清除筛选",
   "Search SKU, product, batch, or warehouse...": "搜索SKU、产品、批次或仓库…",
-  "Inbound production freight and outbound deliveries in one view. HQ can ship from a Hajime depot to a distributor DC (sales-order linked); inbound PO legs can be filed by HQ or manufacturers. Lists refresh periodically while this page is visible.":
+  "Inbound production freight and outbound deliveries in one view. HQ can ship from a Hajime depot to a distributor DC (sales-order linked); inbound PO legs can be filed by HQ or distilleries. Lists refresh periodically while this page is visible.":
     "入库和出库一览，列表定期刷新。",
   "Record inbound (PO → warehouse)": "登记入库（PO→仓库）",
   "Ship to distributor (warehouse → DC)": "发货至经销商",

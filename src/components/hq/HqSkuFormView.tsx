@@ -5,7 +5,6 @@ import type { Product } from "@/data/mockData";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "@/components/ui/sonner";
 import {
-  formatCatalogPrice,
   parsePriceInput,
   productFromAvailability,
   msrpPerBottle,
@@ -13,7 +12,16 @@ import {
   bottlePriceToCase,
   typeLabelForProduct,
   wholesalePerBottle,
+  distributorSellOutPerBottle,
+  brokerPerBottle,
 } from "@/lib/hq-product-catalog";
+import {
+  hajimeNetBreaksGuardrail,
+  hajimeNetNeedsWarn,
+  looksLikeFirstPressSku,
+  netAfterBroker,
+  TRADE_STANDARD,
+} from "@/lib/hajime-trade-pricing";
 import {
   HqBtn,
   HqBtnLink,
@@ -21,12 +29,11 @@ import {
   HqOperatorPage,
   HqOperatorPageHeader,
 } from "@/components/hq/HqOperatorUi";
-import { cn } from "@/lib/utils";
+import { useHqDistilleryCatalogOptions } from "@/hooks/useHqDistilleryCatalogOptions";
 
 const BOTTLE_SIZES = ["720ml", "750ml", "500ml", "300ml", "1.8L"] as const;
 const STYLES = ["Junmai Daiginjo", "Junmai Ginjo", "Junmai", "Genshu", "Nigori", "Honjozo", "Coffee Rice"] as const;
 const CASE_SIZES = [12, 6, 24] as const;
-const PRODUCERS = ["Kuramoto Brewing", "Echigo Kura"] as const;
 const RELEASE_TYPES = ["Core — always available", "Seasonal", "Limited lot"] as const;
 const AVAILABILITY = ["active", "seasonal", "limited", "development"] as const;
 const MARKET_OPTIONS = [
@@ -60,6 +67,7 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
   const { t } = useLanguage();
   const navigate = useNavigate();
   const isEdit = mode === "edit";
+  const distilleries = useHqDistilleryCatalogOptions();
 
   const initial = useMemo(() => {
     if (!product) {
@@ -70,10 +78,12 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
         style: STYLES[0],
         size: "750ml",
         caseSize: 12,
-        msrp: "",
-        wholesale: "",
-        manufacturer: "",
-        producer: PRODUCERS[0],
+        msrp: String(TRADE_STANDARD.srpPerBottle),
+        wholesale: String(TRADE_STANDARD.sellInPerBottle),
+        manufacturer: String(TRADE_STANDARD.landedPerBottle),
+        sellOut: String(TRADE_STANDARD.wholesalerToRetailPerBottle),
+        broker: String(TRADE_STANDARD.brokerPerBottle),
+        producerId: "",
         availability: "active" as (typeof AVAILABILITY)[number],
         releaseType: RELEASE_TYPES[0],
         imageUrl: "",
@@ -83,6 +93,8 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
     const w = wholesalePerBottle(product);
     const m = manufacturerPerBottle(product);
     const r = msrpPerBottle(product);
+    const sellOutB = distributorSellOutPerBottle(product);
+    const brokerB = brokerPerBottle(product);
     const desc = typeLabelForProduct(product);
     const avail = desc.toLowerCase().includes("seasonal")
       ? "seasonal"
@@ -101,7 +113,9 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
       msrp: r != null ? String(Math.round(r)) : "",
       wholesale: w != null ? String(Math.round(w)) : "",
       manufacturer: m != null ? String(Math.round(m)) : "",
-      producer: product.sku.startsWith("EU-") ? PRODUCERS[1] : PRODUCERS[0],
+      sellOut: sellOutB != null ? String(Math.round(sellOutB)) : "",
+      broker: brokerB > 0 ? String(brokerB) : String(TRADE_STANDARD.brokerPerBottle),
+      producerId: product.producerId ?? "",
       availability: avail as (typeof AVAILABILITY)[number],
       releaseType: RELEASE_TYPES[0],
       imageUrl: product.imageUrl || "",
@@ -118,7 +132,9 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
   const [msrp, setMsrp] = useState(initial.msrp);
   const [wholesale, setWholesale] = useState(initial.wholesale);
   const [manufacturer, setManufacturer] = useState(initial.manufacturer);
-  const [producer, setProducer] = useState(initial.producer);
+  const [sellOut, setSellOut] = useState(initial.sellOut);
+  const [broker, setBroker] = useState(initial.broker);
+  const [producerId, setProducerId] = useState(initial.producerId);
   const [availability, setAvailability] = useState(initial.availability);
   const [releaseType, setReleaseType] = useState(initial.releaseType);
   const [imageUrl, setImageUrl] = useState(initial.imageUrl);
@@ -144,6 +160,8 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
     const msrpCasePrice = bottlePriceToCase(parsePriceInput(msrp), cs);
     const wholesaleCasePrice = bottlePriceToCase(parsePriceInput(wholesale), cs);
     const manufacturerCasePrice = bottlePriceToCase(parsePriceInput(manufacturer), cs);
+    const distributorSellOutCasePrice = bottlePriceToCase(parsePriceInput(sellOut), cs);
+    const brokerN = parsePriceInput(broker);
 
     const shortDescription =
       isEdit && typeLine.trim()
@@ -166,10 +184,30 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
       msrpCasePrice,
       wholesaleCasePrice,
       manufacturerCasePrice,
+      distributorSellOutCasePrice,
+      brokerCommissionPerBottle: brokerN ?? TRADE_STANDARD.brokerPerBottle,
       minOrderCases: Math.max(1, markets.size),
       imageUrl: imageUrl || undefined,
+      ...(producerId
+        ? {
+            producerId,
+            producerName: distilleries.find((d) => d.id === producerId)?.name ?? product?.producerName,
+          }
+        : {}),
     };
   };
+
+  const applyFirstPressStandard = () => {
+    setManufacturer(String(TRADE_STANDARD.landedPerBottle));
+    setWholesale(String(TRADE_STANDARD.sellInPerBottle));
+    setSellOut(String(TRADE_STANDARD.wholesalerToRetailPerBottle));
+    setMsrp(String(TRADE_STANDARD.srpPerBottle));
+    setBroker(String(TRADE_STANDARD.brokerPerBottle));
+  };
+
+  const sellInN = parsePriceInput(wholesale);
+  const brokerN = parsePriceInput(broker) ?? TRADE_STANDARD.brokerPerBottle;
+  const netN = sellInN != null ? netAfterBroker(sellInN, brokerN) : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,6 +226,10 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
       toast.error(t("Product name and SKU are required"));
       return;
     }
+    if (!producerId) {
+      toast.error(t("Select a Distilleries partner"));
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -200,7 +242,7 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
 
   const handleDiscontinue = async () => {
     if (!product?.sku || !onDiscontinue) return;
-    if (!window.confirm(t("Discontinue this SKU?"))) return;
+    if (!window.confirm(t("Delete this SKU from the product catalog?"))) return;
     setSubmitting(true);
     try {
       const res = await onDiscontinue(product.sku);
@@ -325,35 +367,71 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
             </HqOperatorCard>
 
             <HqOperatorCard className="hq-settings-panel">
-              <div className="hq-settings-title">{t("Pricing & production")}</div>
+              <div className="hq-settings-title">{t("Canada trade pricing (CAD / bottle)")}</div>
+              <p className="mb-3 text-[12px] text-muted-foreground">
+                Internal ladder. Landed and broker stay on HQ only.{" "}
+                <Link to="/brand-kit#trade-pricing" className="text-accent underline">
+                  Trade pricing policy
+                </Link>
+              </p>
+              {(looksLikeFirstPressSku({ sku, name, shortDescription: typeLine }) || !isEdit) && (
+                <HqBtn type="button" variant="outline" size="sm" className="mb-3" onClick={applyFirstPressStandard} disabled={submitting}>
+                  {t("Apply First Press standard")}
+                </HqBtn>
+              )}
+              {netN != null && hajimeNetBreaksGuardrail(sellInN ?? 0, brokerN) ? (
+                <p className="mb-3 text-[12px] text-[hsl(0_68%_44%)]">Hajime net after broker is below $44 / bottle.</p>
+              ) : netN != null && hajimeNetNeedsWarn(sellInN ?? 0, brokerN) ? (
+                <p className="mb-3 text-[12px] text-[hsl(30_80%_34%)]">Hajime net after broker is below $45 / bottle.</p>
+              ) : null}
               <div className="grid gap-3.5 sm:grid-cols-2">
                 <div className="hq-form-group mb-0">
-                  <label htmlFor="sku-msrp">{t("MSRP")}</label>
+                  <label htmlFor="sku-distillery">{t("Landed cost")}</label>
                   <input
-                    id="sku-msrp"
-                    value={msrp}
-                    onChange={(e) => setMsrp(e.target.value)}
-                    placeholder="$0.00"
+                    id="sku-distillery"
+                    value={manufacturer}
+                    onChange={(e) => setManufacturer(e.target.value)}
+                    placeholder="30"
                     disabled={submitting}
                   />
                 </div>
                 <div className="hq-form-group mb-0">
-                  <label htmlFor="sku-wholesale">{t("Wholesaler price")}</label>
+                  <label htmlFor="sku-wholesale">{t("Hajime sell-in")}</label>
                   <input
                     id="sku-wholesale"
                     value={wholesale}
                     onChange={(e) => setWholesale(e.target.value)}
-                    placeholder="$0.00"
+                    placeholder="48"
                     disabled={submitting}
                   />
                 </div>
                 <div className="hq-form-group mb-0">
-                  <label htmlFor="sku-manufacturer">{t("Manufacture price")}</label>
+                  <label htmlFor="sku-sellout">{t("Wholesaler to retailer")}</label>
                   <input
-                    id="sku-manufacturer"
-                    value={manufacturer}
-                    onChange={(e) => setManufacturer(e.target.value)}
-                    placeholder="$0.00"
+                    id="sku-sellout"
+                    value={sellOut}
+                    onChange={(e) => setSellOut(e.target.value)}
+                    placeholder="60"
+                    disabled={submitting}
+                  />
+                </div>
+                <div className="hq-form-group mb-0">
+                  <label htmlFor="sku-msrp">{t("Suggested retail")}</label>
+                  <input
+                    id="sku-msrp"
+                    value={msrp}
+                    onChange={(e) => setMsrp(e.target.value)}
+                    placeholder="93"
+                    disabled={submitting}
+                  />
+                </div>
+                <div className="hq-form-group mb-0">
+                  <label htmlFor="sku-broker">{t("Broker $/bottle")}</label>
+                  <input
+                    id="sku-broker"
+                    value={broker}
+                    onChange={(e) => setBroker(e.target.value)}
+                    placeholder="3"
                     disabled={submitting}
                   />
                 </div>
@@ -379,14 +457,21 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
                   <label htmlFor="sku-producer">{t("Produced by")}</label>
                   <select
                     id="sku-producer"
-                    value={producer}
-                    onChange={(e) => setProducer(e.target.value)}
+                    value={producerId}
+                    onChange={(e) => setProducerId(e.target.value)}
                     disabled={submitting}
                     className="hq-form-select"
+                    required
                   >
-                    {PRODUCERS.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
+                    <option value="">{t("Select distillery")}</option>
+                    {product?.producerId &&
+                    product.producerName &&
+                    !distilleries.some((d) => d.id === product.producerId) ? (
+                      <option value={product.producerId}>{product.producerName} (removed)</option>
+                    ) : null}
+                    {distilleries.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
                       </option>
                     ))}
                   </select>
@@ -549,7 +634,7 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
                     disabled={submitting}
                     onClick={() => void handleDiscontinue()}
                   >
-                    {t("Discontinue SKU")}
+                    {t("Delete SKU")}
                   </button>
                 ) : null}
               </HqOperatorCard>

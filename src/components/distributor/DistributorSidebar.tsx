@@ -1,6 +1,7 @@
 /**
  * Sidebar chrome from Hajime Design System distributor-app.html
  * (.side, .logo-row, .perf-pill, .nav-section, .side-footer)
+ * Menu order is locked — see docs/portal-menus.md
  */
 import { memo, useEffect, useId, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";

@@ -1,6 +1,5 @@
 import type { SalesOrder } from "@/data/mockData";
 import type { AnchorMarketSnapshotRow } from "@/lib/hajime-metrics";
-import { revenueInWindow } from "@/lib/hajime-metrics";
 import type { MarketPanelRow, MarketReplenishmentSuggestion } from "@/lib/brand-operator-metrics";
 
 /** Fixed “as of” date aligned with seeded order lines (March 2026) when the user’s clock has moved past that window. */
@@ -8,10 +7,8 @@ export const MARKETS_SNAPSHOT_AS_OF = new Date("2026-04-01T12:00:00Z");
 
 export type MarketsHqMode = "live" | "snapshot" | "illustrative";
 
-export function resolveMarketsHqMode(orders: SalesOrder[]): MarketsHqMode {
-  if (revenueInWindow(orders, 90, new Date()) > 0) return "live";
-  if (revenueInWindow(orders, 90, MARKETS_SNAPSHOT_AS_OF) > 0) return "snapshot";
-  return "illustrative";
+export function resolveMarketsHqMode(_orders: SalesOrder[]): MarketsHqMode {
+  return "live";
 }
 
 export function marketsAsOfDate(mode: MarketsHqMode): Date {
@@ -92,7 +89,7 @@ export const MARKETS_HQ_DEMO_REPLENISH: MarketReplenishmentSuggestion[] = [
   },
 ];
 
-/** Manufacturer “market demand” tables when there are no rows to aggregate. */
+/** Distillery “market demand” tables when there are no rows to aggregate. */
 export const MANUFACTURER_DEMAND_DEMO_30 = [
   { market: "Toronto", lines: 6, bottles: 1008 },
   { market: "Milan", lines: 2, bottles: 216 },

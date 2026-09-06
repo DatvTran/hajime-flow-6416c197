@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Check } from "lucide-react";
-import type { NewProductRequest } from "@/data/mockData";
+import { ArrowLeft, Check, Plus, Trash2 } from "lucide-react";
+import type { NewProductProductionTarget, NewProductRequest } from "@/data/mockData";
 import { BASE_SPIRIT_OPTIONS, formatBaseSpiritLabel } from "@/lib/base-spirit-options";
 import { getPurchaseOrderManufacturerOptions } from "@/lib/api-v1-mutations";
 import {
@@ -10,6 +10,11 @@ import {
   type HqManufacturerPickerOption,
 } from "@/lib/hq-manufacturer-picker-options";
 import { kuraShortName } from "@/lib/hq-product-development-display";
+import {
+  coffeeRhumProductionSpecTemplate,
+  DEFAULT_PRODUCTION_TARGETS,
+} from "@/lib/npr-production-spec-template";
+import { hasProductionSpecContent } from "@/components/npr/NprProductionSpecPanel";
 import { cn } from "@/lib/utils";
 import { useAccounts } from "@/contexts/AppDataContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -39,6 +44,10 @@ function formatPricePoint(value: NewProductRequest["specs"]["targetPricePoint"])
   return value.replace(/_/g, " ");
 }
 
+function emptyTargetRow(): NewProductProductionTarget {
+  return { parameter: "", target: "", tolerance: "" };
+}
+
 export function HqNewProductRequestView({ onCreate }: Props) {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -60,6 +69,28 @@ export function HqNewProductRequestView({ onCreate }: Props) {
   const [targetLaunchDate, setTargetLaunchDate] = useState(addMonthsISO(3));
   const [regulatoryMarkets, setRegulatoryMarkets] = useState("Ontario, US");
   const [notes, setNotes] = useState("");
+
+  const [format, setFormat] = useState("");
+  const [serveProfile, setServeProfile] = useState("");
+  const [revision, setRevision] = useState("1.0 — bench trial specification");
+  const [statusNote, setStatusNote] = useState(
+    "For bench trial. Do not scale to full production until bench batch is approved.",
+  );
+  const [criticalInstructions, setCriticalInstructions] = useState("");
+  const [productTargets, setProductTargets] = useState<NewProductProductionTarget[]>(() => [
+    ...DEFAULT_PRODUCTION_TARGETS.map((row) => ({ ...row })),
+  ]);
+  const [rawMaterials, setRawMaterials] = useState("");
+  const [componentPreparation, setComponentPreparation] = useState("");
+  const [blendFormula, setBlendFormula] = useState("");
+  const [processSequence, setProcessSequence] = useState("");
+  const [shelfLifeControls, setShelfLifeControls] = useState("");
+  const [acceleratedShelfLife, setAcceleratedShelfLife] = useState("");
+  const [shippingNotes, setShippingNotes] = useState("");
+  const [qcRecordsRequired, setQcRecordsRequired] = useState("");
+  const [samplesRequired, setSamplesRequired] = useState("");
+  const [futureProcessNotes, setFutureProcessNotes] = useState("");
+
   const [manufacturerChoices, setManufacturerChoices] = useState<HqManufacturerPickerOption[]>(
     () => defaultManufacturers,
   );
@@ -99,10 +130,10 @@ export function HqNewProductRequestView({ onCreate }: Props) {
       { label: "Product", value: title.trim() || "—" },
       {
         label: "Spirit / ABV",
-        value: title.trim()
-          ? `${formatBaseSpiritLabel(baseSpirit)} · ${targetAbv}%`
-          : "—",
+        value: title.trim() ? `${formatBaseSpiritLabel(baseSpirit)} · ${targetAbv}%` : "—",
       },
+      { label: "Format", value: format.trim() || "—" },
+      { label: "Revision", value: revision.trim() || "—" },
       { label: "Price point", value: formatPricePoint(targetPricePoint) },
       {
         label: "Packaging",
@@ -113,7 +144,7 @@ export function HqNewProductRequestView({ onCreate }: Props) {
         value: minimumOrderQuantity ? `${Number(minimumOrderQuantity).toLocaleString()} bottles` : "—",
       },
       { label: "Target launch", value: targetLaunchDate || "—" },
-      { label: "Manufacturer", value: manufacturerDisplayLabel || "—" },
+      { label: "Distillery", value: manufacturerDisplayLabel || "—" },
       {
         label: "Markets",
         value: regulatoryMarkets.trim() || "—",
@@ -123,6 +154,8 @@ export function HqNewProductRequestView({ onCreate }: Props) {
       title,
       baseSpirit,
       targetAbv,
+      format,
+      revision,
       targetPricePoint,
       bottleSize,
       caseConfiguration,
@@ -133,36 +166,98 @@ export function HqNewProductRequestView({ onCreate }: Props) {
     ],
   );
 
-  const buildRequest = (mode: SubmitMode): Omit<NewProductRequest, "id"> => ({
-    title: title.trim(),
-    requestedBy: "brand_operator",
-    requestedAt: new Date().toISOString(),
-    specs: {
-      baseSpirit,
-      targetAbv: Number(targetAbv) || 25,
-      flavorProfile: flavorProfile
-        .split(",")
-        .map((f) => f.trim())
-        .filter(Boolean),
-      sweetener: sweetener || undefined,
-      targetPricePoint,
-      packaging: {
-        bottleSize,
-        labelStyle: labelStyle.trim(),
-        caseConfiguration: Math.max(1, Math.round(Number(caseConfiguration) || 12)),
+  const applyCoffeeRhumTemplate = () => {
+    const tpl = coffeeRhumProductionSpecTemplate();
+    setTitle("Coffee Rhum Liqueur");
+    setBaseSpirit("rhum");
+    setTargetAbv("25");
+    setFlavorProfile("espresso, coffee, cacao, vanilla");
+    setSweetener("cane_sugar");
+    setFormat(tpl.format ?? "");
+    setServeProfile(tpl.serveProfile ?? "");
+    setRevision(tpl.revision ?? "");
+    setStatusNote(tpl.statusNote ?? "");
+    setCriticalInstructions(tpl.criticalInstructions ?? "");
+    setProductTargets((tpl.productTargets ?? DEFAULT_PRODUCTION_TARGETS).map((row) => ({ ...row })));
+    setRawMaterials(tpl.rawMaterials ?? "");
+    setComponentPreparation(tpl.componentPreparation ?? "");
+    setBlendFormula(tpl.blendFormula ?? "");
+    setProcessSequence(tpl.processSequence ?? "");
+    setShelfLifeControls(tpl.shelfLifeControls ?? "");
+    setAcceleratedShelfLife(tpl.acceleratedShelfLife ?? "");
+    setShippingNotes(tpl.shippingNotes ?? "");
+    setQcRecordsRequired(tpl.qcRecordsRequired ?? "");
+    setSamplesRequired(tpl.samplesRequired ?? "");
+    setFutureProcessNotes(tpl.futureProcessNotes ?? "");
+    setLabelStyle("Amber or opaque glass; full-wrap if clear");
+    setNotes(
+      "Bench trial specification. All approval tasting at 4°C. Do not scale until bench batch is approved.",
+    );
+    toast.success("Coffee rhum production spec loaded");
+  };
+
+  const updateTarget = (index: number, key: keyof NewProductProductionTarget, value: string) => {
+    setProductTargets((rows) => rows.map((row, i) => (i === index ? { ...row, [key]: value } : row)));
+  };
+
+  const buildRequest = (mode: SubmitMode): Omit<NewProductRequest, "id"> => {
+    const productionSpec = {
+      format: format.trim() || undefined,
+      serveProfile: serveProfile.trim() || undefined,
+      revision: revision.trim() || undefined,
+      statusNote: statusNote.trim() || undefined,
+      criticalInstructions: criticalInstructions.trim() || undefined,
+      productTargets: productTargets
+        .map((row) => ({
+          parameter: row.parameter.trim(),
+          target: row.target.trim(),
+          tolerance: row.tolerance?.trim() || undefined,
+        }))
+        .filter((row) => row.parameter),
+      rawMaterials: rawMaterials.trim() || undefined,
+      componentPreparation: componentPreparation.trim() || undefined,
+      blendFormula: blendFormula.trim() || undefined,
+      processSequence: processSequence.trim() || undefined,
+      shelfLifeControls: shelfLifeControls.trim() || undefined,
+      acceleratedShelfLife: acceleratedShelfLife.trim() || undefined,
+      shippingNotes: shippingNotes.trim() || undefined,
+      qcRecordsRequired: qcRecordsRequired.trim() || undefined,
+      samplesRequired: samplesRequired.trim() || undefined,
+      futureProcessNotes: futureProcessNotes.trim() || undefined,
+    };
+
+    return {
+      title: title.trim(),
+      requestedBy: "brand_operator",
+      requestedAt: new Date().toISOString(),
+      specs: {
+        baseSpirit,
+        targetAbv: Number(targetAbv) || 25,
+        flavorProfile: flavorProfile
+          .split(",")
+          .map((f) => f.trim())
+          .filter(Boolean),
+        sweetener: sweetener || undefined,
+        targetPricePoint,
+        packaging: {
+          bottleSize,
+          labelStyle: labelStyle.trim(),
+          caseConfiguration: Math.max(1, Math.round(Number(caseConfiguration) || 12)),
+        },
+        minimumOrderQuantity: Math.max(1, Math.round(Number(minimumOrderQuantity) || 1200)),
+        targetLaunchDate,
+        regulatoryMarkets: regulatoryMarkets.split(",").map((m) => m.trim()).filter(Boolean),
+        ...(hasProductionSpecContent(productionSpec) ? { productionSpec } : {}),
       },
-      minimumOrderQuantity: Math.max(1, Math.round(Number(minimumOrderQuantity) || 1200)),
-      targetLaunchDate,
-      regulatoryMarkets: regulatoryMarkets.split(",").map((m) => m.trim()).filter(Boolean),
-    },
-    attachments: [],
-    notes: notes.trim(),
-    status: mode === "submitted" ? "submitted" : "draft",
-    assignedManufacturer: manufacturerDisplayLabel,
-    assignedManufacturerEmail: selectedManufacturer?.email?.trim().toLowerCase() || undefined,
-    assignedCrmMemberId: selectedManufacturer?.crmMemberId ?? undefined,
-    ...(mode === "submitted" ? { submittedAt: new Date().toISOString() } : {}),
-  });
+      attachments: [],
+      notes: notes.trim(),
+      status: mode === "submitted" ? "submitted" : "draft",
+      assignedManufacturer: manufacturerDisplayLabel,
+      assignedManufacturerEmail: selectedManufacturer?.email?.trim().toLowerCase() || undefined,
+      assignedCrmMemberId: selectedManufacturer?.crmMemberId ?? undefined,
+      ...(mode === "submitted" ? { submittedAt: new Date().toISOString() } : {}),
+    };
+  };
 
   const handleSubmit = async (mode: SubmitMode) => {
     if (!title.trim()) {
@@ -170,8 +265,8 @@ export function HqNewProductRequestView({ onCreate }: Props) {
       return;
     }
     if (!manufacturerKey || !manufacturerDisplayLabel) {
-      toast.error(t("Select a manufacturer"), {
-        description: t("Choose which manufacturer should receive this product brief."),
+      toast.error(t("Select a distillery"), {
+        description: t("Choose which distillery should receive this product brief."),
       });
       return;
     }
@@ -204,24 +299,70 @@ export function HqNewProductRequestView({ onCreate }: Props) {
       <HqOperatorPageHeader
         title="New alcohol concept"
         rawTitle
-        description="Define the concept of alcohol to make — spirit, ABV, flavor, packaging — and brief a manufacturer for feasibility. This does not reorder inventory; after approval, use Production requests to brew quantity to a location."
+        description="Write the production specification the distillery needs for a bench trial — targets, raw materials, streams, blend, process, QC, and samples — then assign a distillery for feasibility."
       />
 
       <div className="grid items-start gap-5 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-4">
           <HqOperatorCard className="hq-settings-panel">
-            <div className="hq-settings-title">{t("Product brief")}</div>
-            <div className="hq-form-group">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="hq-settings-title mb-0">Concept overview</div>
+                <p className="mt-1 text-[12px] text-muted-foreground">
+                  Product identity and commercial framing. Load the coffee rhum example to see the full brief shape.
+                </p>
+              </div>
+              <HqBtn
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={submitting}
+                onClick={applyCoffeeRhumTemplate}
+              >
+                Load coffee rhum example
+              </HqBtn>
+            </div>
+            <div className="mt-4 hq-form-group">
               <label htmlFor="npr-title">{t("Product name")}</label>
               <input
                 id="npr-title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Hazelnut Coffee Rhum 30%"
+                placeholder="e.g. Coffee Rhum Liqueur"
                 disabled={submitting}
               />
             </div>
             <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+              <div className="hq-form-group mb-0 sm:col-span-2">
+                <label htmlFor="npr-format">Product / format</label>
+                <input
+                  id="npr-format"
+                  value={format}
+                  onChange={(e) => setFormat(e.target.value)}
+                  placeholder="Coffee rhum liqueur, cold-pour format"
+                  disabled={submitting}
+                />
+              </div>
+              <div className="hq-form-group mb-0 sm:col-span-2">
+                <label htmlFor="npr-serve">Target serve profile</label>
+                <input
+                  id="npr-serve"
+                  value={serveProfile}
+                  onChange={(e) => setServeProfile(e.target.value)}
+                  placeholder="Espresso martini, served chilled — over ice, or neat from freezer"
+                  disabled={submitting}
+                />
+              </div>
+              <div className="hq-form-group mb-0">
+                <label htmlFor="npr-revision">Revision</label>
+                <input
+                  id="npr-revision"
+                  value={revision}
+                  onChange={(e) => setRevision(e.target.value)}
+                  placeholder="1.1 — bench trial specification"
+                  disabled={submitting}
+                />
+              </div>
               <div className="hq-form-group mb-0">
                 <label htmlFor="npr-spirit">{t("Base spirit")}</label>
                 <select
@@ -251,13 +392,29 @@ export function HqNewProductRequestView({ onCreate }: Props) {
                   disabled={submitting}
                 />
               </div>
+              <div className="hq-form-group mb-0">
+                <label htmlFor="npr-price">{t("Target price point")}</label>
+                <select
+                  id="npr-price"
+                  value={targetPricePoint}
+                  onChange={(e) =>
+                    setTargetPricePoint(e.target.value as NewProductRequest["specs"]["targetPricePoint"])
+                  }
+                  disabled={submitting}
+                  className="hq-form-select"
+                >
+                  <option value="premium">Premium</option>
+                  <option value="super_premium">Super premium</option>
+                  <option value="ultra_premium">Ultra premium</option>
+                </select>
+              </div>
               <div className="hq-form-group mb-0 sm:col-span-2">
                 <label htmlFor="npr-flavors">{t("Flavor profile")}</label>
                 <input
                   id="npr-flavors"
                   value={flavorProfile}
                   onChange={(e) => setFlavorProfile(e.target.value)}
-                  placeholder="hazelnut, vanilla, caramel"
+                  placeholder="espresso, cacao, vanilla"
                   disabled={submitting}
                 />
               </div>
@@ -276,21 +433,217 @@ export function HqNewProductRequestView({ onCreate }: Props) {
                   <option value="none">None</option>
                 </select>
               </div>
-              <div className="hq-form-group mb-0">
-                <label htmlFor="npr-price">{t("Target price point")}</label>
-                <select
-                  id="npr-price"
-                  value={targetPricePoint}
-                  onChange={(e) =>
-                    setTargetPricePoint(e.target.value as NewProductRequest["specs"]["targetPricePoint"])
-                  }
+              <div className="hq-form-group mb-0 sm:col-span-2">
+                <label htmlFor="npr-status">Status note</label>
+                <input
+                  id="npr-status"
+                  value={statusNote}
+                  onChange={(e) => setStatusNote(e.target.value)}
                   disabled={submitting}
-                  className="hq-form-select"
+                />
+              </div>
+            </div>
+          </HqOperatorCard>
+
+          <HqOperatorCard className="hq-settings-panel">
+            <div className="hq-settings-title">1. Product targets</div>
+            <p className="mb-3 text-[12px] text-muted-foreground">
+              Measurable targets and tolerances for the bench batch.
+            </p>
+            <div className="space-y-2">
+              <div className="hidden grid-cols-[1.2fr_1fr_0.8fr_auto] gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
+                <span>Parameter</span>
+                <span>Target</span>
+                <span>Tolerance</span>
+                <span className="w-8" />
+              </div>
+              {productTargets.map((row, index) => (
+                <div
+                  key={`target-${index}`}
+                  className="grid grid-cols-1 gap-2 sm:grid-cols-[1.2fr_1fr_0.8fr_auto]"
                 >
-                  <option value="premium">Premium</option>
-                  <option value="super_premium">Super premium</option>
-                  <option value="ultra_premium">Ultra premium</option>
-                </select>
+                  <input
+                    value={row.parameter}
+                    onChange={(e) => updateTarget(index, "parameter", e.target.value)}
+                    placeholder="Final ABV"
+                    disabled={submitting}
+                    aria-label={`Parameter ${index + 1}`}
+                  />
+                  <input
+                    value={row.target}
+                    onChange={(e) => updateTarget(index, "target", e.target.value)}
+                    placeholder="25.0%"
+                    disabled={submitting}
+                    aria-label={`Target ${index + 1}`}
+                  />
+                  <input
+                    value={row.tolerance ?? ""}
+                    onChange={(e) => updateTarget(index, "tolerance", e.target.value)}
+                    placeholder="±0.3%"
+                    disabled={submitting}
+                    aria-label={`Tolerance ${index + 1}`}
+                  />
+                  <button
+                    type="button"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border/70 text-muted-foreground hover:bg-muted/40"
+                    disabled={submitting || productTargets.length <= 1}
+                    onClick={() => setProductTargets((rows) => rows.filter((_, i) => i !== index))}
+                    aria-label="Remove target row"
+                  >
+                    <Trash2 className="size-3.5" strokeWidth={1.75} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <HqBtn
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              disabled={submitting}
+              onClick={() => setProductTargets((rows) => [...rows, emptyTargetRow()])}
+            >
+              <Plus className="size-3.5" strokeWidth={1.75} />
+              Add target
+            </HqBtn>
+            <div className="hq-form-group mb-0 mt-4">
+              <label htmlFor="npr-critical">Critical instructions</label>
+              <textarea
+                id="npr-critical"
+                value={criticalInstructions}
+                onChange={(e) => setCriticalInstructions(e.target.value)}
+                placeholder="e.g. Taste every trial sample at 4°C after ≥4 hours chill…"
+                rows={3}
+                disabled={submitting}
+              />
+            </div>
+          </HqOperatorCard>
+
+          <HqOperatorCard className="hq-settings-panel">
+            <div className="hq-settings-title">2. Raw materials</div>
+            <div className="hq-form-group mb-0">
+              <label htmlFor="npr-raw">Coffee / botanicals, spirit, water, other</label>
+              <textarea
+                id="npr-raw"
+                value={rawMaterials}
+                onChange={(e) => setRawMaterials(e.target.value)}
+                placeholder="Origins, roast, blend ratios, spirit charge strength, water specs, additives…"
+                rows={8}
+                disabled={submitting}
+              />
+            </div>
+          </HqOperatorCard>
+
+          <HqOperatorCard className="hq-settings-panel">
+            <div className="hq-settings-title">3. Component preparation</div>
+            <p className="mb-3 text-[12px] text-muted-foreground">
+              Separate streams (macerate, fresh concentrate, tinctures, sugar) with extraction conditions.
+            </p>
+            <div className="hq-form-group mb-0">
+              <label htmlFor="npr-streams">Streams / preparation</label>
+              <textarea
+                id="npr-streams"
+                value={componentPreparation}
+                onChange={(e) => setComponentPreparation(e.target.value)}
+                placeholder="Stream A depth macerate… Stream B fresh lift… Stream C vanilla… Stream D sugar…"
+                rows={10}
+                disabled={submitting}
+              />
+            </div>
+          </HqOperatorCard>
+
+          <HqOperatorCard className="hq-settings-panel">
+            <div className="hq-settings-title">4. Blend formula</div>
+            <div className="hq-form-group mb-0">
+              <label htmlFor="npr-blend">Finished batch + bench scale + iteration guide</label>
+              <textarea
+                id="npr-blend"
+                value={blendFormula}
+                onChange={(e) => setBlendFormula(e.target.value)}
+                placeholder="1,000 L formula, 20 L bench scale, tasting iteration order…"
+                rows={10}
+                disabled={submitting}
+              />
+            </div>
+          </HqOperatorCard>
+
+          <HqOperatorCard className="hq-settings-panel">
+            <div className="hq-settings-title">5. Process sequence</div>
+            <div className="hq-form-group mb-0">
+              <label htmlFor="npr-process">Step-by-step through cold stabilize, filter, fill</label>
+              <textarea
+                id="npr-process"
+                value={processSequence}
+                onChange={(e) => setProcessSequence(e.target.value)}
+                placeholder="1. Prepare Stream A… 8. Cold stabilize 0°C ≥48h… 9. Cold filter…"
+                rows={8}
+                disabled={submitting}
+              />
+            </div>
+          </HqOperatorCard>
+
+          <HqOperatorCard className="hq-settings-panel">
+            <div className="hq-settings-title">6–10. Shelf life, shipping, QC & samples</div>
+            <div className="grid grid-cols-1 gap-3.5">
+              <div className="hq-form-group mb-0">
+                <label htmlFor="npr-shelf">Shelf life controls</label>
+                <textarea
+                  id="npr-shelf"
+                  value={shelfLifeControls}
+                  onChange={(e) => setShelfLifeControls(e.target.value)}
+                  rows={5}
+                  disabled={submitting}
+                />
+              </div>
+              <div className="hq-form-group mb-0">
+                <label htmlFor="npr-accel">Accelerated shelf life testing</label>
+                <textarea
+                  id="npr-accel"
+                  value={acceleratedShelfLife}
+                  onChange={(e) => setAcceleratedShelfLife(e.target.value)}
+                  rows={3}
+                  disabled={submitting}
+                />
+              </div>
+              <div className="hq-form-group mb-0">
+                <label htmlFor="npr-ship">Shipping notes</label>
+                <textarea
+                  id="npr-ship"
+                  value={shippingNotes}
+                  onChange={(e) => setShippingNotes(e.target.value)}
+                  rows={3}
+                  disabled={submitting}
+                />
+              </div>
+              <div className="hq-form-group mb-0">
+                <label htmlFor="npr-qc">QC records required per batch</label>
+                <textarea
+                  id="npr-qc"
+                  value={qcRecordsRequired}
+                  onChange={(e) => setQcRecordsRequired(e.target.value)}
+                  rows={5}
+                  disabled={submitting}
+                />
+              </div>
+              <div className="hq-form-group mb-0">
+                <label htmlFor="npr-samples">Samples required for approval</label>
+                <textarea
+                  id="npr-samples"
+                  value={samplesRequired}
+                  onChange={(e) => setSamplesRequired(e.target.value)}
+                  rows={4}
+                  disabled={submitting}
+                />
+              </div>
+              <div className="hq-form-group mb-0">
+                <label htmlFor="npr-future">Process notes for future batches</label>
+                <textarea
+                  id="npr-future"
+                  value={futureProcessNotes}
+                  onChange={(e) => setFutureProcessNotes(e.target.value)}
+                  rows={3}
+                  disabled={submitting}
+                />
               </div>
             </div>
           </HqOperatorCard>
@@ -344,7 +697,7 @@ export function HqNewProductRequestView({ onCreate }: Props) {
                   id="npr-label"
                   value={labelStyle}
                   onChange={(e) => setLabelStyle(e.target.value)}
-                  placeholder="Minimalist ensō with copper foil"
+                  placeholder="Amber glass · full-wrap if clear"
                   disabled={submitting}
                 />
               </div>
@@ -377,14 +730,14 @@ export function HqNewProductRequestView({ onCreate }: Props) {
             </div>
 
             <div className="mt-4 border-t border-border/40 pt-4">
-              <div className="mb-2 text-[12px] font-medium">{t("Assign to manufacturer")}</div>
+              <div className="mb-2 text-[12px] font-medium">{t("Assign to distillery")}</div>
               <p className="mb-3 text-[12px] leading-relaxed text-muted-foreground">
-                {t("Manufacturer profiles from Manufacturers. CRM login is used when the email matches the profile.")}
+                {t("Distillery profiles from Distilleries. CRM login is used when the email matches the profile.")}
               </p>
               <div
                 className="grid gap-2"
                 role="radiogroup"
-                aria-label={t("Assign to manufacturer")}
+                aria-label={t("Assign to distillery")}
               >
                 {manufacturerChoices.map((row) => {
                   const selected = manufacturerKey === row.key;
@@ -430,23 +783,23 @@ export function HqNewProductRequestView({ onCreate }: Props) {
                 })}
               </div>
               <p className="mt-2.5 text-[11px] text-muted-foreground">
-                {t("Need another manufacturer?")}{" "}
+                {t("Need another distillery?")}{" "}
                 <Link to="/manufacturer/profiles/add" className="text-foreground underline-offset-2 hover:underline">
-                  {t("Add manufacturer")}
+                  {t("Add distillery")}
                 </Link>
               </p>
             </div>
           </HqOperatorCard>
 
           <HqOperatorCard className="hq-settings-panel">
-            <div className="hq-settings-title">{t("Notes for the manufacturer")}</div>
+            <div className="hq-settings-title">{t("Notes for the distillery")}</div>
             <div className="hq-form-group mb-0">
               <label htmlFor="npr-notes">{t("Context & requirements")}</label>
               <textarea
                 id="npr-notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Competitor references, positioning, tasting requirements, regulatory constraints…"
+                placeholder="Positioning, competitor refs, anything outside the production spec…"
                 rows={4}
                 disabled={submitting}
               />
@@ -505,7 +858,7 @@ export function HqNewProductRequestView({ onCreate }: Props) {
                 ? t("Sending…")
                 : manufacturerDisplayLabel
                   ? `${t("Send brief to")} ${manufacturerDisplayLabel}`
-                  : t("Send brief to manufacturer")}
+                  : t("Send brief to distillery")}
             </HqBtn>
             <HqBtn
               type="button"
@@ -524,7 +877,7 @@ export function HqNewProductRequestView({ onCreate }: Props) {
           <div className="rounded-[14px] border border-[hsl(280_40%_50%/0.2)] bg-[hsl(280_40%_50%/0.06)] p-4 text-xs leading-relaxed text-[hsl(280_30%_42%)]">
             <strong className="text-[hsl(280_40%_44%)]">{t("Next:")}</strong>{" "}
             {t(
-              "the manufacturer reviews feasibility and returns a proposal with costing and timeline. You approve before the SKU enters the catalog.",
+              "the distillery reviews feasibility and returns a proposal with costing and timeline. You approve before the SKU enters the catalog.",
             )}
           </div>
         </div>

@@ -142,7 +142,7 @@ export default function Manufacturer() {
   return (
     <div>
       <PageHeader
-        title="Manufacturer"
+        title="Distillery"
         description="Production-board view tied to HQ requests and inbound freight. Either you or Brand HQ can record inbound logistics (carrier, departure, warehouse destination); anyone with access sees the same shipment row, and open inbound lines below refresh periodically while this page is open."
       />
 

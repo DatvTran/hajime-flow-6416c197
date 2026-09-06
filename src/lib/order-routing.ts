@@ -33,7 +33,7 @@ export function effectiveRepApprovalStatus(order: SalesOrder, accounts: Account[
 export function routingTargetLabel(t: OrderRoutingTarget | undefined): string {
   if (!t) return "—";
   const map: Record<OrderRoutingTarget, string> = {
-    manufacturer: "Manufacturer / production",
+    manufacturer: "Distillery / production",
     wholesaler: "Wholesaler / DC",
     sales_rep: "Field sales",
     retail: "Retail store",
@@ -48,7 +48,7 @@ export function createdByLabel(r: OrderCreatedByRole | undefined): string {
     distributor: "Wholesaler",
     sales_rep: "Sales rep",
     retail: "Retail",
-    manufacturer: "Manufacturer",
+    manufacturer: "Distillery",
   };
   return map[r];
 }

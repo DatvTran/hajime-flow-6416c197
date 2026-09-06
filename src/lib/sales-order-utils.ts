@@ -1,4 +1,5 @@
 import type { Account, Product, SalesOrder, SalesOrderLine } from "@/data/mockData";
+import { partnerSellOutCasePrice } from "@/lib/hq-product-catalog";
 
 /** True when `id` is a Postgres PK or UUID from `/api/v1/orders` (not seed refs like SO-2025-001). */
 export function isPersistedApiOrderId(id: string): boolean {
@@ -101,7 +102,7 @@ export function buildRetailCheckoutOrder(params: {
   for (const row of params.lines) {
     if (row.cases < 1) continue;
     const bottles = row.cases * row.product.caseSize;
-    const casePrice = row.product.wholesaleCasePrice ?? 0;
+    const casePrice = partnerSellOutCasePrice(row.product);
     const lineTotal = Math.round(row.cases * casePrice);
     orderLines.push({ sku: row.sku, quantityBottles: bottles, lineTotal });
     totalBottles += bottles;

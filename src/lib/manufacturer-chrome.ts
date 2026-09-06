@@ -1,4 +1,4 @@
-/** Top-bar breadcrumbs for the manufacturer shell (matches manufacturer-app.html IA). */
+/** Top-bar breadcrumbs for the distillery shell (matches distillery-app.html IA). */
 export function manufacturerRouteChrome(pathname: string): { section: string; page: string } {
   if (pathname === "/manufacturer" || pathname === "/manufacturer/") {
     return { section: "Production", page: "Dashboard" };

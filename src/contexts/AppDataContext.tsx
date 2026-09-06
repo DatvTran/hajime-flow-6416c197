@@ -35,9 +35,8 @@ import {
 import { fetchAppData, mapApiInventoryRows } from "@/lib/data-service";
 import type { AppData, FinancingLedgerEntry, TeamMember, TeamMemberPortalRole } from "@/types/app-data";
 import type { ProductionStatus } from "@/data/mockData";
-import seedJson from "@/data/seed-app.json";
 import { toast } from "@/components/ui/sonner";
-import { normalizeAppData } from "@/lib/normalize-app-data";
+import { emptyAppData, normalizeAppData } from "@/lib/normalize-app-data";
 import { syncHiddenManufacturerIdsFromSettings, syncPartnerConfigsFromSettings } from "@/lib/hq-manufacturer-partners";
 import { shouldSyncAccountToApi } from "@/lib/account-ids";
 import {
@@ -106,6 +105,7 @@ import {
   deductManufacturerFinishedGoods as apiDeductFinishedGoods,
 } from "@/lib/api-v1-mutations";
 import { mapApiOrdersToSalesOrders, mapRowToShipment, mapRowToPurchaseOrder, mergeSalesOrdersFromApi } from "@/lib/data-service";
+import { portalInviteUserMessage } from "@/lib/portal-invite-status";
 import { getOrders, getManufacturerFinishedGoods, getPurchaseOrders } from "@/lib/api-v1";
 import { resolveOrderIdForApiUpdate } from "@/lib/sales-order-api-id";
 import {
@@ -116,7 +116,7 @@ import {
   nudgeNewProductRequest as apiNudgeNewProductRequest,
 } from "@/lib/api-v1";
 
-const FALLBACK_SEED = normalizeAppData(seedJson as AppData);
+const EMPTY_APP = emptyAppData();
 
 /** Build API payload aligned with `products` table + JSONB metadata (see data-service transformToAppData). */
 function catalogProductApiPayload(merged: Product): {
@@ -130,6 +130,8 @@ function catalogProductApiPayload(merged: Product): {
   const wholesale = merged.wholesaleCasePrice ?? 0;
   const msrp = merged.msrpCasePrice ?? 0;
   const manufacturer = merged.manufacturerCasePrice ?? 0;
+  const sellOut = merged.distributorSellOutCasePrice ?? 0;
+  const broker = merged.brokerCommissionPerBottle ?? 0;
   return {
     sku: merged.sku,
     name: merged.name,
@@ -143,6 +145,8 @@ function catalogProductApiPayload(merged: Product): {
       wholesalePriceCase: wholesale,
       wholesaleCasePrice: wholesale,
       manufacturerCasePrice: manufacturer,
+      ...(sellOut > 0 ? { distributorSellOutCasePrice: sellOut } : {}),
+      ...(broker > 0 ? { brokerCommissionPerBottle: broker } : {}),
       minOrderCases: merged.minOrderCases ?? 1,
       status: merged.status,
       ...(merged.abv != null ? { abv: merged.abv } : {}),
@@ -199,8 +203,8 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
     merged.operationalSettings = server.operationalSettings;
   }
   
-  // For accounts: preserve onboardingPipeline status from local if server account doesn't have it.
-  // Important: do NOT require server.accounts.length > 0; otherwise an empty server response can wipe local-only data.
+  // Accounts: API list is canonical after a successful fetch. Do not resurrect CRM rows
+  // that were deleted on the server (they still sit in localStorage as “local-only”).
   if (local.accounts?.length && Array.isArray(server.accounts)) {
     const localAccountsById = new Map(local.accounts.map((a) => [a.id, a]));
     merged.accounts = (server.accounts ?? []).map((serverAccount) => {
@@ -210,11 +214,6 @@ function mergeServerWithLocal(server: AppData, local: AppData | null): AppData {
       }
       return serverAccount;
     });
-
-    // Add local-only accounts (new accounts created while offline)
-    const serverIds = new Set((server.accounts ?? []).map((a) => a.id));
-    const localOnlyAccounts = local.accounts.filter((a) => !serverIds.has(a.id));
-    merged.accounts = [...merged.accounts, ...localOnlyAccounts];
   }
   
   // Orders: server is source of truth; keep offline drafts only (see mergeSalesOrdersFromApi).
@@ -312,7 +311,7 @@ function mapApiRowToTeamMember(row: Record<string, unknown>): TeamMember {
 
 function sumAvailableForSku(items: InventoryItem[], sku: string): number {
   // Only count inventory at distributor warehouses and retail shelves as "available" for fulfillment
-  // Manufacturer and in-transit inventory is NOT available for sales/transfer
+  // Distillery and in-transit inventory is NOT available for sales/transfer
   return items
     .filter(
       (i) =>
@@ -443,24 +442,23 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         if (isManufacturer) next = scrubManufacturerPortalDemoData(next);
         setData(next);
       } else if (isManufacturer) {
-        // Never dump Kirin/sake FALLBACK_SEED into a manufacturer portal session.
-        const empty = scrubManufacturerPortalDemoData(FALLBACK_SEED);
+        const empty = scrubManufacturerPortalDemoData(EMPTY_APP);
         syncHiddenManufacturerIdsFromSettings(empty.operationalSettings?.hqHiddenManufacturerIds);
         syncPartnerConfigsFromSettings(empty.operationalSettings?.hqManufacturerPartnerConfigs);
         setData(scrubManufacturerPortalDemoData(normalizeAppData(applyCatalogToAppData(empty))));
       } else {
-        syncHiddenManufacturerIdsFromSettings(FALLBACK_SEED.operationalSettings?.hqHiddenManufacturerIds);
-        syncPartnerConfigsFromSettings(FALLBACK_SEED.operationalSettings?.hqManufacturerPartnerConfigs);
-        setData(FALLBACK_SEED);
+        syncHiddenManufacturerIdsFromSettings(EMPTY_APP.operationalSettings?.hqHiddenManufacturerIds);
+        syncPartnerConfigsFromSettings(EMPTY_APP.operationalSettings?.hqManufacturerPartnerConfigs);
+        setData(normalizeAppData(applyCatalogToAppData(EMPTY_APP)));
       }
       setError(null);
     } catch (err) {
-      console.error("[AppDataContext] Local hydrate failed, using seed:", err);
+      console.error("[AppDataContext] Local hydrate failed:", err);
       clearLocalAppData();
       setData(
         user.role === "manufacturer"
-          ? normalizeAppData(applyCatalogToAppData(scrubManufacturerPortalDemoData(FALLBACK_SEED)))
-          : FALLBACK_SEED,
+          ? normalizeAppData(applyCatalogToAppData(scrubManufacturerPortalDemoData(EMPTY_APP)))
+          : normalizeAppData(applyCatalogToAppData(EMPTY_APP)),
       );
       setError(null);
     } finally {
@@ -498,9 +496,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           const message = e instanceof Error ? e.message : String(e);
           setError(message);
           if (!hadLocalOnStart) {
-            setData((prev) => prev ?? FALLBACK_SEED);
-            toast.info("API unavailable — using local seed data", {
-              description: "Start the server (npm run dev:api) to load and save persisted data. Edits save in-browser until then.",
+            setData((prev) => prev ?? EMPTY_APP);
+            toast.info("API unavailable — working from an empty local snapshot", {
+              description: "Start the server to load live data. Edits save in this browser until then.",
             });
           } else {
             toast.info("API unavailable — working from local copy", {
@@ -973,6 +971,7 @@ export function useAccounts() {
         notes: a.internalNotes ?? a.notes,
         status: a.status,
         portalLoginEmail: a.portalLoginEmail,
+        contactName: a.contactName,
       });
 
       const serverId = String(result.data?.id ?? a.id);
@@ -983,15 +982,19 @@ export function useAccounts() {
         accounts: [...d.accounts, saved],
       }));
 
+      const invite = (result as { invite?: Parameters<typeof portalInviteUserMessage>[0] }).invite;
+      const inviteLine = portalInviteUserMessage(invite);
       const depot = (result as { depotLink?: { linked?: boolean } }).depotLink;
       if (depot?.linked === false) {
         toast.success("Account created", {
-          description: `${saved.tradingName} — link this account to your depot in Settings → Warehouses to manage portal users.`,
+          description: `${saved.tradingName} — link this account to your depot in Settings → Warehouses. ${inviteLine}`,
         });
       } else {
-        toast.success("Account created", { description: `${saved.id} · ${saved.tradingName}` });
+        toast.success("Account created", {
+          description: `${saved.tradingName}. ${inviteLine}`,
+        });
       }
-      return { success: true, data: { ...result.data, id: serverId } };
+      return { success: true, data: { ...result.data, id: serverId }, invite };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create account";
       toast.error("Failed to create account", { description: message });
@@ -1011,6 +1014,8 @@ export function useAccounts() {
           tradingName: a.tradingName,
           type: a.type,
           market,
+          city: a.city,
+          country: a.country,
           email: a.email,
           phone: a.phone,
           billingAddress: a.billingAddress,
@@ -1021,6 +1026,8 @@ export function useAccounts() {
           notes: a.internalNotes ?? a.notes,
           status: a.status,
           portalLoginEmail: a.portalLoginEmail,
+          contactName: a.contactName,
+          contactRole: a.contactRole,
         })) as { portalProvision?: { ok?: boolean; action?: string; email?: string; reason?: string; usesDemoPassword?: boolean } };
         updateData((d) => ({
           ...d,
@@ -1060,10 +1067,19 @@ export function useAccounts() {
       if (!id.startsWith("demo-")) {
         await apiDeleteAccount(id);
       }
-      updateData((d) => ({
-        ...d,
-        accounts: d.accounts.filter((x) => x.id !== id),
-      }));
+      updateData((d) => {
+        const removed = d.accounts.find((x) => x.id === id);
+        const email = (removed?.email || "").trim().toLowerCase();
+        return {
+          ...d,
+          accounts: d.accounts.filter((x) => x.id !== id),
+          teamMembers: (d.teamMembers ?? []).filter((tm) => {
+            if (String(tm.linkedAccountId ?? "") === String(id)) return false;
+            if (email && (tm.email || "").trim().toLowerCase() === email) return false;
+            return true;
+          }),
+        };
+      });
       toast.success("Account deleted");
       return { success: true as const };
     } catch (err) {
@@ -1271,7 +1287,7 @@ export function useInventory() {
     [caseSizeForSku, updateData],
   );
 
-  // Add inventory when a Production PO is delivered (manufacturer shipment arrives)
+  // Add inventory when a Production PO is delivered (distillery shipment arrives)
   const addForPo = useCallback(
     async (po: PurchaseOrder, location: string = "Toronto Main") => {
       try {
@@ -1365,7 +1381,7 @@ const ROLE_LOCATION_VISIBILITY: Record<
   import("./AuthContext").HajimeRole,
   InventoryItem["locationType"][]
 > = {
-  // Manufacturer only sees their own production inventory
+  // Distillery only sees their own production inventory
   manufacturer: ["manufacturer"],
   
   // Distributor sees warehouses, their in-transit shipments, and retail shelves they service
@@ -2009,7 +2025,13 @@ export function useNewProductRequests() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to fetch new product requests";
       setError(message);
-      toast.error("Failed to fetch new product requests", { description: message });
+      // Auth failures: keep whatever bootstrap/local data we have — don't spam toasts.
+      // Session expiry is handled by apiFetch clearing tokens; user will re-auth on next nav.
+      if (isAuthErrorMessage(message)) {
+        console.warn("[fetchRequests] auth error; keeping local NPR list:", message);
+      } else {
+        toast.error("Failed to fetch new product requests", { description: message });
+      }
     } finally {
       setLoading(false);
     }
@@ -2112,20 +2134,20 @@ export function useNewProductRequests() {
         ),
       }));
       const notify = (response as { notify?: { sent?: boolean } }).notify;
-      const mfg = existing?.assignedManufacturer ?? "Manufacturer";
+      const mfg = existing?.assignedManufacturer ?? "Distillery";
       if (notify?.sent) {
         toast.success("Reminder sent", {
           description: `${mfg} was nudged by email and will see it in their portal.`,
         });
       } else {
         toast.message("Reminder recorded", {
-          description: `${mfg} will see a nudge in their manufacturer portal.`,
+          description: `${mfg} will see a nudge in their distillery portal.`,
         });
       }
       return { success: true, data: mapped };
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to nudge manufacturer";
-      toast.error("Failed to nudge manufacturer", { description: message });
+      const message = err instanceof Error ? err.message : "Failed to nudge distillery";
+      toast.error("Failed to nudge distillery", { description: message });
       return { success: false, error: message };
     }
   }, [data.newProductRequests, updateData]);

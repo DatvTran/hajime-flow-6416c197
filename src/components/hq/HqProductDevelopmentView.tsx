@@ -70,7 +70,7 @@ export function HqProductDevelopmentView({ newProductRequests, onPatch, onNudge 
     <HqOperatorPage className="space-y-6">
       <HqOperatorPageHeader
         title="Product Development"
-        description="Define what new alcohol concept should exist — spirit, ABV, flavor, packaging — and send it to a manufacturer for feasibility. This is not a reorder; once approved, use Production requests to brew inventory."
+        description="Define what new alcohol concept should exist — spirit, ABV, flavor, packaging — and send it to a distillery for feasibility. This is not a reorder; once approved, use Production requests to brew inventory."
         actions={
           <>
             <HqBtnLink to="/product-development/new" variant="accent" size="sm">
@@ -94,14 +94,14 @@ export function HqProductDevelopmentView({ newProductRequests, onPatch, onNudge 
           tone="amber"
           label="Awaiting feasibility"
           value={String(awaitingFeasibility || counts.active)}
-          sub="sent to manufacturer"
+          sub="sent to distillery"
         />
         <HqOperatorKpiCard
           icon={FileText}
           tone="blue"
           label="Proposals to review"
           value={String(counts.proposed)}
-          sub="manufacturer responded"
+          sub="distillery responded"
         />
         <HqOperatorKpiCard
           icon={Check}
@@ -121,7 +121,7 @@ export function HqProductDevelopmentView({ newProductRequests, onPatch, onNudge 
         <HqOperatorSearchWrap
           value={search}
           onChange={setSearch}
-          placeholder="Search request, product, or manufacturer…"
+          placeholder="Search request, product, or distillery…"
         />
       </HqOperatorFilterBar>
 
@@ -130,7 +130,7 @@ export function HqProductDevelopmentView({ newProductRequests, onPatch, onNudge 
           <FlaskConical className="mx-auto size-7 opacity-25" strokeWidth={1.5} />
           <p className="mt-3 text-sm font-medium text-foreground">{t("No products in development")}</p>
           <p className="mt-1 text-[13px]">
-            {t("Start a new alcohol concept and send it to a manufacturer for feasibility.")}
+            {t("Start a new alcohol concept and send it to a distillery for feasibility.")}
           </p>
           <HqBtnLink to="/product-development/new" variant="accent" size="sm" className="mt-4">
             <Plus className="size-3.5" strokeWidth={1.75} />
