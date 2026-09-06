@@ -478,7 +478,7 @@ function HQPurchaseOrders() {
             {key:'sku', label:'SKU', mono:true},
             {key:'qty', label:'Qty', right:true, mono:true, render:r=>r.qty.toLocaleString()},
             {key:'region', label:'Region'},
-            {key:'mfr', label:'Manufacturer'},
+            {key:'mfr', label:'Distillery'},
             {key:'requested', label:'Requested', mono:true},
             {key:'shipDate', label:'Ship date', mono:true, render:r=>r.shipDate||'—'},
             {key:'status', label:'Status', render:r=><Badge status={r.status}/>},

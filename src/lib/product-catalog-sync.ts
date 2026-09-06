@@ -26,6 +26,12 @@ export function mapApiRowToProduct(row: Record<string, unknown>): Product {
     wholesaleCasePrice: Number(meta.wholesaleCasePrice ?? meta.wholesalePriceCase ?? 0),
     msrpCasePrice: Number(meta.msrpCasePrice ?? meta.retailPriceCase ?? 0),
     manufacturerCasePrice: Number(meta.manufacturerCasePrice ?? 0),
+    ...(Number(meta.distributorSellOutCasePrice) > 0
+      ? { distributorSellOutCasePrice: Number(meta.distributorSellOutCasePrice) }
+      : {}),
+    ...(Number(meta.brokerCommissionPerBottle) > 0
+      ? { brokerCommissionPerBottle: Number(meta.brokerCommissionPerBottle) }
+      : {}),
     launchDate: meta.launchDate != null ? String(meta.launchDate) : undefined,
     status: (meta.status as Product["status"]) || "active",
     imageUrl:
@@ -35,6 +41,12 @@ export function mapApiRowToProduct(row: Record<string, unknown>): Product {
           ? String(meta.image)
           : undefined,
     minOrderCases: Number(meta.minOrderCases ?? 1),
+    ...(meta.producerId != null && String(meta.producerId).trim()
+      ? { producerId: String(meta.producerId).trim() }
+      : {}),
+    ...(meta.producerName != null && String(meta.producerName).trim()
+      ? { producerName: String(meta.producerName).trim() }
+      : {}),
   };
 }
 

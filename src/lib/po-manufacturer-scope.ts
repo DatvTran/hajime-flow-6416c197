@@ -29,7 +29,7 @@ export function poMatchesManufacturerIdentity(
   return false;
 }
 
-/** Manufacturer inbox — issued POs assigned to this kura (drafts stay with HQ). */
+/** Distillery inbox — issued POs assigned to this kura (drafts stay with HQ). */
 export function filterPosForManufacturerUser(
   rows: PurchaseOrder[],
   identity: ManufacturerAssignmentIdentity,

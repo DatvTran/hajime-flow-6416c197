@@ -140,16 +140,24 @@ setupSecurityMiddleware(app);
 // Body parsing
 app.use(express.json({ limit: '2mb' }));
 
-// Public readiness: verifies Postgres is reachable (real query, not static JSON).
+// Public readiness: SELECT 1 against the pooler. 503 if Postgres is unreachable
+// (Railway healthcheckPath gates deploys on this).
 app.get('/api/health', async (_req, res) => {
   try {
-    const r = await db.raw('select now() as now');
-    const row = r?.rows?.[0] ?? r?.[0];
-    const dbNow = row?.now != null ? String(row.now) : undefined;
+    await db.raw('SELECT 1');
     res.json({
       ok: true,
       database: 'up',
-      dbNow,
+      stripe: Boolean(stripe),
+      features: {
+        auth: FEATURE_FLAG_AUTH_ENABLED,
+        csv: FEATURE_FLAG_CSV_ENABLED,
+      },
+      migration: {
+        activeStage: dataMigrationService.stage,
+        dbPrimaryModeEnabled: dataMigrationService.stage >= 3,
+      },
+      migrationStage: dataMigrationService.stage,
     });
   } catch (e) {
     console.error('[hajime-api] /api/health DB check failed:', e);
@@ -268,32 +276,6 @@ app.put('/api/app', authenticateToken, async (req, res) => {
     console.error(e);
     res.status(500).json({ error: String(e?.message ?? e) });
   }
-});
-
-// ===== HEALTH CHECK =====
-app.get('/api/health', async (_req, res) => {
-  let dbStatus = 'unknown';
-  try {
-    await db.raw('SELECT 1');
-    dbStatus = 'connected';
-  } catch (err) {
-    dbStatus = 'disconnected';
-  }
-
-  res.json({
-    ok: true,
-    stripe: Boolean(stripe),
-    database: dbStatus,
-    features: {
-      auth: FEATURE_FLAG_AUTH_ENABLED,
-      csv: FEATURE_FLAG_CSV_ENABLED,
-    },
-    migration: {
-      activeStage: dataMigrationService.stage,
-      dbPrimaryModeEnabled: dataMigrationService.stage >= 3,
-    },
-    migrationStage: dataMigrationService.stage,
-  });
 });
 
 // ===== STRIPE ROUTES (existing) =====

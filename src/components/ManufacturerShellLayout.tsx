@@ -51,7 +51,7 @@ export function ManufacturerShellLayout() {
   const { page } = manufacturerRouteChrome(pathname);
 
   return (
-    <div className="manufacturer-shell flex min-h-svh flex-col bg-background text-foreground lg:grid lg:h-svh lg:grid-cols-[256px_1fr] lg:overflow-hidden">
+    <div className="distillery-shell flex min-h-svh flex-col bg-background text-foreground lg:grid lg:h-svh lg:grid-cols-[256px_1fr] lg:overflow-hidden">
       <ManufacturerSidebar key={language} className="hidden lg:flex" />
 
       <div className="main flex min-h-0 min-w-0 flex-1 flex-col lg:h-svh lg:overflow-hidden">

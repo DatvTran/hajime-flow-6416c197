@@ -227,7 +227,7 @@ body{background:hsl(var(--background));color:hsl(var(--foreground));font-family:
   <nav class="nav-section">
     <div class="nav-label">Command</div>
     <div class="navitem active" data-nav="dashboard"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Dashboard</div>
-    <div class="navitem" data-nav="production"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M10 2v7.31M14 9.3V2M8.5 2h7M14 9.3a6.5 6.5 0 1 1-4 0M5.58 16.5h12.85"/></svg>Production requests<span class="nb nb-amber">2</span></div>
+    <div class="navitem" data-nav="production"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>Product Development<span class="nb nb-amber">2</span></div>
     <div class="navitem" data-nav="replenishment"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>Replenishment orders<span class="nb nb-red" id="replen-nav-badge">3</span></div>
     <div class="navitem" data-nav="orders"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Distributor
  orders</div>
@@ -237,8 +237,10 @@ body{background:hsl(var(--background));color:hsl(var(--foreground));font-family:
   <div class="side-div"></div>
   <nav class="nav-section" style="padding-top:4px">
     <div class="nav-label">Network</div>
-    <div class="navitem" data-nav="manufacturers"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M10 2v7.31M14 9.3V2M8.5 2h7M14 9.3a6.5 6.5 0 1 1-4 0M5.58 16.5h12.85"/></svg>Manufacturers<span class="nb nb-amber">2</span></div>
+    <div class="navitem" data-nav="distilleries"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M10 2v7.31M14 9.3V2M8.5 2h7M14 9.3a6.5 6.5 0 1 1-4 0M5.58 16.5h12.85"/></svg>Distilleries<span class="nb nb-amber">2</span></div>
     <div class="navitem" data-nav="distributors"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Distributors</div>
+    <div class="navitem" data-nav="retail-accounts"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="m2 7 10-5 10 5v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2Z"/><path d="M6 21V11h12v10"/></svg>Retail accounts</div>
+    <div class="navitem" data-nav="sales-reps"><svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Sales reps</div>
   </nav>
   <div class="side-div"></div>
   <nav class="nav-section" style="padding-top:4px">
@@ -266,10 +268,10 @@ body{background:hsl(var(--background));color:hsl(var(--foreground));font-family:
 </main>
 </div>
 <script>
-const LABELS={dashboard:'Dashboard',production:'Production requests',replenishment:'Replenishment orders',orders:'Distributor orders','order-detail':'Order','distributor-sales':'Distributor sales','dist-detail':'Distributor','programs':'Incentive programs','program-edit':'Edit program','payouts':'Payout schedule','add-distributor':'Add distributor','mfr-detail':'Manufacturer','new-production':'New production request','add-sku':'Add SKU','sku-detail':'Edit SKU',markets:'Markets & allocation',manufacturers:'Manufacturers',distributors:'Distributors',programs:'Incentive programs',catalog:'Product catalog',analytics:'Analytics',settings:'Settings'};
+const LABELS={dashboard:'Dashboard',production:'Product Development','new-production':'New product request',replenishment:'Replenishment orders',orders:'Distributor orders','order-detail':'Order','distributor-sales':'Distributor sales','dist-detail':'Distributor','programs':'Incentive programs','program-edit':'Edit program','edit-brief':'Edit brief','payouts':'Payout schedule','add-distributor':'Add distributor','mfr-detail':'Distillery','mfr-edit':'Edit distillery','new-production':'New production request','add-sku':'Add SKU','sku-detail':'Edit SKU',markets:'Markets & allocation',distilleries:'Distilleries',distributors:'Distributors','retail-accounts':'Retail accounts','sales-reps':'Sales reps',programs:'Incentive programs',catalog:'Product catalog',analytics:'Analytics',settings:'Settings'};
 function nav(id){
   document.querySelectorAll('[data-nav]').forEach(el=>el.classList.toggle('active',el.dataset.nav===id));
-  document.getElementById('page-title').textContent=(id==='dist-detail'?DISTS[currentDistIdx].name:id==='mfr-detail'?MFRS[currentMfrIdx].name:id==='distributor-sales'?'Distributor sales':LABELS[id])||id;
+  document.getElementById('page-title').textContent=(id==='dist-detail'?DISTS[currentDistIdx].name:id==='mfr-detail'?MFRS[currentMfrIdx].name:id==='mfr-edit'?'Edit · '+MFRS[currentMfrIdx].name:id==='distributor-sales'?'Distributor sales':LABELS[id])||id;
   const pg=document.getElementById('pg');
   pg.innerHTML=(PAGES[id]||PAGES.dashboard)();
   pg.scrollTop=0;
@@ -306,10 +308,29 @@ function kpi(ic,cl,lab,val,sub,delta,dcl){
 
 /* ── Data ── */
 const PRODUCTION=[
-  {po:'PR-2026-0142',src:'kura',srcLabel:'Kuramoto Brewing',sku:'400× Florin Peaks 750ml',market:'Niigata',value:'¥3.6M',rep:'Haruki Sato',date:'Thu 28 May',urgent:true,note:'Kura requests confirmation on Lot 08 assignment and 50% seimaibuai spec before scheduling. Rebuilds Chicago + NYC allocation.'},
-  {po:'PR-2026-0141',src:'kura',srcLabel:'Kuramoto Brewing',sku:'120× Ryusui Reserve 500ml',market:'Niigata',value:'¥2.1M',rep:'Haruki Sato',date:'Tue 26 May',urgent:false,note:'Limited seasonal lot — single-tank batch. Kura requesting quality-hold sign-off for HQ tasting before bottling.'},
+  {po:'PR-2026-0142',src:'kura',srcLabel:'Hajime Production Co.',sku:'400× Hajime Reserve 750ml',market:'Distillery',value:'$182K',rep:'Haruki Sato',date:'Thu 28 May',urgent:true,note:'Producer requests confirmation on Lot 08 assignment and 50% seimaibuai spec before scheduling. Rebuilds Chicago + NYC allocation.'},
+  {po:'PR-2026-0141',src:'kura',srcLabel:'Hajime Production Co.',sku:'120× Hajime Botanical 500ml',market:'Distillery',value:'$96K',rep:'Haruki Sato',date:'Tue 26 May',urgent:false,note:'Limited seasonal lot — single-tank batch. Kura requesting quality-hold sign-off for HQ tasting before bottling.'},
 ];
 const srcChip={rep:'src-rep',retail:'src-retail',dist:'src-dist',kura:'src-kura'};
+
+/* Product Development: HQ concepts → distillery feasibility → proposal → production */
+const PRODDEV=[
+  {id:'PD-2026-0009',name:'Hajime Barrel Reserve',concept:'Barrel-aged reserve spirit · 700ml',kura:'Hajime Production Co.',stage:3,date:'2 Jun',urgent:true,
+   note:'Winter-season flagship for Chicago + NYC. Barrel aging 90 days. Targeting +$8/btl premium tier.',
+   feas:'Feasible — producer confirms barrel capacity for 2,000 cs. 43% ABV reserve. Proposes $6.40/btl cost, 110-day lead.'},
+  {id:'PD-2026-0008',name:'Hajime Sparkling',concept:'Bottle-fermented sparkling RTD · 375ml',kura:'Coastal Craft Distillers',stage:2,date:'28 May',urgent:false,
+   note:'Entry-tier sparkling for on-premise by-the-glass. Lower ABV (~7%). Wide market appeal, Paris + Milan first.',
+   feas:'Under review — Coastal evaluating carbonation line capacity and pressure-rated bottle supply. Response expected 6 Jun.'},
+  {id:'PD-2026-0007',name:'Hajime Coastal Reserve',concept:'Barrel-finished Coastal variant · 750ml',kura:'Coastal Craft Distillers',stage:4,date:'18 May',urgent:false,
+   note:'Limited reserve extension of Hajime Coastal. 6-month barrel finish. Approved for a 600 cs pilot run.',
+   feas:'Approved for production — Coastal scheduled pilot batch B-0421, bottling late Jul. Moves to Production requests once production starts.'},
+  {id:'PD-2026-0006',name:'Hajime Yuzu Spritz',concept:'Yuzu-infused canned RTD · 500ml',kura:'Hajime Production Co.',stage:1,date:'1 Jun',urgent:false,
+   note:'Seasonal summer LTO. Yuzu sourced from California. Concept stage — drafting spec before sending for feasibility.',
+   feas:''},
+];
+const pdStages=['Concept','Feasibility review','Proposal review','Approved — production'];
+const pdStageColor=['hsl(var(--muted-foreground))','hsl(38 90%50%)','hsl(215 72%50%)','hsl(158 56%36%)'];
+const pdOwner=['HQ','Distillery','HQ','Both']; // whose action at each stage
 
 /* Distributor
  orders: distributors order pallets from HQ (HQ in turn produces via kura) */
@@ -334,8 +355,8 @@ const MARKETS=[
 ];
 
 const MFRS=[
-  {name:'Kuramoto Brewing',sub:'Niigata, Japan · Tōji Haruki Sato',tier:'Preferred Kura',quality:'98.6%',ontime:'96.2%',cap:'2,640 cs/Q',active:4,st:'amber',sl:'2 requests open'},
-  {name:'Echigo Kura',sub:'Niigata, Japan · Tōji Ken Mori',tier:'Standard Kura',quality:'97.1%',ontime:'94.0%',cap:'1,800 cs/Q',active:2,st:'green',sl:'on schedule'},
+  {name:'Hajime Production Co.',sub:'Louisville, KY · Lead Haruki Sato',tier:'Preferred',quality:'98.6%',ontime:'96.2%',cap:'2,640 cs/Q',active:4,st:'amber',sl:'2 requests open'},
+  {name:'Coastal Craft Distillers',sub:'Portland, OR · Lead Ken Mori',tier:'Standard',quality:'97.1%',ontime:'94.0%',cap:'1,800 cs/Q',active:2,st:'green',sl:'on schedule'},
 ];
 const DISTS=[
   {name:'Empire Wines & Spirits',sub:'NYC · Jordan Wei',tier:'Gold Partner',fill:'97.8%',ontime:'94.2%',accounts:24,st:'green',sl:'active'},
@@ -364,24 +385,24 @@ PAGES.dashboard=()=>`
   </div>
   <div class="alert-bar alert-err">
     ${svgi(IC.alert,16)}
-    <div style="flex:1;font-size:13px"><strong style="color:hsl(0 68%36%)">Chicago at 14 days cover</strong> <span style="color:hsl(30 70%35%)">— below the 21-day floor. Kuramoto has an open production request (PR-2026-0142, 400cs Florin Peaks) awaiting your sign-off to rebuild allocation.</span></div>
+    <div style="flex:1;font-size:13px"><strong style="color:hsl(0 68%36%)">Chicago at 14 days cover</strong> <span style="color:hsl(30 70%35%)">— below the 21-day floor. Hajime Production has an open production request (PR-2026-0142, 400cs Hajime Reserve) awaiting your sign-off to rebuild allocation.</span></div>
     <div style="display:flex;gap:8px;flex-shrink:0"><button class="btn btn-outline btn-sm" onclick="nav('markets')">View market</button><button class="btn btn-accent btn-sm" onclick="nav('production')">Approve production</button></div>
   </div>
   <div class="kpi-row">
     ${kpi(IC.cart,'ic-gold','Network revenue Q2','$486K','across 4 live markets',`${svgi(IC.up,11)} +16% vs Q1`,'kpi-delta delta-up')}
     ${kpi(IC.flask,'ic-red','Production requests','2','1 urgent · rebuilds Chicago','','')}
     ${kpi(IC.box,'ic-blue','Network inventory','3,840 cs','across 4 distributor DCs','','')}
-    ${kpi(IC.users,'ic-green','Active accounts','83','+4 onboarding this month',`${svgi(IC.up,11)} 92% retention`,'kpi-delta delta-up')}
+    ${kpi(IC.store,'ic-green','Retail accounts','18','hotels, bars, restaurants, stores','','')}
   </div>
 
   <!-- Supply chain flow -->
   <div class="sec-head"><div class="sec-title">Supply chain — live</div><span style="font-size:12px;color:hsl(var(--muted-foreground))">Click any node to manage that portal</span></div>
   <div class="flow-card">
     <div class="flow-row">
-      <div class="flow-node" onclick="nav('manufacturers')">
+      <div class="flow-node" onclick="nav('distilleries')">
         <div class="flow-icon" style="color:hsl(280 40%48%)">${svgi(IC.flask,24)}</div>
-        <div class="flow-name">Manufacturers</div>
-        <div class="flow-meta">2 kura · 6 batches brewing</div>
+        <div class="flow-name">Distilleries</div>
+        <div class="flow-meta">2 producers · 6 batches in production</div>
         <div class="flow-count" style="background:hsl(280 40%50%/.1);color:hsl(280 40%48%)">2 requests open</div>
       </div>
       <div class="flow-arrow">${svgi(IC.arrow,22)}</div>
@@ -399,29 +420,29 @@ PAGES.dashboard=()=>`
         <div class="flow-count" style="background:hsl(158 56%36%/.1);color:hsl(158 56%30%)">3,840 cs stock</div>
       </div>
       <div class="flow-arrow">${svgi(IC.arrow,22)}</div>
-      <div class="flow-node" onclick="nav('distributor-sales')">
+      <div class="flow-node" onclick="nav('sales-reps')">
         <div class="flow-icon" style="color:hsl(215 72%42%)">${svgi(IC.users,24)}</div>
         <div class="flow-name">Sales reps</div>
-        <div class="flow-meta">via distributors · read-only</div>
-        <div class="flow-count" style="background:hsl(215 72%50%/.1);color:hsl(215 72%42%)">$94K pipeline</div>
+        <div class="flow-meta">6 field reps · Hajime Canada</div>
+        <div class="flow-count" style="background:hsl(215 72%50%/.1);color:hsl(215 72%42%)">add & invite</div>
       </div>
       <div class="flow-arrow">${svgi(IC.arrow,22)}</div>
-      <div class="flow-node" onclick="nav('distributor-sales')">
+      <div class="flow-node" onclick="nav('retail-accounts')">
         <div class="flow-icon" style="color:hsl(40 88%36%)">${svgi(IC.store,24)}</div>
         <div class="flow-name">Retail accounts</div>
-        <div class="flow-meta">via distributors · read-only</div>
-        <div class="flow-count" style="background:hsl(40 88%42%/.1);color:hsl(40 88%34%)">$486K Q2</div>
+        <div class="flow-meta">18 venues · add hotels, bars, stores</div>
+        <div class="flow-count" style="background:hsl(40 88%42%/.1);color:hsl(40 88%34%)">new account</div>
       </div>
     </div>
   </div>
 
   <div class="two-col">
     <div class="card">
-      <div class="card-head"><div><div class="card-title">Production requests</div><div class="card-sub">From kura partners — your sign-off</div></div><button class="btn btn-outline btn-sm" onclick="nav('production')">View all (2)</button></div>
+      <div class="card-head"><div><div class="card-title">Production requests</div><div class="card-sub">From distilleries — your sign-off</div></div><button class="btn btn-outline btn-sm" onclick="nav('production')">View all (2)</button></div>
       ${PRODUCTION.map(a=>`
       <div style="display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid hsl(var(--border)/.4);cursor:pointer;transition:background 120ms" onmouseover="this.style.background='hsl(var(--muted)/.4)'" onmouseout="this.style.background=''" onclick="nav('production')">
         <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px"><span class="src-chip ${srcChip[a.src]}">Kura</span>${a.urgent?pill('red','urgent'):''}</div>
+          <div style="display:flex;align-items:center;gap:8px"><span class="src-chip ${srcChip[a.src]}">Producer</span>${a.urgent?pill('red','urgent'):''}</div>
           <div style="font-size:13px;font-weight:500;margin-top:4px">${a.sku}</div>
           <div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:1px">${a.po} · ${a.srcLabel} · ${a.market}</div>
         </div>
@@ -433,10 +454,10 @@ PAGES.dashboard=()=>`
       <div style="padding:6px 20px">
         ${[
           {ic:'fi-blue',ico:IC.cart,l:'Mike Tan submitted PO-2026-0420',s:'Sales Rep · Katana Kitten · $1,536',t:'2m ago'},
-          {ic:'fi-purple',ico:IC.flask,l:'Kuramoto advanced batch B-0416 to bottling',s:'Manufacturer · Ryusui Reserve · 64cs',t:'18m ago'},
+          {ic:'fi-purple',ico:IC.flask,l:'Hajime Production advanced batch B-0416 to bottling',s:'Distillery · Hajime Botanical · 64cs',t:'18m ago'},
           {ic:'fi-green',ico:IC.truck,l:'Empire Wines shipped PO-2026-0418',s:'Distributor · 100cs → Drake Hotel',t:'1h ago'},
-          {ic:'fi-gold',ico:IC.store,l:'The Aviary placed reorder',s:'Retail · 48cs Florin Peaks',t:'2h ago'},
-          {ic:'fi-purple',ico:IC.award,l:'Kuramoto batch B-0416 graded A+',s:'Manufacturer · quality bonus +¥48K',t:'3h ago'},
+          {ic:'fi-gold',ico:IC.store,l:'The Aviary placed reorder',s:'Retail · 48cs Hajime Reserve',t:'2h ago'},
+          {ic:'fi-purple',ico:IC.award,l:'Hajime Production batch B-0416 graded A+',s:'Distillery · quality bonus +$480',t:'3h ago'},
           {ic:'fi-blue',ico:IC.users,l:'Sofia Lim logged 3 visits',s:'Sales Rep · Queens territory',t:'4h ago'},
         ].map(f=>`<div class="feed-row"><div class="feed-ic ${f.ic}">${svgi(f.ico,14)}</div><div class="feed-body"><div class="feed-label">${f.l}</div><div class="feed-sub">${f.s}</div></div><div class="feed-time">${f.t}</div></div>`).join('')}
       </div>
@@ -456,9 +477,9 @@ PAGES.dashboard=()=>`
 
 /* ── REPLENISHMENT ORDERS (distributor → HQ) ── */
 const REPLEN=[
-  {id:'RPL-2026-0061',dist:'Midwest Spirits Co.',market:'Chicago',date:'Mon 1 Jun',urgent:true,cover:'14 days',lines:[{sku:'Florin Peaks 750ml',pallets:8,cases:480}],value:'$18,240',fulfill:'partial',stock:'340 cs on hand · 140 cs short',note:'Chicago below 21-day cover floor. Requesting 8 pallets Florin Peaks to rebuild. Finished goods short 140cs — covered by Kuramoto PR-2026-0142 once approved.'},
-  {id:'RPL-2026-0060',dist:'Empire Wines & Spirits',market:'NYC',date:'Mon 1 Jun',urgent:false,cover:'32 days',lines:[{sku:'Florin Peaks 750ml',pallets:4,cases:240},{sku:'Junmai Shiro 720ml',pallets:3,cases:180}],value:'$17,280',fulfill:'full',stock:'In stock · ships from Tokyo DC',note:'Routine top-up ahead of summer. Both SKUs fully available in finished goods. Standard 4-pallet + 3-pallet mixed load.'},
-  {id:'RPL-2026-0059',dist:'Kanto Beverage',market:'Tokyo',date:'Sun 31 May',urgent:false,cover:'45 days',lines:[{sku:'Ryusui Reserve 500ml',pallets:2,cases:96}],value:'¥1.9M',fulfill:'hold',stock:'Limited Lot 04 · allocation hold',note:'Ryusui Reserve from limited Lot 04. Requires allocation sign-off — confirm against other markets before releasing 2 pallets.'},
+  {id:'RPL-2026-0061',dist:'Midwest Spirits Co.',market:'Chicago',date:'Mon 1 Jun',urgent:true,cover:'14 days',lines:[{sku:'Hajime Reserve 750ml',pallets:8,cases:480}],value:'$18,240',fulfill:'partial',stock:'340 cs on hand · 140 cs short',note:'Chicago below 21-day cover floor. Requesting 8 pallets Hajime Reserve to rebuild. Finished goods short 140cs — covered by Hajime Production PR-2026-0142 once approved.'},
+  {id:'RPL-2026-0060',dist:'Empire Wines & Spirits',market:'NYC',date:'Mon 1 Jun',urgent:false,cover:'32 days',lines:[{sku:'Hajime Reserve 750ml',pallets:4,cases:240},{sku:'Hajime Classic 700ml',pallets:3,cases:180}],value:'$17,280',fulfill:'full',stock:'In stock · ships from Tokyo DC',note:'Routine top-up ahead of summer. Both SKUs fully available in finished goods. Standard 4-pallet + 3-pallet mixed load.'},
+  {id:'RPL-2026-0059',dist:'Kanto Beverage',market:'Tokyo',date:'Sun 31 May',urgent:false,cover:'45 days',lines:[{sku:'Hajime Botanical 500ml',pallets:2,cases:96}],value:'$38K',fulfill:'hold',stock:'Limited Lot 04 · allocation hold',note:'Hajime Botanical from limited Lot 04. Requires allocation sign-off — confirm against other markets before releasing 2 pallets.'},
 ];
 const fulfillMeta={full:{p:'green',l:'in stock'},partial:{p:'amber',l:'partial stock'},hold:{p:'red',l:'allocation hold'}};
 function getReplenList(){
@@ -488,7 +509,7 @@ PAGES.replenishment=()=>`
     <button class="btn btn-outline btn-sm" onclick="nav('catalog')">Finished goods</button>
   </div>
   <div class="alert-bar alert-err" style="margin-bottom:24px">
-    ${svgi(IC.alert,16)}<div style="flex:1;font-size:13px"><strong style="color:hsl(0 68%36%)">Midwest Spirits (Chicago) at 14 days cover.</strong> <span style="color:hsl(30 70%35%)">Their 8-pallet Florin Peaks request is short 140cs in finished goods — approve the linked Kuramoto production request (PR-2026-0142) to cover the gap.</span></div>
+    ${svgi(IC.alert,16)}<div style="flex:1;font-size:13px"><strong style="color:hsl(0 68%36%)">Midwest Spirits (Chicago) at 14 days cover.</strong> <span style="color:hsl(30 70%35%)">Their 8-pallet Hajime Reserve request is short 140cs in finished goods — approve the linked Hajime Production request (PR-2026-0142) to cover the gap.</span></div>
     <button class="btn btn-accent btn-sm" onclick="nav('production')">View production</button>
   </div>
   <div class="filter-bar">
@@ -549,22 +570,23 @@ PAGES['new-production']=()=>`
     <button class="btn btn-outline btn-sm" onclick="nav('production')">← Production requests</button>
     <span style="font-size:12px;color:hsl(var(--muted-foreground))">/ New request</span>
   </div>
-  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">New production request</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Commission a batch from a kura partner. They confirm spec and schedule it into their brew calendar.</p></div></div>
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">New production request</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Commission a batch from a distillery. They confirm spec and schedule it into their production calendar.</p></div></div>
+  ${prFrom?`<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:hsl(158 56%36%/.08);border:1px solid hsl(158 56%36%/.25);border-radius:10px;margin-bottom:18px;font-size:13px;color:hsl(158 56%26%)">${svgi(IC.check,15)}<div>Pre-filled from approved concept <strong>${prFrom.id} · ${prFrom.name}</strong> — review and send to ${prFrom.kura}.</div></div>`:''}
   <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start">
     <div style="display:flex;flex-direction:column;gap:16px">
       <div class="card" style="padding:22px">
         <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Product & quantity</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div class="form-group"><label>SKU to produce</label><select><option>Florin Peaks 750ml</option><option>Junmai Shiro 720ml</option><option>Ryusui Reserve 500ml</option><option>First Press 750ml</option><option>Shirogane Nigori 720ml</option></select></div>
+          <div class="form-group"><label>SKU to produce</label><select><option>Hajime Reserve 750ml</option><option>Hajime Classic 700ml</option><option>Hajime Botanical 500ml</option><option>Hajime Coastal 750ml</option><option>Hajime Spritz 720ml</option></select></div>
           <div class="form-group"><label>Quantity (cases)</label><input type="number" min="1" value="400"></div>
-          <div class="form-group"><label>Polish ratio (seimaibuai)</label><select><option>50% — Daiginjo</option><option>60% — Ginjo</option><option>35% — premium genshu</option><option>70% — Junmai</option></select></div>
+          <div class="form-group"><label>Product spec</label><select><option>43% ABV — barrel reserve</option><option>40% ABV — standard</option><option>45% ABV — small-batch</option><option>7% ABV — RTD</option><option>Custom spec</option></select></div>
           <div class="form-group"><label>Lot assignment</label><input type="text" placeholder="e.g. Lot 08"></div>
         </div>
       </div>
       <div class="card" style="padding:22px">
         <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Assignment & timing</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div class="form-group"><label>Assign to kura</label><select><option>Kuramoto Brewing — Preferred · 2,640 cs/Q</option><option>Echigo Kura — Standard · 1,800 cs/Q</option><option>Auto-assign by capacity</option></select></div>
+          <div class="form-group"><label>Assign to distillery</label><select><option>Auto-assign by capacity & SKU</option><option>Hajime Production Co. — Preferred · 2,640 cs/Q</option><option>Coastal Craft Distillers — Standard · 1,800 cs/Q</option><option>Highland Reserve Works — Preferred · 2,200 cs/Q</option><option>Agave Sur Distilling — Standard · 1,400 cs/Q</option><option>Northbridge Beverage Co. — Standard · 3,100 cs/Q</option></select></div>
           <div class="form-group"><label>Start by</label><input type="date" value="2026-06-08"></div>
           <div class="form-group"><label>Target completion</label><input type="date" value="2026-07-08"></div>
           <div class="form-group"><label>Priority</label><select><option>Standard</option><option>High — rebuild allocation</option><option>Urgent — below cover floor</option></select></div>
@@ -572,42 +594,152 @@ PAGES['new-production']=()=>`
         <div class="form-group" style="margin-bottom:0"><label>Allocate finished goods to</label><select><option>General finished goods pool</option><option>Chicago — Midwest Spirits</option><option>NYC — Empire Wines</option><option>Tokyo — Kanto Beverage</option><option>Split across markets</option></select></div>
       </div>
       <div class="card" style="padding:22px">
-        <div style="font-size:14px;font-weight:600;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Notes for the kura</div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Notes for the distillery</div>
         <div class="form-group" style="margin-bottom:0"><textarea rows="3" placeholder="Spec details, quality holds, tasting requirements…"></textarea></div>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:14px">
       <div class="card" style="padding:20px;position:sticky;top:20px">
         <div style="font-size:14px;font-weight:600;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid hsl(var(--border)/.5)">Request summary</div>
-        ${[['SKU','Florin Peaks 750ml'],['Quantity','400 cases'],['Est. volume','~3,600 L'],['Rice needed','~4.8 t Yamada Nishiki'],['Brew time','~30 days'],['Kura','Kuramoto Brewing']].map((s,i)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;${i<5?'border-bottom:1px solid hsl(var(--border)/.3)':''};font-size:13px"><span style="color:hsl(var(--muted-foreground))">${s[0]}</span><span style="font-weight:500">${s[1]}</span></div>`).join('')}
-        <button class="btn btn-accent" style="width:100%;height:42px;margin-top:16px" onclick="document.getElementById('np-done').style.display='flex'">Send request to kura</button>
+        ${(()=>{const nm=prFrom?prFrom.name:'Hajime Reserve 750ml';const mf=prFrom?prFrom.kura:'Hajime Production Co.';return[['SKU',nm],['Quantity','400 cases'],['Est. volume','~3,600 L'],['Material','~3,400 L base spirit'],['Production time','~30 days'],['Distillery',mf]];})().map((s,i)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;${i<5?'border-bottom:1px solid hsl(var(--border)/.3)':''};font-size:13px"><span style="color:hsl(var(--muted-foreground))">${s[0]}</span><span style="font-weight:500">${s[1]}</span></div>`).join('')}
+        <button class="btn btn-accent" style="width:100%;height:42px;margin-top:16px" onclick="document.getElementById('np-done').style.display='flex'">Send request to distillery</button>
         <button class="btn btn-outline" style="width:100%;margin-top:8px" onclick="nav('production')">Cancel</button>
       </div>
-      <div style="background:hsl(280 40%50%/.06);border:1px solid hsl(280 40%50%/.2);border-radius:14px;padding:16px;font-size:12px;color:hsl(280 30%42%);line-height:1.6"><strong style="color:hsl(280 40%44%)">Next:</strong> the kura confirms spec and schedules the batch. You'll see it appear under that kura's active batches once production begins.</div>
+      <div style="background:hsl(280 40%50%/.06);border:1px solid hsl(280 40%50%/.2);border-radius:14px;padding:16px;font-size:12px;color:hsl(280 30%42%);line-height:1.6"><strong style="color:hsl(280 40%44%)">Next:</strong> the distillery partner confirms spec and schedules the batch. You'll see it appear under Production requests once submitted.</div>
     </div>
   </div>
   <div id="np-done" style="display:none;position:fixed;inset:0;background:hsl(24 12%8%/.5);backdrop-filter:blur(4px);z-index:100;align-items:center;justify-content:center">
     <div style="background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:18px;padding:32px;max-width:380px;text-align:center;box-shadow:var(--shadow-float)">
       <div style="width:56px;height:56px;border-radius:999px;background:hsl(158 56%36%/.12);color:hsl(158 56%32%);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">${svgi(IC.check,28)}</div>
       <div style="font-family:var(--font-display);font-size:20px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px">Request sent</div>
-      <div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.6;margin-bottom:20px">PR-2026-0143 sent to Kuramoto Brewing. You'll be notified once they confirm the spec and schedule the batch.</div>
+      <div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.6;margin-bottom:20px">PR-2026-0143 sent to Hajime Production Co. You'll be notified once they confirm the spec and schedule the batch.</div>
       <button class="btn btn-accent btn-sm" onclick="document.getElementById('np-done').style.display='none';nav('production')">Back to production</button>
     </div>
   </div>
 </div>`;
 
-/* ── PRODUCTION REQUESTS (HQ ↔ kura) ── */
+/* ── PRODUCT DEVELOPMENT (HQ concept → kura feasibility → proposal → production) ── */
 PAGES.production=()=>`
 <div class="pw enter">
   <div class="ph-row">
-    <div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Production requests</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Batch requests from kura partners — your sign-off confirms spec, lot, and allocation before they schedule production. <strong>Retail and rep orders are approved by distributors, not HQ.</strong></p></div>
-    <button class="btn btn-outline btn-sm">Request history</button>
+    <div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Product Development</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Create new product concepts, send them to a distillery for feasibility review, and track proposals through to production.</p></div>
+    <div style="display:flex;gap:8px"><button class="btn btn-outline btn-sm">Archive</button><button class="btn btn-accent btn-sm" onclick="prFrom=null;nav('new-production')">+ New product request</button></div>
+  </div>
+  <div class="kpi-row">
+    ${kpi(IC.flask,'ic-blue','In development','4','concepts in the pipeline','','')}
+    ${kpi(IC.alert,'ic-amber','Awaiting feasibility','1','sent to distillery','','')}
+    ${kpi(IC.doc,'ic-blue','Proposals to review','1','distillery responded','','')}
+    ${kpi(IC.check,'ic-green','Approved for production','1','moving to brewing','','')}
+  </div>
+  <div class="filter-bar">
+    <button class="filter-btn active">All (4)</button>
+    <button class="filter-btn">Concept</button>
+    <button class="filter-btn">Feasibility review</button>
+    <button class="filter-btn">Proposal</button>
+    <button class="filter-btn">Approved</button>
+  </div>
+  ${PRODDEV.map((p,i)=>`
+  <div class="approval-card${p.urgent?' urgent':''}" id="pd-${p.id}">
+    <div class="approval-head" onclick="this.nextElementSibling.classList.toggle('open')">
+      <div style="width:42px;height:42px;border-radius:10px;background:hsl(280 40%50%/.1);color:hsl(280 40%48%);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:4px">${svgi(IC.flask,19)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span class="src-chip src-kura" style="background:${pdStageColor[p.stage-1]}1f;color:${pdStageColor[p.stage-1]}">${pdStages[p.stage-1]}</span>${(()=>{const mine=pdOwner[p.stage-1]!=='Distillery';return`<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;background:${mine?'hsl(40 88%42%/.14)':'hsl(var(--muted))'};color:${mine?'hsl(40 88%34%)':'hsl(var(--muted-foreground))'}">${mine?'Your move':'Waiting on distillery'}</span>`;})()}${p.urgent?pill('red','priority'):''}</div>
+        <div style="font-family:var(--font-display);font-size:17px;font-weight:500;letter-spacing:-.01em">${p.name}</div>
+        <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px">${p.id} · ${p.concept}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-right:8px"><div style="font-size:12px;font-weight:500">${p.kura}</div><div style="font-size:10px;color:hsl(var(--muted-foreground))">updated ${p.date}</div></div>
+      ${svgi(`<path d="m6 9 6 6 6-6"/>`,16)}
+    </div>
+    <div class="approval-detail${i===0?' open':''}">
+      <!-- stage tracker -->
+      <div style="display:flex;align-items:flex-start;position:relative;margin:4px 0 18px">
+        ${pdStages.map((s,si)=>{const done=si<p.stage-1,cur=si===p.stage-1;return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;z-index:1"><div style="width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:11px;border:2px solid hsl(var(--card));background:${done?'hsl(158 56%36%)':cur?pdStageColor[si]:'hsl(var(--muted))'};color:${done||cur?'white':'hsl(var(--muted-foreground))'};${cur?'box-shadow:0 0 0 4px '+pdStageColor[si]+'2e':''}">${done?svgi(IC.check,12):si+1}</div><div style="font-size:10px;color:${done||cur?'hsl(var(--foreground))':'hsl(var(--muted-foreground))'};font-weight:500;text-align:center;max-width:90px">${s}</div></div>`;}).join('<div style="flex:0;align-self:flex-start;margin-top:13px;color:hsl(var(--border));padding:0 2px">———</div>')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px">
+        <div style="padding:12px 14px;background:hsl(var(--card));border-radius:10px;border:1px solid hsl(var(--border)/.5)"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600;margin-bottom:6px">Concept brief</div><div style="font-size:13px;color:hsl(var(--foreground));line-height:1.55">${p.note}</div></div>
+        <div style="padding:12px 14px;background:hsl(var(--card));border-radius:10px;border:1px solid hsl(var(--border)/.5)"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600;margin-bottom:6px">Distillery feasibility</div><div style="font-size:13px;color:${p.feas?'hsl(var(--foreground))':'hsl(var(--muted-foreground))'};line-height:1.55">${p.feas||'Not yet sent for feasibility review.'}</div></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        ${p.stage===1?`<button class="btn btn-accent btn-sm" onclick="advancePd('${p.id}')">${svgi(IC.flask,13)} Send for feasibility review</button>`:''}
+        ${p.stage===2?`<button class="btn btn-outline btn-sm">Nudge distillery</button>`:''}
+        ${p.stage===3?`<button class="btn btn-green btn-sm" onclick="advancePd('${p.id}')">${svgi(IC.check,13)} Approve proposal for production</button><button class="btn btn-outline btn-sm" onclick="requestRevision('${p.id}')">Request revision</button>`:''}
+        ${p.stage===4?`<button class="btn btn-green btn-sm" onclick="createPR('${p.id}')">${svgi(IC.check,13)} Create production request</button>`:''}
+        <button class="btn btn-outline btn-sm" onclick="editBrief('${p.id}')">Edit brief</button>
+        <button class="btn btn-red btn-sm" style="margin-left:auto" onclick="archivePd('${p.id}')">Archive</button>
+      </div>
+    </div>
+  </div>`).join('')}
+  <div id="pd-empty" style="display:none;padding:40px;text-align:center;border:1px dashed hsl(var(--border));border-radius:14px;color:hsl(var(--muted-foreground))">
+    ${svgi(IC.flask,28)}<div style="font-size:14px;margin-top:12px;font-weight:500">No products in development</div><div style="font-size:13px;margin-top:4px">Start a new product concept and send it to a distillery for feasibility.</div>
+  </div>
+</div>`;
+function advancePd(id){
+  const p=PRODDEV.find(x=>x.id===id);if(!p)return;
+  if(p.stage<4){p.stage++;nav('production');}
+}
+let prFrom=null;
+function createPR(id){prFrom=PRODDEV.find(x=>x.id===id)||null;nav('new-production');}
+let currentPdIdx=0;
+function editBrief(id){currentPdIdx=PRODDEV.findIndex(x=>x.id===id);nav('edit-brief');}
+function requestRevision(id){
+  const p=PRODDEV.find(x=>x.id===id);if(!p)return;
+  if(!confirm('Send this proposal back to the distillery for revision? It returns to Feasibility review.'))return;
+  p.stage=2;
+  p.feas=(p.feas?p.feas+' ':'')+'— HQ requested revision '+new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'})+'.';
+  nav('production');
+}
+PAGES['edit-brief']=()=>{
+  const p=PRODDEV[currentPdIdx];
+  return`
+<div class="pw enter">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <button class="btn btn-outline btn-sm" onclick="nav('production')">← Product Development</button>
+    <span style="font-size:12px;color:hsl(var(--muted-foreground))">/ Edit brief · ${p.name}</span>
+  </div>
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Edit concept brief</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">${p.id} · currently at "${pdStages[p.stage-1]}"</p></div></div>
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start">
+    <div class="card" style="padding:22px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600;margin-bottom:14px">Concept details</div>
+      <div class="form-group"><label>Product name</label><input id="eb-name" type="text" value="${p.name.replace(/"/g,'&quot;')}"></div>
+      <div class="form-group"><label>Concept (format · size · ABV)</label><input id="eb-concept" type="text" value="${p.concept.replace(/"/g,'&quot;')}"></div>
+      <div class="form-group"><label>Assigned distillery</label><select id="eb-kura"><option ${p.kura==='Hajime Production Co.'?'selected':''}>Hajime Production Co.</option><option ${p.kura==='Coastal Craft Distillers'?'selected':''}>Coastal Craft Distillers</option><option ${p.kura==='Highland Reserve Works'?'selected':''}>Highland Reserve Works</option><option ${p.kura==='Agave Sur Distilling'?'selected':''}>Agave Sur Distilling</option><option ${p.kura==='Northbridge Beverage Co.'?'selected':''}>Northbridge Beverage Co.</option></select></div>
+      <div class="form-group"><label>Concept brief</label><textarea id="eb-brief" rows="5" style="resize:none">${p.note}</textarea></div>
+    </div>
+    <div class="card" style="padding:20px;position:sticky;top:20px">
+      <div style="font-size:14px;font-weight:600;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid hsl(var(--border)/.5)">Save brief</div>
+      <div style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.6;margin-bottom:16px">Edits update the concept before it's sent to the distillery. Changes are visible in the distillery's Product Development inbox.</div>
+      <button class="btn btn-accent" style="width:100%;height:42px" onclick="saveBrief()">Save brief</button>
+      <button class="btn btn-outline" style="width:100%;margin-top:8px" onclick="nav('production')">Cancel</button>
+    </div>
+  </div>
+</div>`;
+};
+function saveBrief(){
+  const p=PRODDEV[currentPdIdx];
+  p.name=document.getElementById('eb-name').value;
+  p.concept=document.getElementById('eb-concept').value;
+  p.kura=document.getElementById('eb-kura').value;
+  p.note=document.getElementById('eb-brief').value;
+  nav('production');
+}
+function archivePd(id){
+  if(!confirm('Archive this product concept?'))return;
+  const c=document.getElementById('pd-'+id);
+  if(c){c.style.transition='opacity .25s';c.style.opacity='0';setTimeout(()=>{c.remove();if(!document.querySelector('[id^=pd-]:not(#pd-empty)')){const e=document.getElementById('pd-empty');if(e)e.style.display='block';}},250);}
+}
+
+/* ── PRODUCTION REQUESTS (HQ ↔ kura) ── */
+PAGES['production-legacy']=()=>`
+<div class="pw enter">
+  <div class="ph-row">
+    <div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Production requests</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Batch requests from distillery partners — your sign-off confirms spec, lot, and allocation before they schedule production. <strong>Retail and rep orders are approved by distributors, not HQ.</strong></p></div>
+    <div style="display:flex;gap:8px"><button class="btn btn-outline btn-sm">Request history</button><button class="btn btn-accent btn-sm" onclick="prFrom=null;nav('new-production')">+ New request</button></div>
   </div>
   <div class="filter-bar">
     <button class="filter-btn active">All (2)</button>
     <button class="filter-btn">Urgent (1)</button>
-    <button class="filter-btn">Kuramoto</button>
-    <button class="filter-btn">Echigo Kura</button>
+    <button class="filter-btn">Hajime Production</button>
+    <button class="filter-btn">Coastal Craft</button>
   </div>
   ${PRODUCTION.map((a,i)=>`
   <div class="approval-card${a.urgent?' urgent':''}" id="pr-${a.po}">
@@ -637,10 +769,10 @@ PAGES.production=()=>`
       <div id="prchg-${a.po}" style="display:none;margin-top:14px;padding:16px;background:hsl(var(--muted)/.4);border-radius:10px;border:1px solid hsl(var(--border)/.5)">
         <div style="font-size:12px;font-weight:600;margin-bottom:10px">Request a change from ${a.rep}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-          <div class="form-group" style="margin:0"><label>Change type</label><select id="prchg-type-${a.po}"><option>Adjust quantity</option><option>Revise spec / polish ratio</option><option>Change lot assignment</option><option>Shift timeline</option><option>Other</option></select></div>
+          <div class="form-group" style="margin:0"><label>Change type</label><select id="prchg-type-${a.po}"><option>Adjust quantity</option><option>Revise spec / strength</option><option>Change lot assignment</option><option>Shift timeline</option><option>Other</option></select></div>
           <div class="form-group" style="margin:0"><label>Respond by</label><input type="date" id="prchg-date-${a.po}" value="2026-06-25"></div>
         </div>
-        <div class="form-group" style="margin:0 0 12px"><label>Message to kura</label><textarea id="prchg-msg-${a.po}" rows="3" placeholder="Describe the change you need before approving…" style="resize:none"></textarea></div>
+        <div class="form-group" style="margin:0 0 12px"><label>Message to distillery</label><textarea id="prchg-msg-${a.po}" rows="3" placeholder="Describe the change you need before approving…" style="resize:none"></textarea></div>
         <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-outline btn-sm" onclick="toggleProdChange('${a.po}')">Cancel</button><button class="btn btn-accent btn-sm" onclick="sendProdChange('${a.po}')">Send request</button></div>
       </div>
     </div>
@@ -785,7 +917,7 @@ PAGES.markets=()=>`
     <button class="btn btn-accent btn-sm">Rebalance allocation</button>
   </div>
   <div class="alert-bar alert-err" style="margin-bottom:24px">
-    ${svgi(IC.alert,16)}<div style="flex:1;font-size:13px"><strong style="color:hsl(0 68%36%)">Chicago below cover floor.</strong> <span style="color:hsl(30 70%35%)">14 days of Florin Peaks remaining vs 21-day floor. Recommend approving the Kuramoto production request and reallocating 60cs from NYC surplus.</span></div>
+    ${svgi(IC.alert,16)}<div style="flex:1;font-size:13px"><strong style="color:hsl(0 68%36%)">Chicago below cover floor.</strong> <span style="color:hsl(30 70%35%)">14 days of Hajime Reserve remaining vs 21-day floor. Recommend approving the Hajime Production request and reallocating 60cs from NYC surplus.</span></div>
     <button class="btn btn-accent btn-sm" onclick="nav('production')">Review</button>
   </div>
   <div class="markets-grid">
@@ -806,10 +938,10 @@ PAGES.markets=()=>`
       <thead><tr><th>SKU</th><th>Total stock</th><th>NYC</th><th>Chicago</th><th>Tokyo</th><th>Paris</th><th>Milan</th><th>Unallocated</th></tr></thead>
       <tbody>
         ${[
-          {sku:'HJM-FP-750',name:'Florin Peaks',total:1240,a:[480,180,320,80,120,60]},
-          {sku:'HJM-JN-720',name:'Junmai Shiro',total:820,a:[220,140,280,60,80,40]},
-          {sku:'HJM-RY-500',name:'Ryusui Reserve',total:340,a:[120,40,100,20,40,20]},
-          {sku:'EU-FP-750',name:'First Press',total:240,a:[96,40,60,0,0,44]},
+          {sku:'HJM-FP-750',name:'Hajime Reserve',total:1240,a:[480,180,320,80,120,60]},
+          {sku:'HJM-JN-720',name:'Hajime Classic',total:820,a:[220,140,280,60,80,40]},
+          {sku:'HJM-RY-500',name:'Hajime Botanical',total:340,a:[120,40,100,20,40,20]},
+          {sku:'EU-FP-750',name:'Hajime Coastal',total:240,a:[96,40,60,0,0,44]},
         ].map(r=>`<tr><td><div style="font-weight:500">${r.name}</div><div class="mono" style="font-size:10px;color:hsl(var(--muted-foreground))">${r.sku}</div></td><td class="mono" style="font-weight:600">${r.total} cs</td>${r.a.map((v,i)=>`<td class="mono" style="${i===1&&r.sku==='HJM-FP-750'?'color:hsl(0 68%44%);font-weight:600':''}">${v}</td>`).join('')}<td class="mono" style="color:hsl(var(--muted-foreground))">${r.total-r.a.reduce((x,y)=>x+y,0)}</td></tr>`).join('')}
       </tbody>
     </table>
@@ -817,16 +949,16 @@ PAGES.markets=()=>`
 </div>`;
 
 /* ── MANUFACTURERS ── */
-PAGES.manufacturers=()=>`
+PAGES.distilleries=()=>`
 <div class="pw enter">
-  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Manufacturers</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Kura partners producing Hajime SKUs · send production requests and track batches</p></div>
-    <button class="btn btn-accent btn-sm" onclick="nav('new-production')">+ New production request</button>
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Distilleries</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Distillery partners producing Hajime SKUs · send production requests and track batches</p></div>
+    <button class="btn btn-accent btn-sm" onclick="prFrom=null;nav('new-production')">+ New production request</button>
   </div>
   <div class="kpi-row">
-    ${kpi(IC.flask,'ic-gold','Active batches','6','across 2 kura','','')}
+    ${kpi(IC.flask,'ic-gold','Active batches','6','across 2 distillery partners','','')}
     ${kpi(IC.box,'ic-green','Cases in production','4,440','est. 28-day completion','','')}
     ${kpi(IC.award,'ic-blue','Avg quality grade','A','98.0% network pass rate','','')}
-    ${kpi(IC.alert,'ic-red','Open requests','2','awaiting kura scheduling','','')}
+    ${kpi(IC.alert,'ic-red','Open requests','2','awaiting distillery scheduling','','')}
   </div>
   ${MFRS.map((m,mi)=>`
   <div class="card" style="margin-bottom:14px">
@@ -839,13 +971,14 @@ PAGES.manufacturers=()=>`
         <div style="text-align:right"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground))">On-time</div><div class="mono" style="font-size:13px;font-weight:600;margin-top:2px">${m.ontime}</div></div>
         <div style="text-align:right"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground))">Capacity</div><div class="mono" style="font-size:13px;font-weight:600;margin-top:2px">${m.cap}</div></div>
         ${pill(m.st,m.sl)}
+        <button class="btn btn-outline btn-sm" onclick="currentMfrIdx=${mi};nav('mfr-edit')">Edit</button>
         <button class="btn btn-outline btn-sm" onclick="manageMfr(${mi})">Manage</button>
       </div>
     </div>
   </div>`).join('')}
   <div style="padding:24px;text-align:center;border:1px dashed hsl(var(--border));border-radius:14px;color:hsl(var(--muted-foreground));margin-top:4px">
-    ${svgi(IC.flask,28)}<div style="font-size:13px;margin:12px 0">Onboard a new kura partner to expand production capacity</div>
-    <button class="btn btn-outline">+ Add manufacturer</button>
+    ${svgi(IC.flask,28)}<div style="font-size:13px;margin:12px 0">Onboard a new distillery to expand production capacity</div>
+    <button class="btn btn-outline">+ Add distillery</button>
   </div>
 </div>`;
 
@@ -873,16 +1006,32 @@ PAGES.distributors=()=>`
   </div>
 </div>`;
 
+PAGES['retail-accounts']=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Retail accounts</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Hotels, restaurants, bars, and stores Hajime Canada fulfills as distributor — add a venue or send a portal invite.</p></div>
+    <button class="btn btn-accent btn-sm">+ New account</button>
+  </div>
+  <div class="card" style="padding:28px;font-size:13px;color:hsl(var(--muted-foreground))">On-premise book lives in the live HQ app at <span class="mono">/accounts?view=retail</span>.</div>
+</div>`;
+
+PAGES['sales-reps']=()=>`
+<div class="pw enter">
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Sales reps</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Field reps for Hajime Canada — add a rep and send a portal invite.</p></div>
+    <button class="btn btn-accent btn-sm">+ Add sales rep</button>
+  </div>
+  <div class="card" style="padding:28px;font-size:13px;color:hsl(var(--muted-foreground))">Rep roster lives in the live HQ app at <span class="mono">/crm?role=sales_rep</span>.</div>
+</div>`;
+
 /* ── MANUFACTURER DETAIL (Manage) ── */
 const MFR_DETAIL=[
-  {loc:'Niigata, Japan · est. 1924',contact:'Haruki Sato · Tōji (Master Brewer)',email:'sato@kuramoto.jp',phone:'+81 25-555-0142',since:'Jan 2024',premium:'¥2/btl quality',rice:'Yamada Nishiki · contract',
-   batches:[{id:'B-0418',sku:'Florin Peaks 750ml',stage:'Fermenting · Day 18',eta:'12 Jun',st:'blue',sl:'fermenting'},{id:'B-0417',sku:'Junmai Shiro 720ml',stage:'Pressing soon · Day 30',eta:'4 Jun',st:'blue',sl:'pressing'},{id:'B-0416',sku:'Ryusui Reserve 500ml',stage:'Bottling · Day 44',eta:'28 May',st:'amber',sl:'bottling'},{id:'B-0415',sku:'Florin Peaks 750ml',stage:'Kōji · Day 5',eta:'25 Jun',st:'green',sl:'kōji'}],
-   requests:[{id:'PR-2026-0142',d:'28 May',items:'400× Florin Peaks',st:'amber',sl:'scheduling'},{id:'PR-2026-0141',d:'26 May',items:'120× Ryusui Reserve',st:'amber',sl:'quality hold'},{id:'PR-2026-0138',d:'2 May',items:'300× Junmai Shiro',st:'green',sl:'delivered'}],
-   skus:['Florin Peaks 750ml','Junmai Shiro 720ml','Ryusui Reserve 500ml']},
-  {loc:'Niigata, Japan · est. 1890',contact:'Ken Mori · Tōji',email:'mori@echigo-kura.jp',phone:'+81 25-555-0188',since:'Aug 2024',premium:'¥1.5/btl quality',rice:'Gohyakumangoku · contract',
-   batches:[{id:'E-0204',sku:'First Press 750ml',stage:'Fermenting · Day 12',eta:'18 Jun',st:'blue',sl:'fermenting'},{id:'E-0203',sku:'Shirogane Nigori 720ml',stage:'Pressing · Day 26',eta:'2 Jun',st:'blue',sl:'pressing'}],
-   requests:[{id:'PR-2026-0140',d:'20 May',items:'200× First Press',st:'green',sl:'in production'},{id:'PR-2026-0133',d:'28 Apr',items:'150× Shirogane Nigori',st:'green',sl:'delivered'}],
-   skus:['First Press 750ml','Shirogane Nigori 720ml']},
+  {loc:'Louisville, KY · est. 1924',contact:'Haruki Sato · Production Lead',email:'sato@hajimeproduction.com',phone:'+1 (502) 555-0142',since:'Jan 2024',premium:'$0.20/btl quality',material:'Grain neutral spirit · contract',
+   batches:[{id:'B-0418',sku:'Hajime Reserve 750ml',stage:'Fermenting · Day 18',eta:'12 Jun',st:'blue',sl:'fermenting'},{id:'B-0417',sku:'Hajime Classic 720ml',stage:'Maturing · Day 30',eta:'4 Jun',st:'blue',sl:'pressing'},{id:'B-0416',sku:'Hajime Botanical 500ml',stage:'Bottling · Day 44',eta:'28 May',st:'amber',sl:'bottling'},{id:'B-0415',sku:'Hajime Reserve 750ml',stage:'Kōji · Day 5',eta:'25 Jun',st:'green',sl:'kōji'}],
+   requests:[{id:'PR-2026-0142',d:'28 May',items:'400× Hajime Reserve',st:'amber',sl:'scheduling'},{id:'PR-2026-0141',d:'26 May',items:'120× Hajime Botanical',st:'amber',sl:'quality hold'},{id:'PR-2026-0138',d:'2 May',items:'300× Hajime Classic',st:'green',sl:'delivered'}],
+   skus:['Hajime Reserve 750ml','Hajime Classic 720ml','Hajime Botanical 500ml']},
+  {loc:'Portland, OR · est. 1890',contact:'Ken Mori · Production Lead',email:'mori@coastalcraft.com',phone:'+1 (503) 555-0188',since:'Aug 2024',premium:'$0.15/btl quality',material:'Base spirit · contract',
+   batches:[{id:'E-0204',sku:'Hajime Coastal 750ml',stage:'Fermenting · Day 12',eta:'18 Jun',st:'blue',sl:'fermenting'},{id:'E-0203',sku:'Hajime Spritz 720ml',stage:'Maturing · Day 26',eta:'2 Jun',st:'blue',sl:'pressing'}],
+   requests:[{id:'PR-2026-0140',d:'20 May',items:'200× Hajime Coastal',st:'green',sl:'in production'},{id:'PR-2026-0133',d:'28 Apr',items:'150× Hajime Spritz',st:'green',sl:'delivered'}],
+   skus:['Hajime Coastal 750ml','Hajime Spritz 720ml']},
 ];
 let currentMfrIdx=0;
 function manageMfr(i){currentMfrIdx=i;nav('mfr-detail');}
@@ -892,7 +1041,7 @@ PAGES['mfr-detail']=()=>{
   return`
 <div class="pw enter">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
-    <button class="btn btn-outline btn-sm" onclick="nav('manufacturers')">← Manufacturers</button>
+    <button class="btn btn-outline btn-sm" onclick="nav('distilleries')">← Distilleries</button>
     <span style="font-size:12px;color:hsl(var(--muted-foreground))">/ ${m.name}</span>
   </div>
   <div class="card" style="margin-bottom:18px">
@@ -903,7 +1052,7 @@ PAGES['mfr-detail']=()=>{
         <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:3px">${m.sub} · ${x.loc}</div>
         <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">${x.contact} · ${x.email} · ${x.phone}</div>
       </div>
-      <div style="display:flex;gap:8px;flex-shrink:0"><button class="btn btn-outline btn-sm" onclick="nav('production')">Production requests</button><button class="btn btn-accent btn-sm" onclick="nav('new-production')">+ New request</button></div>
+      <div style="display:flex;gap:8px;flex-shrink:0"><button class="btn btn-outline btn-sm" onclick="nav('mfr-edit')">Edit account</button><button class="btn btn-outline btn-sm" onclick="nav('production')">Production requests</button><button class="btn btn-accent btn-sm" onclick="nav('new-production')">+ New request</button></div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(6,1fr);border-top:1px solid hsl(var(--border)/.5)">
       ${[['Quality',m.quality],['On-time',m.ontime],['Capacity',m.cap],['Active batches',m.active],['Partner since',x.since],['Premium',x.premium]].map((s,i)=>`<div style="padding:14px 18px;${i<5?'border-right:1px solid hsl(var(--border)/.4)':''}"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--muted-foreground));font-weight:600">${s[0]}</div><div style="font-family:var(--font-display);font-size:16px;font-weight:600;margin-top:3px">${s[1]}</div></div>`).join('')}
@@ -925,6 +1074,44 @@ PAGES['mfr-detail']=()=>{
         <tbody>${x.requests.map(r=>`<tr><td><div style="font-family:var(--font-mono);font-size:12px;font-weight:500">${r.id}</div><div style="font-size:11px;color:hsl(var(--muted-foreground))">${r.d}</div></td><td style="font-size:12px;color:hsl(var(--muted-foreground))">${r.items}</td><td>${pill(r.st,r.sl)}</td></tr>`).join('')}</tbody>
       </table>
       <div style="padding:14px 20px;border-top:1px solid hsl(var(--border)/.5)"><button class="btn btn-outline btn-sm" style="width:100%" onclick="nav('production')">View all production requests</button></div>
+    </div>
+  </div>
+</div>`;
+};
+
+PAGES['mfr-edit']=()=>{
+  const m=MFRS[currentMfrIdx],x=MFR_DETAIL[currentMfrIdx];
+  return`
+<div class="pw enter">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <button class="btn btn-outline btn-sm" onclick="nav('mfr-detail')">← ${m.name}</button>
+    <span style="font-size:12px;color:hsl(var(--muted-foreground))">/ Edit account</span>
+  </div>
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Edit distillery</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Update distillery partner details, contact info, and contract terms.</p></div>
+    <div style="display:flex;gap:8px"><button class="btn btn-outline btn-sm">Delete</button><button class="btn btn-accent btn-sm" onclick="nav('mfr-detail')">Save changes</button></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Company details</div>
+        <div class="form-group"><label>Distillery name</label><input type="text" value="${m.name}"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group"><label>City</label><input type="text" value="${m.sub.split('·')[0]?.trim()||''}"></div>
+          <div class="form-group"><label>Country</label><input type="text" value="Japan"></div>
+        </div>
+      </div>
+      <div class="card" style="padding:22px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Primary contact</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group"><label>Contact name</label><input type="text" value="${x.contact.split('·')[0]?.trim()||''}"></div>
+          <div class="form-group"><label>Email</label><input type="email" value="${x.email}"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="padding:20px;position:sticky;top:20px">
+      <div style="font-size:14px;font-weight:600;margin-bottom:14px">Summary</div>
+      <div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.6;margin-bottom:16px">Changes sync to the CRM account and appear on the Distilleries list.</div>
+      <button class="btn btn-accent btn-sm" style="width:100%" onclick="nav('mfr-detail')">Save changes</button>
     </div>
   </div>
 </div>`;
@@ -993,17 +1180,17 @@ PAGES['add-distributor']=()=>`
 /* ── DISTRIBUTOR DETAIL (Manage) ── */
 const DIST_DETAIL=[
   {ship:'Brooklyn, NY · 3 DCs',contact:'Jordan Wei · Operations Lead',email:'jordan.wei@empirewines.com',phone:'+1 (212) 555-0148',since:'Oct 2024',terms:'Net 30',coop:'$5,000 / yr',rebate:'3% volume',
-   skus:[{n:'Florin Peaks 750ml',oh:142,alloc:100,cover:'14 days',st:'low'},{n:'Junmai Shiro 720ml',oh:218,alloc:36,cover:'48 days',st:'ok'},{n:'Ryusui Reserve 500ml',oh:38,alloc:6,cover:'31 days',st:'ok'},{n:'First Press 750ml',oh:96,alloc:0,cover:'40 days',st:'ok'}],
-   replens:[{id:'RPL-2026-0062',d:'1 Jun',items:'4 pallets · Florin Peaks',st:'amber',sl:'pending'},{id:'RPL-2026-0058',d:'12 May',items:'6 pallets · mixed',st:'green',sl:'delivered'}]},
+   skus:[{n:'Hajime Reserve 750ml',oh:142,alloc:100,cover:'14 days',st:'low'},{n:'Hajime Classic 720ml',oh:218,alloc:36,cover:'48 days',st:'ok'},{n:'Hajime Botanical 500ml',oh:38,alloc:6,cover:'31 days',st:'ok'},{n:'Hajime Coastal 750ml',oh:96,alloc:0,cover:'40 days',st:'ok'}],
+   replens:[{id:'RPL-2026-0062',d:'1 Jun',items:'4 pallets · Hajime Reserve',st:'amber',sl:'pending'},{id:'RPL-2026-0058',d:'12 May',items:'6 pallets · mixed',st:'green',sl:'delivered'}]},
   {ship:'Chicago, IL · 1 DC',contact:'Dana Brooks · GM',email:'dana.brooks@midwestspirits.com',phone:'+1 (312) 555-0210',since:'Feb 2025',terms:'Net 30',coop:'$3,000 / yr',rebate:'2% volume',
-   skus:[{n:'Florin Peaks 750ml',oh:64,alloc:40,cover:'9 days',st:'low'},{n:'Junmai Shiro 720ml',oh:120,alloc:24,cover:'28 days',st:'ok'},{n:'First Press 750ml',oh:48,alloc:12,cover:'22 days',st:'med'}],
-   replens:[{id:'RPL-2026-0061',d:'1 Jun',items:'8 pallets · Florin Peaks',st:'red',sl:'urgent · pending'},{id:'RPL-2026-0049',d:'28 Apr',items:'5 pallets · mixed',st:'green',sl:'delivered'}]},
-  {ship:'Tokyo, JP · 2 DCs',contact:'Yuki Tanaka · 統括',email:'tanaka@kanto-bev.jp',phone:'+81 3-5555-0182',since:'Jan 2024',terms:'Net 45',coop:'¥600K / yr',rebate:'3% volume',
-   skus:[{n:'Junmai Shiro 720ml',oh:340,alloc:120,cover:'52 days',st:'ok'},{n:'Ryusui Reserve 500ml',oh:96,alloc:24,cover:'45 days',st:'ok'},{n:'Florin Peaks 750ml',oh:280,alloc:60,cover:'60 days',st:'ok'}],
+   skus:[{n:'Hajime Reserve 750ml',oh:64,alloc:40,cover:'9 days',st:'low'},{n:'Hajime Classic 720ml',oh:120,alloc:24,cover:'28 days',st:'ok'},{n:'Hajime Coastal 750ml',oh:48,alloc:12,cover:'22 days',st:'med'}],
+   replens:[{id:'RPL-2026-0061',d:'1 Jun',items:'8 pallets · Hajime Reserve',st:'red',sl:'urgent · pending'},{id:'RPL-2026-0049',d:'28 Apr',items:'5 pallets · mixed',st:'green',sl:'delivered'}]},
+  {ship:'Tokyo, JP · 2 DCs',contact:'Yuki Tanaka · GM',email:'tanaka@kanto-bev.jp',phone:'+81 3-5555-0182',since:'Jan 2024',terms:'Net 45',coop:'¥600K / yr',rebate:'3% volume',
+   skus:[{n:'Hajime Classic 720ml',oh:340,alloc:120,cover:'52 days',st:'ok'},{n:'Hajime Botanical 500ml',oh:96,alloc:24,cover:'45 days',st:'ok'},{n:'Hajime Reserve 750ml',oh:280,alloc:60,cover:'60 days',st:'ok'}],
    replens:[{id:'RPL-2026-0057',d:'8 May',items:'10 pallets · mixed',st:'green',sl:'delivered'}]},
   {ship:'Paris, FR · 1 DC',contact:'Élise Marchand · Directrice',email:'elise@cavelumiere.fr',phone:'+33 1 55 55 0190',since:'Mar 2025',terms:'Net 30',coop:'€4,000 / yr',rebate:'2% volume',
-   skus:[{n:'Florin Peaks 750ml',oh:52,alloc:18,cover:'18 days',st:'med'},{n:'Ryusui Reserve 500ml',oh:24,alloc:6,cover:'21 days',st:'med'}],
-   replens:[{id:'RPL-2026-0055',d:'2 May',items:'4 pallets · Florin Peaks',st:'green',sl:'delivered'}]},
+   skus:[{n:'Hajime Reserve 750ml',oh:52,alloc:18,cover:'18 days',st:'med'},{n:'Hajime Botanical 500ml',oh:24,alloc:6,cover:'21 days',st:'med'}],
+   replens:[{id:'RPL-2026-0055',d:'2 May',items:'4 pallets · Hajime Reserve',st:'green',sl:'delivered'}]},
 ];
 let currentDistIdx=0;
 function manageDist(i){currentDistIdx=i;nav('dist-detail');}
@@ -1090,8 +1277,6 @@ const PROGRAMS=[
     tiers:[['Standard',3,'hsl(var(--muted-foreground))',0,'6% commission'],['Silver',4,'hsl(220 8%60%)',60,'8% commission'],['Gold',4,'hsl(40 88%42%)',90,'10% + quarterly bonus'],['Platinum',1,'hsl(215 72%50%)',120,'12% + Presidents Club']]},
   {ic:IC.truck,cl:'ic-green',title:'Distributor Partner Program',sub:'Fill rate, on-time & volume',members:'4 distributors',payout:'$11.8K',metric:'3–4% volume rebate',basis:'Fill rate + volume',
     tiers:[['Standard',0,'hsl(var(--muted-foreground))',0,'—'],['Silver',2,'hsl(220 8%60%)',95,'3% rebate'],['Gold',2,'hsl(40 88%42%)',97,'3.5% + co-op marketing'],['Platinum',0,'hsl(215 72%50%)',99,'4% + first allocation']]},
-  {ic:IC.flask,cl:'ic-purple',title:'Kura Partner Program',sub:'Quality, yield & on-time production',members:'2 kura',payout:'¥3.2M',metric:'¥2–3/bottle premium',basis:'Quality + yield',
-    tiers:[['Standard',1,'hsl(var(--muted-foreground))',0,'Base rate'],['Preferred',1,'hsl(40 88%42%)',97,'¥2/bottle premium'],['Master',0,'hsl(215 72%50%)',99,'¥3/bottle + co-brand']]},
 ];
 let currentProgIdx=0;
 function editProgram(i){currentProgIdx=i;nav('program-edit');}
@@ -1100,13 +1285,11 @@ PAGES.payouts=()=>{
     {date:'30 Jun 2026',prog:'Retail Partner Program',detail:'Q2 quarterly rebate · 42 stores',amt:'$18,600',st:'amber',sl:'scheduled'},
     {date:'30 Jun 2026',prog:'Sales Rep Incentive',detail:'Q2 commission + bonuses · 12 reps',amt:'$38,400',st:'amber',sl:'scheduled'},
     {date:'30 Jun 2026',prog:'Distributor Partner Program',detail:'Q2 volume rebate · 4 distributors',amt:'$11,800',st:'amber',sl:'scheduled'},
-    {date:'15 Jul 2026',prog:'Kura Partner Program',detail:'Q2 quality premium · 2 kura',amt:'¥3,200,000',st:'neutral',sl:'pending close'},
   ];
   const history=[
     {date:'31 Mar 2026',prog:'Retail Partner Program',detail:'Q1 quarterly rebate · 40 stores',amt:'$16,200',st:'green',sl:'paid'},
     {date:'31 Mar 2026',prog:'Sales Rep Incentive',detail:'Q1 commission + bonuses · 12 reps',amt:'$34,100',st:'green',sl:'paid'},
     {date:'31 Mar 2026',prog:'Distributor Partner Program',detail:'Q1 volume rebate · 4 distributors',amt:'$10,400',st:'green',sl:'paid'},
-    {date:'15 Apr 2026',prog:'Kura Partner Program',detail:'Q1 quality premium · 2 kura',amt:'¥2,900,000',st:'green',sl:'paid'},
   ];
   return`
 <div class="pw enter">
@@ -1119,19 +1302,19 @@ PAGES.payouts=()=>{
   </div>
   <div class="kpi-row">
     ${kpi(IC.star,'ic-gold','Next payout','30 Jun','$68.8K across 3 programs','','')}
-    ${kpi(IC.cart,'ic-gold','Scheduled Q2','$92.2K','+ ¥3.2M Kura premium','','')}
-    ${kpi(IC.check,'ic-green','Paid YTD','$60.7K','+ ¥2.9M · Q1 settled','','')}
-    ${kpi(IC.chart,'ic-ink','Programs','4','retail · rep · distributor · kura','','')}
+    ${kpi(IC.cart,'ic-gold','Scheduled Q2','$92.2K','3 programs this cycle','','')}
+    ${kpi(IC.check,'ic-green','Paid YTD','$60.7K','Q1 settled','','')}
+    ${kpi(IC.chart,'ic-ink','Programs','3','retail · rep · distributor','','')}
   </div>
   <div class="card" style="margin-bottom:18px">
-    <div class="card-head"><div><div class="card-title">Upcoming payouts</div><div class="card-sub">Scheduled for the current cycle</div></div><span style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:hsl(var(--accent))">$68.8K + ¥3.2M</span></div>
+    <div class="card-head"><div><div class="card-title">Upcoming payouts</div><div class="card-sub">Scheduled for the current cycle</div></div><span style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:hsl(var(--accent))">$68.8K</span></div>
     <table class="data-table">
       <thead><tr><th>Date</th><th>Program</th><th>Detail</th><th>Amount</th><th>Status</th></tr></thead>
       <tbody>${upcoming.map(r=>`<tr><td class="mono" style="font-weight:500">${r.date}</td><td style="font-weight:500">${r.prog}</td><td style="color:hsl(var(--muted-foreground));font-size:12px">${r.detail}</td><td class="mono" style="font-weight:600">${r.amt}</td><td>${pill(r.st,r.sl)}</td></tr>`).join('')}</tbody>
     </table>
   </div>
   <div class="card">
-    <div class="card-head"><div><div class="card-title">Payout history</div><div class="card-sub">Settled in prior cycles</div></div><span style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:hsl(158 56%32%)">$60.7K + ¥2.9M paid</span></div>
+    <div class="card-head"><div><div class="card-title">Payout history</div><div class="card-sub">Settled in prior cycles</div></div><span style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:hsl(158 56%32%)">$60.7K paid</span></div>
     <table class="data-table">
       <thead><tr><th>Date</th><th>Program</th><th>Detail</th><th>Amount</th><th>Status</th></tr></thead>
       <tbody>${history.map(r=>`<tr><td class="mono" style="font-weight:500">${r.date}</td><td style="font-weight:500">${r.prog}</td><td style="color:hsl(var(--muted-foreground));font-size:12px">${r.detail}</td><td class="mono" style="font-weight:600">${r.amt}</td><td>${pill(r.st,r.sl)}</td></tr>`).join('')}</tbody>
@@ -1220,12 +1403,12 @@ PAGES['add-sku']=()=>`
     <div style="display:flex;flex-direction:column;gap:16px">
       <div class="card" style="padding:22px">
         <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Product details</div>
-        <div class="form-group"><label>Product name</label><input type="text" placeholder="e.g. Yukimi Daiginjo"></div>
+        <div class="form-group"><label>Product name</label><input type="text" placeholder="e.g. Hajime Barrel Reserve"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div class="form-group"><label>SKU code</label><input type="text" placeholder="e.g. HJM-YK-720"></div>
+          <div class="form-group"><label>SKU code</label><input type="text" placeholder="e.g. HJM-BR-750"></div>
           <div class="form-group"><label>Bottle size</label><select><option>720ml</option><option>750ml</option><option>500ml</option><option>300ml</option><option>1.8L</option></select></div>
-          <div class="form-group"><label>Style</label><select><option>Junmai Daiginjo</option><option>Junmai Ginjo</option><option>Junmai</option><option>Genshu</option><option>Nigori</option><option>Honjozo</option></select></div>
-          <div class="form-group"><label>Polish ratio (seimaibuai)</label><input type="text" placeholder="e.g. 50%"></div>
+          <div class="form-group"><label>Style</label><select><option>Whiskey / Bourbon</option><option>Vodka</option><option>Gin</option><option>Rum</option><option>Tequila / Agave</option><option>Liqueur</option><option>RTD / Seltzer</option><option>Wine</option><option>Beer / Cider</option><option>Honjozo</option></select></div>
+          <div class="form-group"><label>ABV</label><input type="text" placeholder="e.g. 40%"></div>
         </div>
       </div>
       <div class="card" style="padding:22px">
@@ -1234,7 +1417,7 @@ PAGES['add-sku']=()=>`
           <div class="form-group"><label>Retail price</label><input type="text" placeholder="$0.00"></div>
           <div class="form-group"><label>Wholesale price</label><input type="text" placeholder="$0.00"></div>
           <div class="form-group"><label>Case size</label><select><option>12 bottles</option><option>6 bottles</option><option>24 bottles</option></select></div>
-          <div class="form-group"><label>Produced by</label><select><option>Kuramoto Brewing</option><option>Echigo Kura</option></select></div>
+          <div class="form-group"><label>Produced by</label><select><option>Hajime Production Co.</option><option>Coastal Craft Distillers</option></select></div>
         </div>
       </div>
       <div class="card" style="padding:22px">
@@ -1265,12 +1448,12 @@ PAGES['add-sku']=()=>`
 
 /* ── PRODUCT CATALOG ── */
 const CATALOG=[
-  {sku:'HJM-FP-750',n:'Florin Peaks',t:'Junmai Daiginjo · 750ml',r:'$48',w:'$38',by:'Kuramoto',mk:'5',st:'green',sl:'active'},
-  {sku:'HJM-JN-720',n:'Junmai Shiro',t:'Junmai · 720ml',r:'$32',w:'$26',by:'Kuramoto',mk:'5',st:'green',sl:'active'},
-  {sku:'HJM-RY-500',n:'Ryusui Reserve',t:'Genshu · 500ml · limited',r:'$82',w:'$65',by:'Kuramoto',mk:'4',st:'green',sl:'active'},
-  {sku:'EU-FP-750',n:'First Press',t:'Coffee Rice · 750ml',r:'$52',w:'$42',by:'Echigo Kura',mk:'3',st:'green',sl:'active'},
-  {sku:'HJM-NG-720',n:'Shirogane Nigori',t:'Nigori · 720ml',r:'$28',w:'$22',by:'Echigo Kura',mk:'2',st:'amber',sl:'seasonal'},
-  {sku:'HJM-HJ-500',n:'Hana Junmai',t:'Junmai · 500ml',r:'$38',w:'$30',by:'Kuramoto',mk:'2',st:'amber',sl:'limited'},
+  {sku:'HJM-FP-750',n:'Hajime Reserve',t:'Barrel Reserve · 750ml',r:'$48',w:'$38',by:'Hajime Production',mk:'5',st:'green',sl:'active'},
+  {sku:'HJM-JN-720',n:'Hajime Classic',t:'Signature Blend · 700ml',r:'$32',w:'$26',by:'Hajime Production',mk:'5',st:'green',sl:'active'},
+  {sku:'HJM-RY-500',n:'Hajime Botanical',t:'Botanical Gin · 500ml · limited',r:'$82',w:'$65',by:'Hajime Production',mk:'4',st:'green',sl:'active'},
+  {sku:'EU-FP-750',n:'Hajime Coastal',t:'Coastal Vodka · 750ml',r:'$52',w:'$42',by:'Coastal Craft',mk:'3',st:'green',sl:'active'},
+  {sku:'HJM-NG-720',n:'Hajime Spritz',t:'Sparkling RTD · 375ml',r:'$28',w:'$22',by:'Coastal Craft',mk:'2',st:'amber',sl:'seasonal'},
+  {sku:'HJM-HJ-500',n:'Hajime Citrus',t:'Citrus RTD · 500ml',r:'$38',w:'$30',by:'Hajime Production',mk:'2',st:'amber',sl:'limited'},
 ];
 let currentSkuIdx=0;
 function editSku(i){currentSkuIdx=i;nav('sku-detail');}
@@ -1320,7 +1503,7 @@ PAGES['sku-detail']=()=>{
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
           <div class="form-group"><label>Retail price</label><input type="text" id="sk-r" value="${s.r}"></div>
           <div class="form-group"><label>Wholesale price</label><input type="text" id="sk-w" value="${s.w}"></div>
-          <div class="form-group"><label>Produced by</label><select id="sk-by"><option ${s.by==='Kuramoto'?'selected':''}>Kuramoto</option><option ${s.by==='Echigo Kura'?'selected':''}>Echigo Kura</option></select></div>
+          <div class="form-group"><label>Produced by</label><select id="sk-by"><option ${s.by==='Hajime Production'?'selected':''}>Hajime Production</option><option ${s.by==='Coastal Craft'?'selected':''}>Coastal Craft</option></select></div>
           <div class="form-group"><label>Availability</label><select id="sk-sl"><option ${s.sl==='active'?'selected':''}>active</option><option ${s.sl==='seasonal'?'selected':''}>seasonal</option><option ${s.sl==='limited'?'selected':''}>limited</option></select></div>
         </div>
       </div>
@@ -1406,7 +1589,7 @@ PAGES.analytics=()=>`
       <div class="card-head"><div class="card-title">Top SKUs by volume</div><div class="card-sub">Cases sold · Q2</div></div>
       <table class="data-table">
         <thead><tr><th>SKU</th><th>Cases</th><th>Revenue</th><th>vs Q1</th></tr></thead>
-        <tbody>${[['Florin Peaks',2480,'$238K','+18%'],['Junmai Shiro',1240,'$79K','+9%'],['Ryusui Reserve',640,'$105K','+24%'],['First Press',480,'$50K','+6%']].map(r=>`<tr><td style="font-weight:500">${r[0]}</td><td class="mono">${r[1]}</td><td class="mono">${r[2]}</td><td style="color:hsl(158 56%32%);font-weight:500;font-size:12px">${r[3]}</td></tr>`).join('')}</tbody>
+        <tbody>${[['Hajime Reserve',2480,'$238K','+18%'],['Hajime Classic',1240,'$79K','+9%'],['Hajime Botanical',640,'$105K','+24%'],['Hajime Coastal',480,'$50K','+6%']].map(r=>`<tr><td style="font-weight:500">${r[0]}</td><td class="mono">${r[1]}</td><td class="mono">${r[2]}</td><td style="color:hsl(158 56%32%);font-weight:500;font-size:12px">${r[3]}</td></tr>`).join('')}</tbody>
       </table>
     </div>
   </div>
@@ -1425,7 +1608,7 @@ PAGES.settings=()=>`
         <div class="toggle-row"><div><div class="ti-label">Auto-approve reorders under $2,000</div><div class="ti-sub">From accounts in good standing within cadence</div></div><div class="toggle-sw on"></div></div>
         <div class="toggle-row"><div><div class="ti-label">Require approval for new accounts</div><div class="ti-sub">All onboarding routes through HQ</div></div><div class="toggle-sw on"></div></div>
         <div class="toggle-row"><div><div class="ti-label">Hold orders that breach cover floor</div><div class="ti-sub">Flag when a market drops below 21 days</div></div><div class="toggle-sw on"></div></div>
-        <div class="toggle-row"><div><div class="ti-label">Auto-route production requests</div><div class="ti-sub">Assign to kura by capacity and SKU</div></div><div class="toggle-sw"></div></div>
+        <div class="toggle-row"><div><div class="ti-label">Auto-route production requests</div><div class="ti-sub">Assign to distillery partners by capacity and SKU</div></div><div class="toggle-sw"></div></div>
       </div>
       <div class="card" style="padding:22px">
         <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Brand profile</div>
@@ -1441,7 +1624,7 @@ PAGES.settings=()=>`
       </div>
       <div class="card" style="padding:22px">
         <div style="font-size:14px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border)/.5)">Connected portals</div>
-        ${[['Manufacturer (Kura)','2 connected','green'],['Distributor','4 connected','green'],['Sales Rep','12 connected','green'],['Retail Store','83 connected','green']].map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid hsl(var(--border)/.3)"><div style="font-size:13px;font-weight:500">${p[0]}</div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:hsl(var(--muted-foreground))">${p[1]}</span>${pill(p[2],'live')}</div></div>`).join('')}
+        ${[['Distillery partners','2 connected','green'],['Distributor','4 connected','green'],['Sales Rep','12 connected','green'],['Retail Store','83 connected','green']].map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid hsl(var(--border)/.3)"><div style="font-size:13px;font-weight:500">${p[0]}</div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:hsl(var(--muted-foreground))">${p[1]}</span>${pill(p[2],'live')}</div></div>`).join('')}
       </div>
     </div>
   </div>

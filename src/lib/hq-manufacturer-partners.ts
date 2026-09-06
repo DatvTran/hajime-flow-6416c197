@@ -35,7 +35,7 @@ export type HqManufacturerPartnerConfig = {
   skus: string[];
   internalNotes?: string;
   status: Account["status"];
-  /** Login email the manufacturer signs in with — connects their portal to this HQ partner. */
+  /** Login email the distillery signs in with — connects their portal to this HQ partner. */
   portalLoginEmail?: string;
 };
 
@@ -48,7 +48,7 @@ const BASE: Record<HqManufacturerPartnerId, HqManufacturerPartnerConfig> = {
     name: "Kosapan Distillery",
     legalName: "Kosapan Distillery Co., Ltd.",
     sub: "Shizuoka, Japan · Tōji Ren Kosaka",
-    tier: "Preferred manufacturer partner",
+    tier: "Preferred distillery partner",
     tierIsPreferred: true,
     contactName: "Ren Kosaka",
     contactRole: "Master distiller",
@@ -78,7 +78,7 @@ const BASE: Record<HqManufacturerPartnerId, HqManufacturerPartnerConfig> = {
     name: "Kuramoto Brewing",
     legalName: "Kuramoto Brewing Co., Ltd.",
     sub: "Niigata, Japan · Tōji Haruki Sato",
-    tier: "Preferred manufacturer partner",
+    tier: "Preferred distillery partner",
     tierIsPreferred: true,
     contactName: "Haruki Sato",
     contactRole: "Master distiller",
@@ -108,7 +108,7 @@ const BASE: Record<HqManufacturerPartnerId, HqManufacturerPartnerConfig> = {
     name: "Echigo Kura",
     legalName: "Echigo Kura Ltd.",
     sub: "Niigata, Japan · Tōji Ken Mori",
-    tier: "Standard manufacturer partner",
+    tier: "Standard distillery partner",
     tierIsPreferred: false,
     contactName: "Ken Mori",
     contactRole: "Head brewer",
@@ -278,7 +278,7 @@ function notifyHiddenManufacturersChanged(): void {
   hiddenListeners.forEach((listener) => listener());
 }
 
-/** React external store — re-render lists when hidden manufacturers change. */
+/** React external store — re-render lists when hidden distilleries change. */
 export function subscribeHiddenManufacturers(listener: () => void): () => void {
   hiddenListeners.add(listener);
   return () => hiddenListeners.delete(listener);
@@ -311,7 +311,7 @@ function readHiddenIds(): Set<string> {
   return readHiddenIdsFromLocalStorage();
 }
 
-/** Apply hidden manufacturer ids from operational settings (called on app bootstrap). */
+/** Apply hidden distillery ids from operational settings (called on app bootstrap). */
 export function syncHiddenManufacturerIdsFromSettings(ids: string[] | undefined): void {
   if (ids === undefined) return;
   const normalized = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
@@ -356,7 +356,7 @@ export async function persistHiddenManufacturerIds(ids: string[]): Promise<void>
   });
 }
 
-/** Saved/active HQ partners must stay visible on the Manufacturers list. */
+/** Saved/active HQ partners must stay visible on the Distilleries list. */
 export async function ensureManufacturerPartnerVisible(id: HqManufacturerPartnerId): Promise<void> {
   // Local state may be stale or empty (fresh browser before settings sync) while the
   // server still hides this partner — pull the authoritative list first.

@@ -170,25 +170,31 @@ function storeTokens(tokens: AuthTokens | null) {
   }
 }
 
-// API helper with auth
+// API helper with auth — proactive refresh + retry on 401.
 async function apiFetch(path: string, options: RequestInit = {}) {
-  const tokens = getStoredTokens();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...((options.headers as Record<string, string>) || {}),
+  const { ensureFreshAccessToken, refreshAccessToken } = await import("@/lib/api-auth-fetch");
+
+  const doFetch = async (accessToken: string | null) => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...((options.headers as Record<string, string>) || {}),
+    };
+    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+    return fetch(`${API_URL}${path}`, { ...options, headers });
   };
 
-  if (tokens?.accessToken) {
-    headers["Authorization"] = `Bearer ${tokens.accessToken}`;
+  let accessToken = await ensureFreshAccessToken();
+  let response = await doFetch(accessToken);
+
+  if (response.status === 401 && getStoredTokens()?.refreshToken) {
+    const newAccess = await refreshAccessToken();
+    if (newAccess) {
+      accessToken = newAccess;
+      response = await doFetch(newAccess);
+    }
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers,
-  });
-
   if (response.status === 401) {
-    // Token expired - could implement refresh here
     storeTokens(null);
     throw new Error("Session expired. Please sign in again.");
   }
@@ -233,8 +239,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userData = await response.json();
         if (!cancelled) setUser(userFromAuthPayload(userData));
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
         console.warn("[Auth] Session check failed:", err);
-        storeTokens(null);
+        // Only wipe credentials on definitive auth failure — not timeouts/network blips.
+        // Wiping on timeout was leaving an expired access token with no refresh token,
+        // which surfaced as "Invalid or expired token" on NPR fetches.
+        if (/session expired|invalid or expired|sign in again/i.test(message)) {
+          storeTokens(null);
+        }
       } finally {
         if (timer) clearTimeout(timer);
         if (!cancelled) setIsLoading(false);
@@ -387,9 +399,9 @@ function pathMatches(pathname: string, base: string): boolean {
 
 /**
  * Role permissions — same AppData, different surfaces (spec §6).
- * Brand Operator: full HQ tower; creates production requests (POs). Manufacturer: executes POs, inventory, shipments — no PO creation in V1 UI.
+ * Brand Operator: full HQ tower; creates production requests (POs). Distillery: executes POs, inventory, shipments — no PO creation in V1 UI.
  * Distributor: fulfillment; read-only production requests (inbound context), no PO authoring or HQ settings. Retail: orders + catalog + tracking, no other accounts.
- * Sales Rep: accounts + drafts + field tools, no manufacturer or PO.
+ * Sales Rep: accounts + drafts + field tools, no distillery or PO.
  * Founder Admin: full access to everything.
  */
 export function canAccessPath(role: HajimeRole, pathname: string): boolean {
@@ -426,7 +438,7 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
   }
 
   // HQ-only pages: incentives and product development — HQ operator roles only
-  const hqOnlyPaths = ["/incentives", "/product-development"];
+  const hqOnlyPaths = ["/incentives", "/product-development", "/expo-leads"];
   const isHqOnly = hqOnlyPaths.some(base => pathMatches(p, base));
 
   if (isHqOnly) {
@@ -468,7 +480,7 @@ export function canAccessPath(role: HajimeRole, pathname: string): boolean {
 
   if (role === "finance") {
     // Finance has read access to most areas except HQ settings / CRM
-    if (pathMatches(p, "/settings") || pathMatches(p, "/crm")) {
+    if (pathMatches(p, "/settings") || pathMatches(p, "/crm") || pathMatches(p, "/expo-leads")) {
       return false;
     }
     return true;
@@ -494,7 +506,7 @@ export function homePathForRole(role: HajimeRole): string {
   return "/";
 }
 
-/** After login, avoid sending users to routes their role cannot open (e.g. manufacturer + `/`). */
+/** After login, avoid sending users to routes their role cannot open (e.g. distillery + `/`). */
 export function postLoginDestination(role: HajimeRole, from?: string | null): string {
   const home = homePathForRole(role);
   if (!from || from === "/login") return home;

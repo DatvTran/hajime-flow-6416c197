@@ -3,6 +3,7 @@ import {
   HQ_MANUFACTURER_PARTNER_IDS,
   isHqManufacturerPartnerId,
   loadHqManufacturerPartner,
+  resolveHqManufacturerPartnerId,
 } from "@/lib/hq-manufacturer-partners";
 
 export type HqManufacturerPickerOption = {
@@ -23,7 +24,7 @@ export function guaranteedHqPartnerPickerOptions(): HqManufacturerPickerOption[]
       label: p.name,
       email: (p.portalLoginEmail || p.email)?.trim() || undefined,
       sub: p.sub,
-      // Partner id is the stable link for manufacturer portal scoping (POs + NPRs).
+      // Partner id is the stable link for distillery portal scoping (POs + NPRs).
       crmMemberId: id,
       hasProfile: true,
     };
@@ -44,7 +45,7 @@ export function accountsToManufacturerPickerOptions(accounts: Account[]): HqManu
     .filter((row) => row.label.length > 0);
 }
 
-/** Manufacturer profiles only — CRM contacts without a Manufacturers profile are excluded. */
+/** Distillery profiles only — CRM contacts without a Distilleries profile are excluded. */
 export function buildHqManufacturerPickerOptions(
   apiRows: HqManufacturerPickerOption[],
   _accounts: Account[] = [],
@@ -52,7 +53,8 @@ export function buildHqManufacturerPickerOptions(
   // API is profile-first; ignore CRM-only rows if any older clients still send them.
   const profileRows = apiRows.filter((row) => row.hasProfile !== false && Boolean(row.label?.trim()));
 
-  const seeds = [...profileRows, ...guaranteedHqPartnerPickerOptions()];
+  // Prefer guaranteed partner:* keys so HQ assignments store kosapan/kuramoto/echigo.
+  const seeds = [...guaranteedHqPartnerPickerOptions(), ...profileRows];
 
   const seenLabels = new Set<string>();
   const seenEmails = new Set<string>();
@@ -66,6 +68,19 @@ export function buildHqManufacturerPickerOptions(
     if (email && seenEmails.has(email)) continue;
     seenLabels.add(norm);
     if (email) seenEmails.add(email);
+    // Normalize known partners to partner:<id> even if API sent a CRM uuid key.
+    const partnerId = resolveHqManufacturerPartnerId(
+      row.key.startsWith("partner:") ? row.key.slice("partner:".length) : row.key,
+    ) ?? resolveHqManufacturerPartnerId(row.label);
+    if (partnerId) {
+      merged.push({
+        ...row,
+        key: `partner:${partnerId}`,
+        crmMemberId: partnerId,
+        hasProfile: true,
+      });
+      continue;
+    }
     merged.push(row);
   }
 
@@ -89,7 +104,7 @@ export type ManufacturerPickerHint = {
   label?: string;
 };
 
-/** Resolve a picker key from a manufacturer profile id and/or display label. */
+/** Resolve a picker key from a distillery profile id and/or display label. */
 export function resolveManufacturerPickerKey(
   choices: HqManufacturerPickerOption[],
   hint?: ManufacturerPickerHint | null,
@@ -137,7 +152,7 @@ export function resolveManufacturerPickerKey(
   return null;
 }
 
-/** Link from a manufacturer profile to a pre-assigned new production request. */
+/** Link from a distillery profile to a pre-assigned new production request. */
 export function newProductionRequestPath(manufacturerId: string, manufacturerLabel?: string): string {
   const params = new URLSearchParams();
   params.set("manufacturer", manufacturerId);

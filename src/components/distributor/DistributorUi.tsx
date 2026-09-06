@@ -89,6 +89,7 @@ export function DistributorKpiCard({
   label,
   value,
   sub,
+  rawSub,
   delta,
   to,
   onClick,
@@ -98,6 +99,7 @@ export function DistributorKpiCard({
   label: string;
   value: string;
   sub?: string;
+  rawSub?: boolean;
   delta?: ReactNode;
   to?: string;
   onClick?: () => void;
@@ -112,7 +114,7 @@ export function DistributorKpiCard({
       <p className="dist-kpi-val font-display text-[26px] font-semibold tabular-nums leading-none tracking-[-0.02em]">
         {value}
       </p>
-      {sub ? <p className="dist-kpi-sub text-xs text-muted-foreground">{t(sub)}</p> : null}
+      {sub ? <p className="dist-kpi-sub text-xs text-muted-foreground">{rawSub ? sub : t(sub)}</p> : null}
       {delta ? <div className="dist-kpi-delta mt-0.5 text-[11px] font-medium">{delta}</div> : null}
     </>
   );
@@ -142,17 +144,23 @@ export function DistributorCardHead({
   title,
   subtitle,
   actions,
+  rawTitle,
+  rawSubtitle,
 }: {
   title: string;
   subtitle?: string;
   actions?: ReactNode;
+  rawTitle?: boolean;
+  rawSubtitle?: boolean;
 }) {
   const { t } = useLanguage();
   return (
     <div className="dist-card-head">
       <div>
-        <div className="dist-card-title">{t(title)}</div>
-        {subtitle ? <div className="dist-card-sub mt-0.5">{t(subtitle)}</div> : null}
+        <div className="dist-card-title">{rawTitle ? title : t(title)}</div>
+        {subtitle ? (
+          <div className="dist-card-sub mt-0.5">{rawSubtitle ? subtitle : t(subtitle)}</div>
+        ) : null}
       </div>
       {actions}
     </div>

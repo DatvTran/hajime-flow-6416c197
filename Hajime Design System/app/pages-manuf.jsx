@@ -1,4 +1,4 @@
-// app/pages-manuf.jsx — Manufacturer pages
+// app/pages-manuf.jsx — Distillery pages
 
 function ManufDashboard() {
   const { pos, shipments } = useStore();
@@ -7,7 +7,7 @@ function ManufDashboard() {
   const shipped = pos.filter(p => p.status === 'shipped');
   return (
     <AppShell breadcrumb={['Overview']}>
-      <PageHead title="Overview" eyebrow="Yamato Distillery · Manufacturer portal"
+      <PageHead title="Overview" eyebrow="Yamato Distillery · Distillery portal"
         sub="Production pipeline, POs in, shipments out. Nothing commercial."
         actions={<Btn v="accent" icon={IC.factory}>Log update</Btn>}/>
       <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24}}>
@@ -97,7 +97,7 @@ function ManufShipOut({ shipments }) {
   );
 }
 
-// ─── Manufacturer POs in ─────────────────────────────────────
+// ─── Distillery POs in ─────────────────────────────────────
 function ManufPOsIn() {
   const { pos, approvePO } = useStore();
   return (
@@ -128,7 +128,7 @@ function ManufPOsIn() {
   );
 }
 
-// ─── Manufacturer specs ───────────────────────────────────────
+// ─── Distillery specs ───────────────────────────────────────
 function ManufSpecs() {
   return (
     <AppShell breadcrumb={['Product specs']}>
@@ -151,7 +151,7 @@ function ManufSpecs() {
   );
 }
 
-// ─── Manufacturer profile ─────────────────────────────────────
+// ─── Distillery profile ─────────────────────────────────────
 function ManufProfile() {
   return (
     <AppShell breadcrumb={['Profile']}>

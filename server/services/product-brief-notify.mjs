@@ -3,7 +3,7 @@ function clientBaseUrl() {
 }
 
 /**
- * Notify manufacturer contact that a product development brief was submitted.
+ * Notify distillery contact that a product development brief was submitted.
  * Uses Resend when RESEND_API_KEY is set; otherwise logs the portal link.
  */
 export async function sendProductBriefSubmittedEmail({
@@ -15,7 +15,7 @@ export async function sendProductBriefSubmittedEmail({
 }) {
   const recipient = String(to ?? '').trim().toLowerCase();
   if (!recipient) {
-    console.log('[Product Brief] No manufacturer email — skipping notification');
+    console.log('[Product Brief] No distillery email — skipping notification');
     return { sent: false, skipped: true, reason: 'no_email' };
   }
 
@@ -33,7 +33,7 @@ export async function sendProductBriefSubmittedEmail({
     '',
     `Product: ${product}`,
     '',
-    'Review feasibility, costing, and timeline in your Hajime manufacturer portal:',
+    'Review feasibility, costing, and timeline in your Hajime distillery portal:',
     portalUrl,
     '',
     'This brief is for your facility only. If you did not expect it, contact your Hajime brand partner.',
@@ -72,7 +72,7 @@ export async function sendProductBriefSubmittedEmail({
 }
 
 /**
- * Remind assigned manufacturer to respond to a feasibility review.
+ * Remind assigned distillery to respond to a feasibility review.
  */
 export async function sendProductBriefNudgeEmail({
   to,
@@ -83,7 +83,7 @@ export async function sendProductBriefNudgeEmail({
 }) {
   const recipient = String(to ?? '').trim().toLowerCase();
   if (!recipient) {
-    console.log('[Product Brief] Nudge skipped — no manufacturer email');
+    console.log('[Product Brief] Nudge skipped — no distillery email');
     return { sent: false, skipped: true, reason: 'no_email' };
   }
 
@@ -99,7 +99,7 @@ export async function sendProductBriefNudgeEmail({
     '',
     `${org} sent a reminder about product development brief ${ref} (${product}).`,
     '',
-    'Please review feasibility, costing, and timeline in your Hajime manufacturer portal:',
+    'Please review feasibility, costing, and timeline in your Hajime distillery portal:',
     portalUrl,
     '',
     'If you have questions, reply to your Hajime brand partner.',
@@ -138,7 +138,7 @@ export async function sendProductBriefNudgeEmail({
 }
 
 /**
- * Notify the assigned manufacturer that HQ issued a production reorder (same SKU, qty + destination).
+ * Notify the assigned distillery that HQ issued a production reorder (same SKU, qty + destination).
  */
 export async function sendProductionRequestIssuedEmail({
   to,
@@ -151,7 +151,7 @@ export async function sendProductionRequestIssuedEmail({
 }) {
   const recipient = String(to ?? '').trim().toLowerCase();
   if (!recipient) {
-    console.log('[Production Request] No manufacturer email — skipping notification');
+    console.log('[Production Request] No distillery email — skipping notification');
     return { sent: false, skipped: true, reason: 'no_email' };
   }
 
@@ -173,7 +173,7 @@ export async function sendProductionRequestIssuedEmail({
     `Quantity: ${qty} bottles`,
     `Destination: ${dest}`,
     '',
-    'Confirm the spec and schedule the batch in your Hajime manufacturer portal:',
+    'Confirm the spec and schedule the batch in your Hajime distillery portal:',
     portalUrl,
     '',
     'This request is for your facility only. If you did not expect it, contact your Hajime brand partner.',

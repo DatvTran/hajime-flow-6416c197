@@ -72,7 +72,7 @@ export function HqReplenishmentOrdersView({
     <HqOperatorPage className="space-y-6">
       <HqOperatorPageHeader
         title="Replenishment orders"
-        description="Pallet orders from distributors to restock their DCs — approve to ship from finished goods. Short stock triggers a production request to a manufacturer partner."
+        description="Pallet orders from distributors to restock their DCs — approve to ship from finished goods. Short stock triggers a production request to a distillery partner."
         actions={
           <HqBtnLink to="/inventory" variant="outline" size="sm">
             {t("Finished goods")}

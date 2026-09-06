@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { Bell, Factory, Search } from "lucide-react";
+import { Bell, FileText, Search } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { hqRouteChrome } from "@/lib/hq-chrome";
 import { HqOperatorSidebar } from "@/components/hq/HqOperatorSidebar";
@@ -54,9 +54,9 @@ export function HqOperatorLayout() {
           <div className="crumbs min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
             HQ › <strong className="font-medium text-foreground">{t(page)}</strong>
           </div>
-          <Link to="/production-requests" className="hq-btn hq-btn-accent hq-btn-sm shrink-0 no-underline" aria-label={t("Production")}>
-            <Factory className="size-3.5" strokeWidth={1.75} />
-            <span className="hidden min-[400px]:inline">{t("Production")}</span>
+          <Link to="/export-orders" className="hq-btn hq-btn-accent hq-btn-sm shrink-0 no-underline" aria-label={t("Export orders")}>
+            <FileText className="size-3.5" strokeWidth={1.75} />
+            <span className="hidden min-[400px]:inline">{t("Export")}</span>
           </Link>
         </header>
 
@@ -72,9 +72,9 @@ export function HqOperatorLayout() {
               <Bell className="size-4" strokeWidth={1.75} />
               <span className="absolute right-[9px] top-2 size-1.5 rounded-full border border-background bg-[hsl(0_68%_48%)]" />
             </Link>
-            <Link to="/production-requests" className="hq-btn hq-btn-accent no-underline">
-              <Factory className="size-3.5" strokeWidth={1.75} />
-              {t("Production requests")}
+            <Link to="/export-orders" className="hq-btn hq-btn-accent no-underline">
+              <FileText className="size-3.5" strokeWidth={1.75} />
+              {t("Export orders")}
             </Link>
           </div>
         </header>

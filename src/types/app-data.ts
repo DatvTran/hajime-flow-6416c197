@@ -30,15 +30,17 @@ export type OperationalSettings = {
   companyName?: string;
   primaryMarkets?: string;
   manufacturerName?: string;
-  /** HQ-controlled support contact email — surfaced on Manufacturer & Distributor support. */
+  /** HQ-controlled support contact email — surfaced on Distillery & Distributor support. */
   supportEmail?: string;
-  /** Manufacturer partner / account ids hidden from HQ Manufacturers (persisted server-side). */
+  /** Distillery partner / account ids hidden from HQ Distilleries (persisted server-side). */
   hqHiddenManufacturerIds?: string[];
-  /** HQ manufacturer partner overrides keyed by partner id (kosapan, kuramoto, echigo). */
+  /** HQ distillery partner overrides keyed by partner id (kosapan, kuramoto, echigo). */
   hqManufacturerPartnerConfigs?: Record<string, unknown>;
+  /** HQ Settings approval / notification toggles (persisted on operational_settings). */
+  hqUiPreferences?: Record<string, boolean>;
 };
 
-/** Multi-node cash visibility: retailer → wholesaler → manufacturer (demo ledger). */
+/** Multi-node cash visibility: retailer → wholesaler → distillery (demo ledger). */
 export type FinancingLedgerEntry = {
   id: string;
   at: string;
@@ -109,7 +111,7 @@ export type ManufacturerProfileEquipment = {
   status: "operational" | "maintenance" | "offline";
 };
 
-/** Manufacturer portal profile (UI state; persisted via `/api/v1/manufacturer-profiles`). */
+/** Distillery portal profile (UI state; persisted via `/api/v1/manufacturer-profiles`). */
 export type ManufacturerProfile = {
   id?: string;
   manufacturerId?: string;
@@ -166,7 +168,7 @@ export type AppData = {
   financingLedger?: FinancingLedgerEntry[];
   /** Field visit notes — synced across roles via AppData (replaces localStorage-only). */
   visitNotes?: VisitNoteEntry[];
-  /** New product development requests — brand → manufacturer → production PO pipeline. */
+  /** New product development requests — brand → distillery → production PO pipeline. */
   newProductRequests?: NewProductRequest[];
   /** Distributor-reported depletion data — actual sell-through vs orders. */
   depletionReports?: import("@/data/mockData").DepletionReport[];
@@ -174,9 +176,9 @@ export type AppData = {
   inventoryAdjustmentRequests?: import("@/data/mockData").InventoryAdjustmentRequest[];
   /** Warehouse / depot directory (Settings-managed). */
   warehouses?: Warehouse[];
-  /** Manufacturer portal company profile (Manufacturer Profile page). */
+  /** Distillery portal company profile (Distillery Profile page). */
   manufacturerProfile?: ManufacturerProfile;
-  /** Manufacturer finished-goods lots — bottling output, decremented by outbound shipments. */
+  /** Distillery finished-goods lots — bottling output, decremented by outbound shipments. */
   manufacturerFinishedGoods?: import("@/lib/manufacturer-finished-goods").FinishedGoodsRow[];
 };
 

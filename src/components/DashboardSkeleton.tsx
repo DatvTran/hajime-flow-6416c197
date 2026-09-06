@@ -364,7 +364,7 @@ export function DashboardSkeleton() {
             </CardContent>
           </Card>
 
-          {/* Manufacturer */}
+          {/* Distillery */}
           <Card className="card-elevated border-border/70 shadow-none">
             <CardHeader className="border-b border-border/50 p-5 pb-3 flex flex-row items-center justify-between space-y-0">
               <Skeleton className="h-5 w-24 rounded" />

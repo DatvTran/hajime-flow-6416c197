@@ -72,7 +72,7 @@ export function computeHqManufacturersKpi(
     casesInProduction,
     qualityGrade: "A",
     openRequests,
-    kuraCount: Math.max(1, rowCount),
+    kuraCount: rowCount,
     useDesignDemo: false,
   };
 }
@@ -88,8 +88,8 @@ function rowFromAccount(acc: Account, pos: PurchaseOrder[]): HqManufacturerListR
   const inProd = mPos.filter((po) => po.status === "in-production" || po.status === "approved").length;
   const tags = (acc.tags ?? []).map((t) => t.toLowerCase());
   const tier = tags.some((t) => t.includes("preferred") || t.includes("gold"))
-    ? "Preferred manufacturer partner"
-    : "Standard manufacturer partner";
+    ? "Preferred distillery partner"
+    : "Standard distillery partner";
 
   return {
     id: acc.id,
@@ -133,7 +133,7 @@ function rowFromPoManufacturer(manufacturerName: string, pos: PurchaseOrder[]): 
     id: slug,
     name: manufacturerName.trim(),
     sub: "Production partner",
-    tier: "Preferred manufacturer partner",
+    tier: "Preferred distillery partner",
     quality: "98.0%",
     onTime: `${onTimePct}%`,
     cap: `${Math.max(active, 1) * 800} cs/Q`,
@@ -210,8 +210,8 @@ function rowFromProfile(p: ManufacturerProfile, pos: PurchaseOrder[]): HqManufac
       p.id ||
       name.toLowerCase().replace(/\s+/g, "-"),
     name,
-    sub: [p.address.city, p.address.country].filter(Boolean).join(" · ") || "Manufacturer partner",
-    tier: "Preferred manufacturer partner",
+    sub: [p.address.city, p.address.country].filter(Boolean).join(" · ") || "Distillery partner",
+    tier: "Preferred distillery partner",
     quality: "98.6%",
     onTime: `${onTimePct}%`,
     cap: `${Math.max(inProd, 1) * 660} cs/Q`,
@@ -241,7 +241,11 @@ export function buildHqManufacturerListRows(
   const mergedAccounts = mergeHqManufacturerAccountsForDisplay(accounts);
   const pos = productionPos(purchaseOrders);
 
-  const partnerRows = listHqManufacturerPartnersForProfilesList(profiles).map(configToListRow);
+  const partnerRows = listHqManufacturerPartnersForProfilesList(profiles)
+    .filter((c) =>
+      profiles.some((p) => resolveHqManufacturerPartnerId(p.manufacturerId || p.id || p.companyName) === c.id),
+    )
+    .map(configToListRow);
 
   const profileRows = profiles
     .filter(
@@ -284,12 +288,10 @@ export function buildHqManufacturerListRows(
   ]);
   const poRows = rowsFromPoManufacturers(pos, combined);
   const merged = overlayPartnerConfigOnRows(dedupeManufacturerRows([...combined, ...poRows]));
-  const mfrAccountCount = manufacturerAccounts(mergedAccounts).length;
-  const useDemo = merged.some((r) => isHqManufacturerPartnerId(r.id));
 
   return {
     rows: filterHiddenManufacturerRows(merged),
-    useDesignDemo: useDemo && mfrAccountCount < 3 && profileRows.length === 0,
+    useDesignDemo: false,
   };
 }
 

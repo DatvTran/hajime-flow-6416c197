@@ -62,7 +62,7 @@ function hqRequestStatus(po: PurchaseOrder): {
     case "draft":
       return { tone: "amber", label: "to issue" };
     case "approved":
-      return { tone: "blue", label: "awaiting manufacturer" };
+      return { tone: "blue", label: "awaiting distillery" };
     case "in-production":
       return { tone: "green", label: "in production" };
     case "delayed":
@@ -146,7 +146,7 @@ function ProductionRequestChangePanel({
         </div>
       </div>
       <div className="hq-appr-form-group mb-3">
-        <label htmlFor={`prchg-msg-${po.id}`}>{t("Message to manufacturer")}</label>
+        <label htmlFor={`prchg-msg-${po.id}`}>{t("Message to distillery")}</label>
         <textarea
           id={`prchg-msg-${po.id}`}
           rows={3}
@@ -227,7 +227,7 @@ export function HqProductionRequestsView({
     <HqOperatorPage className="space-y-6">
       <HqOperatorPageHeader
         title="Production requests"
-        description="Reorder an existing SKU from a manufacturer — raise or lower quantity and ship to the warehouse or market you need. New drink concepts belong in Product Development; distributor restock lives under Orders."
+        description="Reorder an existing SKU from a distillery — raise or lower quantity and ship to the warehouse or market you need. New drink concepts belong in Product Development; distributor restock lives under Orders."
         actions={
           <div className="flex flex-wrap gap-2">
             <HqBtn variant="outline" size="sm" type="button">
@@ -319,7 +319,7 @@ export function HqProductionRequestsView({
                             dismissCard(po.id, () => onApprove(po));
                           }}
                         >
-                          {t("Issue to manufacturer")}
+                          {t("Issue to distillery")}
                         </HqBtn>
                       </div>
                     ) : (
@@ -343,7 +343,7 @@ export function HqProductionRequestsView({
                       </div>
                       <div className="hq-detail-panel">
                         <div className="hq-detail-label">{t("Once issued")}</div>
-                        <div className="text-[13px] font-medium">{t("Manufacturer accepts & schedules batch")}</div>
+                        <div className="text-[13px] font-medium">{t("Distillery accepts & schedules batch")}</div>
                         <div className="text-[11px] text-muted-foreground">{t("finished goods → distributors")}</div>
                       </div>
                     </div>
@@ -366,7 +366,7 @@ export function HqProductionRequestsView({
                               onClick={() => dismissCard(po.id, () => onApprove(po))}
                             >
                               <Check className="size-3.5" strokeWidth={2} />
-                              {t("Issue to manufacturer")}
+                              {t("Issue to distillery")}
                             </HqBtn>
                           ) : (
                             <HqBtn variant="outline" size="sm" type="button" onClick={() => onSelect(po.id)}>

@@ -28,7 +28,7 @@ function isDemoFinishedGoods(row: FinishedGoodsRow): boolean {
 }
 
 /**
- * Manufacturer portal used to hydrate with Kirin/sake seed rows when the API was empty.
+ * Distillery portal used to hydrate with Kirin/sake seed rows when the API was empty.
  * Strip those leftovers only — keep real HQ-issued production requests for any partner.
  */
 export function scrubManufacturerPortalDemoData(data: AppData): AppData {

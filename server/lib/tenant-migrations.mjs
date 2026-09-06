@@ -4,7 +4,12 @@ import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/** Business schema only — platform registry migrations (028+) must not run on distributor DBs. */
+/**
+ * Business schema only — platform registry migrations (028+) must not run on isolated
+ * distributor DBs. Export/expo tables (046+) live on the platform DB.
+ * If DISTRIBUTOR_ISOLATION=schema (one Supabase project), this cap is not the tenant
+ * wall — row `tenant_id` + RLS is. Isolated `database` mode still skips 028+.
+ */
 export const TENANT_MIGRATION_MAX = 27;
 
 const migrationsDir = path.join(__dirname, '..', 'migrations');
@@ -37,7 +42,7 @@ export function createTenantMigrationSource() {
 }
 
 /**
- * Apply tenant/business migrations (001–027) to an isolated distributor database.
+ * Apply tenant/business migrations (001–027) to an isolated distributor schema/database.
  * @param {import('knex').Knex} knex
  */
 export async function runTenantMigrations(knex) {

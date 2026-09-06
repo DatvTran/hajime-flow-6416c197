@@ -14,9 +14,9 @@ function kindLabel(k: FinancingLedgerEntry["kind"]): string {
     case "retailer_to_wholesaler":
       return "Retail → wholesaler";
     case "wholesaler_to_manufacturer":
-      return "Wholesaler → manufacturer";
+      return "Wholesaler → distillery";
     case "manufacturer_receipt":
-      return "Manufacturer receipt";
+      return "Distillery receipt";
     default:
       return k;
   }
@@ -61,7 +61,7 @@ export default function FinancePaymentsPage() {
       status: "recorded",
       at: new Date().toISOString(),
     });
-    toast.success("Payment recorded", { description: "Ledger updated — manufacturer can confirm receipt." });
+    toast.success("Payment recorded", { description: "Ledger updated — distillery can confirm receipt." });
     setMfgAmount("");
     setMfgNote("");
     setPoId("");
@@ -87,9 +87,9 @@ export default function FinancePaymentsPage() {
         title="Payments & receivables"
         description={
           user.role === "brand_operator"
-            ? "Full network visibility: retail collections, wholesaler remits to manufacturer, and manufacturer confirmations."
+            ? "Full network visibility: retail collections, wholesaler remits to distillery, and distillery confirmations."
             : user.role === "distributor"
-              ? "Record wholesaler payments to the manufacturer against POs. Retail payments appear when orders are marked paid."
+              ? "Record wholesaler payments to the distillery against POs. Retail payments appear when orders are marked paid."
               : "Confirm inbound payments from the distribution network (demo ledger)."
         }
       />
@@ -101,7 +101,7 @@ export default function FinancePaymentsPage() {
             <p className="mt-2 font-display text-2xl font-semibold tabular-nums">${totalRetailToWh.toLocaleString()} CAD</p>
           </div>
           <div className="card-interactive p-4">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Wholesaler → manufacturer</p>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Wholesaler → distillery</p>
             <p className="mt-2 font-display text-2xl font-semibold tabular-nums">${totalWhToMfg.toLocaleString()} CAD</p>
           </div>
           <div className="card-interactive p-4">
@@ -114,8 +114,8 @@ export default function FinancePaymentsPage() {
       {(user.role === "distributor" || user.role === "brand_operator") && (
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle className="font-display text-lg">Record wholesaler → manufacturer payment</CardTitle>
-            <p className="text-sm text-muted-foreground">Tie to a production request when applicable — manufacturer sees it in this same ledger.</p>
+            <CardTitle className="font-display text-lg">Record wholesaler → distillery payment</CardTitle>
+            <p className="text-sm text-muted-foreground">Tie to a production request when applicable — distillery sees it in this same ledger.</p>
           </CardHeader>
           <CardContent>
             <form onSubmit={recordWhToMfg} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

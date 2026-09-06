@@ -1,6 +1,10 @@
 import type { NewProductRequest } from "@/data/mockData";
 import { formatBaseSpiritLabel } from "@/lib/base-spirit-options";
 import { nprConceptBrief, nprConceptSummary } from "@/lib/hq-product-development-display";
+import {
+  hasProductionSpecContent,
+  NprProductionSpecPanel,
+} from "@/components/npr/NprProductionSpecPanel";
 
 function BriefCell({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -21,6 +25,7 @@ type Props = {
 /** Product brief panel — mirrors HQ Product Development / detail brief fields. */
 export function NprProductBriefPanel({ request, title = "Product brief from Hajime HQ" }: Props) {
   const conceptBrief = nprConceptBrief(request);
+  const showProductionSpec = hasProductionSpecContent(request.specs.productionSpec);
 
   return (
     <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
@@ -69,6 +74,12 @@ export function NprProductBriefPanel({ request, title = "Product brief from Haji
           </div>
         ) : null}
       </div>
+      {showProductionSpec ? (
+        <div className="border-t border-border/50 pt-3">
+          <h5 className="mb-3 font-display text-sm font-medium">Production specification</h5>
+          <NprProductionSpecPanel productionSpec={request.specs.productionSpec} />
+        </div>
+      ) : null}
     </div>
   );
 }

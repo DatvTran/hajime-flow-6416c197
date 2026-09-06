@@ -3263,7 +3263,7 @@ function HQPurchaseOrders() {
       label: 'Region'
     }, {
       key: 'mfr',
-      label: 'Manufacturer'
+      label: 'Distillery'
     }, {
       key: 'requested',
       label: 'Requested',
@@ -6861,7 +6861,7 @@ Object.assign(window, {
 
 // app/pages-manuf.jsx
 try { (() => {
-// app/pages-manuf.jsx — Manufacturer pages
+// app/pages-manuf.jsx — Distillery pages
 
 function ManufDashboard() {
   const {
@@ -6875,7 +6875,7 @@ function ManufDashboard() {
     breadcrumb: ['Overview']
   }, /*#__PURE__*/React.createElement(PageHead, {
     title: "Overview",
-    eyebrow: "Yamato Distillery \xB7 Manufacturer portal",
+    eyebrow: "Yamato Distillery \xB7 Distillery portal",
     sub: "Production pipeline, POs in, shipments out. Nothing commercial.",
     actions: /*#__PURE__*/React.createElement(Btn, {
       v: "accent",
@@ -7143,7 +7143,7 @@ function ManufShipOut({
   })))));
 }
 
-// ─── Manufacturer POs in ─────────────────────────────────────
+// ─── Distillery POs in ─────────────────────────────────────
 function ManufPOsIn() {
   const {
     pos,
@@ -7215,7 +7215,7 @@ function ManufPOsIn() {
   })));
 }
 
-// ─── Manufacturer specs ───────────────────────────────────────
+// ─── Distillery specs ───────────────────────────────────────
 function ManufSpecs() {
   return /*#__PURE__*/React.createElement(AppShell, {
     breadcrumb: ['Product specs']
@@ -7260,7 +7260,7 @@ function ManufSpecs() {
   })));
 }
 
-// ─── Manufacturer profile ─────────────────────────────────────
+// ─── Distillery profile ─────────────────────────────────────
 function ManufProfile() {
   return /*#__PURE__*/React.createElement(AppShell, {
     breadcrumb: ['Profile']
@@ -9386,7 +9386,7 @@ function PODetail() {
     t: po.status !== 'pending' ? po.requested : '—',
     done: po.status !== 'pending'
   }, {
-    s: 'Acknowledged by manufacturer',
+    s: 'Acknowledged by distillery',
     t: po.status === 'in-production' || po.status === 'shipped' || po.status === 'delivered' ? po.requested : '—',
     done: ['in-production', 'shipped', 'delivered'].includes(po.status)
   }, {
@@ -9569,7 +9569,7 @@ function PODetail() {
       fontWeight: 500,
       marginBottom: 14
     }
-  }, "Order details"), [['PO ID', po.id], ['SKU', po.sku], ['Manufacturer', po.mfr], ['Destination', po.region], ['Requested', po.requested], ['Target ship', po.shipDate || '—'], ['Status', po.status]].map(([l, v]) => /*#__PURE__*/React.createElement("div", {
+  }, "Order details"), [['PO ID', po.id], ['SKU', po.sku], ['Distillery', po.mfr], ['Destination', po.region], ['Requested', po.requested], ['Target ship', po.shipDate || '—'], ['Status', po.status]].map(([l, v]) => /*#__PURE__*/React.createElement("div", {
     key: l,
     style: {
       display: 'flex',
@@ -11970,7 +11970,7 @@ const ROLES_CFG = {
     name: 'Sora Okuda'
   },
   manuf: {
-    label: 'Manufacturer',
+    label: 'Distillery',
     sub: 'Yamato Distillery',
     color: 'hsl(15 60% 45%)',
     initials: 'YI',
@@ -12621,7 +12621,7 @@ function LoginPage() {
   }, {
     id: 'manuf',
     icon: IC.factory,
-    label: 'Manufacturer',
+    label: 'Distillery',
     sub: 'Production & export',
     mark: '⚙'
   }, {
@@ -15295,7 +15295,7 @@ function CoverSlide() {
       marginTop: 36,
       fontFamily: J.body
     }
-  }, "A redesign of the Hajime Supply Chain OS journeys \u2014 Brand Operator, Manufacturer, Distributor, Sales Rep, Retail Store \u2014 with the cross-role handoffs treated as first-class moments rather than coincidences of the dataset."), /*#__PURE__*/React.createElement("div", {
+  }, "A redesign of the Hajime Supply Chain OS journeys \u2014 Brand Operator, Distillery, Distributor, Sales Rep, Retail Store \u2014 with the cross-role handoffs treated as first-class moments rather than coincidences of the dataset."), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       gap: 72,
@@ -15375,7 +15375,7 @@ function OverviewSlide() {
   }, {
     key: 'manuf',
     ic: I.factory,
-    label: 'Manufacturer',
+    label: 'Distillery',
     who: 'Imanishi-san · Yamato Distillery',
     jobs: 'Receives POs, ships finished cases',
     sees: 'Approved POs · packaging specs'
@@ -15645,7 +15645,7 @@ function OverviewSlide() {
     },
     role: "manuf",
     ic: I.factory,
-    label: "Manufacturer"
+    label: "Distillery"
   }), /*#__PURE__*/React.createElement(RoleNode, {
     style: {
       top: 240,
@@ -16743,7 +16743,7 @@ function HqContextSlide() {
   const pains = [{
     ic: I.alert,
     title: 'Approvals scattered across modules',
-    detail: 'Drafts from sales reps, distributor restock requests, and POs to manufacturer all live on different tabs. Triage requires three-tab juggling.'
+    detail: 'Drafts from sales reps, distributor restock requests, and POs to distillery all live on different tabs. Triage requires three-tab juggling.'
   }, {
     ic: I.clock,
     title: 'Blocking states are invisible',
@@ -16850,7 +16850,7 @@ function HqContextSlide() {
       lineHeight: 1.7,
       color: J.ink
     }
-  }, /*#__PURE__*/React.createElement("li", null, "Clear the queue before noon \u2014 distributors can't pick until she does"), /*#__PURE__*/React.createElement("li", null, "Spot the market that's drifting before it becomes a stockout"), /*#__PURE__*/React.createElement("li", null, "Keep manufacturer cadence steady; never run safety stock to zero"))), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("li", null, "Clear the queue before noon \u2014 distributors can't pick until she does"), /*#__PURE__*/React.createElement("li", null, "Spot the market that's drifting before it becomes a stockout"), /*#__PURE__*/React.createElement("li", null, "Keep distillery cadence steady; never run safety stock to zero"))), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 20,
       padding: 14,
@@ -17100,7 +17100,7 @@ function HqTodaySlide() {
     tone: "amber",
     title: "PO #2026-0418 \xB7 Yamato Distillery",
     meta: "Lead time 21d \xB7 safety stock breach in 6d",
-    downstream: "Manufacturer queued",
+    downstream: "Distillery queued",
     act: "Sign"
   }), /*#__PURE__*/React.createElement(ApprovalRow, {
     rank: "04",
@@ -17511,7 +17511,7 @@ function HqApprovalsSlide() {
     role: "Brand Operator \xB7 HQ",
     stage: "Screen 02 \xB7 Approvals queue",
     title: "One queue. Every blocker, every type, ranked by who's waiting.",
-    subtitle: "New surface. SR drafts, distributor restocks, manufacturer POs and allocation conflicts merge into a single triage stream. Each row carries its consequence \u2014 who unblocks when she clicks.",
+    subtitle: "New surface. SR drafts, distributor restocks, distillery POs and allocation conflicts merge into a single triage stream. Each row carries its consequence \u2014 who unblocks when she clicks.",
     slideNo: "05",
     totalForRole: "14"
   }), /*#__PURE__*/React.createElement("div", {
@@ -17560,7 +17560,7 @@ function HqApprovalsSlide() {
     }
   }, /*#__PURE__*/React.createElement(FilterChip, {
     active: true
-  }, "All \xB7 7"), /*#__PURE__*/React.createElement(FilterChip, null, "SR drafts \xB7 3"), /*#__PURE__*/React.createElement(FilterChip, null, "Distributor \xB7 2"), /*#__PURE__*/React.createElement(FilterChip, null, "Manufacturer \xB7 1"), /*#__PURE__*/React.createElement(FilterChip, null, "Conflicts \xB7 1"), /*#__PURE__*/React.createElement("div", {
+  }, "All \xB7 7"), /*#__PURE__*/React.createElement(FilterChip, null, "SR drafts \xB7 3"), /*#__PURE__*/React.createElement(FilterChip, null, "Distributor \xB7 2"), /*#__PURE__*/React.createElement(FilterChip, null, "Distillery \xB7 1"), /*#__PURE__*/React.createElement(FilterChip, null, "Conflicts \xB7 1"), /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1
     }
@@ -18074,14 +18074,14 @@ Object.assign(window, {
 
 // journeys/role-manuf.jsx
 try { (() => {
-// journeys/role-manuf.jsx — Manufacturer journey
+// journeys/role-manuf.jsx — Distillery journey
 const MF = ROLES.manuf;
 function ManufContextSlide() {
   return /*#__PURE__*/React.createElement(Slide, {
-    label: "06 Manufacturer \xB7 Context"
+    label: "06 Distillery \xB7 Context"
   }, /*#__PURE__*/React.createElement(SlideHeader, {
     roleColor: MF.color,
-    role: "Manufacturer",
+    role: "Distillery",
     stage: "Context \xB7 Yamato Distillery",
     title: "Imanishi-san needs the production queue, not the dashboard",
     subtitle: "The current portal mirrors HQ's chrome but most fields don't apply. Imanishi-san wants three things on screen: what's approved, what's running, what ships this week.",
@@ -18263,7 +18263,7 @@ function PainItem({
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 07 — Manufacturer production board
+// 07 — Distillery production board
 // ═══════════════════════════════════════════════════════════════
 function ManufBoardSlide() {
   const stages = [{
@@ -18339,10 +18339,10 @@ function ManufBoardSlide() {
     }]
   };
   return /*#__PURE__*/React.createElement(Slide, {
-    label: "07 Manufacturer \xB7 Production board"
+    label: "07 Distillery \xB7 Production board"
   }, /*#__PURE__*/React.createElement(SlideHeader, {
     roleColor: MF.color,
-    role: "Manufacturer",
+    role: "Distillery",
     stage: "Screen 01 \xB7 Production board",
     title: "A pipeline she drags batches through, not a CRM",
     subtitle: "Every approved PO is a tile. Imanishi-san moves it across the still \u2192 bottle \u2192 label \u2192 pack \u2192 ship pipe. Status changes auto-publish to HQ and the receiving distributor.",
@@ -18584,7 +18584,7 @@ function ManufTopbar() {
       letterSpacing: '.1em',
       textTransform: 'uppercase'
     }
-  }, "Manufacturer portal"))), /*#__PURE__*/React.createElement("div", {
+  }, "Distillery portal"))), /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1
     }
@@ -21277,7 +21277,7 @@ const ROLES = {
   },
   manuf: {
     color: 'hsl(15 60% 45%)',
-    label: 'Manufacturer'
+    label: 'Distillery'
   },
   dist: {
     color: 'hsl(215 50% 40%)',
@@ -23193,7 +23193,7 @@ function ShipmentArcs({
   W,
   H
 }) {
-  // top manufacturer is Japan; arcs go from JP to markets with in-transit > 0
+  // top distillery is Japan; arcs go from JP to markets with in-transit > 0
   const src = geo.JP;
   const sx = src.x / 100 * W,
     sy = src.y / 100 * H;

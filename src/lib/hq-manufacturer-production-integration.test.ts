@@ -22,12 +22,24 @@ const baseForm = (): NewPurchaseOrderFormState => ({
   selectedDistributorId: "",
 });
 
-describe("HQ ↔ manufacturer production integration", () => {
+describe("HQ ↔ distillery production integration", () => {
   it("stores partner id as manufacturerId when HQ picks a partner:", () => {
     const po = buildPurchaseOrderFromForm(baseForm(), []);
     expect(po.manufacturerId).toBe("kosapan");
     expect(po.manufacturer).toBe("Kosapan Distillery");
     expect(po.poType).toBe("production");
+  });
+
+  it("canonicalizes Kosapan even when picker key is a CRM uuid", () => {
+    const po = buildPurchaseOrderFromForm(
+      {
+        ...baseForm(),
+        manufacturerKey: "tm-random-crm-uuid",
+        manufacturerDisplayLabel: "Kosapan Distillery",
+      },
+      [],
+    );
+    expect(po.manufacturerId).toBe("kosapan");
   });
 
   it("does not scrub live Kosapan / Kuramoto POs as demo data", () => {
@@ -46,7 +58,7 @@ describe("HQ ↔ manufacturer production integration", () => {
     expect(scrubbed.purchaseOrders.map((p) => p.id)).toEqual(["PO-2026-001", "PO-2026-002"]);
   });
 
-  it("matches manufacturer portal identity to HQ POs by partner id and fuzzy name", () => {
+  it("matches distillery portal identity to HQ POs by partner id and fuzzy name", () => {
     const identity = {
       email: "lunnalin@kosapandistillery.com",
       emails: new Set(["lunnalin@kosapandistillery.com"]),

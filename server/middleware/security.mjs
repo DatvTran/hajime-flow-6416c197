@@ -97,4 +97,15 @@ export const rateLimiters = {
       retryAfter: 300,
     },
   }),
+
+  expoLeads: rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 8,
+    message: {
+      error: 'Too many registration attempts. Please try again shortly.',
+      code: 'EXPO_LEAD_RATE_LIMIT',
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
 };

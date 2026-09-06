@@ -36,9 +36,9 @@ export default function HqManufacturerPartnerEditPage() {
   if (!manufacturerId) {
     return (
       <div className="p-6 text-[13px] text-muted-foreground">
-        {t("Missing manufacturer id. Open a manufacturer partner from")}{" "}
+        {t("Missing distillery id. Open a distillery partner from")}{" "}
         <Link to="/manufacturer/profiles" className="font-medium text-accent underline-offset-2 hover:underline">
-          {t("Manufacturers")}
+          {t("Distilleries")}
         </Link>
         .
       </div>
@@ -54,7 +54,7 @@ export default function HqManufacturerPartnerEditPage() {
   }
 
   if (profile === undefined) {
-    return <p className="p-6 text-sm text-muted-foreground">{t("Loading manufacturer…")}</p>;
+    return <p className="p-6 text-sm text-muted-foreground">{t("Loading distillery…")}</p>;
   }
 
   return <HqManufacturerPartnerEditView manufacturerId={partnerId ?? manufacturerId} profile={profile} />;

@@ -64,6 +64,13 @@ export const TEAM_ROSTER: TeamMember[] = [
     role: "manufacturer",
     createdAt: "2026-01-15",
   },
+  {
+    id: "tm-kosapan-portal",
+    displayName: "Kosapan Distillery",
+    email: "portal@kosapan.example",
+    role: "manufacturer",
+    createdAt: "2026-03-01",
+  },
 ];
 
 /** Retail portal login — must match `Account.tradingName` in mockData for order visibility. */

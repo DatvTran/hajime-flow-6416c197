@@ -118,7 +118,7 @@ function HqTopbar({title, breadcrumb, right}){
 function HqContextSlide(){
   const pains = [
     { ic:I.alert, title:'Approvals scattered across modules',
-      detail:'Drafts from sales reps, distributor restock requests, and POs to manufacturer all live on different tabs. Triage requires three-tab juggling.' },
+      detail:'Drafts from sales reps, distributor restock requests, and POs to distillery all live on different tabs. Triage requires three-tab juggling.' },
     { ic:I.clock, title:'Blocking states are invisible',
       detail:'When HQ holds an order, neither rep nor distributor learns the reason — escalations pile up by email.' },
     { ic:I.bell,  title:'Alert fatigue',
@@ -173,7 +173,7 @@ function HqContextSlide(){
               <ul style={{margin:'10px 0 0', paddingLeft:18, fontSize:14, lineHeight:1.7, color:J.ink}}>
                 <li>Clear the queue before noon — distributors can't pick until she does</li>
                 <li>Spot the market that's drifting before it becomes a stockout</li>
-                <li>Keep manufacturer cadence steady; never run safety stock to zero</li>
+                <li>Keep distillery cadence steady; never run safety stock to zero</li>
               </ul>
             </div>
 
@@ -303,7 +303,7 @@ function HqTodaySlide(){
                   <ApprovalRow rank="02" tone="amber" title="Distributor restock · Vinexpo Paris"
                     meta="142 cases · ETA risk if not by 11am" downstream="2 distributors waiting" act="Approve"/>
                   <ApprovalRow rank="03" tone="amber" title="PO #2026-0418 · Yamato Distillery"
-                    meta="Lead time 21d · safety stock breach in 6d" downstream="Manufacturer queued" act="Sign"/>
+                    meta="Lead time 21d · safety stock breach in 6d" downstream="Distillery queued" act="Sign"/>
                   <ApprovalRow rank="04" tone="stone" title="Reorder · Liquid Gold, NYC"
                     meta="Repeat customer · auto-priced" downstream="1 store waiting" act="Approve"/>
                   <ApprovalRow rank="05" tone="stone" title="Allocation override · Tokyo airport"
@@ -444,4 +444,4 @@ function Annotation({n, text}){
   );
 }
 
-Object.assign(window, { HqContextSlide, HqTodaySlide, HqSidebar, HqTopbar });
+Object.assign(window, { HqContextSlide, HqTodaySlide, HqSidebar, HqTopbar });'

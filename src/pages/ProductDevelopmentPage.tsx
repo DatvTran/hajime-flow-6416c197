@@ -49,9 +49,9 @@ export default function ProductDevelopmentPage() {
     return () => window.removeEventListener("focus", onFocus);
   }, [fetchRequests, loadProfiles]);
 
-  // Align product development with existing manufacturers: delete requests whose
-  // assigned manufacturer no longer exists. Gated on profiles being loaded to
-  // avoid deleting requests for manufacturers that only exist as a profile.
+  // Align product development with existing distilleries: delete requests whose
+  // assigned distillery no longer exists. Gated on profiles being loaded to
+  // avoid deleting requests for distilleries that only exist as a profile.
   useEffect(() => {
     if (!profilesLoaded || reconcilingRef.current) return;
     if (newProductRequests.length === 0) return;

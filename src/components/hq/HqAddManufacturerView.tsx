@@ -15,7 +15,7 @@ import {
 } from "@/components/hq/HqOperatorUi";
 import { toast } from "@/components/ui/sonner";
 
-const TIERS = ["Preferred manufacturer partner", "Standard manufacturer partner"] as const;
+const TIERS = ["Preferred distillery partner", "Standard distillery partner"] as const;
 
 export function HqAddManufacturerView() {
   const { t } = useLanguage();
@@ -29,7 +29,7 @@ export function HqAddManufacturerView() {
   const [contactRole, setContactRole] = useState("Tōji");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [tier, setTier] = useState<string>("Standard manufacturer partner");
+  const [tier, setTier] = useState<string>("Standard distillery partner");
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [createdId, setCreatedId] = useState("");
@@ -46,7 +46,7 @@ export function HqAddManufacturerView() {
       (a) => (a.tradingName?.toLowerCase() || "") === mfrName.toLowerCase(),
     );
     if (dup) {
-      toast.error(t("A manufacturer with this name already exists"));
+      toast.error(t("A distillery with this name already exists"));
       return;
     }
 
@@ -74,7 +74,7 @@ export function HqAddManufacturerView() {
     try {
       const result = await addAccount(account);
       if (!result.success) {
-        toast.error(t("Could not create manufacturer"), {
+        toast.error(t("Could not create distillery"), {
           description: result.error,
         });
         return;
@@ -95,8 +95,8 @@ export function HqAddManufacturerView() {
         });
       } catch (profileErr) {
         const message =
-          profileErr instanceof Error ? profileErr.message : t("Manufacturer profile could not be saved");
-        toast.warning(t("Manufacturer account created"), {
+          profileErr instanceof Error ? profileErr.message : t("Distillery profile could not be saved");
+        toast.warning(t("Distillery account created"), {
           description: message,
         });
       }
@@ -104,8 +104,8 @@ export function HqAddManufacturerView() {
       setCreatedId(accountId);
       setShowSuccess(true);
     } catch (err) {
-      const message = err instanceof Error ? err.message : t("Failed to create manufacturer");
-      toast.error(t("Failed to create manufacturer"), { description: message });
+      const message = err instanceof Error ? err.message : t("Failed to create distillery");
+      toast.error(t("Failed to create distillery"), { description: message });
     } finally {
       setSubmitting(false);
     }
@@ -119,14 +119,14 @@ export function HqAddManufacturerView() {
           className="hq-btn hq-btn-outline hq-btn-sm inline-flex items-center gap-1.5 no-underline"
         >
           <ArrowLeft className="size-3.5" strokeWidth={1.75} />
-          {t("Manufacturers")}
+          {t("Distilleries")}
         </Link>
-        <span className="text-xs text-muted-foreground">/ {t("Add manufacturer")}</span>
+        <span className="text-xs text-muted-foreground">/ {t("Add distillery")}</span>
       </div>
 
       <HqOperatorPageHeader
-        title="Add manufacturer"
-        description="Onboard a new manufacturer partner. They receive portal access once activated."
+        title="Add distillery"
+        description="Onboard a new distillery partner. They receive portal access once activated."
       />
 
       <form onSubmit={(e) => void handleSubmit(e)} className="grid gap-4 lg:grid-cols-[1fr_320px] lg:items-start">
@@ -201,7 +201,7 @@ export function HqAddManufacturerView() {
             <li>{t("Initial SKU allocation set")}</li>
           </ul>
           <HqBtn type="submit" variant="accent" size="sm" className="mt-4 w-full" disabled={submitting}>
-            {submitting ? t("Creating…") : t("Create manufacturer")}
+            {submitting ? t("Creating…") : t("Create distillery")}
           </HqBtn>
         </HqOperatorCard>
       </form>
@@ -212,7 +212,7 @@ export function HqAddManufacturerView() {
             <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-[hsl(158_56%_36%/0.12)] text-[hsl(158_56%_32%)]">
               <Check className="size-7" strokeWidth={1.75} />
             </div>
-            <div className="font-display text-xl font-semibold tracking-[-0.01em]">{t("Manufacturer created")}</div>
+            <div className="font-display text-xl font-semibold tracking-[-0.01em]">{t("Distillery created")}</div>
             <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
               {t("Portal access can be provisioned from CRM. Send the first production request when ready.")}
             </p>

@@ -1,0 +1,11 @@
+# Railway: build the repo Dockerfile (do not treat this as a pre-built registry image).
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Railway injects PORT; migrate then start the API that serves / and /api.
+startCommand = "sh -c 'cd /app/server && node scripts/migrate-release.mjs && node /app/server/index.mjs'"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"

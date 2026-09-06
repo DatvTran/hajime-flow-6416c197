@@ -41,8 +41,8 @@ const config = {
     }),
     pool: {
       min: 0,
-      max: 10,
-      acquireTimeoutMillis: 30_000,
+      max: 5,
+      acquireTimeoutMillis: 10_000,
     },
   },
   staging: {
@@ -52,8 +52,8 @@ const config = {
     }),
     pool: {
       min: 0,
-      max: 10,
-      acquireTimeoutMillis: 30_000,
+      max: 5,
+      acquireTimeoutMillis: 10_000,
     },
   },
 };

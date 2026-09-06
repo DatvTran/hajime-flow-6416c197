@@ -14,7 +14,7 @@ const ROLE_LABELS: Record<string, string> = {
   sales_rep: "Sales Rep",
   retail: "Retail Store",
   distributor: "Distributor",
-  manufacturer: "Manufacturer",
+  manufacturer: "Distillery",
   sales: "Sales",
   operations: "Operations",
   finance: "Finance",

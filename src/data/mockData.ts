@@ -53,7 +53,7 @@ export type InventoryItem = {
   quantityCases: number;
   warehouse: string;
   /** Business location classification - drives availability logic */
-  locationType: "manufacturer" | "in_transit" | "distributor_warehouse" | "retail_shelf";
+  locationType: "manufacturer" | "in_transit" | "distributor_warehouse" | "retail_shelf" | "export_origin";
   status: "available" | "reserved" | "damaged";
   labelVersion: string;
   notes: string;
@@ -70,7 +70,7 @@ export const inventoryItems: InventoryItem[] = [
   { id: "INV-001", sku: "HJM-OG-750", productName: "Hajime Original 750ml", batchLot: "B2024-112", productionDate: "2024-11-15", quantityBottles: 1440, quantityCases: 120, warehouse: "Toronto Main", locationType: "distributor_warehouse", status: "available", labelVersion: "v3.1", notes: "" },
   { id: "INV-002", sku: "HJM-OG-750", productName: "Hajime Original 750ml", batchLot: "B2024-108", productionDate: "2024-10-20", quantityBottles: 480, quantityCases: 40, warehouse: "Toronto Main", locationType: "distributor_warehouse", status: "reserved", labelVersion: "v3.1", notes: "Reserved for LCBO Q1" },
   { id: "INV-003", sku: "HJM-YZ-750", productName: "Hajime Yuzu 750ml", batchLot: "B2024-115", productionDate: "2024-12-01", quantityBottles: 720, quantityCases: 60, warehouse: "Toronto Main", locationType: "distributor_warehouse", status: "available", labelVersion: "v2.0", notes: "" },
-  { id: "INV-004", sku: "HJM-YZ-750", productName: "Hajime Yuzu 750ml", batchLot: "B2024-116", productionDate: "2024-12-10", quantityBottles: 360, quantityCases: 30, warehouse: "Milan DC", locationType: "in_transit", status: "available", labelVersion: "v2.0", notes: "En route from manufacturer", inTransitDetails: { transferOrderId: "TO-2024-001", fromWarehouse: "Toronto Main", toWarehouse: "Milan DC", shipDate: "2024-12-15", expectedDelivery: "2025-01-15" } },
+  { id: "INV-004", sku: "HJM-YZ-750", productName: "Hajime Yuzu 750ml", batchLot: "B2024-116", productionDate: "2024-12-10", quantityBottles: 360, quantityCases: 30, warehouse: "Milan DC", locationType: "in_transit", status: "available", labelVersion: "v2.0", notes: "En route from distillery", inTransitDetails: { transferOrderId: "TO-2024-001", fromWarehouse: "Toronto Main", toWarehouse: "Milan DC", shipDate: "2024-12-15", expectedDelivery: "2025-01-15" } },
   { id: "INV-005", sku: "HJM-OG-375", productName: "Hajime Original 375ml", batchLot: "B2024-120", productionDate: "2024-12-15", quantityBottles: 960, quantityCases: 80, warehouse: "Toronto Main", locationType: "distributor_warehouse", status: "available", labelVersion: "v3.1", notes: "" },
   { id: "INV-006", sku: "HJM-SP-750", productName: "Hajime Sparkling 750ml", batchLot: "B2024-121", productionDate: "2025-01-05", quantityBottles: 1200, quantityCases: 100, warehouse: "Kirin Brewery Co.", locationType: "manufacturer", status: "available", labelVersion: "v1.0", notes: "New SKU launch batch" },
   { id: "INV-007", sku: "HJM-OG-750", productName: "Hajime Original 750ml", batchLot: "B2024-107", productionDate: "2024-10-01", quantityBottles: 48, quantityCases: 4, warehouse: "Toronto Main", locationType: "distributor_warehouse", status: "damaged", labelVersion: "v3.0", notes: "Water damage during storage" },
@@ -360,9 +360,9 @@ export type PurchaseOrder = {
   notes: string;
   /** Set once inventory has been reduced for this PO (shipped/delivered). */
   inventoryConsumed?: boolean;
-  /** PO Type: sales (distributor ordering from manufacturer) vs production (brand op ordering directly) */
+  /** PO Type: sales (distributor ordering from distillery) vs production (brand op ordering directly) */
   poType?: "sales" | "production";
-  /** CRM team_members.id when manufacturer was picked from CRM */
+  /** CRM team_members.id when distillery was picked from CRM */
   manufacturerId?: string;
   /** For sales POs: the distributor account that placed the order */
   distributorAccountId?: string;
@@ -414,7 +414,7 @@ export type ProductionStatus = {
   notes: string;
 };
 
-/** Canonical manufacturer pipeline (developer brief §5.C) */
+/** Canonical distillery pipeline (developer brief §5.C) */
 export const MANUFACTURER_STAGE_PIPELINE = [
   "PO Received",
   "Raw Materials Secured",
@@ -548,12 +548,20 @@ export type Product = {
   /** Placeholder image for retail cards */
   imageUrl?: string;
   minOrderCases?: number;
-  /** MSRP per case (CAD) */
+  /** Suggested retail (SRP) per case (CAD) */
   msrpCasePrice?: number;
-  /** Wholesaler sell-in price per case (CAD) */
+  /** Hajime sell-in to wholesaler per case (CAD) */
   wholesaleCasePrice?: number;
-  /** Manufacturer / kura cost per case (CAD) */
+  /** Hajime landed cost per case (CAD) */
   manufacturerCasePrice?: number;
+  /** Wholesaler to retailer per case (CAD) */
+  distributorSellOutCasePrice?: number;
+  /** Broker commission CAD / bottle (Canada trade) */
+  brokerCommissionPerBottle?: number;
+  /** Distilleries network partner id (same ids as `/manufacturer/profiles`). */
+  producerId?: string;
+  /** Display name at save time; resolved against Distilleries when listing. */
+  producerName?: string;
 };
 
 export const products: Product[] = [
@@ -566,7 +574,11 @@ export const products: Product[] = [
     shortDescription: "Small-batch coffee rum - rich, smooth, bar-ready.",
     abv: "28%",
     minOrderCases: 1,
-    wholesaleCasePrice: 1440,
+    manufacturerCasePrice: 360,
+    wholesaleCasePrice: 576,
+    distributorSellOutCasePrice: 720,
+    msrpCasePrice: 1116,
+    brokerCommissionPerBottle: 3,
     imageUrl: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&h=400&fit=crop",
   },
   {
@@ -681,9 +693,35 @@ export type NewProductBrandDecision = {
   approvedAt?: string;
   rejectionReason?: string;
   requestedChanges?: string;
-  /** Set when HQ nudges manufacturer during feasibility review */
+  /** Set when HQ nudges distillery during feasibility review */
   hqNudgedAt?: string;
   hqNudgeCount?: number;
+};
+
+export type NewProductProductionTarget = {
+  parameter: string;
+  target: string;
+  tolerance?: string;
+};
+
+/** Bench-trial / production specification attached to a product concept brief. */
+export type NewProductProductionSpec = {
+  format?: string;
+  serveProfile?: string;
+  revision?: string;
+  statusNote?: string;
+  criticalInstructions?: string;
+  productTargets?: NewProductProductionTarget[];
+  rawMaterials?: string;
+  componentPreparation?: string;
+  blendFormula?: string;
+  processSequence?: string;
+  shelfLifeControls?: string;
+  acceleratedShelfLife?: string;
+  shippingNotes?: string;
+  qcRecordsRequired?: string;
+  samplesRequired?: string;
+  futureProcessNotes?: string;
 };
 
 export type NewProductRequest = {
@@ -705,6 +743,8 @@ export type NewProductRequest = {
     minimumOrderQuantity: number;
     targetLaunchDate: string;
     regulatoryMarkets: string[];
+    /** Full production / bench-trial specification for the distillery. */
+    productionSpec?: NewProductProductionSpec;
   };
   attachments: NewProductAttachment[];
   notes: string;

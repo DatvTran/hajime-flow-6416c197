@@ -28,7 +28,7 @@ function receiptDepotName(s: Shipment): string {
 
 function receiptOrigin(s: Shipment): string {
   const dest = s.destinationWarehouseName?.trim() || s.destination?.trim();
-  const origin = s.origin?.trim() || "Manufacturer";
+  const origin = s.origin?.trim() || "Distillery";
   if (dest && origin !== dest) return origin;
   return origin;
 }

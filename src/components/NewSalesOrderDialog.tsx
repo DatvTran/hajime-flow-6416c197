@@ -28,6 +28,7 @@ import { toast } from "@/components/ui/sonner";
 import { Link } from "react-router-dom";
 import { isDistributorAccountType } from "@/lib/distributor-accounts";
 import { isManufacturerAccountType, looksLikeManufacturerAccount } from "@/lib/manufacturer-accounts";
+import { partnerSellOutCasePrice } from "@/lib/hq-product-catalog";
 
 const SALES_REPS = ["Marcus Chen", "Sarah Kim", "Luca Moretti", "Jordan Lee"] as const;
 
@@ -190,7 +191,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     if (r === "founder_admin") return "Founder Admin";
     if (r === "brand_operator") return "Brand Operator";
     if (r === "operations") return "Operations";
-    if (r === "manufacturer") return "Manufacturer";
+    if (r === "manufacturer") return "Distillery";
     if (r === "distributor") return "Distributor";
     if (r === "sales_rep") return "Sales Rep";
     if (r === "retail") return "Retail";
@@ -313,7 +314,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       brandPath === "wholesaler"
         ? "Wholesaler / distributor *"
         : brandPath === "manufacturer"
-          ? "Manufacturer / partner *"
+          ? "Distillery / partner *"
           : brandPath === "sales_rep"
             ? "Field sales rep *"
             : "Retail customer *";
@@ -321,7 +322,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       brandPath === "wholesaler"
         ? "Distributor accounts merged with CRM by email; receiving depot mirrors CRM when set."
         : brandPath === "manufacturer"
-          ? "Manufacturer / partner accounts merged with CRM manufacturer contacts by email."
+          ? "Distillery / partner accounts merged with CRM distillery contacts by email."
           : brandPath === "sales_rep"
             ? "Sales rep contacts from CRM (Settings → CRM, role Sales rep). Accounts rows merge when email matches."
             : "Retail accounts merged with CRM store contacts by email.";
@@ -329,7 +330,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       brandPath === "wholesaler"
         ? "No distributor accounts or active distributor CRM contacts."
         : brandPath === "manufacturer"
-          ? "No manufacturer accounts or manufacturer CRM contacts."
+          ? "No distillery accounts or distillery CRM contacts."
           : brandPath === "sales_rep"
             ? "No sales rep CRM contacts (or no Accounts rows sharing their email)."
             : "No retail accounts or retail CRM contacts.";
@@ -337,7 +338,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       brandPath === "wholesaler"
         ? "No CRM contact with this email — add Distributor in Settings → CRM."
         : brandPath === "manufacturer"
-          ? "No CRM contact with this email — add Manufacturer in Settings → CRM."
+          ? "No CRM contact with this email — add Distillery in Settings → CRM."
           : brandPath === "sales_rep"
             ? "No CRM contact with this email — add Sales rep in Settings → CRM."
             : "No CRM contact with this email — add Retail store / account in Settings → CRM.";
@@ -353,7 +354,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       brandPath === "wholesaler"
         ? "Choose wholesaler / distributor"
         : brandPath === "manufacturer"
-          ? "Choose manufacturer / partner"
+          ? "Choose distillery / partner"
           : brandPath === "sales_rep"
             ? "Choose sales rep"
             : "Choose retail customer";
@@ -397,7 +398,10 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     if (!open) return;
     const qty = Math.max(1, parseInt(quantity, 10) || 1);
     const caseSize = Number(selectedSku?.caseSize);
-    const casePrice = Number(selectedSku?.wholesaleCasePrice);
+    const casePrice =
+      variant === "distributor" || variant === "sales_rep"
+        ? partnerSellOutCasePrice(selectedSku)
+        : Number(selectedSku?.wholesaleCasePrice);
     if (!Number.isFinite(caseSize) || caseSize <= 0) return;
     if (!Number.isFinite(casePrice) || casePrice <= 0) return;
     const next = (qty / caseSize) * casePrice;
@@ -405,7 +409,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     if (!priceAuto && price.trim() !== "") return;
     setPriceAuto(true);
     setPrice(String(Math.round(next * 100) / 100));
-  }, [open, price, priceAuto, quantity, selectedSku?.caseSize, selectedSku?.wholesaleCasePrice]);
+  }, [open, price, priceAuto, quantity, selectedSku, variant]);
 
   useEffect(() => {
     if (!open || variant !== "sales_rep") return;
@@ -579,7 +583,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="manufacturer">Manufacturer / production</SelectItem>
+                  <SelectItem value="manufacturer">Distillery / production</SelectItem>
                   <SelectItem value="wholesaler">Wholesaler / distributor (DC)</SelectItem>
                   <SelectItem value="sales_rep">Field sales rep</SelectItem>
                   <SelectItem value="retail">Retail store</SelectItem>
@@ -889,13 +893,25 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
                   placeholder="0.00"
                   required
                 />
-                {selectedSku?.wholesaleCasePrice ? (
-                  <p className="text-[11px] text-muted-foreground">
-                    Auto-priced from catalog: {selectedSku.wholesaleCasePrice.toLocaleString()} CAD / case ({selectedSku.caseSize} bt).
-                  </p>
+                {selectedSku ? (
+                  (() => {
+                    const casePrice =
+                      variant === "distributor" || variant === "sales_rep"
+                        ? partnerSellOutCasePrice(selectedSku)
+                        : Number(selectedSku.wholesaleCasePrice);
+                    return Number.isFinite(casePrice) && casePrice > 0 ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        Auto-priced from catalog: {casePrice.toLocaleString()} CAD / case ({selectedSku.caseSize} bt).
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground">
+                        Enter order value manually (no case price set on this SKU).
+                      </p>
+                    );
+                  })()
                 ) : (
                   <p className="text-[11px] text-muted-foreground">
-                    Enter order value manually (no wholesale case price set on this SKU).
+                    Enter order value manually (no case price set on this SKU).
                   </p>
                 )}
               </div>

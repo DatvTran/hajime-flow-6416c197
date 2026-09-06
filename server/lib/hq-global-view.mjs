@@ -2,6 +2,7 @@ import { platformDb } from '../config/database.mjs';
 import { getDistributorKnex } from '../config/distributor-database-pool.mjs';
 import { Role } from '../rbac/permissions.mjs';
 import { findDistributorOrgById } from './distributor-organization.mjs';
+import { isDemoDistributorOrg } from './demo-distributor-orgs.mjs';
 
 /** HQ roles that must see data across the platform DB and every distributor database. */
 export function isHqGlobalViewer(role) {
@@ -13,9 +14,10 @@ export function isHqGlobalViewer(role) {
 }
 
 export async function listActiveDistributorOrgs() {
-  return platformDb('distributor_organizations')
+  const rows = await platformDb('distributor_organizations')
     .where({ is_active: true })
     .orderBy('name', 'asc');
+  return rows.filter((org) => !isDemoDistributorOrg(org));
 }
 
 /**

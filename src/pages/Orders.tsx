@@ -348,7 +348,7 @@ export default function Orders() {
       labelVersion: "v3.1",
       marketDestination: order.market || "—",
       status: "draft",
-      notes: `Replenishment ${order.id} (${order.account}) short ${shortfallCases} cs — issue to manufacturer partner to cover`,
+      notes: `Replenishment ${order.id} (${order.account}) short ${shortfallCases} cs — issue to distillery partner to cover`,
       poType: "production",
     };
     const res = await addPurchaseOrder(po);

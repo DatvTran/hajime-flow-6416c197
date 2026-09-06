@@ -18,8 +18,9 @@ const baseConfig = {
     directory: path.join(__dirname, '..', 'seeds'),
   },
   pool: {
-    min: 2,
-    max: 10,
+    min: 0,
+    max: 5,
+    acquireTimeoutMillis: 10_000,
   },
 };
 
@@ -54,8 +55,9 @@ const config = {
       ssl: { rejectUnauthorized: false },
     }),
     pool: {
-      min: 2,
-      max: 20,
+      min: 0,
+      max: 5,
+      acquireTimeoutMillis: 10_000,
     },
   },
   staging: {
@@ -64,8 +66,9 @@ const config = {
       ssl: { rejectUnauthorized: false },
     }),
     pool: {
-      min: 2,
-      max: 20,
+      min: 0,
+      max: 5,
+      acquireTimeoutMillis: 10_000,
     },
   },
 };

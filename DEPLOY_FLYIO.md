@@ -1,4 +1,6 @@
-# Fly.io Deployment Guide for Hajime
+# Fly.io compute + Supabase Postgres/Auth
+# Database and login live on Supabase. See DEPLOY_SUPABASE.md.
+# This file only covers running the Node/Vite app on Fly Machines.
 
 ## Prerequisites
 
@@ -18,21 +20,9 @@ This opens a browser for authentication.
 
 ---
 
-## Step 2: Create PostgreSQL Database
+## Step 2: PostgreSQL (Supabase)
 
-```bash
-fly postgres create \
-  --name hajime-db \
-  --region nrt \
-  --initial-cluster-size 1 \
-  --vm-size shared-cpu-1x \
-  --volume-size 1
-```
-
-Attach it to your app:
-```bash
-fly postgres attach hajime-db --app hajime-app
-```
+Do **not** create a new Fly Postgres cluster. Follow [`DEPLOY_SUPABASE.md`](DEPLOY_SUPABASE.md) for dump/restore and `DATABASE_URL`.
 
 ---
 
@@ -54,7 +44,12 @@ fly secrets set --app hajime-app \
   FEATURE_FLAG_CSV_ENABLED=true \
   FEATURE_FLAG_DB_MIGRATION_STAGE=3 \
   REQUIRE_DB_PRIMARY_IN_PRODUCTION=true \
+  DATABASE_URL="postgresql://postgres.ref:pw@db.ref.supabase.co:5432/postgres?sslmode=require" \
   ACCESS_TOKEN_SECRET="$ACCESS_TOKEN_SECRET" \
+  SUPABASE_URL="https://your-project.supabase.co" \
+  SUPABASE_ANON_KEY="eyJ..." \
+  SUPABASE_SERVICE_ROLE_KEY="eyJ..." \
+  SUPABASE_JWT_SECRET="your-jwt-secret" \
   REFRESH_TOKEN_SECRET="$REFRESH_TOKEN_SECRET" \
   SESSION_SECRET="$SESSION_SECRET" \
   STRIPE_SECRET_KEY="sk_live_your_key_here"
@@ -130,13 +125,7 @@ curl https://hajime-app.fly.dev/api/health
 ## Troubleshooting
 
 ### Database connection issues
-```bash
-# Check database status
-fly status --app hajime-db
-
-# View database logs
-fly logs --app hajime-db
-```
+See the Supabase project dashboard (Database → Health). Keep Fly Postgres until cutover is verified.
 
 ### Migration failures
 ```bash
@@ -159,8 +148,8 @@ fly deploy --app hajime-app --image flyio/hajime-app:previous-tag
 
 ## Production Checklist
 
-- [ ] Database created and attached
-- [ ] All secrets set (ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, SESSION_SECRET)
+- [ ] `DATABASE_URL` points at Supabase (direct :5432)
+- [ ] Supabase Auth secrets set
 - [ ] Stripe keys configured
 - [ ] Migrations run successfully
 - [ ] Health endpoint responding (https://hajime-app.fly.dev/api/health)

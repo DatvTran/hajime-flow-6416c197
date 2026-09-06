@@ -101,7 +101,7 @@ export type DerivedAlert = {
     | "account"
     | "demand-spike"
     | "onboarding"
-    | "manufacturer-update";
+    | "distillery-update";
   message: string;
   time: string;
   severity: "high" | "medium" | "low";
@@ -301,7 +301,7 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
     });
   }
 
-  // Manufacturer feedback loop alerts for Brand Operator command center.
+  // Distillery feedback loop alerts for Brand Operator command center.
   const recentStatusRows = [...(data.productionStatuses ?? [])]
     .filter((row) => !!row.poId && !!row.updatedAt)
     .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
@@ -309,8 +309,8 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
   for (const row of recentStatusRows) {
     alerts.push({
       id: `mfg-status-${row.poId}-${row.updatedAt}-${row.stage}`,
-      type: "manufacturer-update",
-      message: `Manufacturer update for ${row.poId}: ${row.stage}${row.notes ? ` — ${row.notes}` : ""}`,
+      type: "distillery-update",
+      message: `Distillery update for ${row.poId}: ${row.stage}${row.notes ? ` — ${row.notes}` : ""}`,
       time: row.updatedAt.slice(0, 10),
       severity: /delayed|issue|blocked|hold/i.test(row.stage) ? "high" : "medium",
     });
@@ -324,8 +324,8 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
     const at = (req.proposalReceivedAt ?? req.requestedAt).slice(0, 10);
     alerts.push({
       id: `mfg-proposal-${req.id}-${at}`,
-      type: "manufacturer-update",
-      message: `Manufacturer feedback received for ${req.title} (${req.id})`,
+      type: "distillery-update",
+      message: `Distillery feedback received for ${req.title} (${req.id})`,
       time: at,
       severity: "medium",
     });
@@ -630,7 +630,7 @@ export function computeSalesByAnchorCities(orders: SalesOrder[], windowDays = 30
   return ANCHOR_CITIES.map((city) => ({ city, revenue: map[city] }));
 }
 
-/** Bottles staged as manufacturer → warehouse network → retail allocation. */
+/** Bottles staged as distillery → warehouse network → retail allocation. */
 export function computeInventoryFlowStages(
   inventory: InventoryItem[],
   purchaseOrders?: { status: string; quantity: number }[]
@@ -650,7 +650,7 @@ export function computeInventoryFlowStages(
 
 /**
  * Four organizational layers in one connected system (not silos).
- * Manufacturer: in production. Brand Operator: HQ sellable pool (available).
+ * Distillery: in production. Brand Operator: HQ sellable pool (available).
  * Distributor: in motion between hubs / wholesale channel. Retail: allocated to sell-in.
  * Excludes damaged (quarantine) from this pipeline view.
  */

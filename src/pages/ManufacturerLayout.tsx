@@ -16,7 +16,7 @@ export default function ManufacturerLayout() {
   return (
     <div>
       <PageHeader
-        title="Manufacturer"
+        title="Distillery"
         description="Fulfillment view for open production requests raised by Hajime HQ — batch schedule, inbound shipment queue, demand by market, and alerts."
       />
       

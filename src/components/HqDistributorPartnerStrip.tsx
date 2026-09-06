@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight, Truck } from "lucide-react";
 import { getDistributorOrganizations, type DistributorOrganizationRow } from "@/lib/api-v1-mutations";
-import { HQ_DISTRIBUTOR_DEMO_ORGANIZATIONS } from "@/lib/hq-distributors-demo";
-import { partnerPathForOrg } from "@/lib/hq-distributor-orgs";
+import { isSeedDemoDistributorOrg } from "@/lib/normalize-app-data";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { HqOperatorCard, HqOperatorCardHead } from "@/components/hq/HqOperatorUi";
 
@@ -17,25 +16,16 @@ export function HqDistributorPartnerStrip({
   description = "Open a distributor to see retail sell-through, field reps, and store revenue in their network.",
 }: Props) {
   const { t } = useLanguage();
-  const [orgs, setOrgs] = useState<DistributorOrganizationRow[]>(HQ_DISTRIBUTOR_DEMO_ORGANIZATIONS);
+  const [orgs, setOrgs] = useState<DistributorOrganizationRow[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const res = await getDistributorOrganizations();
-        const live = res.data ?? [];
-        if (!cancelled) {
-          if (live.length > 0) {
-            const seen = new Set(live.map((o) => o.id));
-            const extras = HQ_DISTRIBUTOR_DEMO_ORGANIZATIONS.filter((o) => !seen.has(o.id));
-            setOrgs([...live, ...extras]);
-          } else {
-            setOrgs(HQ_DISTRIBUTOR_DEMO_ORGANIZATIONS);
-          }
-        }
+        if (!cancelled) setOrgs((res.data ?? []).filter((o) => !isSeedDemoDistributorOrg(o)));
       } catch {
-        if (!cancelled) setOrgs(HQ_DISTRIBUTOR_DEMO_ORGANIZATIONS);
+        if (!cancelled) setOrgs([]);
       }
     })();
     return () => {

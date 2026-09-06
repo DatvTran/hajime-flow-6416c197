@@ -10,7 +10,7 @@ function HqApprovalsSlide(){
       <SlideHeader
         roleColor={HQ2.color} role="Brand Operator · HQ" stage="Screen 02 · Approvals queue"
         title="One queue. Every blocker, every type, ranked by who's waiting."
-        subtitle="New surface. SR drafts, distributor restocks, manufacturer POs and allocation conflicts merge into a single triage stream. Each row carries its consequence — who unblocks when she clicks."
+        subtitle="New surface. SR drafts, distributor restocks, distillery POs and allocation conflicts merge into a single triage stream. Each row carries its consequence — who unblocks when she clicks."
         slideNo="05" totalForRole="14"
       />
 
@@ -38,7 +38,7 @@ function HqApprovalsSlide(){
               <FilterChip active>All · 7</FilterChip>
               <FilterChip>SR drafts · 3</FilterChip>
               <FilterChip>Distributor · 2</FilterChip>
-              <FilterChip>Manufacturer · 1</FilterChip>
+              <FilterChip>Distillery · 1</FilterChip>
               <FilterChip>Conflicts · 1</FilterChip>
               <div style={{flex:1}}/>
               <span style={{fontSize:11, color:J.muted, fontFamily:J.mono}}>SORT</span>
@@ -249,4 +249,4 @@ function DraftRow({store, sku, stock, verdict}){
   );
 }
 
-Object.assign(window, { HqApprovalsSlide });
+Object.assign(window, { HqApprovalsSlide });'

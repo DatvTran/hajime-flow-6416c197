@@ -64,7 +64,7 @@ export function RecordInboundShipmentDialog({ open, onOpenChange }: Props) {
   const defaultShipFrom =
     data.operationalSettings?.manufacturerName?.trim() ||
     user?.displayName?.trim() ||
-    "Manufacturer facility";
+    "Distillery facility";
 
   const resetForm = () => {
     setCarrier("");
@@ -156,7 +156,7 @@ export function RecordInboundShipmentDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle className="font-display">Record inbound shipment</DialogTitle>
           <DialogDescription>
-            Production PO → receiving warehouse. Either Brand HQ or the manufacturer may enter this; everyone sees one
+            Production PO → receiving warehouse. Either Brand HQ or the distillery may enter this; everyone sees one
             shared shipment so both sides know where the stock is routed. Departure time, carrier, port (as on the
             waybill), and waybill number are required by the API.
           </DialogDescription>

@@ -3,7 +3,7 @@ import { authService } from '../services/auth.mjs';
 const DEFAULT_DEMO_PASSWORD = 'admin123!';
 
 /**
- * Ensure a manufacturer CRM contact + portal user exist for the HQ portal login email.
+ * Ensure a distillery CRM contact + portal user exist for the HQ portal login email.
  * New users receive the demo password (admin123!) unless MANUFACTURER_DEMO_PASSWORD is set.
  */
 export async function ensureManufacturerPortalAccess(
@@ -17,7 +17,7 @@ export async function ensureManufacturerPortalAccess(
   }
 
   const displayName =
-    String(contactName || companyName || 'Manufacturer').trim() || 'Manufacturer';
+    String(contactName || companyName || 'Distillery').trim() || 'Distillery';
 
   const existingTm = await db('team_members').where({ tenant_id: tenantId, email }).first();
   let teamMemberId = existingTm?.id ?? null;

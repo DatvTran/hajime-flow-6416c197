@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hajime — Connect QR sign (8×8)</title>
+<link rel="stylesheet" href="colors_and_type.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #f0eee9;
+    color: hsl(var(--foreground));
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @page { size: 8in 8in; margin: 0; }
+
+  .sign {
+    width: 8in;
+    height: 8in;
+    margin: 24px auto;
+    background: hsl(24 12% 8%);
+    color: hsl(40 20% 97%);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.42in 0.48in 0.38in;
+  }
+  .sign::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 18%, hsl(40 88% 42% / 0.22), transparent 52%);
+    pointer-events: none;
+  }
+  .eyebrow {
+    position: relative;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: hsl(40 88% 62%);
+    font-weight: 500;
+  }
+  .title {
+    position: relative;
+    margin: 10px 0 0;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 34px;
+    letter-spacing: -0.024em;
+    text-align: center;
+    line-height: 1.05;
+  }
+  .sub {
+    position: relative;
+    margin: 10px 0 0;
+    font-size: 12.5px;
+    line-height: 1.4;
+    text-align: center;
+    color: hsl(35 14% 78%);
+    max-width: 5.8in;
+  }
+  .qr-wrap {
+    position: relative;
+    margin-top: 18px;
+    background: #fff;
+    padding: 14px;
+    border-radius: 4px;
+  }
+  .qr-wrap svg { display: block; width: 2.85in; height: 2.85in; }
+  .cta {
+    position: relative;
+    margin-top: 14px;
+    font-size: 13px;
+    text-align: center;
+    color: hsl(40 20% 97%);
+  }
+  .footer {
+    position: relative;
+    margin-top: auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: hsl(35 12% 52%);
+  }
+  .caption {
+    width: 8in;
+    margin: 0 auto 32px;
+    font-size: 13px;
+    color: hsl(var(--muted-foreground));
+    display: flex;
+    gap: 16px;
+    align-items: baseline;
+  }
+  .caption .num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: hsl(var(--muted));
+    padding: 3px 8px;
+    border-radius: 999px;
+  }
+  @media print {
+    body { background: white; }
+    .sign { margin: 0; box-shadow: none; }
+    .caption { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="sign" id="sign">
+  <img src="assets/hajime-logo.png" alt="" width="36" height="36" style="position:relative;filter:brightness(0) invert(1);margin-bottom:8px">
+  <div class="eyebrow">Scan to connect with our team</div>
+  <h1 class="title">Connect with Hajime</h1>
+  <p class="sub">Interested in representing, stocking, serving, or featuring Hajime?</p>
+  <div class="qr-wrap" id="qr"></div>
+  <p class="cta">Scan to connect with our team.</p>
+  <div class="footer">はじめ · hong kong 2026</div>
+</div>
+<p class="caption"><span class="num">8×8</span> Prefer the in-app sign: open <strong>/connect-sign</strong> on this app (same host as the form). QR target: <a id="url-lab" href="#"></a></p>
+<script>
+  const params = new URLSearchParams(location.search);
+  function defaultTarget() {
+    if (params.get("url")) return params.get("url");
+    return "https://supply.drinkhajime.jp/connect?event=HK26";
+  }
+  const target = defaultTarget();
+  const lab = document.getElementById("url-lab");
+  lab.textContent = target;
+  lab.setAttribute("href", target);
+  const wrap = document.getElementById("qr");
+  const link = document.createElement("a");
+  link.href = target;
+  link.setAttribute("aria-label", "Open buyer registration");
+  const img = document.createElement("img");
+  img.width = 268;
+  img.height = 268;
+  img.alt = "";
+  img.src = "https://api.qrserver.com/v1/create-qr-code/?size=536x536&margin=0&data=" + encodeURIComponent(target);
+  link.appendChild(img);
+  wrap.appendChild(link);
+</script>
+</body>
+</html>

@@ -16,7 +16,7 @@ export function kuraShortName(manufacturer: string | undefined): string {
 
 /**
  * The HQ-facing product development pipeline is presented as four stages.
- * The underlying `status` enum is richer (it also drives the manufacturer
+ * The underlying `status` enum is richer (it also drives the distillery
  * handshake and the API/DB), so we collapse it onto these stages here.
  */
 export const HQ_NPR_STAGES = [
@@ -36,7 +36,7 @@ export const NPR_STAGE_COLORS = [
   "hsl(158 56% 36%)",
 ] as const;
 
-const NPR_STAGE_OWNERS = ["HQ", "Manufacturer", "HQ", "Both"] as const;
+const NPR_STAGE_OWNERS = ["HQ", "Distillery", "HQ", "Both"] as const;
 
 export function nprStageOwner(stageIndex: number): (typeof NPR_STAGE_OWNERS)[number] {
   return NPR_STAGE_OWNERS[Math.min(Math.max(stageIndex, 0), NPR_STAGE_OWNERS.length - 1)];
@@ -76,7 +76,7 @@ export function nprFeasibilitySummary(npr: NewProductRequest): string {
   if (npr.status === "draft") return "";
   const proposal = npr.manufacturerProposal;
   if (!proposal && nprWaitingOnManufacturer(npr.status)) {
-    return "Feasibility review in progress — awaiting manufacturer response.";
+    return "Feasibility review in progress — awaiting distillery response.";
   }
   if (!proposal) return "Not yet sent for feasibility review.";
   const parts: string[] = [];
@@ -96,6 +96,9 @@ export function nprFeasibilitySummary(npr: NewProductRequest): string {
 }
 
 export function nprConceptBrief(npr: NewProductRequest): string {
+  const ps = npr.specs.productionSpec;
+  const format = ps?.format?.trim() ? `${ps.format.trim()}. ` : "";
+  const serve = ps?.serveProfile?.trim() ? `Serve: ${ps.serveProfile.trim()}. ` : "";
   const flavor = npr.specs.flavorProfile.length
     ? `Flavors: ${npr.specs.flavorProfile.join(", ")}. `
     : "";
@@ -103,7 +106,7 @@ export function nprConceptBrief(npr: NewProductRequest): string {
     ? `Markets: ${npr.specs.regulatoryMarkets.join(", ")}. `
     : "";
   const notes = npr.notes?.trim() ?? "";
-  return `${flavor}${markets}${notes}`.trim() || "—";
+  return `${format}${serve}${flavor}${markets}${notes}`.trim() || "—";
 }
 
 export function hqNprDisplayStatus(status: NewProductRequest["status"]): {
@@ -124,7 +127,7 @@ export function hqNprDisplayStatus(status: NewProductRequest["status"]): {
     case "rejected":
       return { tone: "red", label: "Rejected" };
     case "declined":
-      // HQ Archive and manufacturer feasibility decline both use this status.
+      // HQ Archive and distillery feasibility decline both use this status.
       return { tone: "red", label: "Archived" };
     default:
       return { tone: "neutral", label: status };
@@ -203,7 +206,7 @@ export function formatNprPerBottle(npr: NewProductRequest): string {
   return `$${cost.toFixed(2)}`;
 }
 
-/** Manufacturer-facing stage label — aligned with HQ pipeline wording. */
+/** Distillery-facing stage label — aligned with HQ pipeline wording. */
 export function manufacturerNprStageLabel(status: NewProductRequest["status"]): string {
   switch (status) {
     case "submitted":

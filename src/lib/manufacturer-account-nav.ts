@@ -3,8 +3,8 @@ import type { Account } from "@/data/mockData";
 export type ManufacturerPick = { label: string; email?: string | null };
 
 /**
- * Map a production-PO manufacturer pick (CRM + profile label) to an Accounts row when possible.
- * Prefers email match, then manufacturer/producer account name match.
+ * Map a production-PO distillery pick (CRM + profile label) to an Accounts row when possible.
+ * Prefers email match, then distillery/producer account name match.
  */
 export function findAccountForManufacturerPick(
   accounts: Account[],

@@ -86,7 +86,7 @@ export function moveInventory(
     // Create moved item record
     const movedItem: InventoryItem = {
       ...sourceItem,
-      id: `${sourceItem.id}-moved-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: `${sourceItem.id}-moved-${crypto.randomUUID()}`,
       quantityBottles: take,
       quantityCases: Math.floor(take / (options?.caseSize || 12)),
       warehouse: toLocation.warehouse,
@@ -237,7 +237,7 @@ export function releaseReservation(
       // Create new available line
       working.push({
         ...reserved,
-        id: `${originalId}-available-${Date.now()}`,
+        id: `${originalId}-available-${crypto.randomUUID()}`,
         status: "available" as const,
         notes: `Released from ${reservationId}`,
       });
@@ -305,7 +305,7 @@ export function getInventoryByLocation(
     distributor_warehouse: 0,
     in_transit: 0,
     retail_shelf: 0,
-  };
+    export_origin: 0,
 
   for (const item of items) {
     if (sku && item.sku !== sku) continue;

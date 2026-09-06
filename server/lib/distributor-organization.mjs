@@ -110,7 +110,7 @@ export async function createDistributorOrganization({
   }
 
   if (await databaseExists(databaseName)) {
-    const err = new Error(`Database ${databaseName} already exists.`);
+    const err = new Error(`Distributor schema/database ${databaseName} already exists.`);
     err.status = 409;
     throw err;
   }

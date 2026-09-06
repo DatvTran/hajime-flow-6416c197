@@ -932,7 +932,7 @@ function receiveInbound(idx){
 }
 PAGES.shipments=()=>`
 <div class="pw enter">
-  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Shipments</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Track inbound stock from manufacturers and outbound deliveries to accounts</p></div>
+  <div class="ph-row"><div><h1 style="font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px">Shipments</h1><p style="font-size:13px;color:hsl(var(--muted-foreground))">Track inbound stock from distilleries and outbound deliveries to accounts</p></div>
     <button class="btn btn-accent btn-sm">+ Log new shipment</button>
   </div>
   <div class="filter-bar" style="margin-bottom:18px">
@@ -943,7 +943,7 @@ PAGES.shipments=()=>`
   <!-- INBOUND -->
   <div id="ship-in">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-      <div style="font-size:12px;color:hsl(var(--muted-foreground))">Pallets en route from manufacturers & HQ to the Empire Wines DC — from your approved replenishment requests.</div>
+      <div style="font-size:12px;color:hsl(var(--muted-foreground))">Pallets en route from distilleries & HQ to the Empire Wines DC — from your approved replenishment requests.</div>
     </div>
     ${INBOUND.map((s,i)=>`
     <div style="background:hsl(var(--card));border:1px solid hsl(var(--border)/.7);border-radius:14px;margin-bottom:12px;overflow:hidden;box-shadow:var(--shadow-soft)">

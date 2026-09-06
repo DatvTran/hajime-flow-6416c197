@@ -5,6 +5,14 @@ import type { Account } from "@/data/mockData";
 import { useAccounts } from "@/contexts/AppDataContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { nextAccountId } from "@/lib/account-ids";
+import { portalInviteUserMessage } from "@/lib/portal-invite-status";
+import {
+  DISTRIBUTOR_MARKET_COUNTRIES,
+  formatDistributorShippingAddress,
+  regionLabelForCountry,
+  resolvedDistributorCountry,
+  subdivisionsForCountry,
+} from "@/lib/distributor-onboard-address";
 import { toast } from "@/components/ui/sonner";
 import {
   HqBtn,
@@ -15,7 +23,6 @@ import {
 } from "@/components/hq/HqOperatorUi";
 import { cn } from "@/lib/utils";
 
-const MARKETS = ["NYC", "Chicago", "Tokyo", "Paris", "Milan", "London", "Other"] as const;
 const TIERS = ["Standard", "Silver Partner", "Gold Partner"] as const;
 const PAYMENT_TERMS = ["Net 30", "Net 45", "Net 60", "Prepaid"] as const;
 const REBATES = ["None", "2% volume", "3% volume", "4% volume"] as const;
@@ -40,8 +47,12 @@ export function HqAddDistributorView() {
 
   const [name, setName] = useState("");
   const [market, setMarket] = useState<string>("");
+  const [otherCountry, setOtherCountry] = useState("");
   const [dcCount, setDcCount] = useState("1");
-  const [shippingAddress, setShippingAddress] = useState("");
+  const [region, setRegion] = useState("");
+  const [city, setCity] = useState("");
+  const [street, setStreet] = useState("");
+  const [postal, setPostal] = useState("");
   const [contactName, setContactName] = useState("");
   const [contactRole, setContactRole] = useState("");
   const [email, setEmail] = useState("");
@@ -52,6 +63,10 @@ export function HqAddDistributorView() {
   const [coopFund, setCoopFund] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [inviteSummary, setInviteSummary] = useState("");
+
+  const regionOptions = subdivisionsForCountry(market);
+  const regionFieldLabel = regionLabelForCountry(market);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +80,20 @@ export function HqAddDistributorView() {
       toast.error(t("Select a market"));
       return;
     }
+    const country = resolvedDistributorCountry(market, otherCountry);
+    if (!country) {
+      toast.error(t("Enter the country"));
+      return;
+    }
+    const regionOptions = subdivisionsForCountry(market);
+    if (regionOptions.length > 0 && !region.trim()) {
+      toast.error(t(`Select a ${regionLabelForCountry(market).toLowerCase()}`));
+      return;
+    }
+    if (!city.trim() || !street.trim()) {
+      toast.error(t("Enter city and shipping street"));
+      return;
+    }
 
     const dup = accounts.some(
       (a) => (a.tradingName?.toLowerCase() || "") === distributorName.toLowerCase(),
@@ -74,25 +103,24 @@ export function HqAddDistributorView() {
       return;
     }
 
-    const tags = [tierTag(tier), market.toLowerCase()];
+    const tags = [tierTag(tier), country.toLowerCase()];
     if (rebate !== "None") tags.push(rebate);
     if (coopFund.trim()) tags.push(`co-op: ${coopFund.trim()}`);
+
+    const deliveryAddress = formatDistributorShippingAddress({
+      street,
+      city,
+      region,
+      postal,
+      country,
+    });
 
     const account: Account = {
       id: nextAccountId(accounts),
       legalName: distributorName,
       tradingName: distributorName,
-      country:
-        market === "Tokyo"
-          ? "Japan"
-          : market === "Paris"
-            ? "France"
-            : market === "Milan"
-              ? "Italy"
-              : market === "London"
-                ? "UK"
-                : "US",
-      city: market === "Other" ? "—" : market,
+      country,
+      city: city.trim(),
       type: "distributor",
       contactName: contactName.trim() || "—",
       contactRole: contactRole.trim(),
@@ -105,7 +133,7 @@ export function HqAddDistributorView() {
       avgOrderSize: 0,
       status: "prospect",
       tags,
-      deliveryAddress: shippingAddress.trim() || undefined,
+      deliveryAddress,
       internalNotes: `${dcCount} DC(s)`,
     };
 
@@ -118,6 +146,7 @@ export function HqAddDistributorView() {
         });
         return;
       }
+      setInviteSummary(portalInviteUserMessage(result.invite));
       setShowSuccess(true);
     } finally {
       setSubmitting(false);
@@ -139,7 +168,7 @@ export function HqAddDistributorView() {
 
       <HqOperatorPageHeader
         title="Add distributor"
-        description="Onboard a new distribution partner. They get portal access once activated."
+        description="Onboard a new distribution partner. Creating them sends a portal invite to the contact email so they can set a password."
       />
 
       <form onSubmit={(e) => void handleSubmit(e)}>
@@ -163,12 +192,15 @@ export function HqAddDistributorView() {
                   <select
                     id="dist-market"
                     value={market}
-                    onChange={(e) => setMarket(e.target.value)}
+                    onChange={(e) => {
+                      setMarket(e.target.value);
+                      setRegion("");
+                    }}
                     disabled={submitting}
                     className="hq-form-select"
                   >
-                    <option value="">{t("Select market…")}</option>
-                    {MARKETS.map((m) => (
+                    <option value="">{t("Select country…")}</option>
+                    {DISTRIBUTOR_MARKET_COUNTRIES.map((m) => (
                       <option key={m} value={m}>
                         {m}
                       </option>
@@ -187,15 +219,81 @@ export function HqAddDistributorView() {
                   />
                 </div>
               </div>
-              <div className="hq-form-group mb-0 mt-3.5">
-                <label htmlFor="dist-ship">{t("Shipping address")}</label>
-                <input
-                  id="dist-ship"
-                  value={shippingAddress}
-                  onChange={(e) => setShippingAddress(e.target.value)}
-                  placeholder={t("Primary DC address")}
-                  disabled={submitting}
-                />
+              {market === "Other" ? (
+                <div className="hq-form-group mb-0 mt-3.5">
+                  <label htmlFor="dist-country-other">{t("Country")}</label>
+                  <input
+                    id="dist-country-other"
+                    value={otherCountry}
+                    onChange={(e) => setOtherCountry(e.target.value)}
+                    placeholder={t("Country name")}
+                    disabled={submitting}
+                  />
+                </div>
+              ) : null}
+              <div className="hq-settings-title mt-5">{t("Shipping address")}</div>
+              <div className="grid gap-3.5 sm:grid-cols-2">
+                {regionOptions.length > 0 ? (
+                  <div className="hq-form-group mb-0">
+                    <label htmlFor="dist-region">{t(regionFieldLabel)}</label>
+                    <select
+                      id="dist-region"
+                      value={region}
+                      onChange={(e) => setRegion(e.target.value)}
+                      disabled={submitting}
+                      className="hq-form-select"
+                    >
+                      <option value="">{t(`Select ${regionFieldLabel.toLowerCase()}…`)}</option>
+                      {regionOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="hq-form-group mb-0">
+                    <label htmlFor="dist-region">{t(regionFieldLabel)}</label>
+                    <input
+                      id="dist-region"
+                      value={region}
+                      onChange={(e) => setRegion(e.target.value)}
+                      placeholder={t("If applicable")}
+                      disabled={submitting || !market}
+                    />
+                  </div>
+                )}
+                <div className="hq-form-group mb-0">
+                  <label htmlFor="dist-city">{t("City")}</label>
+                  <input
+                    id="dist-city"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder={t("City")}
+                    disabled={submitting}
+                  />
+                </div>
+                <div className="hq-form-group mb-0 sm:col-span-2">
+                  <label htmlFor="dist-street">{t("Street address")}</label>
+                  <input
+                    id="dist-street"
+                    value={street}
+                    onChange={(e) => setStreet(e.target.value)}
+                    placeholder={t("Primary DC street")}
+                    disabled={submitting}
+                  />
+                </div>
+                <div className="hq-form-group mb-0">
+                  <label htmlFor="dist-postal">{t("Postal / ZIP")}</label>
+                  <input
+                    id="dist-postal"
+                    value={postal}
+                    onChange={(e) => setPostal(e.target.value)}
+                    placeholder={t("Postal or ZIP code")}
+                    autoComplete="postal-code"
+                    disabled={submitting}
+                  />
+                </div>
               </div>
             </HqOperatorCard>
 
@@ -366,7 +464,7 @@ export function HqAddDistributorView() {
             <div className="rounded-[14px] border border-[hsl(40_88%_42%/0.2)] bg-[hsl(40_88%_42%/0.06)] p-4 text-xs leading-relaxed text-[hsl(40_72%_38%)]">
               <strong className="text-[hsl(40_80%_34%)]">{t("Next")}:</strong>{" "}
               {t(
-                "once created, the distributor receives portal access to manage their own sales reps, retail accounts, and replenishment orders.",
+                "once created, we email the contact a link to set their password. They can then manage sales reps, retail accounts, and replenishment. Assign a warehouse later in Settings → CRM if needed.",
               )}
             </div>
           </div>
@@ -383,9 +481,8 @@ export function HqAddDistributorView() {
               {t("Distributor created")}
             </div>
             <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-              {t(
-                "Portal access has been provisioned. They'll receive an invite to set up their account and initial allocation.",
-              )}
+              {t(inviteSummary) ||
+                t("Invitation email sent — they can open the link to set up their account.")}
             </p>
             <HqBtn
               variant="accent"

@@ -55,7 +55,7 @@ function CoverSlide(){
           fontSize:22, lineHeight:1.45, color:'hsl(35 14% 78%)',
           maxWidth:'58ch', marginTop:36, fontFamily:J.body
         }}>
-          A redesign of the Hajime Supply Chain OS journeys — Brand Operator, Manufacturer,
+          A redesign of the Hajime Supply Chain OS journeys — Brand Operator, Distillery,
           Distributor, Sales Rep, Retail Store — with the cross-role handoffs treated as
           first-class moments rather than coincidences of the dataset.
         </p>
@@ -98,7 +98,7 @@ function OverviewSlide(){
   const roles = [
     { key:'hq',     ic:I.dashboard, label:'Brand Operator (HQ)', who:'Sora Okuda · Ops director',
       jobs:'Approves, allocates, configures', sees:'Everything' },
-    { key:'manuf',  ic:I.factory,   label:'Manufacturer',         who:'Imanishi-san · Yamato Distillery',
+    { key:'manuf',  ic:I.factory,   label:'Distillery',         who:'Imanishi-san · Yamato Distillery',
       jobs:'Receives POs, ships finished cases', sees:'Approved POs · packaging specs' },
     { key:'dist',   ic:I.warehouse, label:'Distributor',          who:'Léa Bardot · Vinexpo Paris',
       jobs:'Receives stock, fulfills retail orders, reports depletions', sees:'Inbound · on-hand · retail orders' },
@@ -192,7 +192,7 @@ function OverviewSlide(){
             </svg>
 
             {/* role nodes positioned over svg */}
-            <RoleNode style={{top:50, left:240}}    role="manuf"  ic={I.factory} label="Manufacturer"/>
+            <RoleNode style={{top:50, left:240}}    role="manuf"  ic={I.factory} label="Distillery"/>
             <RoleNode style={{top:240, left:480}}   role="hq"     ic={I.dashboard} label="HQ" emphasis/>
             <RoleNode style={{top:540, left:440}}   role="dist"   ic={I.warehouse} label="Distributor"/>
             <RoleNode style={{top:610, left:130}}   role="retail" ic={I.store} label="Retail"/>
@@ -241,4 +241,4 @@ function RoleNode({role, ic, label, emphasis, style}){
   );
 }
 
-Object.assign(window, { CoverSlide, OverviewSlide });
+Object.assign(window, { CoverSlide, OverviewSlide });'

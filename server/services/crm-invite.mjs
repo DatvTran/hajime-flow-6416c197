@@ -18,7 +18,7 @@ export const CRM_TEAM_ROLE_LABELS = {
   sales_rep: 'Sales Rep',
   retail: 'Retail Store',
   distributor: 'Distributor',
-  manufacturer: 'Manufacturer',
+  manufacturer: 'Distillery',
 };
 
 const INVITE_TTL_DAYS = 7;

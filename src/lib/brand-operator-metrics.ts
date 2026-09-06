@@ -72,8 +72,8 @@ function derivedAlertTitle(a: DerivedAlert): string {
       return "Reorder signal";
     case "demand-spike":
       return "Demand spike";
-    case "manufacturer-update":
-      return "Manufacturer feedback";
+    case "distillery-update":
+      return "Distillery feedback";
     default:
       return "Operations";
   }
@@ -84,7 +84,7 @@ function derivedAlertAction(type: DerivedAlert["type"]): string {
     case "low-stock":
       return "Rebalance allocation or raise production for this SKU.";
     case "delay":
-      return "Coordinate with the manufacturer and update dependent shipments.";
+      return "Coordinate with the distillery and update dependent shipments.";
     case "shipment":
       return "Contact the carrier for status or send the customer a revised ETA.";
     case "payment":
@@ -93,7 +93,7 @@ function derivedAlertAction(type: DerivedAlert["type"]): string {
       return "Confirm PO coverage against lead time and safety stock.";
     case "demand-spike":
       return "Stage inventory or expedite inbound to protect fill rate.";
-    case "manufacturer-update":
+    case "distillery-update":
       return "Review feedback and align next action in Command Center.";
     default:
       return "Review in Orders or Inventory.";
@@ -114,8 +114,8 @@ function derivedAlertSource(type: DerivedAlert["type"]): string {
       return "Planning";
     case "demand-spike":
       return "Demand";
-    case "manufacturer-update":
-      return "Manufacturer";
+    case "distillery-update":
+      return "Distillery";
     default:
       return "HQ";
   }
@@ -254,30 +254,30 @@ export function computeMarketPanelRows(data: AppData, windowDays: number, now = 
     },
   ];
 
-  return defs.map((d) => {
-    const stockBottles = stockBottlesForDemandMarket(inventory, d.stockKey);
-    const soldBottles = soldBottles30dForMarketPredicate(salesOrders, windowDays, d.marketPred, now);
-    const stockCases = bottlesToCases(stockBottles, defaultCase);
-    const soldCases = bottlesToCases(soldBottles, defaultCase);
-    const daily = soldBottles / Math.max(1, windowDays);
-    const daysCover = daily > 0.5 ? stockBottles / daily : soldBottles > 0 ? null : null;
-    const note =
-      d.id === "paris" && stockBottles < 1 && soldBottles > 0
-        ? "No local depot row — velocity from Paris sell-in"
-        : d.id === "spain" && soldBottles < 1
-          ? "No activity in seed data"
+  return defs
+    .map((d) => {
+      const stockBottles = stockBottlesForDemandMarket(inventory, d.stockKey);
+      const soldBottles = soldBottles30dForMarketPredicate(salesOrders, windowDays, d.marketPred, now);
+      const stockCases = bottlesToCases(stockBottles, defaultCase);
+      const soldCases = bottlesToCases(soldBottles, defaultCase);
+      const daily = soldBottles / Math.max(1, windowDays);
+      const daysCover = daily > 0.5 ? stockBottles / daily : null;
+      const note =
+        d.id === "paris" && stockBottles < 1 && soldBottles > 0
+          ? "No local depot row — velocity from Paris sell-in"
           : undefined;
 
-    return {
-      id: d.id,
-      label: d.label,
-      stockCases,
-      sold30dCases: Math.round(soldCases * 10) / 10,
-      daysCover: daysCover !== null ? Math.round(daysCover) : null,
-      health: healthFromDays(daysCover),
-      note,
-    };
-  });
+      return {
+        id: d.id,
+        label: d.label,
+        stockCases,
+        sold30dCases: Math.round(soldCases * 10) / 10,
+        daysCover: daysCover !== null ? Math.round(daysCover) : null,
+        health: healthFromDays(daysCover),
+        note,
+      };
+    })
+    .filter((row) => row.stockCases > 0 || row.sold30dCases > 0);
 }
 
 export function buildPendingApprovalItems(

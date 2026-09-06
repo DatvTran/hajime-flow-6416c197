@@ -20,7 +20,7 @@ export default function ManufacturerAnalyticsPage() {
   const logAudit = useAuditLog();
 
   const orgLabel = useMemo(() => {
-    if (!user) return "Manufacturer";
+    if (!user) return "Distillery";
     const email = user.email?.toLowerCase() ?? "";
     if (email.includes("kosapan")) return "Kosapan Distillery";
     const mfgAccount = data.accounts.find(
@@ -28,7 +28,7 @@ export default function ManufacturerAnalyticsPage() {
         (a.type === "manufacturer" || a.type === "producer") &&
         (a.email?.toLowerCase() === email || a.portalLoginEmail?.toLowerCase() === email),
     );
-    return mfgAccount?.tradingName ?? user.displayName?.trim() ?? "Manufacturer";
+    return mfgAccount?.tradingName ?? user.displayName?.trim() ?? "Distillery";
   }, [data.accounts, user]);
 
   if (loading) {

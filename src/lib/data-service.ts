@@ -52,10 +52,7 @@ function sliceIsoDate(v: unknown): string {
 }
 
 const PORTAL_ROLES = new Set<TeamMemberPortalRole>([
-  "sales_rep",
-  "retail",
-  "distributor",
-  "manufacturer",
+  "sales_rep", "retail", "distributor", "manufacturer",
 ]);
 
 function mapRowToWarehouse(row: Record<string, unknown>): Warehouse {
@@ -183,7 +180,7 @@ export function mapRowToPurchaseOrder(po: Record<string, unknown>): PurchaseOrde
   }
 
   const manufacturer = String(
-    po.supplier_name ?? po.manufacturer ?? po.manufacturer_name ?? "Manufacturer",
+    po.supplier_name ?? po.manufacturer ?? po.manufacturer_name ?? "Distillery",
   );
 
   const issueDate = sliceIsoDate(po.order_date ?? po.issue_date);
@@ -527,7 +524,25 @@ function mapOperationalSettingsFromApi(
     hqManufacturerPartnerConfigs: parsePartnerConfigsFromOperationalSettings(
       row.hq_manufacturer_partner_configs,
     ),
+    hqUiPreferences: parseHqUiPreferences(row.hq_ui_preferences),
   };
+}
+
+function parseHqUiPreferences(raw: unknown): Record<string, boolean> | undefined {
+  if (raw == null || String(raw).trim() === "") return undefined;
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+    const toggles = (parsed as { toggles?: unknown }).toggles;
+    if (!toggles || typeof toggles !== "object" || Array.isArray(toggles)) return undefined;
+    const out: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(toggles as Record<string, unknown>)) {
+      if (typeof value === "boolean") out[key] = value;
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function parsePartnerConfigsFromOperationalSettings(
@@ -589,6 +604,8 @@ function transformToAppData(
         ),
         msrpCasePrice: Number(p.metadata?.msrpCasePrice ?? p.metadata?.retailPriceCase ?? 0),
         manufacturerCasePrice: Number(p.metadata?.manufacturerCasePrice ?? 0),
+        distributorSellOutCasePrice: Number(p.metadata?.distributorSellOutCasePrice ?? 0) || undefined,
+        brokerCommissionPerBottle: Number(p.metadata?.brokerCommissionPerBottle ?? 0) || undefined,
         launchDate: p.metadata?.launchDate,
         status: p.metadata?.status || "active",
         imageUrl: p.metadata?.imageUrl || p.metadata?.image,
@@ -600,13 +617,34 @@ function transformToAppData(
         const formatAddress = (addr: any): string | undefined => {
           if (!addr) return undefined;
           if (typeof addr === "string") return addr;
-          // Handle object format: {street, city, province, postal}
           if (typeof addr === "object") {
-            const parts = [addr.street, addr.city, addr.province, addr.postal].filter(Boolean);
-            return parts.join(", ");
+            const parts = [addr.street, addr.city, addr.province, addr.postal, addr.line].filter(Boolean);
+            return parts.join(", ") || undefined;
           }
           return String(addr);
         };
+
+        const bill = a.billing_address;
+        const billObj =
+          bill && typeof bill === "object" && !Array.isArray(bill)
+            ? (bill as Record<string, unknown>)
+            : typeof bill === "string"
+              ? (() => {
+                  try {
+                    return JSON.parse(bill) as Record<string, unknown>;
+                  } catch {
+                    return {};
+                  }
+                })()
+              : {};
+        const marketStr = String(a.market ?? "");
+        const marketParts = marketStr.split(",").map((s: string) => s.trim()).filter(Boolean);
+        const city =
+          String(a.city ?? "").trim() ||
+          (marketParts.length >= 1 ? marketParts[0] : "");
+        const country =
+          String(a.country ?? "").trim() ||
+          (marketParts.length >= 2 ? marketParts.slice(1).join(", ") : "Canada");
         
         return {
           id: a.id,
@@ -619,8 +657,10 @@ function transformToAppData(
           status: a.status || "active",
           email: a.email || "",
           phone: a.phone || "",
-          city: a.city || "",
-          country: a.country || "Canada",
+          city,
+          country: country || "Canada",
+          contactName: String(billObj.contactName ?? a.contact_name ?? ""),
+          contactRole: String(billObj.contactRole ?? a.contact_role ?? ""),
           billingAddress: formatAddress(a.billing_address),
           shippingAddress: formatAddress(a.shipping_address),
           deliveryAddress: formatAddress(a.shipping_address),

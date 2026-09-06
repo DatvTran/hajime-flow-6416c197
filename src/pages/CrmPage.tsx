@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,7 +39,7 @@ const TEAM_ROLE_LABELS: Record<TeamMemberPortalRole, string> = {
   sales_rep: "Sales rep",
   retail: "Retail store / account",
   distributor: "Distributor / wholesaler",
-  manufacturer: "Manufacturer",
+  manufacturer: "Distillery",
 };
 
 const TEAM_ROLE_ORDER: TeamMemberPortalRole[] = ["sales_rep", "retail", "distributor", "manufacturer"];
@@ -47,6 +48,8 @@ const CRM_NO_WAREHOUSE = "__none__";
 
 export default function CrmPage() {
   const { data, updateData, loading, refreshTeamMembers } = useAppData();
+  const [searchParams] = useSearchParams();
+  const salesRepsOnly = searchParams.get("role") === "sales_rep";
 
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
   const [newMemberName, setNewMemberName] = useState("");
@@ -63,10 +66,11 @@ export default function CrmPage() {
 
   const teamMembers = data.teamMembers ?? [];
   const teamMembersVisible = useMemo(() => {
-    const list = [...teamMembers];
+    let list = [...teamMembers];
+    if (salesRepsOnly) list = list.filter((m) => m.role === "sales_rep");
     list.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
     return showInactiveCrm ? list : list.filter((m) => m.isActive !== false);
-  }, [teamMembers, showInactiveCrm]);
+  }, [teamMembers, showInactiveCrm, salesRepsOnly]);
 
   const warehouseOptionsForCrm = useMemo(() => {
     const list = [...(data.warehouses ?? [])].filter((w) => w.isActive !== false);
@@ -93,6 +97,10 @@ export default function CrmPage() {
       setNewMemberPrimaryWarehouseId(CRM_NO_WAREHOUSE);
     }
   }, [newMemberRole]);
+
+  useEffect(() => {
+    if (salesRepsOnly) setNewMemberRole("sales_rep");
+  }, [salesRepsOnly]);
 
   const refreshWarehousesFromApi = async () => {
     try {
@@ -395,12 +403,11 @@ export default function CrmPage() {
         createdAt: editTeamMember.createdAt,
       };
 
-      updateData((d) => ({
-        ...d,
-        teamMembers: [...(d.teamMembers ?? []).filter((m) => m.id !== editTeamMember.id)].map((m) =>
-          m.id === updated.id ? { ...m, ...updated } : m,
-        ),
-      }));
+      updateData((d) => {
+        const rest = (d.teamMembers ?? []).filter((m) => m.id !== editTeamMember.id);
+        const mergedRow: TeamMember = { ...editTeamMember, ...updated };
+        return { ...d, teamMembers: [...rest, mergedRow] };
+      });
 
       setEditTeamOpen(false);
       setEditTeamMember(null);
@@ -499,41 +506,47 @@ export default function CrmPage() {
   return (
     <div>
       <PageHeader
-        title="CRM"
-        description="Portal contacts, invites, and directory — Brand Operator (HQ). Create warehouses and distributor accounts under HQ settings & Accounts first; then add people here and send portal invites."
+        title={salesRepsOnly ? "Sales reps" : "CRM"}
+        description={
+          salesRepsOnly
+            ? "Field sales reps for Hajime Canada’s distributor network — add a rep and send a portal invite so they can cover hotels, bars, restaurants, and stores."
+            : "Portal contacts, invites, and directory — Brand Operator (HQ). Sales reps added here get an invite email. Distributor and retail contacts also get an invite when you create those accounts. Resend invite if needed."
+        }
       />
 
-      <Alert className="mb-6 border-border/80 bg-muted/30">
-        <AlertDescription className="text-sm text-foreground/90">
-          <span className="font-medium text-foreground">Partner onboarding (Brand Operator).</span> Add{" "}
-          <strong className="font-medium">warehouses</strong> under{" "}
-          <strong className="font-medium">HQ settings</strong> for inventory destinations. Create{" "}
-          <strong className="font-medium">distributor accounts</strong> under{" "}
-          <strong className="font-medium">Accounts</strong>. When those exist, add matching people here and send the{" "}
-          <strong className="font-medium">portal invite</strong> so each contact can sign in.
-        </AlertDescription>
-      </Alert>
+      {salesRepsOnly ? null : (
+        <Alert className="mb-6 border-border/80 bg-muted/30">
+          <AlertDescription className="text-sm text-foreground/90">
+            <span className="font-medium text-foreground">Partner onboarding (Brand Operator).</span> Add{" "}
+            <strong className="font-medium">warehouses</strong> under{" "}
+            <strong className="font-medium">HQ settings</strong> for inventory destinations. Create{" "}
+            <strong className="font-medium">distributor accounts</strong> under{" "}
+            <strong className="font-medium">Accounts</strong>. When those exist, add matching people here and send the{" "}
+            <strong className="font-medium">portal invite</strong> so each contact can sign in.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Card className="border-border/80">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
           <div>
             <CardTitle className="font-display flex items-center gap-2 text-lg">
               <Users className="h-5 w-5" />
-              CRM contacts
+              {salesRepsOnly ? "Sales reps" : "CRM contacts"}
             </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Directory for portal identities and invite emails. After distributor accounts (Accounts) and warehouses
-              (HQ settings) exist, add each contact with the right role — then use{" "}
-              <span className="font-medium text-foreground">Resend invite</span> or the link from the add flow so they can
-              set up login. Sales reps, retail, distributors, and manufacturer contacts map to sign-in personas.
+              {salesRepsOnly
+                ? "Add field reps for Hajime Canada and send a portal invite. They sign in as sales reps to cover retail and on-premise accounts."
+                : "Directory for portal identities and invite emails. After distributor accounts (Accounts) and warehouses (HQ settings) exist, add each contact with the right role — then use Resend invite or the link from the add flow so they can set up login. Sales reps, retail, distributors, and distillery contacts map to sign-in personas."}
             </p>
           </div>
           <Button type="button" className="w-full shrink-0 touch-manipulation sm:w-auto" onClick={() => setTeamDialogOpen(true)}>
             <UserPlus className="mr-2 h-4 w-4" />
-            Add CRM contact
+            {salesRepsOnly ? "Add sales rep" : "Add CRM contact"}
           </Button>
         </CardHeader>
         <CardContent>
+          {salesRepsOnly ? null : (
           <Alert className="mb-4 border-border/80 bg-muted/25">
             <AlertDescription className="space-y-2 text-sm text-foreground/90">
               <p>
@@ -549,6 +562,7 @@ export default function CrmPage() {
               </p>
             </AlertDescription>
           </Alert>
+          )}
           <Dialog
             open={teamDialogOpen}
             onOpenChange={(open) => {
@@ -558,7 +572,7 @@ export default function CrmPage() {
           >
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle className="font-display">Add CRM contact</DialogTitle>
+                <DialogTitle className="font-display">{salesRepsOnly ? "Add sales rep" : "Add CRM contact"}</DialogTitle>
                 <DialogDescription>
                   Choose their portal role for sign-in and workflow routing. Use the same email you recorded on the
                   distributor or warehouse-side account when possible. Saving sends a portal invite email when the API is
@@ -595,7 +609,7 @@ export default function CrmPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {TEAM_ROLE_ORDER.map((r) => (
+                      {(salesRepsOnly ? (["sales_rep"] as TeamMemberPortalRole[]) : TEAM_ROLE_ORDER).map((r) => (
                         <SelectItem key={r} value={r}>
                           {TEAM_ROLE_LABELS[r]}
                         </SelectItem>
@@ -688,7 +702,7 @@ export default function CrmPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {TEAM_ROLE_ORDER.map((r) => (
+                      {(salesRepsOnly ? (["sales_rep"] as TeamMemberPortalRole[]) : TEAM_ROLE_ORDER).map((r) => (
                         <SelectItem key={r} value={r}>
                           {TEAM_ROLE_LABELS[r]}
                         </SelectItem>
@@ -736,7 +750,7 @@ export default function CrmPage() {
 
           {teamMembers.length === 0 ? (
             <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
-              No CRM contacts yet. Add sales reps, retail accounts, distributors, or manufacturer contacts.
+              No CRM contacts yet. Add sales reps, retail accounts, distributors, or distillery contacts.
             </p>
           ) : (
             <div className="-mx-4 overflow-x-auto touch-pan-x px-4 sm:mx-0 sm:px-0">

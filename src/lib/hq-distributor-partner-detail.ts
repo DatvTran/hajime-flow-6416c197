@@ -1,10 +1,5 @@
 import type { Account, InventoryItem, Product, SalesOrder } from "@/data/mockData";
 import { filterRowsForOrg, filterWholesaleOrdersForHq } from "@/lib/hq-order-scope";
-import {
-  buildHqDistributorDemoDetail,
-  demoOrgIdForDistributorName,
-  isHqDistributorDemoOrgId,
-} from "@/lib/hq-distributors-demo";
 
 const MS_DAY = 86400000;
 
@@ -220,12 +215,6 @@ export function buildDistributorPartnerDetail(
   products: Product[],
   metrics: { fillRate: number; onTime: number; accountCount: number },
 ): DistributorPartnerDetail {
-  const demoId = isHqDistributorDemoOrgId(orgId) ? orgId : demoOrgIdForDistributorName(orgName);
-  if (demoId) {
-    const demo = buildHqDistributorDemoDetail(demoId);
-    if (demo) return demo;
-  }
-
   const platform = findPlatformAccount(orgId, orgName, accounts);
   const account =
     platform ??
@@ -279,14 +268,6 @@ export function buildDistributorPartnerDetail(
     statusLabel = "monitor";
   }
 
-  if (dcInventory.length === 0 && replenishments.length === 0) {
-    const fallbackId = demoOrgIdForDistributorName(account.tradingName || account.legalName || orgName);
-    if (fallbackId) {
-      const demo = buildHqDistributorDemoDetail(fallbackId);
-      if (demo) return demo;
-    }
-  }
-
   return {
     orgId,
     name: account.tradingName || account.legalName || orgName,
@@ -294,8 +275,10 @@ export function buildDistributorPartnerDetail(
     tierIsGold: isGold,
     statusTone,
     statusLabel,
-    marketLine: `${city} · ${contact}`,
-    shipLine: `${city} · ${dcCount} DC${dcCount !== 1 ? "s" : ""}`,
+    marketLine: `${[account.country, city].filter(Boolean).join(" · ") || "—"} · ${contact}`,
+    shipLine: account.deliveryAddress?.trim()
+      ? account.deliveryAddress.trim()
+      : `${[account.country, city].filter(Boolean).join(" · ") || "—"} · ${dcCount} DC${dcCount !== 1 ? "s" : ""}`,
     contactLine: contact,
     email: account.email || "—",
     phone: account.phone || "—",

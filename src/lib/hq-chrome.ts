@@ -34,7 +34,7 @@ export function hqRouteChrome(pathname: string, search = ""): { section: string;
     return { section: "Command", page: "Markets & allocation" };
   }
   if (path.startsWith("/manufacturer/profiles") || path.startsWith("/manufacturer")) {
-    return { section: "Network", page: "Manufacturers" };
+    return { section: "Network", page: "Distilleries" };
   }
   if (path.startsWith("/accounts/add")) {
     return { section: "Network", page: "Add distributor" };
@@ -45,6 +45,9 @@ export function hqRouteChrome(pathname: string, search = ""): { section: string;
   if (path.startsWith("/accounts")) {
     if (params.get("view") === "sales") {
       return { section: "Command", page: "Distributor sales" };
+    }
+    if (params.get("view") === "retail") {
+      return { section: "Network", page: "Retail accounts" };
     }
     return { section: "Network", page: "Distributors" };
   }
@@ -72,8 +75,11 @@ export function hqRouteChrome(pathname: string, search = ""): { section: string;
   if (path.startsWith("/shipments")) {
     return { section: "Command", page: "Shipments" };
   }
+  if (path.startsWith("/expo-leads")) {
+    return { section: "Command", page: "Expo leads" };
+  }
   if (path.startsWith("/crm")) {
-    return { section: "Network", page: "CRM" };
+    return { section: "Network", page: "Sales reps" };
   }
   if (path.startsWith("/finance")) {
     return { section: "Brand", page: "Payments" };

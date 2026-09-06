@@ -3,6 +3,9 @@ export function distributorRouteChrome(pathname: string, _search: string): { sec
   if (pathname === "/distributor" || pathname === "/distributor/") {
     return { section: "Operations", page: "Dashboard" };
   }
+  if (pathname.startsWith("/distributor/international-orders")) {
+    return { section: "Operations", page: "International orders" };
+  }
   if (pathname.startsWith("/distributor/purchase-orders")) {
     return { section: "Operations", page: "Purchase orders" };
   }

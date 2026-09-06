@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 
-/** Default for HQ / manufacturer / distributor operational views. */
+/** Default for HQ / distillery / distributor operational views. */
 export const PORTAL_REFRESH_INTERVAL_MS = 45_000;
 
 /** Faster poll for retail + sales rep so distributor pick & pack updates appear promptly. */

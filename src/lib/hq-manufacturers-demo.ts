@@ -1,10 +1,5 @@
 import type { Account, PurchaseOrder } from "@/data/mockData";
-import {
-  configToPlatformAccount,
-  isManufacturerHidden,
-  listHqManufacturerPartners,
-  type HqManufacturerPartnerId,
-} from "@/lib/hq-manufacturer-partners";
+import type { HqManufacturerPartnerId } from "@/lib/hq-manufacturer-partners";
 
 const CASE = 12;
 
@@ -124,45 +119,14 @@ export const HQ_MANUFACTURER_DEMO_PURCHASE_ORDERS: PurchaseOrder[] = [
   }),
 ];
 
-function accountKey(a: Account): string {
-  return (a.id || a.tradingName || a.legalName).trim().toLowerCase();
-}
-
 export function mergeHqManufacturerAccountsForDisplay(accounts: Account[]): Account[] {
-  const platform = accounts.filter((a) => !a.distributorOrgId);
-  const seen = new Set(platform.map(accountKey));
-  const extras: Account[] = [];
-  for (const partner of listHqManufacturerPartners()) {
-    const acc = configToPlatformAccount(partner);
-    if (isManufacturerHidden(acc.id) || isManufacturerHidden(partner.id)) continue;
-    const key = accountKey(acc);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    extras.push(acc);
-  }
-  const liveMfr = platform.filter((a) => a.type === "manufacturer").length;
-  if (liveMfr >= 3 && extras.length === 0) return accounts;
-  if (extras.length === 0) return accounts;
-  return [...accounts, ...extras];
-}
-
-function poKey(po: PurchaseOrder): string {
-  return po.id;
+  return accounts;
 }
 
 export function mergeHqManufacturerPurchaseOrdersForDisplay(
   purchaseOrders: PurchaseOrder[],
 ): PurchaseOrder[] {
-  const production = purchaseOrders.filter((p) => p.poType !== "sales");
-  if (production.length >= 6) return purchaseOrders;
-  const seen = new Set(purchaseOrders.map(poKey));
-  const extras: PurchaseOrder[] = [];
-  for (const po of HQ_MANUFACTURER_DEMO_PURCHASE_ORDERS) {
-    if (seen.has(po.id)) continue;
-    seen.add(po.id);
-    extras.push(po);
-  }
-  return extras.length > 0 ? [...purchaseOrders, ...extras] : purchaseOrders;
+  return purchaseOrders;
 }
 
 export function demoManufacturerIdForName(name: string): HqManufacturerPartnerId | undefined {

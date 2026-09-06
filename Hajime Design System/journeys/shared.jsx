@@ -273,7 +273,7 @@ function Avatar({initials, size=28, tone='ink', style={}}) {
 // Role colors — used for slide accents only, not as second brand colors
 const ROLES = {
   hq:    { color: J.gold,         label: 'Brand Operator · HQ' },
-  manuf: { color: 'hsl(15 60% 45%)', label: 'Manufacturer' },
+  manuf: { color: 'hsl(15 60% 45%)', label: 'Distillery' },
   dist:  { color: 'hsl(215 50% 40%)', label: 'Distributor' },
   rep:   { color: 'hsl(158 50% 30%)', label: 'Sales Rep' },
   retail:{ color: 'hsl(280 30% 40%)', label: 'Retail Store' },

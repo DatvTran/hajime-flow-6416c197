@@ -25,7 +25,7 @@ export const SUPPORT_SUBJECTS = [
   "Production request query",
   "Rice / material allocation",
   "Quality spec clarification",
-  "Manufacturer partner program",
+  "Distillery partner program",
   "Shipment / logistics",
   "Other",
 ] as const;
@@ -50,7 +50,7 @@ export const SUPPORT_FAQS: SupportFaq[] = [
   {
     question: "How is yield efficiency calculated?",
     answer:
-      "Actual bottle yield ÷ theoretical maximum yield from the rice input. Losses from pressing, filtration, and pasteurization all count. Master manufacturer partner requires 95% sustained over the quarter.",
+      "Actual bottle yield ÷ theoretical maximum yield from the rice input. Losses from pressing, filtration, and pasteurization all count. Master distillery partner requires 95% sustained over the quarter.",
   },
   {
     question: "When is my production premium paid?",
@@ -60,6 +60,6 @@ export const SUPPORT_FAQS: SupportFaq[] = [
   {
     question: "How do I request a rice allocation increase?",
     answer:
-      "Use the rice subsidy fund or contact Hajime for priority Yamada Nishiki allocation. Preferred manufacturer partners get guaranteed Grade A supply at contract rate.",
+      "Use the rice subsidy fund or contact Hajime for priority Yamada Nishiki allocation. Preferred distillery partners get guaranteed Grade A supply at contract rate.",
   },
 ];

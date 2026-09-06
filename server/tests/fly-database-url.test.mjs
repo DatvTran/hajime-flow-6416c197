@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   flyDatabaseConnection,
+  isTransactionPoolerUrl,
   normalizeFlyDatabaseUrl,
 } from '../config/fly-database-url.mjs';
 
@@ -53,6 +54,34 @@ test('flyDatabaseConnection disables SSL on internal host even with sslmode=requ
     if (prev === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = prev;
   }
+});
+
+test('flyDatabaseConnection enables SSL for Supabase hosts without sslmode', () => {
+  const prev = process.env.DATABASE_URL;
+  process.env.DATABASE_URL =
+    'postgresql://postgres.abc:secret@db.abc.supabase.co:5432/postgres';
+  try {
+    const conn = flyDatabaseConnection();
+    assert.equal(conn.host, 'db.abc.supabase.co');
+    assert.deepEqual(conn.ssl, { rejectUnauthorized: false });
+    assert.equal(conn.database, 'postgres');
+  } finally {
+    if (prev === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = prev;
+  }
+});
+
+test('isTransactionPoolerUrl detects Supabase :6543', () => {
+  assert.equal(
+    isTransactionPoolerUrl(
+      'postgresql://postgres.abc:secret@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres',
+    ),
+    true,
+  );
+  assert.equal(
+    isTransactionPoolerUrl('postgresql://postgres.abc:secret@db.abc.supabase.co:5432/postgres'),
+    false,
+  );
 });
 
 test('flyDatabaseConnection throws when DATABASE_URL and DB_HOST are missing', () => {

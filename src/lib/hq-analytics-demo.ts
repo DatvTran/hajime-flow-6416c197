@@ -139,8 +139,8 @@ export function buildHqAnalyticsDemoSnapshot(range: HqAnalyticsRangeId): HqAnaly
 }
 
 /** Use demo when scoped HQ orders are too sparse for charts. */
-export function shouldUseHqAnalyticsDemo(liveRevenue: number, orderCount: number, marketCount: number): boolean {
-  return liveRevenue < 80_000 || orderCount < 8 || marketCount < 2;
+export function shouldUseHqAnalyticsDemo(_liveRevenue: number, _orderCount: number, _marketCount: number): boolean {
+  return false;
 }
 
 export function mergeHqAnalyticsSkuNames(

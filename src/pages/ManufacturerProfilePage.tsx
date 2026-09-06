@@ -191,7 +191,7 @@ export default function ManufacturerProfilePage() {
       }));
       setFormData(merged);
 
-      toast.success("Profile saved", { description: "Manufacturer profile saved to server." });
+      toast.success("Profile saved", { description: "Distillery profile saved to server." });
       setIsEditing(false);
     } catch (err) {
       console.error("[ManufacturerProfile] Failed to save:", err);
@@ -270,7 +270,7 @@ export default function ManufacturerProfilePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Manufacturer Profile"
+        title="Distillery Profile"
         description="Company details, certifications, production capacity, and compliance documentation."
       />
 

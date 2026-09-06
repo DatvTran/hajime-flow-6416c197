@@ -1,13 +1,16 @@
 /**
- * Fly.io Postgres connection helpers.
+ * Postgres connection helpers for Fly private network and hosted Supabase.
  *
  * node-postgres can drop connections with "Connection terminated unexpectedly"
  * when DATABASE_URL sslmode disagrees with Fly's private network (plaintext on
  * *.internal). Parse the URL into an explicit connection object instead of
  * passing the raw string through to knex/pg.
+ *
+ * Supabase always requires TLS. Knex migrations must use the direct host
+ * (db.<ref>.supabase.co:5432), not the transaction pooler (:6543).
  */
 
-function isFlyPrivateHost(hostname) {
+export function isFlyPrivateHost(hostname) {
   return (
     hostname.endsWith('.internal') ||
     hostname.endsWith('.flycast') ||
@@ -16,9 +19,36 @@ function isFlyPrivateHost(hostname) {
   );
 }
 
+export function isSupabaseHost(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  return (
+    host.includes('supabase.co') ||
+    host.includes('supabase.com') ||
+    host.includes('pooler.supabase')
+  );
+}
+
+export function isTransactionPoolerUrl(url) {
+  try {
+    const parsed = new URL(String(url || '').trim());
+    const port = Number(parsed.port) || 5432;
+    return isSupabaseHost(parsed.hostname) && port === 6543;
+  } catch {
+    return false;
+  }
+}
+
 function sslFromMode(sslmode, hostname, fallbackSsl) {
   // Fly private network uses plaintext; SSL handshakes fail with "Connection terminated unexpectedly".
-  if (isFlyPrivateHost(hostname)) return false;
+  if (isFlyPrivateHost(hostname) && !isSupabaseHost(hostname)) return false;
+
+  if (isSupabaseHost(hostname)) {
+    const mode = (sslmode || '').toLowerCase();
+    if (mode === 'verify-ca' || mode === 'verify-full') {
+      return { rejectUnauthorized: true };
+    }
+    return { rejectUnauthorized: false };
+  }
 
   const mode = (sslmode || '').toLowerCase();
   if (mode === 'disable' || mode === 'allow') return false;
@@ -86,7 +116,7 @@ export function flyDatabaseConnection(fallbackSsl = { ssl: { rejectUnauthorized:
   const host = process.env.DB_HOST;
   if (!host) {
     throw new Error(
-      'DATABASE_URL is not set. Attach Postgres to the app: fly postgres attach hajime-db --app hajime-app',
+      'DATABASE_URL is not set. Set it to the Supabase Postgres URI (direct :5432 for migrations).',
     );
   }
 

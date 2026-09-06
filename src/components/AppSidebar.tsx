@@ -34,6 +34,7 @@ import {
   Building2,
   UserPlus,
   Globe,
+  QrCode,
 } from "lucide-react";
 import {
   Sidebar,
@@ -63,7 +64,7 @@ export type NavGroupDef = { label: string; items: NavItem[] };
 const ROLE_BADGE: Record<HajimeRole, string> = {
   founder_admin: "Founder Admin",
   brand_operator: "Brand Operator (HQ)",
-  manufacturer: "Manufacturer",
+  manufacturer: "Distillery",
   distributor: "Distributor / Wholesaler",
   retail: "Retail Store / Account",
   sales_rep: "Sales Rep",
@@ -116,9 +117,8 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           label: "Supply chain",
           items: [
             { title: "Product development", url: "/product-development", icon: Factory },
-            { title: "Production requests", url: "/production-requests", icon: FileText },
-            { title: "Manufacturer portal", url: "/manufacturer", icon: Factory },
-            { title: "Manufacturer profiles", url: "/manufacturer/profiles", icon: Building2 },
+            { title: "Distillery portal", url: "/manufacturer", icon: Factory },
+            { title: "Distillery profiles", url: "/manufacturer/profiles", icon: Building2 },
           ],
         },
         {
@@ -134,12 +134,13 @@ function navGroupsForRole(role: HajimeRole): NavGroupDef[] {
           label: "HQ",
           items: [
             { title: "CRM", url: "/crm", icon: UserPlus },
+            { title: "Expo leads", url: "/expo-leads", icon: QrCode },
             { title: "HQ settings", url: "/settings", icon: Settings },
           ],
         },
       ];
     case "manufacturer":
-      // Fallback only — manufacturer users should use ManufacturerShellLayout + ManufacturerSidebar.
+      // Fallback only — distillery users should use ManufacturerShellLayout + ManufacturerSidebar.
       return [
         {
           label: "Production",

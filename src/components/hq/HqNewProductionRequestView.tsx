@@ -167,7 +167,7 @@ export function HqNewProductionRequestView({
         value: selectedProduct ? `${selectedProduct.sku} — ${selectedProduct.name}` : sku || "—",
       },
       { label: "Quantity", value: `${cases.toLocaleString()} cases (${bottleQty.toLocaleString()} bottles)` },
-      { label: "Manufacturer", value: manufacturerDisplayLabel },
+      { label: "Distillery", value: manufacturerDisplayLabel },
       { label: "Destination", value: marketDestination || "—" },
       { label: "Target completion", value: requiredDate || "—" },
       { label: "Ship by", value: requestedShipDate || "—" },
@@ -290,7 +290,7 @@ export function HqNewProductionRequestView({
                 { partner: prefillManufacturer.label },
               )
             : t(
-                "Reorder an existing SKU from a manufacturer — adjust quantity up or down and choose the destination warehouse or market. New concepts go to Product Development.",
+                "Reorder an existing SKU from a distillery — adjust quantity up or down and choose the destination warehouse or market. New concepts go to Product Development.",
               )
         }
       />
@@ -392,7 +392,7 @@ export function HqNewProductionRequestView({
                     id="po-status"
                     className="flex h-10 items-center rounded-md border border-border/60 bg-muted/30 px-3 text-[13px] text-muted-foreground"
                   >
-                    {t("Issued to manufacturer")} ({t("awaiting schedule")})
+                    {t("Issued to distillery")} ({t("awaiting schedule")})
                   </p>
                 ) : (
                   <select
@@ -435,17 +435,17 @@ export function HqNewProductionRequestView({
             <div className="hq-settings-title">{t("Assignment & timing")}</div>
             <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
               <div className="hq-form-group mb-0 sm:col-span-2">
-                <label htmlFor="po-manufacturer-partner">{t("Assign to manufacturer partner")}</label>
+                <label htmlFor="po-distillery-partner">{t("Assign to distillery partner")}</label>
                 {manufacturerLocked ? (
                   <p
-                    id="po-manufacturer-partner"
+                    id="po-distillery-partner"
                     className="flex h-10 items-center rounded-md border border-border/60 bg-muted/30 px-3 text-[13px] font-medium text-foreground"
                   >
                     {manufacturerDisplayLabel}
                   </p>
                 ) : (
                   <select
-                    id="po-manufacturer-partner"
+                    id="po-distillery-partner"
                     value={manufacturerKey}
                     onChange={(e) => setManufacturerKey(e.target.value)}
                     disabled={submitting}
@@ -460,16 +460,16 @@ export function HqNewProductionRequestView({
                 )}
                 {manufacturerLocked ? (
                   <p className="mt-1.5 text-[11px] text-muted-foreground">
-                    {t("This request is assigned to the manufacturer partner you selected from Manufacturers.")}
+                    {t("This request is assigned to the distillery partner you selected from Distilleries.")}
                   </p>
                 ) : (
                   <p className="mt-1.5 text-[11px] text-muted-foreground">
-                    {t("Manufacturer profiles from Manufacturers. CRM login is used when the email matches the profile.")}
+                    {t("Distillery profiles from Distilleries. CRM login is used when the email matches the profile.")}
                   </p>
                 )}
                 {manufacturerChoices.some((c) => c.key.startsWith("fallback:")) ? (
                   <p className="mt-1.5 text-[11px] text-[hsl(30_80%_34%)]">
-                    {t("No manufacturer CRM contacts loaded — using demo partner name.")}
+                    {t("No distillery CRM contacts loaded — using demo partner name.")}
                   </p>
                 ) : null}
               </div>
@@ -532,7 +532,7 @@ export function HqNewProductionRequestView({
           </HqOperatorCard>
 
           <HqOperatorCard className="hq-settings-panel">
-            <div className="hq-settings-title">{t("Notes for the manufacturer partner")}</div>
+            <div className="hq-settings-title">{t("Notes for the distillery partner")}</div>
             <div className="hq-form-group mb-0">
               <label htmlFor="po-notes">{t("Spec details & requirements")}</label>
               <textarea
@@ -589,7 +589,7 @@ export function HqNewProductionRequestView({
           <div className="rounded-[14px] border border-[hsl(280_40%_50%/0.2)] bg-[hsl(280_40%_50%/0.06)] p-4 text-xs leading-relaxed text-[hsl(280_30%_42%)]">
             <strong className="text-[hsl(280_40%_44%)]">{t("Next:")}</strong>{" "}
             {t(
-              "The manufacturer confirms the reorder and schedules the batch. Quantity and destination can differ each time — this is not a new product concept.",
+              "The distillery confirms the reorder and schedules the batch. Quantity and destination can differ each time — this is not a new product concept.",
             )}
           </div>
         </div>
@@ -608,7 +608,7 @@ export function HqNewProductionRequestView({
                     poId: createdPoId,
                     partner: manufacturerDisplayLabel,
                   })
-                : t("Your production request was sent to the manufacturer partner.")}
+                : t("Your production request was sent to the distillery partner.")}
             </p>
             <HqBtn variant="accent" size="sm" className="mt-5" onClick={finishSuccess}>
               {t("Back to production requests")}

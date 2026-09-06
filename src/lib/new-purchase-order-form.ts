@@ -1,4 +1,5 @@
 import type { Account, PurchaseOrder } from "@/data/mockData";
+import { resolveHqManufacturerPartnerId } from "@/lib/hq-manufacturer-partners";
 import { nextPoId } from "@/lib/po-ids";
 
 export const FALLBACK_MANUFACTURER_NAMES = ["Kirin Brewery Co."];
@@ -29,12 +30,12 @@ export const PO_TYPES: {
   {
     value: "sales",
     label: "Sales PO",
-    description: "Distributor ordering from manufacturer — brand operator approves",
+    description: "Distributor ordering from distillery — brand operator approves",
   },
   {
     value: "production",
     label: "Production PO",
-    description: "Brand operator ordering directly from manufacturer",
+    description: "Brand operator ordering directly from distillery",
   },
 ];
 
@@ -65,23 +66,45 @@ export type NewPurchaseOrderFormState = {
   selectedDistributorId: string;
 };
 
+/** Resolve a stable distillery partner id (e.g. kosapan) from picker key + label. */
+export function resolveProductionManufacturerId(
+  manufacturerKey: string,
+  displayLabel?: string,
+): string | undefined {
+  const key = manufacturerKey.trim();
+  let raw: string | undefined;
+  if (key.startsWith("account:")) {
+    raw = key.slice("account:".length);
+  } else if (key.startsWith("partner:")) {
+    raw = key.slice("partner:".length);
+  } else if (key.startsWith("prof:")) {
+    raw = key.slice("prof:".length);
+  } else if (!key.startsWith("fallback:")) {
+    raw = key || undefined;
+  }
+
+  const fromKey = raw ? resolveHqManufacturerPartnerId(raw) : null;
+  if (fromKey) return fromKey;
+
+  const fromLabel = displayLabel?.trim()
+    ? resolveHqManufacturerPartnerId(displayLabel.trim())
+    : null;
+  if (fromLabel) return fromLabel;
+
+  return raw || undefined;
+}
+
 export function buildPurchaseOrderFromForm(
   form: NewPurchaseOrderFormState,
   existing: PurchaseOrder[],
   options?: { distributorAccountId?: string },
 ): PurchaseOrder {
-  let manufacturerId: string | undefined;
-  const key = form.manufacturerKey;
-  if (key.startsWith("account:")) {
-    manufacturerId = key.slice("account:".length);
-  } else if (key.startsWith("partner:")) {
-    // Canonical HQ partner id (kosapan / kuramoto / echigo) — manufacturer portal scopes on this.
-    manufacturerId = key.slice("partner:".length);
-  } else if (key.startsWith("prof:")) {
-    manufacturerId = key.slice("prof:".length);
-  } else if (!key.startsWith("fallback:")) {
-    manufacturerId = key;
-  }
+  // Always store canonical partner ids (kosapan / kuramoto / echigo) so distillery
+  // portal scoping matches when they log in — even if the picker key was a CRM uuid.
+  const manufacturerId = resolveProductionManufacturerId(
+    form.manufacturerKey,
+    form.manufacturerDisplayLabel,
+  );
 
   const qty = Math.max(1, Math.round(Number(form.quantity) || 0));
 

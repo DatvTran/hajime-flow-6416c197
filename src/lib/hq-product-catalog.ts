@@ -45,9 +45,11 @@ export const HQ_CATALOG_DEMO: Product[] = [
     caseSize: 12,
     status: "active",
     shortDescription: "Coffee Rice · 750ml",
-    msrpCasePrice: 624,
-    wholesaleCasePrice: 504,
+    msrpCasePrice: 1116,
+    wholesaleCasePrice: 576,
     manufacturerCasePrice: 360,
+    distributorSellOutCasePrice: 720,
+    brokerCommissionPerBottle: 3,
     minOrderCases: 3,
   },
   {
@@ -81,18 +83,12 @@ export function skuEditPath(sku: string): string {
 }
 
 export function catalogDisplayProducts(products: Product[]): Product[] {
-  if (products.length >= 4) return products;
-  const seen = new Set(products.map((p) => p.sku));
-  const extras = HQ_CATALOG_DEMO.filter((p) => !seen.has(p.sku));
-  return [...products, ...extras];
+  return products;
 }
 
 export function findCatalogProduct(sku: string, products: Product[]): Product | undefined {
   const decoded = decodeURIComponent(sku);
-  return (
-    products.find((p) => p.sku === decoded) ??
-    HQ_CATALOG_DEMO.find((p) => p.sku === decoded)
-  );
+  return products.find((p) => p.sku === decoded);
 }
 
 export function typeLabelForProduct(product: Product): string {
@@ -120,6 +116,22 @@ export function manufacturerPerBottle(product: Product): number | null {
   return perBottleFromCase(product.manufacturerCasePrice, product.caseSize);
 }
 
+export function distributorSellOutPerBottle(product: Product): number | null {
+  return perBottleFromCase(product.distributorSellOutCasePrice, product.caseSize);
+}
+
+export function brokerPerBottle(product: Product): number {
+  const n = Number(product.brokerCommissionPerBottle);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Case price a distributor / retailer portal should charge (sell-out), not Hajime sell-in. */
+export function partnerSellOutCasePrice(product: Product): number {
+  const sellOut = Number(product.distributorSellOutCasePrice);
+  if (Number.isFinite(sellOut) && sellOut > 0) return sellOut;
+  return Number(product.wholesaleCasePrice) || 0;
+}
+
 /** @deprecated Use msrpPerBottle */
 export function retailPerBottle(product: Product): number | null {
   return msrpPerBottle(product);
@@ -135,14 +147,36 @@ export function formatCatalogPrice(amount: number | null): string {
   return `$${Math.round(amount)}`;
 }
 
-export function producerForSku(sku: string, pos: PurchaseOrder[]): string {
-  const po = pos.find((p) => p.sku === sku);
-  if (!po) {
-    if (sku.startsWith("EU-")) return "Echigo Kura";
-    return "Kuramoto";
+export function producerForSku(
+  product: Product,
+  distilleries: { id: string; name: string }[],
+  pos: PurchaseOrder[],
+): string {
+  const byId = (id?: string) => {
+    const raw = String(id ?? "").trim();
+    if (!raw) return undefined;
+    return distilleries.find((d) => d.id === raw || d.id.toLowerCase() === raw.toLowerCase());
+  };
+  const byName = (name?: string) => {
+    const n = String(name ?? "").trim().toLowerCase();
+    if (!n) return undefined;
+    return distilleries.find((d) => d.name.trim().toLowerCase() === n);
+  };
+
+  const fromId = byId(product.producerId);
+  if (fromId) return fromId.name;
+
+  const fromSavedName = byName(product.producerName);
+  if (fromSavedName) return fromSavedName.name;
+  if (product.producerName?.trim()) return product.producerName.trim();
+
+  const po = pos.find((p) => p.sku === product.sku);
+  if (po) {
+    const fromPo = byId(po.manufacturerId) || byName(po.manufacturer);
+    if (fromPo) return fromPo.name;
   }
-  const first = po.manufacturer.split(" ")[0];
-  return first || po.manufacturer;
+
+  return "—";
 }
 
 export function marketsCount(product: Product): number {

@@ -279,7 +279,7 @@ export function SalesOrderDetailDialog({
                 <div className="rounded-lg border border-primary/25 bg-primary/5 p-4">
                   <p className="text-sm font-medium text-foreground">Wholesaler — confirm availability</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Acknowledge this paid order before packing. Manufacturer replenishment runs from Production requests when DC stock is low.
+                    Acknowledge this paid order before packing. Distillery replenishment runs from Production requests when DC stock is low.
                   </p>
                   <div className="mt-3">
                     <Button
@@ -369,7 +369,7 @@ export function SalesOrderDetailDialog({
                 </div>
               ) : null}
 
-              {/* Role-guarded status controls — only manufacturer/distributor can change fulfillment/payment status */}
+              {/* Role-guarded status controls — only distillery/distributor can change fulfillment/payment status */}
               {user.role === "manufacturer" || user.role === "distributor" ? (
                 <div className="space-y-3">
                   <div className="space-y-2">
@@ -414,7 +414,7 @@ export function SalesOrderDetailDialog({
                     <StatusBadge status={order.paymentStatus} />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Only manufacturer and distributor roles can modify order statuses.
+                    Only distillery and distributor roles can modify order statuses.
                   </p>
                 </div>
               )}

@@ -4,6 +4,7 @@
  */
 import knex from 'knex';
 import config from '../knexfile.mjs';
+import { isTransactionPoolerUrl } from '../config/fly-database-url.mjs';
 
 const MAX_ATTEMPTS = 10;
 const BASE_DELAY_MS = 2_000;
@@ -42,7 +43,14 @@ async function runOnce() {
 async function main() {
   if (!process.env.DATABASE_URL && !process.env.DB_HOST) {
     console.error(
-      '[migrate-release] DATABASE_URL is missing. Run: fly postgres attach hajime-db --app hajime-app',
+      '[migrate-release] DATABASE_URL is missing. Set the Supabase (or Postgres) URI on the app.',
+    );
+    process.exit(1);
+  }
+
+  if (isTransactionPoolerUrl(process.env.DATABASE_URL)) {
+    console.error(
+      '[migrate-release] DATABASE_URL uses the Supabase transaction pooler (:6543). Use the direct connection (db.<ref>.supabase.co:5432).',
     );
     process.exit(1);
   }
@@ -68,10 +76,7 @@ async function main() {
   console.error('[migrate-release] All migration attempts failed');
   if (lastError?.stack) console.error(lastError.stack);
   console.error(
-    '[migrate-release] Postgres may be down (check: fly status --app hajime-db).',
-  );
-  console.error(
-    '[migrate-release] Restart DB: fly machine list --app hajime-db  then  fly machine restart <id> --app hajime-db',
+    '[migrate-release] Postgres may be down. Check the Supabase project status (or Fly Postgres if still in use).',
   );
   process.exit(1);
 }

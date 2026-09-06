@@ -16,7 +16,7 @@ export async function persistDistributorInboundReceipt(
   const apiId = shipmentApiId(shipment);
   if (!apiId) {
     throw new Error(
-      "This shipment is not on the server yet — sync inbound shipments from HQ or the manufacturer first.",
+      "This shipment is not on the server yet — sync inbound shipments from HQ or the distillery first.",
     );
   }
 

@@ -212,7 +212,7 @@ export function AccountSetupInviteDialog({
       } else if (pending) {
         detail =
           inv?.reason ||
-          "Application link sent — wholesaler must approve before ordering is enabled.";
+          "Saved. Your wholesaler must approve before the portal invite is sent.";
       } else if (inv?.status === "delivery_failed") {
         detail = "Account saved but the invitation email failed. Resend from account detail.";
       }
@@ -501,13 +501,14 @@ export function AccountSetupInviteDialog({
             <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-full border border-success/25 bg-success/10">
               <Check className="h-6 w-6 text-success" strokeWidth={1.75} aria-hidden />
             </div>
-            <h2 className="font-display text-2xl font-semibold tracking-tight">Invitation sent</h2>
+            <h2 className="font-display text-2xl font-semibold tracking-tight">
+              {sent.pendingApproval ? "Submitted for approval" : "Invitation sent"}
+            </h2>
             <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
               {sent.pendingApproval ? (
                 <>
-                  An email with the New Licensee Application link was sent to{" "}
-                  <strong className="text-foreground">{sent.email}</strong>. They can complete the form now; ordering
-                  activates after wholesaler approval.
+                  <strong className="text-foreground">{sent.email}</strong> is saved as a retail request. No portal
+                  invite is sent until your wholesaler/distributor approves.
                 </>
               ) : (
                 <>

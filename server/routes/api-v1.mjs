@@ -19,13 +19,16 @@ import {
   createDistributorOrganization,
   registerInviteTokenRoute,
 } from '../lib/distributor-organization.mjs';
+import { isDemoDistributorOrg } from '../lib/demo-distributor-orgs.mjs';
 import { Permission, Role, hasPermission } from '../rbac/permissions.mjs';
 import {
   createCrmUserInvite,
-  sendCrmInviteEmail,
   sendStoreSetupInviteEmail,
-  CRM_TEAM_ROLE_LABELS,
 } from '../services/crm-invite.mjs';
+import {
+  buildCrmContactInvitePayload,
+  ensureAccountPortalContactAndInvite,
+} from '../lib/account-portal-invite.mjs';
 import { sendProductBriefSubmittedEmail, sendProductBriefNudgeEmail, sendProductionRequestIssuedEmail } from '../services/product-brief-notify.mjs';
 import {
   resolveManufacturerAssignmentIdentity,
@@ -37,6 +40,7 @@ import {
   assertManufacturerNprUpdateAllowed,
   applyNprStatusTimestamps,
   resolveManufacturerNotifyEmail,
+  canonicalizeManufacturerAssignmentId,
 } from '../lib/npr-manufacturer-scope.mjs';
 import { ensureManufacturerPortalAccess } from '../lib/manufacturer-account-provision.mjs';
 import {
@@ -83,9 +87,25 @@ import {
   hqFetchForScope,
   hqFetchFromAllSources,
   paginateMergedRows,
+  resolveHqEntityTarget,
+  isHqGlobalViewer,
 } from '../lib/hq-global-view.mjs';
 import { buildAppBootstrapPayload } from '../lib/app-bootstrap.mjs';
 import { attachSalesOrderItems } from '../lib/sales-order-items.mjs';
+import { rateLimiters } from '../middleware/security.mjs';
+import {
+  canManageExpoLeads,
+  ensureExpoLeadsTable,
+  insertExpoLead,
+  expoLeadListQuery,
+  resolveExpoTenant,
+  serializeExpoLead,
+  validateBuyerPayload,
+  validateInternalPatch,
+} from '../lib/expo-leads.mjs';
+import { sendTradePackEmail, clientBaseUrl } from '../services/export-notify.mjs';
+import { canManageExportOrders } from '../lib/export-orders.mjs';
+import exportOrdersRouter from './export-orders.mjs';
 import {
   applyPortalOrdersScope,
   applyPortalShipmentsScope,
@@ -148,75 +168,6 @@ async function updateProductForTenant(tenantId, whereClause, body) {
     .update(updates)
     .returning('*');
   return product;
-}
-
-/** After creating/reactivating a CRM contact, optionally send portal invite email. */
-async function buildCrmContactInvitePayload(req, tenantId, member, { email, name, role }) {
-  const invitedByUserId = req.user?.userId;
-  if (!invitedByUserId) {
-    return {
-      data: member,
-      invite: { status: 'skipped', reason: 'missing_inviter' },
-    };
-  }
-
-  let inviteResult;
-  try {
-    inviteResult = await createCrmUserInvite({
-      tenantId,
-      email,
-      teamMemberRole: role,
-      invitedByUserId,
-    });
-  } catch (inviteErr) {
-    console.error('[API v1] CRM invite creation failed:', inviteErr);
-    return {
-      data: member,
-      invite: { status: 'skipped', reason: 'invite_creation_failed' },
-    };
-  }
-
-  if (!inviteResult.ok) {
-    return {
-      data: member,
-      invite: { status: 'skipped', reason: inviteResult.reason },
-    };
-  }
-
-  if (inviteResult.token && req.distributorOrg?.id) {
-    await registerInviteTokenRoute(inviteResult.token, req.distributorOrg.id);
-  }
-
-  try {
-    const tenantRow = await getDb('tenants').where({ id: tenantId }).first();
-    const sendResult = await sendCrmInviteEmail({
-      to: email,
-      inviteUrl: inviteResult.inviteUrl,
-      recipientName: name,
-      roleLabel: CRM_TEAM_ROLE_LABELS[role] || role,
-      inviterDisplayName: req.user?.displayName,
-      tenantName: req.distributorOrg?.name || tenantRow?.name,
-    });
-
-    const exposeInviteUrl = isDev || !sendResult.sent;
-    return {
-      data: member,
-      invite: {
-        status: 'sent',
-        emailDispatched: sendResult.sent,
-        ...(exposeInviteUrl && { inviteUrl: inviteResult.inviteUrl }),
-      },
-    };
-  } catch (emailErr) {
-    console.error('[API v1] CRM invite email failed:', emailErr);
-    return {
-      data: member,
-      invite: {
-        status: 'delivery_failed',
-        inviteUrl: inviteResult.inviteUrl,
-      },
-    };
-  }
 }
 
 /**
@@ -305,6 +256,35 @@ router.post('/licensee-application', attachDatabaseFromInviteToken, async (req, 
   }
 });
 
+router.post('/expo-leads', rateLimiters.expoLeads, async (req, res) => {
+  try {
+    const honeypot = String(req.body?.fax ?? req.body?.companyFax ?? '').trim();
+    if (honeypot) {
+      return res.status(201).json({
+        data: { displayId: 'HK26-000', submittedAt: new Date().toISOString() },
+      });
+    }
+    const parsed = validateBuyerPayload(req.body);
+    if (!parsed.ok) {
+      return res.status(400).json({ error: parsed.errors[0], errors: parsed.errors });
+    }
+    const db = platformDb;
+    if (!(await ensureExpoLeadsTable(db))) {
+      return res.status(503).json({ error: 'Lead capture is not available yet' });
+    }
+    const tenant = await resolveExpoTenant(db);
+    if (!tenant) {
+      return res.status(503).json({ error: 'Lead capture is not available yet' });
+    }
+    const payload = { ...parsed.data, capture_ip: String(req.ip || '').slice(0, 45) || null };
+    const row = await insertExpoLead(db, tenant.id, payload);
+    res.status(201).json({ data: serializeExpoLead(row, { publicView: true }) });
+  } catch (err) {
+    console.error('[API v1] expo-leads submit:', err);
+    res.status(500).json({ error: 'Failed to submit registration' });
+  }
+});
+
 // Apply auth to all routes
 router.use(authenticateToken);
 router.use(attachDistributorDatabase);
@@ -319,6 +299,208 @@ function getTenantId(req, res) {
   }
   return tenantId;
 }
+
+/**
+ * HQ lists can prefix distributor-row ids (`orgId:rawId`). Writes must hit that DB.
+ */
+async function resolveEntityWrite(req, entityId) {
+  const platformTenantId = req.user?.tenantId ?? null;
+  const raw = String(entityId ?? '');
+  const hq = Boolean(req.hqGlobalView) || isHqGlobalViewer(req.user?.role);
+  if (hq && raw.includes(':')) {
+    const target = await resolveHqEntityTarget(raw);
+    if (!target) return null;
+    const tenantId =
+      target.org?.tenant_id != null ? String(target.org.tenant_id) : platformTenantId;
+    if (!tenantId) return null;
+    return { db: target.db, id: target.rawId, tenantId };
+  }
+  if (!platformTenantId) return null;
+  return { db: getDb(), id: raw, tenantId: platformTenantId };
+}
+
+function mergeContactIntoAddress(existing, contactName, contactRole) {
+  let base = {};
+  if (existing != null) {
+    if (typeof existing === 'string') {
+      try {
+        const parsed = JSON.parse(existing);
+        base = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : { line: existing };
+      } catch {
+        base = { line: existing };
+      }
+    } else if (typeof existing === 'object' && !Array.isArray(existing)) {
+      base = { ...existing };
+    }
+  }
+  if (contactName !== undefined) base.contactName = contactName == null ? '' : String(contactName);
+  if (contactRole !== undefined) base.contactRole = contactRole == null ? '' : String(contactRole);
+  return base;
+}
+
+function requireExpoLeadsHq(req, res) {
+  if (
+    !canManageExpoLeads(req.user?.role) &&
+    !hasPermission(req.user?.role, Permission.LEADS_READ)
+  ) {
+    res.status(403).json({ error: 'Forbidden' });
+    return false;
+  }
+  return true;
+}
+
+router.get('/expo-leads', async (req, res) => {
+  try {
+    if (!requireExpoLeadsHq(req, res)) return;
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = platformDb;
+    if (!(await ensureExpoLeadsTable(db))) {
+      return res.json({ data: [], pagination: { page: 1, limit: 50, total: 0, totalPages: 0 } });
+    }
+    const page = Number(req.query.page) || 1;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const eventCode = req.query.event ? String(req.query.event).trim().toUpperCase() : null;
+    const score = req.query.score ? String(req.query.score).toUpperCase() : null;
+    const status = req.query.status ? String(req.query.status) : null;
+    const q = req.query.q ? String(req.query.q).trim() : '';
+
+    let base = expoLeadListQuery(db, tenantId);
+    if (eventCode) base = base.where('e.event_code', eventCode);
+    if (score) base = base.where('e.score', score);
+    if (status) base = base.where('e.status', status);
+    if (q) {
+      const like = `%${q}%`;
+      base = base.andWhere((qb) => {
+        qb.whereILike('e.full_name', like)
+          .orWhereILike('e.company_name', like)
+          .orWhereILike('e.business_email', like)
+          .orWhereILike('e.country_market', like)
+          .orWhereILike('e.display_id', like);
+      });
+    }
+
+    const offset = (page - 1) * limit;
+    const countRow = await base.clone().clearSelect().clearOrder().count('e.id as count').first();
+    const rows = await base.clone().orderBy('e.submitted_at', 'desc').limit(limit).offset(offset);
+    const total = Number(countRow?.count ?? 0);
+    res.json({
+      data: rows.map((r) => serializeExpoLead(r)),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 0 },
+    });
+  } catch (err) {
+    console.error('[API v1] expo-leads list:', err);
+    res.status(500).json({ error: 'Failed to load leads' });
+  }
+});
+
+router.get('/expo-leads/:id', async (req, res) => {
+  try {
+    if (!requireExpoLeadsHq(req, res)) return;
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = platformDb;
+    const id = req.params.id;
+    const row = await expoLeadListQuery(db, tenantId)
+      .andWhere((qb) => {
+        qb.where('e.display_id', id);
+        if (/^\d+$/.test(id)) qb.orWhere('e.id', Number(id));
+      })
+      .first();
+    if (!row) return res.status(404).json({ error: 'Lead not found' });
+    res.json({ data: serializeExpoLead(row) });
+  } catch (err) {
+    console.error('[API v1] expo-leads get:', err);
+    res.status(500).json({ error: 'Failed to load lead' });
+  }
+});
+
+router.patch('/expo-leads/:id', async (req, res) => {
+  try {
+    if (!requireExpoLeadsHq(req, res)) return;
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const parsed = validateInternalPatch(req.body ?? {});
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    if (Object.keys(parsed.patch).length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    const db = platformDb;
+    const id = req.params.id;
+    const existing = await db('expo_leads')
+      .where({ tenant_id: tenantId })
+      .andWhere((qb) => {
+        qb.where({ display_id: id });
+        if (/^\d+$/.test(id)) qb.orWhere({ id: Number(id) });
+      })
+      .first();
+    if (!existing) return res.status(404).json({ error: 'Lead not found' });
+
+    const patch = { ...parsed.patch, updated_at: new Date() };
+    if (patch.staff_user_id === undefined && req.user?.userId && !existing.staff_user_id) {
+      patch.staff_user_id = req.user.userId;
+    }
+    if (patch.score && existing.status === 'new') {
+      patch.status = 'met';
+    }
+
+    await db('expo_leads').where({ id: existing.id, tenant_id: tenantId }).update(patch);
+    const row = await expoLeadListQuery(db, tenantId).where('e.id', existing.id).first();
+    res.json({ data: serializeExpoLead(row) });
+  } catch (err) {
+    console.error('[API v1] expo-leads patch:', err);
+    res.status(500).json({ error: 'Failed to update lead' });
+  }
+});
+
+router.use('/export-orders', exportOrdersRouter);
+
+const TRADE_PACK_ITEMS = {
+  first_press_sheet: 'First Press Coffee Rhum sell sheet',
+  yuzu_mint_sheet: 'Yuzu Mint Rhum sell sheet',
+  portfolio: 'Portfolio card',
+  qr: 'Connect QR / buyer form',
+  press: 'Press and media kit (confirm contacts before public use)',
+  terms: 'Distributor terms',
+};
+
+router.post('/trade-pack/send', async (req, res) => {
+  try {
+    const role = req.user?.role;
+    const hq = canManageExportOrders(role);
+    const dist = role === 'distributor';
+    if (!hq && !dist) return res.status(403).json({ error: 'Forbidden' });
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const to = String(req.body?.to || '').trim().toLowerCase();
+    const recipientName = String(req.body?.recipientName || '').trim();
+    const requested = Array.isArray(req.body?.items) ? req.body.items.map(String) : [];
+    let keys = requested.filter((k) => TRADE_PACK_ITEMS[k]);
+    if (!hq) keys = keys.filter((k) => k !== 'terms' || dist);
+    if (dist) keys = keys.filter((k) => k !== 'terms' || true);
+    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      return res.status(400).json({ error: 'Valid recipient email is required' });
+    }
+    if (keys.length === 0) return res.status(400).json({ error: 'Select at least one item' });
+    const base = clientBaseUrl();
+    const links = [
+      { label: 'Trade pack', url: `${base}/trade-pack` },
+      { label: 'Connect form', url: `${base}/connect?event=HK26` },
+    ];
+    if (keys.includes('qr')) links.push({ label: 'Print QR sign', url: `${base}/connect-sign` });
+    const result = await sendTradePackEmail({
+      to,
+      recipientName,
+      items: keys.map((k) => TRADE_PACK_ITEMS[k]),
+      links,
+    });
+    res.json({ ok: true, email: result, items: keys });
+  } catch (err) {
+    console.error('[API v1] trade-pack send:', err);
+    res.status(500).json({ error: 'Failed to send trade pack' });
+  }
+});
+
 
 /** Brand HQ: merge list rows from platform + every distributor database. */
 async function respondHqPaginatedList(req, res, { page, limit, sortKey, fetchRows }) {
@@ -727,10 +909,23 @@ router.get('/distributor-organizations', async (req, res) => {
     if (!hasPermission(req.user.role, Permission.SETTINGS_WRITE)) {
       return res.status(403).json({ error: 'Insufficient permissions.' });
     }
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const liveDist = await getDb('accounts')
+      .where({ tenant_id: tenantId, type: 'distributor' })
+      .whereNull('deleted_at');
+    const liveNames = new Set(
+      liveDist
+        .flatMap((a) => [a.name, a.trading_name].filter(Boolean).map((s) => String(s).trim().toLowerCase()))
+        .filter((n) => !isDemoDistributorOrg({ name: n })),
+    );
     const rows = await platformDb('distributor_organizations')
       .where({ is_active: true })
       .orderBy('created_at', 'desc');
-    res.json({ data: rows });
+    const visible = (liveNames.size
+      ? rows.filter((o) => liveNames.has(String(o.name || '').trim().toLowerCase()))
+      : []).filter((o) => !isDemoDistributorOrg(o));
+    res.json({ data: visible });
   } catch (err) {
     console.error('[API v1] Error listing distributor organizations:', err);
     res.status(500).json({ error: 'Failed to list distributor organizations' });
@@ -1283,65 +1478,66 @@ router.post('/accounts/send-store-invitation', requirePermission(Permission.ACCO
       req.distributorOrg?.name || tenantRow?.name || req.user?.displayName || 'Hajime';
 
     let invite = { status: 'pending_distributor_approval' };
-    let expiresAt = null;
 
-    const inviteResult = await createCrmUserInvite({
-      tenantId,
-      email: normalizedEmail,
-      teamMemberRole: 'retail',
-      invitedByUserId: req.user.userId,
-    });
-
-    if (!inviteResult.ok) {
-      invite = { status: 'skipped', reason: inviteResult.reason };
+    if (pendingApproval) {
+      invite = {
+        status: 'pending_distributor_approval',
+        reason: 'Awaiting wholesaler / distributor approval before portal invite.',
+      };
     } else {
-      expiresAt = inviteResult.expiresAt;
-      if (inviteResult.token && req.distributorOrg?.id) {
-        await registerInviteTokenRoute(inviteResult.token, req.distributorOrg.id);
-      }
-      let emailInviter = req.user;
-      if (isDistributor && assignedRepUserId) {
-        const repUser = await platformDb('users').where({ id: assignedRepUserId }).first();
-        if (repUser) {
-          emailInviter = {
-            ...req.user,
-            email: repUser.email,
-            displayName: repUser.display_name,
-            display_name: repUser.display_name,
+      const inviteResult = await createCrmUserInvite({
+        tenantId,
+        email: normalizedEmail,
+        teamMemberRole: 'retail',
+        invitedByUserId: req.user.userId,
+      });
+
+      if (!inviteResult.ok) {
+        invite = { status: 'skipped', reason: inviteResult.reason };
+      } else {
+        if (inviteResult.token && req.distributorOrg?.id) {
+          await registerInviteTokenRoute(inviteResult.token, req.distributorOrg.id);
+        }
+        let emailInviter = req.user;
+        if (isDistributor && assignedRepUserId) {
+          const repUser = await platformDb('users').where({ id: assignedRepUserId }).first();
+          if (repUser) {
+            emailInviter = {
+              ...req.user,
+              email: repUser.email,
+              displayName: repUser.display_name,
+              display_name: repUser.display_name,
+            };
+          }
+        }
+        const repDisplayName = resolveSalesRepLabelForUser(emailInviter) || salesOwner;
+        try {
+          const sendResult = await sendStoreSetupInviteEmail({
+            to: normalizedEmail,
+            inviteUrl: inviteResult.inviteUrl,
+            recipientName: resolvedContactName,
+            storeName: tradingName,
+            personalNote: message,
+            inviterDisplayName: repDisplayName,
+            wholesalerName,
+            pendingWholesalerApproval: false,
+          });
+          const exposeInviteUrl = isDev || !sendResult.sent;
+          const emailStatus = sendResult.sent ? 'sent' : 'logged';
+          invite = {
+            status: emailStatus,
+            emailDispatched: sendResult.sent,
+            ...(exposeInviteUrl && { inviteUrl: inviteResult.inviteUrl }),
+            expiresAt: inviteResult.expiresAt?.toISOString?.() ?? inviteResult.expiresAt,
+          };
+        } catch (emailErr) {
+          console.error('[API v1] Store invitation email failed:', emailErr);
+          invite = {
+            status: 'delivery_failed',
+            inviteUrl: inviteResult.inviteUrl,
+            expiresAt: inviteResult.expiresAt?.toISOString?.() ?? inviteResult.expiresAt,
           };
         }
-      }
-      const repDisplayName = resolveSalesRepLabelForUser(emailInviter) || salesOwner;
-      try {
-        const sendResult = await sendStoreSetupInviteEmail({
-          to: normalizedEmail,
-          inviteUrl: inviteResult.inviteUrl,
-          recipientName: resolvedContactName,
-          storeName: tradingName,
-          personalNote: message,
-          inviterDisplayName: repDisplayName,
-          wholesalerName,
-          pendingWholesalerApproval: pendingApproval,
-        });
-        const exposeInviteUrl = isDev || !sendResult.sent;
-        const emailStatus = sendResult.sent ? 'sent' : 'logged';
-        invite = {
-          status: pendingApproval ? 'pending_distributor_approval' : emailStatus,
-          emailDispatched: sendResult.sent,
-          ...(pendingApproval && {
-            reason:
-              'Application link sent — wholesaler must approve before ordering is enabled.',
-          }),
-          ...(exposeInviteUrl && { inviteUrl: inviteResult.inviteUrl }),
-          expiresAt: inviteResult.expiresAt?.toISOString?.() ?? inviteResult.expiresAt,
-        };
-      } catch (emailErr) {
-        console.error('[API v1] Store invitation email failed:', emailErr);
-        invite = {
-          status: 'delivery_failed',
-          inviteUrl: inviteResult.inviteUrl,
-          expiresAt: inviteResult.expiresAt?.toISOString?.() ?? inviteResult.expiresAt,
-        };
       }
     }
 
@@ -1356,9 +1552,11 @@ router.post('/accounts/send-store-invitation', requirePermission(Permission.ACCO
       assignedSalesRepId: assignedRepUserId,
       salesOwner,
       invitationResent,
-      message: invitationResent
-        ? 'Invitation resent for existing prospect account.'
-        : 'Store account created and invitation sent.',
+      message: pendingApproval
+        ? 'Retail request submitted — wholesaler must approve before the portal invite is sent.'
+        : invitationResent
+          ? 'Invitation resent for existing prospect account.'
+          : 'Store account created and invitation sent.',
     });
   } catch (err) {
     console.error('[API v1] Error sending store invitation:', err);
@@ -1397,6 +1595,8 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req
         ? String(accountData.market).trim()
         : [accountData.city, accountData.country].filter(Boolean).join(', ') || '—';
 
+    const distributorUserId = isDistributor && req.user?.userId ? Number(req.user.userId) : null;
+
     const [account] = await getDb('accounts')
       .insert({
         tenant_id: tenantId,
@@ -1415,6 +1615,7 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req
         sales_owner: accountData.salesOwner,
         notes: accountData.notes,
         portal_login_email: accountData.portalLoginEmail || accountData.portal_login_email || null,
+        ...(distributorUserId ? { managed_by_distributor_user_id: distributorUserId } : {}),
       })
       .returning('*');
 
@@ -1442,15 +1643,51 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req
           companyName: account.trading_name || account.name,
         });
       } catch (provisionErr) {
-        console.error('[API v1] Manufacturer portal provision failed:', provisionErr);
+        console.error('[API v1] Distillery portal provision failed:', provisionErr);
         portalProvision = { ok: false, reason: 'provision_failed' };
       }
+    }
+
+    let invite = null;
+    const contactEmail = String(accountData.email || '').trim();
+    const contactName =
+      String(accountData.contactName || accountData.contact_name || '').trim() ||
+      tradingName;
+    try {
+      if (account && String(account.type || '').trim() === 'distributor' && contactEmail) {
+        const portal = await ensureAccountPortalContactAndInvite({
+          req,
+          tenantId,
+          account,
+          role: 'distributor',
+          email: contactEmail,
+          name: contactName,
+          phone: accountData.phone,
+        });
+        invite = portal.invite;
+      } else if (account && isOnPremiseAccountType(account.type) && contactEmail) {
+        const portal = await ensureAccountPortalContactAndInvite({
+          req,
+          tenantId,
+          account,
+          role: 'retail',
+          email: contactEmail,
+          name: contactName,
+          phone: accountData.phone,
+          distributorUserId,
+        });
+        invite = portal.invite;
+      }
+    } catch (inviteErr) {
+      console.error('[API v1] Account portal invite failed:', inviteErr);
+      invite = { status: 'skipped', reason: 'invite_creation_failed' };
     }
 
     res.status(201).json({
       data: account,
       depotLink,
       portalProvision,
+      invite,
     });
   } catch (err) {
     console.error('[API v1] Error creating account:', err);
@@ -1461,9 +1698,11 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req
 // PUT /api/v1/accounts/:id - Update account
 router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
   try {
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const { id } = req.params;
+    const loc = await resolveEntityWrite(req, req.params.id);
+    if (!loc) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    const { db, id, tenantId } = loc;
     const body = req.body || {};
 
     const updates = { updated_at: new Date() };
@@ -1471,7 +1710,9 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
     if (name != null && String(name).trim() !== '') updates.name = String(name).trim();
     if (body.tradingName != null) updates.trading_name = String(body.tradingName).trim();
     if (body.type != null) updates.type = String(body.type).trim();
+    const marketFromParts = [body.city, body.country].filter((p) => p != null && String(p).trim() !== '').join(', ');
     if (body.market != null) updates.market = String(body.market).trim();
+    else if (marketFromParts) updates.market = marketFromParts;
     if (body.status != null) updates.status = String(body.status).trim();
     if (body.email != null) updates.email = String(body.email).trim();
     if (body.phone != null) updates.phone = String(body.phone).trim();
@@ -1485,6 +1726,15 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
           ? String(body.portalLoginEmail).trim()
           : null;
     }
+
+    const current = await db('accounts')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .first();
+    if (!current) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+
     if (body.billingAddress != null) {
       updates.billing_address =
         typeof body.billingAddress === 'string'
@@ -1497,8 +1747,15 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
           ? body.shippingAddress
           : JSON.stringify(body.shippingAddress);
     }
+    if (body.contactName !== undefined || body.contactRole !== undefined) {
+      const existingBill = updates.billing_address ?? current.billing_address;
+      updates.billing_address = mergeContactIntoAddress(
+        existingBill,
+        body.contactName,
+        body.contactRole,
+      );
+    }
 
-    const db = getDb();
     if (updates.portal_login_email !== undefined) {
       const hasPortalCol = await db.schema.hasColumn('accounts', 'portal_login_email');
       if (!hasPortalCol) delete updates.portal_login_email;
@@ -1509,7 +1766,7 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
       .whereNull('deleted_at')
       .update(updates)
       .returning('*');
-    
+
     if (!account) {
       return res.status(404).json({ error: 'Account not found' });
     }
@@ -1527,11 +1784,11 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
           companyName: account.trading_name || account.name,
         });
       } catch (provisionErr) {
-        console.error('[API v1] Manufacturer portal provision failed:', provisionErr);
+        console.error('[API v1] Distillery portal provision failed:', provisionErr);
         portalProvision = { ok: false, reason: 'provision_failed' };
       }
     }
-    
+
     res.json({ data: account, portalProvision });
   } catch (err) {
     console.error('[API v1] Error updating account:', err);
@@ -1555,7 +1812,34 @@ router.delete('/accounts/:id', requirePermission(Permission.ACCOUNTS_DELETE), as
     if (!account) {
       return res.status(404).json({ error: 'Account not found' });
     }
-    
+
+    const now = new Date();
+    await getDb('team_members')
+      .where({ tenant_id: tenantId })
+      .where((q) => {
+        q.where('linked_account_id', id);
+        const em = account.email != null ? String(account.email).trim().toLowerCase() : '';
+        if (em) q.orWhereRaw('LOWER(email) = ?', [em]);
+      })
+      .update({
+        is_active: false,
+        linked_account_id: null,
+        pending_distributor_approval: false,
+        updated_at: now,
+      });
+
+    if (String(account.type || '').trim() === 'distributor') {
+      const labels = [account.name, account.trading_name]
+        .filter(Boolean)
+        .map((s) => String(s).trim().toLowerCase());
+      if (labels.length > 0) {
+        await platformDb('distributor_organizations')
+          .where({ is_active: true })
+          .whereRaw('LOWER(TRIM(name)) in (' + labels.map(() => '?').join(',') + ')', labels)
+          .update({ is_active: false, updated_at: now });
+      }
+    }
+
     res.json({ data: account, message: 'Account deleted' });
   } catch (err) {
     console.error('[API v1] Error deleting account:', err);
@@ -3412,12 +3696,12 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
         Boolean(assigned_crm_member_id && String(assigned_crm_member_id).trim());
       if (!hasAssignee) {
         return res.status(400).json({
-          error: 'Assign a manufacturer partner before submitting a product development brief',
+          error: 'Assign a distillery partner before submitting a product development brief',
         });
       }
     }
 
-    // Manufacturers may only create briefs for themselves — never for another partner.
+    // Distilleries may only create briefs for themselves — never for another partner.
     if (req.user?.role === Role.MANUFACTURER) {
       const identity = await resolveManufacturerAssignmentIdentity(getDb(), tenantId, req.user);
       const selfLabels = [...identity.labels];
@@ -3440,10 +3724,15 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
         });
       if (!(emailOk && crmOk && labelOk)) {
         return res.status(403).json({
-          error: 'Product development briefs can only be assigned to your manufacturer facility',
+          error: 'Product development briefs can only be assigned to your distillery facility',
         });
       }
     }
+
+    const assignedLabelRaw = assigned_manufacturer ? String(assigned_manufacturer).trim() : '';
+    const assignedCrmCanonical =
+      canonicalizeManufacturerAssignmentId(assigned_crm_member_id, assignedLabelRaw) ||
+      (assigned_crm_member_id != null ? String(assigned_crm_member_id).trim() : null);
 
     const insertRow = {
       tenant_id: tenantId,
@@ -3455,11 +3744,11 @@ router.post('/new-product-requests', requirePermission(Permission.PRODUCTION_WRI
       requested_at: new Date(),
       specs: normalizedSpecs,
       status: resolvedStatus,
-      assigned_manufacturer: assigned_manufacturer || null,
+      assigned_manufacturer: assignedLabelRaw || null,
       assigned_manufacturer_email: assigned_manufacturer_email
         ? String(assigned_manufacturer_email).trim().toLowerCase()
         : null,
-      assigned_crm_member_id: assigned_crm_member_id || null,
+      assigned_crm_member_id: assignedCrmCanonical || null,
       notes: notes || null,
       created_by: auditUserIdForDb(req.user?.userId),
     };
@@ -3552,7 +3841,7 @@ router.put('/new-product-requests/:id', requirePermission(Permission.PRODUCTION_
         Boolean(assigneeCrm && String(assigneeCrm).trim());
       if (!hasAssignee) {
         return res.status(400).json({
-          error: 'Assign a manufacturer partner before submitting a product development brief',
+          error: 'Assign a distillery partner before submitting a product development brief',
         });
       }
     }
@@ -3604,7 +3893,7 @@ router.delete('/new-product-requests/:id', requirePermission(Permission.PRODUCTI
       return res.status(404).json({ error: 'New product request not found' });
     }
 
-    // Product briefs are manufacturer-assigned: manufacturers may only delete their own;
+    // Product briefs are distillery-assigned: distilleries may only delete their own;
     // HQ/ops may delete any.
     if (req.user?.role === Role.MANUFACTURER) {
       const identity = await resolveManufacturerAssignmentIdentity(getDb(), tenantId, req.user);
@@ -3634,7 +3923,7 @@ router.post('/new-product-requests/:id/nudge', requirePermission(Permission.PROD
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     if (req.user?.role === Role.MANUFACTURER) {
-      return res.status(403).json({ error: 'Only HQ can nudge manufacturers on product briefs' });
+      return res.status(403).json({ error: 'Only HQ can nudge distilleries on product briefs' });
     }
 
     const { id } = req.params;
@@ -3645,14 +3934,14 @@ router.post('/new-product-requests/:id/nudge', requirePermission(Permission.PROD
 
     if (!['submitted', 'under_review'].includes(String(existing.status))) {
       return res.status(400).json({
-        error: 'Nudge is only available while waiting on manufacturer feasibility review',
+        error: 'Nudge is only available while waiting on distillery feasibility review',
       });
     }
 
     const to = String(existing.assigned_manufacturer_email || '').trim().toLowerCase();
     if (!to) {
       return res.status(400).json({
-        error: 'No manufacturer email on this brief — edit the request and assign a contact email first',
+        error: 'No distillery email on this brief — edit the request and assign a contact email first',
       });
     }
 
@@ -3700,7 +3989,7 @@ router.post('/new-product-requests/:id/nudge', requirePermission(Permission.PROD
     });
   } catch (err) {
     console.error('[API v1] Error nudging new product request:', err);
-    res.status(500).json({ error: 'Failed to nudge manufacturer' });
+    res.status(500).json({ error: 'Failed to nudge distillery' });
   }
 });
 
@@ -4106,8 +4395,8 @@ router.post('/purchase-orders', requirePermission(Permission.PRODUCTION_WRITE), 
     } = body;
 
     const supplierLabel = String(
-      supplier_name || supplierName || body.supplier_name || body.manufacturerName || 'Manufacturer',
-    ).trim() || 'Manufacturer';
+      supplier_name || supplierName || body.supplier_name || body.manufacturerName || 'Distillery',
+    ).trim() || 'Distillery';
 
     if (!po_number) {
       await trx.rollback();
@@ -4115,23 +4404,28 @@ router.post('/purchase-orders', requirePermission(Permission.PRODUCTION_WRITE), 
     }
 
     const resolvedPoType = po_type || poType || 'production';
-    const mfgId =
+    const rawMfgId =
       manufacturer_id != null && String(manufacturer_id).trim() !== ''
         ? String(manufacturer_id).trim()
         : null;
+    // Prefer canonical partner ids (kosapan / kuramoto / echigo) so distillery login scoping matches.
+    const mfgId =
+      resolvedPoType !== 'sales'
+        ? canonicalizeManufacturerAssignmentId(rawMfgId, supplierLabel) || rawMfgId
+        : rawMfgId;
 
-    // Production reorders are manufacturer-only: HQ must assign a partner; manufacturers cannot issue for others.
+    // Production reorders are distillery-only: HQ must assign a partner; distilleries cannot issue for others.
     if (resolvedPoType !== 'sales') {
       if (!mfgId) {
         await trx.rollback();
         return res.status(400).json({
-          error: 'Assign a manufacturer partner before issuing a production request',
+          error: 'Assign a distillery partner before issuing a production request',
         });
       }
       if (req.user?.role === Role.MANUFACTURER) {
         await trx.rollback();
         return res.status(403).json({
-          error: 'Only HQ can issue production requests to manufacturer partners',
+          error: 'Only HQ can issue production requests to distillery partners',
         });
       }
     }
@@ -4853,7 +5147,7 @@ function manufacturerShipmentScopeDenied(existingRow) {
     return {
       status: 403,
       error:
-        'Manufacturer portal users may only work with inbound shipments tied to purchase orders.',
+        'Distillery portal users may only work with inbound shipments tied to purchase orders.',
     };
   }
   return null;
@@ -5051,7 +5345,7 @@ router.post('/shipments', shipmentWriteMiddleware, async (req, res) => {
       await trx.rollback();
       return res.status(403).json({
         error:
-          'Manufacturer portal users may only record shipments tied to purchase orders (inbound finished goods).',
+          'Distillery portal users may only record shipments tied to purchase orders (inbound finished goods).',
       });
     }
 
@@ -5584,7 +5878,7 @@ router.post('/shipments/:id/receive', shipmentWriteMiddleware, async (req, res) 
         created_at: now,
       });
 
-      if (existing.order_id) {
+      if (existing.order_id && !existing.direct_export && !existing.export_order_id) {
         await trx('purchase_order_items')
           .where({ tenant_id: tenantId, purchase_order_id: existing.order_id, product_id: productId })
           .increment('quantity_received', delta);
@@ -5955,11 +6249,11 @@ router.get('/team-members', async (req, res) => {
 });
 
 /**
- * GET /api/v1/purchase-order-manufacturer-options
- * Manufacturer profiles only (Manufacturers list). CRM team_members enrich a profile
- * when the email matches — CRM contacts without a manufacturer profile are omitted.
+ * GET /api/v1/purchase-order-distillery-options
+ * Distillery profiles only (Distilleries list). CRM team_members enrich a profile
+ * when the email matches — CRM contacts without a distillery profile are omitted.
  */
-router.get('/purchase-order-manufacturer-options', requirePermission(Permission.PO_READ), async (req, res) => {
+router.get('/purchase-order-distillery-options', requirePermission(Permission.PO_READ), async (req, res) => {
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
@@ -5998,13 +6292,24 @@ router.get('/purchase-order-manufacturer-options', requirePermission(Permission.
       const country = String(p.country ?? '').trim();
       const location = [city, country].filter(Boolean).join(', ');
       const subParts = [location, contact && contact !== label ? contact : ''].filter(Boolean);
+      const canonicalMid = canonicalizeManufacturerAssignmentId(mid || m?.id, label);
+      const optionKey = canonicalMid
+        ? `partner:${canonicalMid}`
+        : mid
+          ? `partner:${mid}`
+          : m
+            ? String(m.id)
+            : em
+              ? `prof:${em}`
+              : `prof:${labelKey}`;
 
       options.push({
-        key: m ? String(m.id) : mid ? `partner:${mid}` : em ? `prof:${em}` : `prof:${labelKey}`,
+        key: optionKey,
         label,
         email: em || undefined,
         sub: subParts.length ? subParts.join(' · ') : undefined,
-        crmMemberId: m ? String(m.id) : mid || null,
+        // Prefer partner id for scoping; keep CRM id only when no partner match.
+        crmMemberId: canonicalMid || mid || (m ? String(m.id) : null),
         hasProfile: true,
       });
 
@@ -6016,8 +6321,8 @@ router.get('/purchase-order-manufacturer-options', requirePermission(Permission.
 
     res.json({ data: options });
   } catch (err) {
-    console.error('[API v1] Error listing purchase-order manufacturer options:', err);
-    res.status(500).json({ error: 'Failed to load manufacturer options' });
+    console.error('[API v1] Error listing purchase-order distillery options:', err);
+    res.status(500).json({ error: 'Failed to load distillery options' });
   }
 });
 
@@ -6499,15 +6804,16 @@ router.post('/team-members/:id/resend-invite', async (req, res) => {
 // PATCH /api/v1/team-members/:id
 router.patch('/team-members/:id', async (req, res) => {
   try {
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const db = getDb();
-    const { id } = req.params;
+    const loc = await resolveEntityWrite(req, req.params.id);
+    if (!loc) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+    const { db, id, tenantId } = loc;
 
     const { name, email, role, phone, department, is_active } = req.body || {};
     const pwOpt = parseOptionalPrimaryWarehouseId(req.body);
 
-    const current = await getDb('team_members')
+    const current = await db('team_members')
       .where({ id, tenant_id: tenantId })
       .first();
     if (!current) {
@@ -6531,8 +6837,7 @@ router.patch('/team-members/:id', async (req, res) => {
       if (!normalizedEmail) {
         return res.status(400).json({ error: 'email must be non-empty' });
       }
-      // Ensure uniqueness within tenant (excluding current record).
-      const conflict = await getDb('team_members')
+      const conflict = await db('team_members')
         .where({ tenant_id: tenantId, email: normalizedEmail })
         .whereNot({ id })
         .first();
@@ -6554,7 +6859,7 @@ router.patch('/team-members/:id', async (req, res) => {
       }
       const wid = pwOpt === null || pwOpt === '' ? null : String(pwOpt).trim();
       try {
-        await getDb().transaction(async (trx) => {
+        await db.transaction(async (trx) => {
           if (Object.keys(updates).length > 0) {
             updates.updated_at = new Date();
             await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
@@ -6568,17 +6873,17 @@ router.patch('/team-members/:id', async (req, res) => {
         }
         throw e;
       }
-      const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
+      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
       return res.json({ data: member });
     }
 
     if (clearingByRole) {
-      await getDb().transaction(async (trx) => {
+      await db.transaction(async (trx) => {
         updates.updated_at = new Date();
         await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
         await setDistributorReceivingWarehouse(trx, tenantId, id, null);
       });
-      const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
+      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
       return res.json({ data: member });
     }
 
@@ -6588,7 +6893,7 @@ router.patch('/team-members/:id', async (req, res) => {
 
     updates.updated_at = new Date();
 
-    const [member] = await getDb('team_members')
+    const [member] = await db('team_members')
       .where({ id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
@@ -6603,15 +6908,36 @@ router.patch('/team-members/:id', async (req, res) => {
 // PATCH /api/v1/team-members/by-email/:email
 router.patch('/team-members/by-email/:email', async (req, res) => {
   try {
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const db = getDb();
     const emailParam = String(req.params.email || '').trim().toLowerCase();
     if (!emailParam) return res.status(400).json({ error: 'email is required' });
 
-    const current = await getDb('team_members')
+    let db = getDb();
+    let tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+
+    let current = await db('team_members')
       .where({ tenant_id: tenantId, email: emailParam })
       .first();
+
+    if (
+      !current &&
+      (req.hqGlobalView || isHqGlobalViewer(req.user?.role))
+    ) {
+      const merged = await hqFetchFromAllSources(req.user?.tenantId, async (srcDb, tid) => {
+        if (!tid) return [];
+        const row = await srcDb('team_members').where({ tenant_id: tid, email: emailParam }).first();
+        return row ? [row] : [];
+      });
+      const tagged = merged[0];
+      if (tagged) {
+        const loc = await resolveEntityWrite(req, tagged.id);
+        if (loc) {
+          db = loc.db;
+          tenantId = loc.tenantId;
+          current = await db('team_members').where({ id: loc.id, tenant_id: loc.tenantId }).first();
+        }
+      }
+    }
     if (!current) {
       return res.status(404).json({ error: 'Team member not found' });
     }
@@ -6637,7 +6963,7 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
       if (!normalizedEmail) {
         return res.status(400).json({ error: 'email must be non-empty' });
       }
-      const conflict = await getDb('team_members')
+      const conflict = await db('team_members')
         .where({ tenant_id: tenantId, email: normalizedEmail })
         .whereNot({ id: current.id })
         .first();
@@ -6659,7 +6985,7 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
       }
       const wid = pwOpt === null || pwOpt === '' ? null : String(pwOpt).trim();
       try {
-        await getDb().transaction(async (trx) => {
+        await db.transaction(async (trx) => {
           if (Object.keys(updates).length > 0) {
             updates.updated_at = new Date();
             await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
@@ -6673,17 +6999,17 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
         }
         throw e;
       }
-      const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
+      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
       return res.json({ data: member });
     }
 
     if (clearingByRole) {
-      await getDb().transaction(async (trx) => {
+      await db.transaction(async (trx) => {
         updates.updated_at = new Date();
         await trx('team_members').where({ id, tenant_id: tenantId }).update(updates);
         await setDistributorReceivingWarehouse(trx, tenantId, id, null);
       });
-      const member = await getDb('team_members').where({ id, tenant_id: tenantId }).first();
+      const member = await db('team_members').where({ id, tenant_id: tenantId }).first();
       return res.json({ data: member });
     }
 
@@ -6693,7 +7019,7 @@ router.patch('/team-members/by-email/:email', async (req, res) => {
 
     updates.updated_at = new Date();
 
-    const [member] = await getDb('team_members')
+    const [member] = await db('team_members')
       .where({ id: current.id, tenant_id: tenantId })
       .update(updates)
       .returning('*');
@@ -7021,29 +7347,73 @@ router.put('/operational-settings', requirePermission(Permission.SETTINGS_WRITE)
   try {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
-    const updates = req.body;
-    
-    delete updates.tenant_id;
-    delete updates.created_at;
-    updates.updated_at = new Date();
-    
-    const [settings] = await getDb('operational_settings')
-      .where({ tenant_id: tenantId })
-      .update(updates)
-      .returning('*');
-    
-    if (!settings) {
-      // Create if missing
-      const [created] = await getDb('operational_settings')
-        .insert({ ...updates, tenant_id: tenantId })
+
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const ALLOWED = new Set([
+      'lead_time_days',
+      'safety_stock_days',
+      'shelf_threshold',
+      'reorder_point_bottles',
+      'default_payment_terms',
+      'default_currency',
+      'auto_create_shipment',
+      'auto_alert_low_stock',
+      'company_name',
+      'primary_markets',
+      'manufacturer_name',
+      'support_email',
+      'hq_hidden_manufacturer_ids',
+      'hq_manufacturer_partner_configs',
+      'hq_ui_preferences',
+    ]);
+
+    const requested = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (!ALLOWED.has(key) || value === undefined) continue;
+      requested[key] = value;
+    }
+    requested.updated_at = new Date();
+
+    // HQ global viewers and normal tenants both use the request-bound DB (platform for HQ).
+    const db = getDb();
+    const columnInfo = await db('operational_settings').columnInfo();
+    const updates = {};
+    for (const [key, value] of Object.entries(requested)) {
+      if (key === 'updated_at' || columnInfo[key]) updates[key] = value;
+    }
+
+    if (Object.keys(updates).length <= 1 && updates.updated_at && Object.keys(requested).length > 1) {
+      const missing = Object.keys(requested).filter((k) => k !== 'updated_at' && !columnInfo[k]);
+      return res.status(500).json({
+        error: 'Operational settings schema is missing required columns',
+        missing,
+      });
+    }
+
+    let existing = await db('operational_settings').where({ tenant_id: tenantId }).first();
+    if (!existing) {
+      const [created] = await db('operational_settings')
+        .insert({ tenant_id: tenantId, ...updates })
         .returning('*');
       return res.json({ data: created });
     }
-    
+
+    const [settings] = await db('operational_settings')
+      .where({ tenant_id: tenantId })
+      .update(updates)
+      .returning('*');
+
+    if (!settings) {
+      return res.status(500).json({ error: 'Failed to update operational settings' });
+    }
+
     res.json({ data: settings });
   } catch (err) {
     console.error('[API v1] Error updating operational settings:', err);
-    res.status(500).json({ error: 'Failed to update operational settings' });
+    res.status(500).json({
+      error: 'Failed to update operational settings',
+      ...(process.env.NODE_ENV !== 'production' && err instanceof Error ? { detail: err.message } : {}),
+    });
   }
 });
 
@@ -7202,7 +7572,7 @@ router.patch('/support-tickets/:id/status', requirePermission(Permission.ORDERS_
 // ===== MANUFACTURER PROFILES =====
 
 /**
- * Saving a manufacturer profile must also unhide it on the HQ Manufacturers list.
+ * Saving a distillery profile must also unhide it on the HQ Distilleries list.
  * Clients may hold a stale (or empty) copy of hq_hidden_manufacturer_ids, so the
  * scrub happens here where the database is the source of truth.
  */
@@ -7239,7 +7609,7 @@ async function unhideManufacturerInSettings(tenantId, manufacturerId, companyNam
       .where({ tenant_id: tenantId })
       .update({ hq_hidden_manufacturer_ids: JSON.stringify(next), updated_at: new Date() });
   } catch (err) {
-    console.error('[API v1] Failed to unhide manufacturer in settings:', err?.message || err);
+    console.error('[API v1] Failed to unhide distillery in settings:', err?.message || err);
   }
 }
 
@@ -7255,8 +7625,8 @@ router.get('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_REA
     
     res.json({ data: profiles });
   } catch (err) {
-    console.error('[API v1] Error fetching manufacturer profiles:', err);
-    res.status(500).json({ error: 'Failed to fetch manufacturer profiles' });
+    console.error('[API v1] Error fetching distillery profiles:', err);
+    res.status(500).json({ error: 'Failed to fetch distillery profiles' });
   }
 });
 
@@ -7278,13 +7648,13 @@ router.get('/manufacturer-profiles/:id', requirePermission(Permission.PRODUCTION
         .first());
     
     if (!resolved) {
-      return res.status(404).json({ error: 'Manufacturer profile not found' });
+      return res.status(404).json({ error: 'Distillery profile not found' });
     }
     
     res.json({ data: resolved });
   } catch (err) {
-    console.error('[API v1] Error fetching manufacturer profile:', err);
-    res.status(500).json({ error: 'Failed to fetch manufacturer profile' });
+    console.error('[API v1] Error fetching distillery profile:', err);
+    res.status(500).json({ error: 'Failed to fetch distillery profile' });
   }
 });
 
@@ -7307,8 +7677,8 @@ router.post('/manufacturer-portal-access', requirePermission(Permission.ACCOUNTS
 
     res.json({ data: portalProvision });
   } catch (err) {
-    console.error('[API v1] Error provisioning manufacturer portal access:', err);
-    res.status(500).json({ error: 'Failed to provision manufacturer portal access' });
+    console.error('[API v1] Error provisioning distillery portal access:', err);
+    res.status(500).json({ error: 'Failed to provision distillery portal access' });
   }
 });
 
@@ -7376,8 +7746,8 @@ router.post('/manufacturer-profiles', requirePermission(Permission.PRODUCTION_WR
     await unhideManufacturerInSettings(tenantId, profile.manufacturer_id, profile.company_name);
     res.status(201).json({ data: profile });
   } catch (err) {
-    console.error('[API v1] Error creating manufacturer profile:', err);
-    res.status(500).json({ error: 'Failed to create manufacturer profile' });
+    console.error('[API v1] Error creating distillery profile:', err);
+    res.status(500).json({ error: 'Failed to create distillery profile' });
   }
 });
 
@@ -7400,14 +7770,14 @@ router.put('/manufacturer-profiles/:id', requirePermission(Permission.PRODUCTION
       .returning('*');
     
     if (!profile) {
-      return res.status(404).json({ error: 'Manufacturer profile not found' });
+      return res.status(404).json({ error: 'Distillery profile not found' });
     }
     
     await unhideManufacturerInSettings(tenantId, profile.manufacturer_id, profile.company_name);
     res.json({ data: profile });
   } catch (err) {
-    console.error('[API v1] Error updating manufacturer profile:', err);
-    res.status(500).json({ error: 'Failed to update manufacturer profile' });
+    console.error('[API v1] Error updating distillery profile:', err);
+    res.status(500).json({ error: 'Failed to update distillery profile' });
   }
 });
 
@@ -7427,8 +7797,8 @@ router.delete('/manufacturer-profiles/:id', requirePermission(Permission.PRODUCT
 
     res.json({ data: { deleted } });
   } catch (err) {
-    console.error('[API v1] Error deleting manufacturer profile:', err);
-    res.status(500).json({ error: 'Failed to delete manufacturer profile' });
+    console.error('[API v1] Error deleting distillery profile:', err);
+    res.status(500).json({ error: 'Failed to delete distillery profile' });
   }
 });
 

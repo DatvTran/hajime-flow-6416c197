@@ -180,7 +180,7 @@ function buildFromPurchaseOrders(
     id: manufacturerId,
     name,
     sub,
-    tier: seed?.tier ?? "Preferred manufacturer partner",
+    tier: seed?.tier ?? "Preferred distillery partner",
     tierIsPreferred: seed?.tierIsPreferred ?? true,
     statusTone: openReq > 0 ? "amber" : (seed?.statusTone ?? "green"),
     statusLabel: openReq > 0 ? `${openReq} requests open` : (seed?.statusLabel ?? "on schedule"),
@@ -226,10 +226,10 @@ export function buildManufacturerPartnerDetail(
   }
 
   if (profile) {
-    const name = profile.companyName || "Manufacturer";
-    const sub = [profile.address.city, profile.address.country].filter(Boolean).join(" · ") || "Manufacturer partner";
+    const name = profile.companyName || "Distillery";
+    const sub = [profile.address.city, profile.address.country].filter(Boolean).join(" · ") || "Distillery partner";
     return buildFromPurchaseOrders(manufacturerId, name, sub, purchaseOrders);
   }
 
-  return buildFromPurchaseOrders(manufacturerId, "Manufacturer", "Manufacturer partner", purchaseOrders);
+  return buildFromPurchaseOrders(manufacturerId, "Distillery", "Distillery partner", purchaseOrders);
 }

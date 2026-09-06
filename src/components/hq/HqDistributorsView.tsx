@@ -6,7 +6,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { getDistributorOrganizations, type DistributorOrganizationRow } from "@/lib/api-v1-mutations";
 import { buildDistributorPartnerRows, mergeHqDistributorPartnerRows } from "@/lib/hq-distributors-metrics";
 import { manageOrgIdForRow, mergeHqDistributorAccountsForDisplay } from "@/lib/hq-distributors-demo";
-import { filterPlatformAccountsForHq } from "@/lib/hq-order-scope";
+import { isSeedDemoAccount } from "@/lib/normalize-app-data";
 import { mergeHqWholesaleOrdersForDisplay, mergeHqNetworkSalesForDisplay } from "@/lib/hq-orders-demo";
 import { partnerPathForOrg, resolveDistributorOrgId } from "@/lib/hq-distributor-orgs";
 import {
@@ -17,12 +17,15 @@ import {
   HqOperatorPageHeader,
   HqOperatorPill,
 } from "@/components/hq/HqOperatorUi";
+import { Button } from "@/components/ui/button";
+import { SendTradePackDialog } from "@/components/SendTradePackDialog";
 import { cn } from "@/lib/utils";
 
 export function HqDistributorsView() {
   const { t } = useLanguage();
   const { data, loading } = useAppData();
   const [distributorOrgs, setDistributorOrgs] = useState<DistributorOrganizationRow[]>([]);
+  const [packOpen, setPackOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,7 +52,10 @@ export function HqDistributorsView() {
   }, [data.salesOrders, displayAccounts]);
 
   const distributors = useMemo(
-    () => filterPlatformAccountsForHq(displayAccounts).filter((a) => a.type === "distributor"),
+    () =>
+      filterPlatformAccountsForHq(displayAccounts)
+        .filter((a) => a.type === "distributor")
+        .filter((a) => !isSeedDemoAccount(a)),
     [displayAccounts],
   );
 
@@ -80,10 +86,15 @@ export function HqDistributorsView() {
         title="Distributors"
         description="Distribution partners by market · monitor fill rate, on-time delivery, and partner tier"
         actions={
-          <HqBtnLink to="/accounts/add" variant="accent" size="sm">
-            <Plus className="size-3.5" strokeWidth={1.75} />
-            {t("Add distributor")}
-          </HqBtnLink>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={() => setPackOpen(true)}>
+              Send trade pack
+            </Button>
+            <HqBtnLink to="/accounts/add" variant="accent" size="sm">
+              <Plus className="size-3.5" strokeWidth={1.75} />
+              {t("Add distributor")}
+            </HqBtnLink>
+          </div>
         }
       />
 
@@ -105,7 +116,14 @@ export function HqDistributorsView() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-5 py-10 text-center text-sm text-muted-foreground">
+                    {t("No distributors yet. Add a partner to see them here.")}
+                  </td>
+                </tr>
+              ) : (
+                rows.map((row) => (
                 <tr key={row.id}>
                   <td className="font-medium">{row.name}</td>
                   <td className="text-muted-foreground">{row.marketLine}</td>
@@ -123,7 +141,7 @@ export function HqDistributorsView() {
                   <td
                     className={cn(
                       "font-mono font-semibold",
-                      row.onTime < 94 ? "text-[hsl(38_90%_40%)]" : "text-[hsl(158_56%_32%)]",
+                      row.onTime < 94 && row.onTime > 0 ? "text-[hsl(38_90%_40%)]" : "text-[hsl(158_56%_32%)]",
                     )}
                   >
                     {row.onTime.toFixed(1)}%
@@ -138,7 +156,8 @@ export function HqDistributorsView() {
                     </HqBtnLink>
                   </td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </HqOperatorDataTable>
         </HqOperatorCard>
@@ -153,6 +172,8 @@ export function HqDistributorsView() {
           {t("for downstream rep and retail performance.")}
         </p>
       ) : null}
+
+      <SendTradePackDialog open={packOpen} onOpenChange={setPackOpen} includeTerms />
     </HqOperatorPage>
   );
 }

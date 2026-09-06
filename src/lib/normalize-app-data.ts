@@ -1,34 +1,144 @@
 import type { AppData, TeamMember, Warehouse } from "@/types/app-data";
-import { TEAM_ROSTER } from "@/data/team-roster";
-import seedJson from "@/data/seed-app.json";
-import type { Account, Product } from "@/data/mockData";
-import { products as PRODUCT_DEFAULTS, newProductRequests as DEFAULT_NEW_PRODUCT_REQUESTS, transferOrders as DEFAULT_TRANSFER_ORDERS, depletionReports as DEFAULT_DEPLETION_REPORTS } from "@/data/mockData";
-import { isDistributorAccountType } from "@/lib/distributor-accounts";
+import type { Product, SalesOrder, Shipment } from "@/data/mockData";
+import { products as PRODUCT_DEFAULTS } from "@/data/mockData";
 
-const ROSTER_EMAILS = new Set(TEAM_ROSTER.map((m) => m.email?.toLowerCase()).filter(Boolean));
-
-const SEED = seedJson as AppData;
-
-const DEFAULT_SAFETY_STOCK: Record<string, number> = {
-  "HJM-OG-750": 400,
-  "HJM-YZ-750": 200,
-  "HJM-OG-375": 300,
-  "HJM-SP-750": 150,
-  "HJM-FP-750": 180,
-};
-
-/** Demo shelf stock for retail low-stock alerts (The Drake — ACC-005). */
-const DEFAULT_RETAILER_SHELF: NonNullable<AppData["retailerShelfStock"]> = {
-  "ACC-005": { "HJM-OG-750": 36, "HJM-YZ-750": 24 },
-};
-
-const DEFAULT_WAREHOUSES: Warehouse[] = [
-  { id: "seed-wh-toronto", name: "Toronto Main Warehouse", isActive: true, sortOrder: 0 },
-  { id: "seed-wh-milan", name: "Milan Depot", isActive: true, sortOrder: 1 },
+const SEED_ACCOUNT_NUMBERS = new Set(["ACC-001", "ACC-002", "ACC-003"]);
+const SEED_ACCOUNT_NAMES = new Set([
+  "the drake hotel",
+  "bar isabel",
+  "paradise grapevine",
+  "album hair",
+  "metro logistics",
+  "empire wines & spirits",
+  "empire wines",
+  "midwest spirits co.",
+  "midwest spirits co",
+  "kanto beverage",
+  "cave lumière",
+  "cave lumiere",
+  "vino nord",
+]);
+const DEMO_DISTRIBUTOR_ORG_IDS = new Set([
+  "empire-wines",
+  "midwest-spirits",
+  "kanto-beverage",
+  "cave-lumiere",
+  "metro_logistics",
+  "metro-logistics",
+]);
+const DEMO_DISTRIBUTOR_NAME_NEEDLES = [
+  "metro logistics",
+  "empire wines",
+  "midwest spirits",
+  "kanto beverage",
+  "cave lumiere",
+  "vino nord",
 ];
+const SEED_ACCOUNT_EMAILS = new Set([
+  "orders@drakehotel.ca",
+  "orders@barisabel.com",
+  "orders@paradisegrapevine.com",
+  "info@albumhair.com",
+  "fulfillment@metrologistics.example",
+  "jordan.wei@empirewines.com",
+  "dana.brooks@midwestspirits.com",
+  "yuki.sato@kanto-bev.jp",
+  "tanaka@kanto-bev.jp",
+  "elise@cavelumiere.fr",
+  "luca@vino-nord.it",
+]);
+const SEED_ORDER_NUMBERS = new Set(["SO-2025-001"]);
 
-function mergeProducts(fromPayload: Product[] | undefined, seed: Product[]): Product[] {
-  const base = pickOrSeed(fromPayload, seed);
+function normName(value: string | undefined): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Postgres / seed-app demo venues that should not appear in live HQ. */
+export function isSeedDemoAccount(account: {
+  id?: string;
+  accountNumber?: string;
+  email?: string;
+  name?: string;
+  legalName?: string;
+  tradingName?: string;
+  distributorOrgId?: string;
+  distributorOrgName?: string;
+}): boolean {
+  const id = String(account.id ?? "");
+  if (id.startsWith("demo-") || id.startsWith("acc-")) return true;
+  const number = String(account.accountNumber ?? "").toUpperCase();
+  if (SEED_ACCOUNT_NUMBERS.has(number)) return true;
+  const email = String(account.email ?? "").toLowerCase().trim();
+  if (SEED_ACCOUNT_EMAILS.has(email)) return true;
+  const name =
+    normName(account.name) ||
+    normName(account.tradingName) ||
+    normName(account.legalName);
+  if (SEED_ACCOUNT_NAMES.has(name) || matchesDemoDistributorName(name)) return true;
+  return isSeedDemoDistributorOrg({
+    id: account.distributorOrgId,
+    name: account.distributorOrgName,
+  });
+}
+
+function matchesDemoDistributorName(value: string | undefined | null): boolean {
+  const n = normName(value ?? "");
+  if (!n) return false;
+  if (SEED_ACCOUNT_NAMES.has(n)) return true;
+  return DEMO_DISTRIBUTOR_NAME_NEEDLES.some((needle) => n.includes(needle));
+}
+
+export function isSeedDemoPartnerName(value: string | undefined | null): boolean {
+  return matchesDemoDistributorName(value);
+}
+
+export function isSeedDemoDistributorOrg(org: {
+  id?: string | null;
+  name?: string | null;
+  slug?: string | null;
+}): boolean {
+  const id = String(org.id ?? "").trim().toLowerCase();
+  const slug = String(org.slug ?? "").trim().toLowerCase();
+  const idKey = id.replace(/-/g, "_");
+  const slugKey = slug.replace(/-/g, "_");
+  if (DEMO_DISTRIBUTOR_ORG_IDS.has(id) || DEMO_DISTRIBUTOR_ORG_IDS.has(slug)) return true;
+  if (DEMO_DISTRIBUTOR_ORG_IDS.has(idKey) || DEMO_DISTRIBUTOR_ORG_IDS.has(slugKey)) return true;
+  if (id.includes("metro_logistics") || slugKey === "metro_logistics") return true;
+  return matchesDemoDistributorName(org.name);
+}
+
+function isSeedDemoSalesOrder(order: SalesOrder, seedAccountIds: Set<string>): boolean {
+  if (SEED_ORDER_NUMBERS.has(String(order.orderNumber ?? "").toUpperCase())) return true;
+  if (order.accountId && seedAccountIds.has(String(order.accountId))) return true;
+  if (
+    isSeedDemoDistributorOrg({
+      id: order.distributorOrgId,
+      name: order.distributorOrgName || order.account,
+    })
+  ) {
+    return true;
+  }
+  return matchesDemoDistributorName(order.account);
+}
+
+function isSeedDemoShipment(shipment: Shipment, seedOrderNumbers: Set<string>): boolean {
+  const dest = normName(shipment.destination);
+  if ([...SEED_ACCOUNT_NAMES].some((name) => dest.includes(name))) return true;
+  const linked = String(shipment.linkedOrder ?? "").toUpperCase();
+  return seedOrderNumbers.has(linked) || SEED_ORDER_NUMBERS.has(linked);
+}
+
+function asArray<T>(v: T[] | undefined): T[] {
+  return Array.isArray(v) ? v : [];
+}
+
+function mergeProducts(fromPayload: Product[] | undefined): Product[] {
+  const base = asArray(fromPayload);
   const defaultsBySku = Object.fromEntries(PRODUCT_DEFAULTS.map((p) => [p.sku, p]));
   return base.map((p) => {
     const d = defaultsBySku[p.sku];
@@ -37,65 +147,48 @@ function mergeProducts(fromPayload: Product[] | undefined, seed: Product[]): Pro
   });
 }
 
-/** Persisted API payloads can be wiped; keep demos (Analytics, Orders) usable. */
-function pickOrSeed<T>(fromPayload: T[] | undefined, seed: T[]): T[] {
-  return Array.isArray(fromPayload) && fromPayload.length > 0 ? fromPayload : seed;
-}
-
-/**
- * Seed roster guarantees demo logins always appear. For any email that exists in both
- * the seed roster and the API payload, prefer the DB-backed row so HQ edits / CRM
- * duplicates are visible instead of being silently replaced by seed-only rows.
- */
-function mergeTeamMembersWithRoster(fromPayload: TeamMember[]): TeamMember[] {
-  const byEmail = new Map(
-    fromPayload.map((m) => [m.email?.toLowerCase().trim() || "", m] as const),
-  );
-  const rosterEmails = new Set(
-    TEAM_ROSTER.map((m) => m.email?.toLowerCase()).filter(Boolean) as string[],
-  );
-
-  const mergedRoster = TEAM_ROSTER.map((seed) => {
-    const key = seed.email?.toLowerCase().trim() || "";
-    const fromDb = key ? byEmail.get(key) : undefined;
-    if (fromDb) return fromDb;
-    return seed;
-  });
-
-  const extras = fromPayload.filter((m) => {
-    const e = m.email?.toLowerCase().trim() || "";
-    if (!e) return true;
-    return !rosterEmails.has(e);
-  });
-
-  return [...mergedRoster, ...extras];
-}
-
-/**
- * When the API returns accounts but none are wholesalers, `pickOrSeed` keeps only
- * API rows — wholesale flows lose distributor options. Backfill distributor rows
- * from seed so DC selection and demos stay usable.
- */
-function mergeSeedDistributorsWhenAbsent(accounts: Account[]): Account[] {
-  if (!Array.isArray(accounts) || accounts.length === 0) return accounts;
-  if (accounts.some((a) => isDistributorAccountType(a.type))) return accounts;
-  const seedAccounts = SEED.accounts ?? [];
-  const ids = new Set(accounts.map((a) => a.id));
-  const extras = seedAccounts.filter(
-    (a) => isDistributorAccountType(a.type) && !ids.has(a.id),
-  );
-  return extras.length ? [...accounts, ...extras] : accounts;
+/** Empty operational snapshot — no seed-app / roster fill. */
+export function emptyAppData(): AppData {
+  return {
+    version: 1,
+    products: [],
+    inventory: [],
+    accounts: [],
+    salesOrders: [],
+    purchaseOrders: [],
+    transferOrders: [],
+    shipments: [],
+    productionStatuses: [],
+    operationalSettings: {
+      manufacturerLeadTimeDays: 45,
+      safetyStockBySku: {},
+      retailerStockThresholdBottles: 48,
+    },
+    auditLogs: [],
+    teamMembers: [],
+    financingLedger: [],
+    retailerShelfStock: {},
+    visitNotes: [],
+    newProductRequests: [],
+    depletionReports: [],
+    warehouses: [],
+    manufacturerFinishedGoods: [],
+  };
 }
 
 export function normalizeAppData(raw: AppData): AppData {
-  const teamFromPayload = Array.isArray(raw.teamMembers) ? raw.teamMembers : [];
-  const teamMembers =
-    teamFromPayload.length > 0 ? mergeTeamMembersWithRoster(teamFromPayload) : [...TEAM_ROSTER];
-
-  const op = raw.operationalSettings ?? SEED.operationalSettings;
+  const teamMembers: TeamMember[] = asArray(raw.teamMembers).filter((tm) => {
+    const email = String(tm.email ?? "").toLowerCase().trim();
+    if (SEED_ACCOUNT_EMAILS.has(email)) return false;
+    const name = normName(tm.displayName);
+    if (name === "metro logistics ops" || matchesDemoDistributorName(name)) return false;
+    if (isSeedDemoDistributorOrg({ id: tm.distributorOrgId, name: tm.distributorOrgName })) return false;
+    return true;
+  });
+  const op = raw.operationalSettings;
   const operationalSettings = {
     manufacturerLeadTimeDays: op?.manufacturerLeadTimeDays ?? 45,
-    safetyStockBySku: { ...DEFAULT_SAFETY_STOCK, ...op?.safetyStockBySku },
+    safetyStockBySku: { ...(op?.safetyStockBySku ?? {}) },
     retailerStockThresholdBottles: op?.retailerStockThresholdBottles ?? 48,
     companyName: op?.companyName,
     primaryMarkets: op?.primaryMarkets,
@@ -103,54 +196,55 @@ export function normalizeAppData(raw: AppData): AppData {
     supportEmail: op?.supportEmail,
     hqHiddenManufacturerIds: op?.hqHiddenManufacturerIds,
     hqManufacturerPartnerConfigs: op?.hqManufacturerPartnerConfigs,
+    hqUiPreferences: op?.hqUiPreferences,
   };
 
-  const retailerShelfStock: NonNullable<AppData["retailerShelfStock"]> = {
-    ...DEFAULT_RETAILER_SHELF,
-    ...(typeof raw.retailerShelfStock === "object" && raw.retailerShelfStock ? raw.retailerShelfStock : {}),
-  };
+  const retailerShelfStock: NonNullable<AppData["retailerShelfStock"]> =
+    typeof raw.retailerShelfStock === "object" && raw.retailerShelfStock ? raw.retailerShelfStock : {};
 
-  const accountsMerged = mergeSeedDistributorsWhenAbsent(
-    pickOrSeed(raw.accounts, SEED.accounts),
+  const warehouses: Warehouse[] = asArray(raw.warehouses);
+
+  const accounts = asArray(raw.accounts).filter((account) => !isSeedDemoAccount(account));
+  const seedAccountIds = new Set(
+    asArray(raw.accounts)
+      .filter((account) => isSeedDemoAccount(account))
+      .map((account) => String(account.id)),
+  );
+  const salesOrders = asArray(raw.salesOrders)
+    .filter((order) => !isSeedDemoSalesOrder(order, seedAccountIds))
+    .map((o) => ({
+      ...o,
+      salesRep: o.salesRep != null && String(o.salesRep).trim() !== "" ? String(o.salesRep) : "—",
+    }));
+  const seedOrderNumbers = new Set(
+    asArray(raw.salesOrders)
+      .filter((order) => isSeedDemoSalesOrder(order, seedAccountIds))
+      .flatMap((order) => [String(order.orderNumber ?? ""), String(order.id)].filter(Boolean)),
   );
 
   return {
     ...raw,
-    products: mergeProducts(raw.products, SEED.products),
-    // Empty API array is valid (e.g. distributor with no scoped orders) — do not inject seed demos.
-    salesOrders: (Array.isArray(raw.salesOrders)
-      ? raw.salesOrders
-      : pickOrSeed(raw.salesOrders, SEED.salesOrders)
-    ).map((o) => ({
-      ...o,
-      salesRep: o.salesRep != null && String(o.salesRep).trim() !== "" ? String(o.salesRep) : "—",
-    })),
-    accounts: accountsMerged,
-    inventory: pickOrSeed(raw.inventory, SEED.inventory),
+    products: mergeProducts(raw.products),
+    salesOrders,
+    accounts,
+    inventory: asArray(raw.inventory),
     version: raw.version ?? 1,
     operationalSettings,
-    auditLogs: Array.isArray(raw.auditLogs) ? raw.auditLogs : [],
+    auditLogs: asArray(raw.auditLogs),
     teamMembers,
-    financingLedger: Array.isArray(raw.financingLedger) ? raw.financingLedger : [],
+    financingLedger: asArray(raw.financingLedger),
     retailerShelfStock,
-    visitNotes: (Array.isArray(raw.visitNotes) ? raw.visitNotes : []).map((n) => ({
+    visitNotes: asArray(raw.visitNotes).map((n) => ({
       ...n,
       authorRep: n.authorRep != null && String(n.authorRep).trim() !== "" ? String(n.authorRep) : "",
     })),
-    // Empty API array is valid (e.g. manufacturer with no assigned requests) — do not inject seed demos.
-    newProductRequests: Array.isArray(raw.newProductRequests)
-      ? raw.newProductRequests
-      : pickOrSeed(raw.newProductRequests, DEFAULT_NEW_PRODUCT_REQUESTS),
-    transferOrders: pickOrSeed(raw.transferOrders, DEFAULT_TRANSFER_ORDERS),
-    depletionReports: pickOrSeed(raw.depletionReports, DEFAULT_DEPLETION_REPORTS),
-    purchaseOrders: Array.isArray(raw.purchaseOrders)
-      ? raw.purchaseOrders
-      : pickOrSeed(raw.purchaseOrders, SEED.purchaseOrders),
-    shipments: pickOrSeed(raw.shipments, SEED.shipments),
-    productionStatuses: pickOrSeed(raw.productionStatuses, SEED.productionStatuses),
-    warehouses: pickOrSeed(raw.warehouses, DEFAULT_WAREHOUSES),
-    manufacturerFinishedGoods: Array.isArray(raw.manufacturerFinishedGoods)
-      ? raw.manufacturerFinishedGoods
-      : [],
+    newProductRequests: asArray(raw.newProductRequests),
+    transferOrders: asArray(raw.transferOrders),
+    depletionReports: asArray(raw.depletionReports),
+    purchaseOrders: asArray(raw.purchaseOrders),
+    shipments: asArray(raw.shipments).filter((shipment) => !isSeedDemoShipment(shipment, seedOrderNumbers)),
+    productionStatuses: asArray(raw.productionStatuses),
+    warehouses,
+    manufacturerFinishedGoods: asArray(raw.manufacturerFinishedGoods),
   };
 }

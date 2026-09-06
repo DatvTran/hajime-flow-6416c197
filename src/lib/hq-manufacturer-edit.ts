@@ -13,19 +13,19 @@ import {
 
 export type HqManufacturerEditSource = "partner" | "account" | "profile";
 
-/** Editable manufacturer form — partner config, CRM account, or API profile. */
+/** Editable distillery form — partner config, CRM account, or API profile. */
 export type HqManufacturerEditForm = Omit<HqManufacturerPartnerConfig, "id"> & {
   id: string;
   editSource: HqManufacturerEditSource;
   profileId?: string;
-  /** Login email the manufacturer signs in with — connects their portal to this HQ record. */
+  /** Login email the distillery signs in with — connects their portal to this HQ record. */
   portalLoginEmail?: string;
 };
 
 function tierFromTags(tags: string[]): { tier: string; tierIsPreferred: boolean } {
   const preferred = tags.some((t) => /preferred|gold|primary-mfg/i.test(t));
   return {
-    tier: preferred ? "Preferred manufacturer partner" : "Standard manufacturer partner",
+    tier: preferred ? "Preferred distillery partner" : "Standard distillery partner",
     tierIsPreferred: preferred,
   };
 }
@@ -39,7 +39,7 @@ export function editFormFromPartner(config: HqManufacturerPartnerConfig): HqManu
 }
 
 export function editFormFromAccount(acc: Account): HqManufacturerEditForm {
-  const name = (acc.tradingName || acc.legalName || "Manufacturer").trim();
+  const name = (acc.tradingName || acc.legalName || "Distillery").trim();
   const tags = acc.tags ?? [];
   const { tier, tierIsPreferred } = tierFromTags(tags);
   return {
@@ -99,7 +99,7 @@ export function editFormFromProfile(profile: ManufacturerProfile, routeId: strin
     };
   }
 
-  const name = profile.companyName.trim() || "Manufacturer";
+  const name = profile.companyName.trim() || "Distillery";
   const tags: string[] = [];
   const { tier, tierIsPreferred } = tierFromTags(tags);
   return {
@@ -109,7 +109,7 @@ export function editFormFromProfile(profile: ManufacturerProfile, routeId: strin
     accountId: profile.manufacturerId || routeId,
     name,
     legalName: profile.legalName || name,
-    sub: [profile.address.city, profile.primaryContact.name].filter(Boolean).join(" · ") || "Manufacturer partner",
+    sub: [profile.address.city, profile.primaryContact.name].filter(Boolean).join(" · ") || "Distillery partner",
     tier,
     tierIsPreferred,
     contactName: profile.primaryContact.name || "",
@@ -196,7 +196,7 @@ export function resolveManufacturerEditForm(
 
   if (profile) {
     const fromProfile = editFormFromProfile(profile, id);
-    if (fromProfile.editSource === "partner" || fromProfile.name !== "Manufacturer") {
+    if (fromProfile.editSource === "partner" || fromProfile.name !== "Distillery") {
       return fromProfile;
     }
   }
@@ -252,7 +252,7 @@ export function persistPartnerEditForm(
   saveHqManufacturerPartner(editFormToPartnerConfig(form, id));
 }
 
-/** Resolve HQ partner id for any manufacturer route / form id. */
+/** Resolve HQ partner id for any distillery route / form id. */
 export function resolvePartnerIdForSave(
   form: HqManufacturerEditForm,
   routeManufacturerId: string,

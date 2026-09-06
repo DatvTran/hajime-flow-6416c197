@@ -72,7 +72,7 @@ export function buildManufacturerShipments(
   shipments: Shipment[] = [],
   partnerHints: string[] = [],
 ): ManufacturerShipmentRow[] {
-  // Prefer facility / manufacturer outbound rows; otherwise show outbound only.
+  // Prefer facility / distillery outbound rows; otherwise show outbound only.
   const fromFacility = shipments.filter((s) => {
     const origin = s.origin.toLowerCase();
     return (

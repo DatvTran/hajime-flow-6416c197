@@ -55,8 +55,8 @@ export function HqMarketsAllocationView({
         title="Markets & allocation"
         description="Inventory cover and revenue by market · manage SKU allocation across distributors"
         actions={
-          <HqBtnLink to="/production-requests" variant="accent" size="sm">
-            Rebalance allocation
+          <HqBtnLink to="/accounts" variant="accent" size="sm">
+            Distributors
           </HqBtnLink>
         }
       />
@@ -65,7 +65,7 @@ export function HqMarketsAllocationView({
         <HqOperatorAlertBar
           variant="error"
           actions={
-            <HqBtnLink to="/production-requests" variant="accent" size="sm">
+            <HqBtnLink to="/accounts" variant="accent" size="sm">
               Review
             </HqBtnLink>
           }
@@ -80,6 +80,11 @@ export function HqMarketsAllocationView({
         </HqOperatorAlertBar>
       ) : null}
 
+      {marketCards.length === 0 ? (
+        <p className="rounded-xl border border-border bg-card px-5 py-10 text-center text-sm text-muted-foreground">
+          No live markets yet. Allocation cards appear when sell-in or depot stock exists for a region.
+        </p>
+      ) : (
       <div className="hq-markets-grid grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
         {marketCards.map((m) => (
           <HqOperatorMarketCard
@@ -98,6 +103,7 @@ export function HqMarketsAllocationView({
           />
         ))}
       </div>
+      )}
 
       <HqOperatorSectionHead title="Allocation by SKU" />
 
@@ -114,24 +120,32 @@ export function HqMarketsAllocationView({
             </tr>
           </thead>
           <tbody>
-            {allocationRows.map((row) => (
-              <tr key={row.sku}>
-                <td>
-                  <div className="font-medium">{row.name}</div>
-                  <div className="font-mono text-[10px] text-muted-foreground">{row.sku}</div>
+            {allocationRows.length === 0 ? (
+              <tr>
+                <td colSpan={HQ_ALLOCATION_HUBS.length + 3} className="px-5 py-10 text-center text-sm text-muted-foreground">
+                  No SKU allocation yet. Rows appear when inventory is on hand in a depot.
                 </td>
-                <td className="font-mono font-semibold">{row.total.toLocaleString()} cs</td>
-                {HQ_ALLOCATION_HUBS.map((hub) => (
-                  <td
-                    key={hub}
-                    className={`font-mono ${row.lowHub === hub ? "font-semibold text-[hsl(0_68%_44%)]" : ""}`}
-                  >
-                    {row.byHub[hub].toLocaleString()}
-                  </td>
-                ))}
-                <td className="font-mono text-muted-foreground">{row.unallocated.toLocaleString()}</td>
               </tr>
-            ))}
+            ) : (
+              allocationRows.map((row) => (
+                <tr key={row.sku}>
+                  <td>
+                    <div className="font-medium">{row.name}</div>
+                    <div className="font-mono text-[10px] text-muted-foreground">{row.sku}</div>
+                  </td>
+                  <td className="font-mono font-semibold">{row.total.toLocaleString()} cs</td>
+                  {HQ_ALLOCATION_HUBS.map((hub) => (
+                    <td
+                      key={hub}
+                      className={`font-mono ${row.lowHub === hub ? "font-semibold text-[hsl(0_68%_44%)]" : ""}`}
+                    >
+                      {row.byHub[hub].toLocaleString()}
+                    </td>
+                  ))}
+                  <td className="font-mono text-muted-foreground">{row.unallocated.toLocaleString()}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </HqOperatorDataTable>
       </HqOperatorCard>

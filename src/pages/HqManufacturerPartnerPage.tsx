@@ -64,7 +64,7 @@ export default function HqManufacturerPartnerPage() {
       <div className="p-6 text-[13px] text-muted-foreground">
         Missing manufacturer id. Open a manufacturer partner from{" "}
         <Link to="/manufacturer/profiles" className="font-medium text-accent underline-offset-2 hover:underline">
-          Manufacturers
+          Distilleries
         </Link>
         .
       </div>

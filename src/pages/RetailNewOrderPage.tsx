@@ -11,6 +11,7 @@ import { RetailOrderCartPanel } from "@/components/retail/RetailOrderCartPanel";
 import { RetailBottleThumb } from "@/components/retail/RetailBottleThumb";
 import { retailOrderDisplayId } from "@/lib/order-lines";
 import { buildRetailCheckoutOrder, addDaysISO, marketForRetailAccount } from "@/lib/sales-order-utils";
+import { partnerSellOutCasePrice } from "@/lib/hq-product-catalog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CheckCircle2 } from "lucide-react";
@@ -83,7 +84,7 @@ export default function RetailNewOrderPage() {
     for (const { sku, cases } of cart.lines) {
       const p = products.find((x) => x.sku === sku);
       if (!p) continue;
-      const casePrice = p.wholesaleCasePrice ?? 0;
+      const casePrice = partnerSellOutCasePrice(p);
       const line = Math.round(cases * casePrice);
       subtotal += line;
       rows.push({ sku, name: p.name, cases, line });
@@ -238,7 +239,7 @@ export default function RetailNewOrderPage() {
                 {catalog.map((p) => {
                   const min = p.minOrderCases ?? 1;
                   const cases = cart.casesBySku[p.sku] ?? 0;
-                  const casePrice = p.wholesaleCasePrice ?? 0;
+                  const casePrice = partnerSellOutCasePrice(p);
                   const perBottle = p.caseSize > 0 ? casePrice / p.caseSize : 0;
                   return (
                     <div
