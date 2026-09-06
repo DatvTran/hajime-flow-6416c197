@@ -86,7 +86,7 @@ test("HQ serialize keeps internals", () => {
   const data = serializeExportOrder(row, { includeInternalEconomics: true, buyerFacing: false });
   assert.equal(data.notes, "do not share");
   assert.equal(data.paNo, "HJ-PA-0009");
-  assert.equal(data.exclusivity, true);
+  assert.equal(data.exclusivity, false);
   assert.equal(data.lines[0].floorFobUsd, 28);
 });
 

@@ -22,10 +22,12 @@ import {
 import { Permission, Role, hasPermission } from '../rbac/permissions.mjs';
 import {
   createCrmUserInvite,
-  sendCrmInviteEmail,
   sendStoreSetupInviteEmail,
-  CRM_TEAM_ROLE_LABELS,
 } from '../services/crm-invite.mjs';
+import {
+  buildCrmContactInvitePayload,
+  ensureAccountPortalContactAndInvite,
+} from '../lib/account-portal-invite.mjs';
 import { sendProductBriefSubmittedEmail, sendProductBriefNudgeEmail, sendProductionRequestIssuedEmail } from '../services/product-brief-notify.mjs';
 import {
   resolveManufacturerAssignmentIdentity,
@@ -100,27 +102,9 @@ import {
   validateBuyerPayload,
   validateInternalPatch,
 } from '../lib/expo-leads.mjs';
-import {
-  canManageExportOrders,
-  isManufacturer,
-  ensureExportOrdersTable,
-  serializeExportOrder,
-  toBuyerFacingOrder,
-  priceExportLines,
-  defaultChecklistState,
-  gateAdvance,
-  nextSeq,
-  padDoc,
-  isExportStageId,
-  isExportSku,
-  isBuyerExportDoc,
-  distributorCanViewStage,
-  findExportOrder,
-  applyIssueToChecklist,
-  requiredChecklistReady,
-  asJsonObject,
-} from '../lib/export-orders.mjs';
-import { sendExportDocIssuedEmail, sendTradePackEmail, clientBaseUrl } from '../services/export-notify.mjs';
+import { sendTradePackEmail, clientBaseUrl } from '../services/export-notify.mjs';
+import { canManageExportOrders } from '../lib/export-orders.mjs';
+import exportOrdersRouter from './export-orders.mjs';
 import {
   applyPortalOrdersScope,
   applyPortalShipmentsScope,
@@ -183,75 +167,6 @@ async function updateProductForTenant(tenantId, whereClause, body) {
     .update(updates)
     .returning('*');
   return product;
-}
-
-/** After creating/reactivating a CRM contact, optionally send portal invite email. */
-async function buildCrmContactInvitePayload(req, tenantId, member, { email, name, role }) {
-  const invitedByUserId = req.user?.userId;
-  if (!invitedByUserId) {
-    return {
-      data: member,
-      invite: { status: 'skipped', reason: 'missing_inviter' },
-    };
-  }
-
-  let inviteResult;
-  try {
-    inviteResult = await createCrmUserInvite({
-      tenantId,
-      email,
-      teamMemberRole: role,
-      invitedByUserId,
-    });
-  } catch (inviteErr) {
-    console.error('[API v1] CRM invite creation failed:', inviteErr);
-    return {
-      data: member,
-      invite: { status: 'skipped', reason: 'invite_creation_failed' },
-    };
-  }
-
-  if (!inviteResult.ok) {
-    return {
-      data: member,
-      invite: { status: 'skipped', reason: inviteResult.reason },
-    };
-  }
-
-  if (inviteResult.token && req.distributorOrg?.id) {
-    await registerInviteTokenRoute(inviteResult.token, req.distributorOrg.id);
-  }
-
-  try {
-    const tenantRow = await getDb('tenants').where({ id: tenantId }).first();
-    const sendResult = await sendCrmInviteEmail({
-      to: email,
-      inviteUrl: inviteResult.inviteUrl,
-      recipientName: name,
-      roleLabel: CRM_TEAM_ROLE_LABELS[role] || role,
-      inviterDisplayName: req.user?.displayName,
-      tenantName: req.distributorOrg?.name || tenantRow?.name,
-    });
-
-    const exposeInviteUrl = isDev || !sendResult.sent;
-    return {
-      data: member,
-      invite: {
-        status: 'sent',
-        emailDispatched: sendResult.sent,
-        ...(exposeInviteUrl && { inviteUrl: inviteResult.inviteUrl }),
-      },
-    };
-  } catch (emailErr) {
-    console.error('[API v1] CRM invite email failed:', emailErr);
-    return {
-      data: member,
-      invite: {
-        status: 'delivery_failed',
-        inviteUrl: inviteResult.inviteUrl,
-      },
-    };
-  }
 }
 
 /**
@@ -360,7 +275,8 @@ router.post('/expo-leads', rateLimiters.expoLeads, async (req, res) => {
     if (!tenant) {
       return res.status(503).json({ error: 'Lead capture is not available yet' });
     }
-    const row = await insertExpoLead(db, tenant.id, parsed.data);
+    const payload = { ...parsed.data, capture_ip: String(req.ip || '').slice(0, 45) || null };
+    const row = await insertExpoLead(db, tenant.id, payload);
     res.status(201).json({ data: serializeExpoLead(row, { publicView: true }) });
   } catch (err) {
     console.error('[API v1] expo-leads submit:', err);
@@ -422,7 +338,10 @@ function mergeContactIntoAddress(existing, contactName, contactRole) {
 }
 
 function requireExpoLeadsHq(req, res) {
-  if (!canManageExpoLeads(req.user?.role)) {
+  if (
+    !canManageExpoLeads(req.user?.role) &&
+    !hasPermission(req.user?.role, Permission.LEADS_READ)
+  ) {
     res.status(403).json({ error: 'Forbidden' });
     return false;
   }
@@ -533,385 +452,7 @@ router.patch('/expo-leads/:id', async (req, res) => {
   }
 });
 
-function exportSerializeForRole(req, row) {
-  const role = req.user?.role;
-  if (canManageExportOrders(role)) {
-    return serializeExportOrder(row, { includeInternalEconomics: true, buyerFacing: false });
-  }
-  if (isManufacturer(role)) {
-    return serializeExportOrder(row, { includeInternalEconomics: false, buyerFacing: false });
-  }
-  return toBuyerFacingOrder(serializeExportOrder(row, { includeInternalEconomics: false, buyerFacing: true }));
-}
-
-function parseExportLines(raw) {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter((l) => isExportSku(l?.sku))
-    .map((l) => ({
-      sku: String(l.sku),
-      cases: Math.max(0, Math.floor(Number(l.cases) || 0)),
-      ...(l.unitFobUsd != null ? { unitFobUsd: Number(l.unitFobUsd) } : {}),
-    }))
-    .filter((l) => l.cases > 0);
-}
-
-router.get('/export-orders', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const db = platformDb;
-    if (!(await ensureExportOrdersTable(db))) {
-      return res.json({ data: [] });
-    }
-    const role = req.user?.role;
-    let q = db('export_orders').where({ tenant_id: tenantId }).orderBy('created_at', 'desc');
-    if (role === 'distributor') {
-      const orgId = req.user?.distributorOrgId || req.distributorOrg?.id;
-      if (!orgId) return res.json({ data: [] });
-      q = q.where({ distributor_org_id: orgId });
-    } else if (isManufacturer(role)) {
-      q = q.whereIn('deposit_status', ['cleared', 'exception']).whereNot('stage', '01_lead').whereNot('stage', '02_quotation').whereNot('stage', '03_buyer_po').whereNot('stage', '04_po_acceptance').whereNot('stage', '05_proforma').whereNot('stage', '06_deposit');
-    } else if (!canManageExportOrders(role)) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-    const rows = await q.limit(200);
-    const data = rows
-      .filter((r) => (role === 'distributor' ? distributorCanViewStage(r.stage) : true))
-      .map((r) => exportSerializeForRole(req, r));
-    res.json({ data });
-  } catch (err) {
-    console.error('[API v1] export-orders list:', err);
-    res.status(500).json({ error: 'Failed to list export orders' });
-  }
-});
-
-router.post('/export-orders', async (req, res) => {
-  try {
-    const role = req.user?.role;
-    const isHq = canManageExportOrders(role);
-    const isDist = role === 'distributor';
-    if (!isHq && !isDist) return res.status(403).json({ error: 'Forbidden' });
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const db = platformDb;
-    if (!(await ensureExportOrdersTable(db))) {
-      return res.status(500).json({ error: 'Export orders table unavailable' });
-    }
-    const body = req.body || {};
-    let buyerName = String(body.buyerName || '').trim();
-    let buyerCompany = String(body.buyerCompany || buyerName).trim();
-    let buyerEmail = body.buyerEmail != null ? String(body.buyerEmail).trim().toLowerCase() : null;
-    let buyerAddress = body.buyerAddress != null ? String(body.buyerAddress).trim() : null;
-    let territory = String(body.territory || '').trim();
-    let destinationCountry = body.destinationCountry != null ? String(body.destinationCountry).trim() : null;
-    let expoLeadId = isHq && body.expoLeadId != null ? body.expoLeadId : null;
-    let distributorOrgId = isHq ? body.distributorOrgId || null : null;
-    let origin = 'hq';
-    let buyerPoNo = body.buyerPoNo != null ? String(body.buyerPoNo).trim() : null;
-    let forwarderName = body.forwarderName != null ? String(body.forwarderName).trim() : null;
-    let forwarderInstructions = body.forwarderInstructions != null ? String(body.forwarderInstructions) : null;
-
-    if (isDist) {
-      const orgId = req.user?.distributorOrgId || req.distributorOrg?.id;
-      if (!orgId) {
-        return res.status(400).json({ error: 'This login is not linked to a distributor organization.' });
-      }
-      distributorOrgId = orgId;
-      origin = 'portal';
-      expoLeadId = null;
-      const orgName = String(req.distributorOrg?.name || '').trim();
-      buyerName = String(req.user?.displayName || buyerName || orgName || 'Buyer').trim();
-      buyerCompany = orgName || buyerCompany || buyerName;
-      buyerEmail = String(req.user?.email || buyerEmail || '').trim().toLowerCase() || null;
-      territory = territory || destinationCountry || orgName || 'TBD';
-      destinationCountry = destinationCountry || territory || null;
-    }
-
-    if (expoLeadId) {
-      const lead = await db('expo_leads')
-        .where({ tenant_id: tenantId })
-        .andWhere((qb) => {
-          qb.where('display_id', String(expoLeadId));
-          if (/^\d+$/.test(String(expoLeadId))) qb.orWhere('id', Number(expoLeadId));
-        })
-        .first();
-      if (!lead) return res.status(404).json({ error: 'Expo lead not found' });
-      expoLeadId = lead.id;
-      buyerName = buyerName || String(lead.full_name || '').trim();
-      buyerCompany = buyerCompany || String(lead.company_name || buyerName).trim();
-      buyerEmail = buyerEmail || String(lead.business_email || '').trim().toLowerCase();
-      territory = territory || String(lead.country_market || lead.territory || 'TBD').trim();
-      destinationCountry = destinationCountry || String(lead.country_market || '').trim() || null;
-    }
-
-    if (!buyerName || !buyerCompany || !territory) {
-      return res.status(400).json({ error: 'buyerName, buyerCompany, and territory are required' });
-    }
-
-    let rawLines = Array.isArray(body.lines) ? body.lines : [];
-    if (isDist) {
-      rawLines = rawLines.map((l) => ({ sku: l?.sku, cases: l?.cases }));
-    } else if (!rawLines.length) {
-      rawLines = [{ sku: 'first_press_750', cases: 25 }];
-    }
-    const lines = parseExportLines(rawLines);
-    if (!lines.length) {
-      return res.status(400).json({ error: 'Add at least one SKU with cases' });
-    }
-    const priced = priceExportLines(lines);
-    const seq = await nextSeq(db, tenantId);
-    const displayId = padDoc('HX', seq);
-    const now = new Date();
-    const [row] = await db('export_orders')
-      .insert({
-        tenant_id: tenantId,
-        seq,
-        display_id: displayId,
-        quote_no: padDoc('Q', seq),
-        pi_no: padDoc('PI', seq),
-        deposit_no: padDoc('DP', seq),
-        pa_no: padDoc('PA', seq),
-        release_no: padDoc('SR', seq),
-        expo_lead_id: expoLeadId,
-        distributor_org_id: distributorOrgId,
-        origin,
-        buyer_name: buyerName,
-        buyer_company: buyerCompany,
-        buyer_address: buyerAddress,
-        buyer_email: buyerEmail,
-        territory,
-        destination_country: destinationCountry,
-        buyer_po_no: buyerPoNo,
-        forwarder_name: forwarderName,
-        forwarder_instructions: forwarderInstructions,
-        stage: '02_quotation',
-        lines: JSON.stringify(priced.lines.map((l) => ({ sku: l.sku, cases: l.cases, unitFobUsd: l.unitFobUsd }))),
-        subtotal_usd: priced.subtotalUsd,
-        deposit_due_usd: priced.depositDueUsd,
-        balance_due_usd: priced.balanceDueUsd,
-        checklist: JSON.stringify(defaultChecklistState()),
-        issued_docs: JSON.stringify({}),
-        created_at: now,
-        updated_at: now,
-      })
-      .returning('*');
-    res.status(201).json({ data: exportSerializeForRole(req, row) });
-  } catch (err) {
-    console.error('[API v1] export-orders create:', err);
-    res.status(500).json({ error: 'Failed to create export order' });
-  }
-});
-
-router.get('/export-orders/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const db = platformDb;
-    if (!(await ensureExportOrdersTable(db))) return res.status(404).json({ error: 'Not found' });
-    const row = await findExportOrder(db, tenantId, req.params.id);
-    if (!row) return res.status(404).json({ error: 'Not found' });
-    const role = req.user?.role;
-    if (role === 'distributor') {
-      const orgId = req.user?.distributorOrgId || req.distributorOrg?.id;
-      if (!orgId || String(row.distributor_org_id) !== String(orgId) || !distributorCanViewStage(row.stage)) {
-        return res.status(404).json({ error: 'Not found' });
-      }
-    } else if (isManufacturer(role)) {
-      if (!['cleared', 'exception'].includes(row.deposit_status)) {
-        return res.status(404).json({ error: 'Not found' });
-      }
-    } else if (!canManageExportOrders(role)) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-    res.json({ data: exportSerializeForRole(req, row) });
-  } catch (err) {
-    console.error('[API v1] export-orders get:', err);
-    res.status(500).json({ error: 'Failed to load export order' });
-  }
-});
-
-router.patch('/export-orders/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const db = platformDb;
-    const row = await findExportOrder(db, tenantId, req.params.id);
-    if (!row) return res.status(404).json({ error: 'Not found' });
-    const role = req.user?.role;
-    const body = req.body || {};
-    const updates = { updated_at: new Date() };
-
-    if (role === 'distributor') {
-      const orgId = req.user?.distributorOrgId || req.distributorOrg?.id;
-      if (!orgId || String(row.distributor_org_id) !== String(orgId)) {
-        return res.status(404).json({ error: 'Not found' });
-      }
-      if (body.buyerPoNo != null) updates.buyer_po_no = String(body.buyerPoNo).trim();
-      if (body.forwarderName != null) updates.forwarder_name = String(body.forwarderName).trim();
-      if (body.forwarderInstructions != null) updates.forwarder_instructions = String(body.forwarderInstructions);
-    } else if (isManufacturer(role)) {
-      if (!['cleared', 'exception'].includes(row.deposit_status)) {
-        return res.status(403).json({ error: 'Production not authorized yet' });
-      }
-      if (body.productionSlot != null) updates.production_slot = String(body.productionSlot);
-      if (body.expectedCompletion != null) updates.expected_completion = body.expectedCompletion || null;
-      if (body.batchPlan != null) updates.batch_plan = String(body.batchPlan);
-      if (body.readyToShipOn != null) updates.ready_to_ship_on = body.readyToShipOn || null;
-      if (body.casesPerPallet != null) updates.cases_per_pallet = String(body.casesPerPallet);
-      if (body.estimatedPallets != null) updates.estimated_pallets = String(body.estimatedPallets);
-      if (body.estimatedGrossWeight != null) updates.estimated_gross_weight = String(body.estimatedGrossWeight);
-    } else if (canManageExportOrders(role)) {
-      const map = {
-        buyerName: 'buyer_name',
-        buyerCompany: 'buyer_company',
-        buyerAddress: 'buyer_address',
-        buyerEmail: 'buyer_email',
-        territory: 'territory',
-        destinationCountry: 'destination_country',
-        buyerPoNo: 'buyer_po_no',
-        distributorOrgId: 'distributor_org_id',
-        depositStatus: 'deposit_status',
-        depositReceivedUsd: 'deposit_received_usd',
-        wireFeesUsd: 'wire_fees_usd',
-        depositRef: 'deposit_ref',
-        depositValueDate: 'deposit_value_date',
-        depositNotes: 'deposit_notes',
-        balanceStatus: 'balance_status',
-        balanceReceivedUsd: 'balance_received_usd',
-        balanceRef: 'balance_ref',
-        manufacturerName: 'manufacturer_name',
-        requestedCompletion: 'requested_completion',
-        productionSlot: 'production_slot',
-        expectedCompletion: 'expected_completion',
-        batchPlan: 'batch_plan',
-        casesPerPallet: 'cases_per_pallet',
-        estimatedPallets: 'estimated_pallets',
-        estimatedGrossWeight: 'estimated_gross_weight',
-        factoryContact: 'factory_contact',
-        readyToShipOn: 'ready_to_ship_on',
-        forwarderName: 'forwarder_name',
-        forwarderInstructions: 'forwarder_instructions',
-        fobNamedPoint: 'fob_named_point',
-        plannedDeparture: 'planned_departure',
-        checklistOpenItems: 'checklist_open_items',
-        notes: 'notes',
-        quoteValidUntil: 'quote_valid_until',
-      };
-      for (const [k, col] of Object.entries(map)) {
-        if (body[k] !== undefined) updates[col] = body[k] === '' ? null : body[k];
-      }
-      if (body.lines) {
-        const lines = parseExportLines(body.lines);
-        const priced = priceExportLines(lines);
-        updates.lines = JSON.stringify(priced.lines.map((l) => ({ sku: l.sku, cases: l.cases, unitFobUsd: l.unitFobUsd })));
-        updates.subtotal_usd = priced.subtotalUsd;
-        updates.deposit_due_usd = priced.depositDueUsd;
-        updates.balance_due_usd = priced.balanceDueUsd;
-      }
-      if (body.checklist) updates.checklist = JSON.stringify(body.checklist);
-      if (body.checklistCleared === true) {
-        const cl = body.checklist || asJsonObject(row.checklist);
-        if (!requiredChecklistReady(cl)) {
-          return res.status(400).json({
-            error: 'Mark remaining required checklist items issued, complete, or N/A before clearing for release.',
-          });
-        }
-        updates.checklist_cleared = true;
-      } else if (body.checklistCleared === false) {
-        updates.checklist_cleared = false;
-      }
-      if (body.stage != null) {
-        if (!isExportStageId(body.stage)) return res.status(400).json({ error: 'Invalid stage' });
-        const gate = gateAdvance({
-          from: row.stage,
-          to: body.stage,
-          depositStatus: updates.deposit_status || row.deposit_status,
-          balanceStatus: updates.balance_status || row.balance_status,
-          checklistCleared:
-            updates.checklist_cleared != null ? updates.checklist_cleared : row.checklist_cleared,
-          fobNamedPoint: updates.fob_named_point != null ? updates.fob_named_point : row.fob_named_point,
-        });
-        if (!gate.ok) return res.status(400).json({ error: gate.error });
-        updates.stage = body.stage;
-      }
-    } else {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
-    const [updated] = await db('export_orders')
-      .where({ id: row.id, tenant_id: tenantId })
-      .update(updates)
-      .returning('*');
-    res.json({ data: exportSerializeForRole(req, updated) });
-  } catch (err) {
-    console.error('[API v1] export-orders patch:', err);
-    res.status(500).json({ error: 'Failed to update export order' });
-  }
-});
-
-router.post('/export-orders/:id/docs/:doc/issue', async (req, res) => {
-  try {
-    if (!canManageExportOrders(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
-    const db = platformDb;
-    const row = await findExportOrder(db, tenantId, req.params.id);
-    if (!row) return res.status(404).json({ error: 'Not found' });
-    const doc = String(req.params.doc || '');
-    const allowed = ['quotation', 'po_acceptance', 'proforma', 'deposit', 'production_auth', 'export_checklist', 'shipment_release'];
-    if (!allowed.includes(doc)) return res.status(400).json({ error: 'Unknown document' });
-    if (doc === 'production_auth' && !['cleared', 'exception'].includes(row.deposit_status)) {
-      return res.status(400).json({ error: 'Issue production authorization only after deposit clearance.' });
-    }
-    if (doc === 'shipment_release') {
-      const gate = gateAdvance({
-        from: row.stage,
-        to: '12_shipment_release',
-        depositStatus: row.deposit_status,
-        balanceStatus: row.balance_status,
-        checklistCleared: row.checklist_cleared,
-        fobNamedPoint: row.fob_named_point,
-      });
-      if (!gate.ok) return res.status(400).json({ error: gate.error });
-    }
-
-    const issued = { ...asJsonObject(row.issued_docs) };
-    issued[doc] = { issuedAt: new Date().toISOString(), issuedBy: req.user?.email || req.user?.userId };
-    const checklist = applyIssueToChecklist(row.checklist, doc);
-    const [updated] = await db('export_orders')
-      .where({ id: row.id, tenant_id: tenantId })
-      .update({
-        issued_docs: JSON.stringify(issued),
-        checklist: JSON.stringify(checklist),
-        updated_at: new Date(),
-      })
-      .returning('*');
-
-    let email = { sent: false, skipped: true };
-    if (isBuyerExportDoc(doc) && updated.buyer_email) {
-      const titles = {
-        quotation: 'International distributor quotation',
-        po_acceptance: 'Purchase order acceptance',
-        proforma: 'Pro forma invoice',
-        deposit: 'Deposit confirmation',
-        shipment_release: 'Final payment and shipment release',
-      };
-      const docUrl = `${clientBaseUrl()}/distributor/international-orders/${updated.display_id}/docs/${doc}`;
-      email = await sendExportDocIssuedEmail({
-        to: updated.buyer_email,
-        buyerName: updated.buyer_name,
-        docTitle: titles[doc] || doc,
-        displayId: updated.display_id,
-        docUrl,
-      });
-    }
-    res.json({ data: serializeExportOrder(updated, { includeInternalEconomics: true }), email });
-  } catch (err) {
-    console.error('[API v1] export-orders issue:', err);
-    res.status(500).json({ error: 'Failed to issue document' });
-  }
-});
+router.use('/export-orders', exportOrdersRouter);
 
 const TRADE_PACK_ITEMS = {
   first_press_sheet: 'First Press Coffee Rhum sell sheet',
@@ -1367,10 +908,34 @@ router.get('/distributor-organizations', async (req, res) => {
     if (!hasPermission(req.user.role, Permission.SETTINGS_WRITE)) {
       return res.status(403).json({ error: 'Insufficient permissions.' });
     }
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const liveDist = await getDb('accounts')
+      .where({ tenant_id: tenantId, type: 'distributor' })
+      .whereNull('deleted_at');
+    const DEMO_DISTRIBUTOR_NAMES = new Set([
+      'metro logistics',
+      'empire wines & spirits',
+      'empire wines',
+      'midwest spirits co.',
+      'midwest spirits co',
+      'kanto beverage',
+      'cave lumière',
+      'cave lumiere',
+      'vino nord',
+    ]);
+    const liveNames = new Set(
+      liveDist
+        .flatMap((a) => [a.name, a.trading_name].filter(Boolean).map((s) => String(s).trim().toLowerCase()))
+        .filter((n) => !DEMO_DISTRIBUTOR_NAMES.has(n)),
+    );
     const rows = await platformDb('distributor_organizations')
       .where({ is_active: true })
       .orderBy('created_at', 'desc');
-    res.json({ data: rows });
+    const visible = liveNames.size
+      ? rows.filter((o) => liveNames.has(String(o.name || '').trim().toLowerCase()))
+      : [];
+    res.json({ data: visible });
   } catch (err) {
     console.error('[API v1] Error listing distributor organizations:', err);
     res.status(500).json({ error: 'Failed to list distributor organizations' });
@@ -1923,65 +1488,66 @@ router.post('/accounts/send-store-invitation', requirePermission(Permission.ACCO
       req.distributorOrg?.name || tenantRow?.name || req.user?.displayName || 'Hajime';
 
     let invite = { status: 'pending_distributor_approval' };
-    let expiresAt = null;
 
-    const inviteResult = await createCrmUserInvite({
-      tenantId,
-      email: normalizedEmail,
-      teamMemberRole: 'retail',
-      invitedByUserId: req.user.userId,
-    });
-
-    if (!inviteResult.ok) {
-      invite = { status: 'skipped', reason: inviteResult.reason };
+    if (pendingApproval) {
+      invite = {
+        status: 'pending_distributor_approval',
+        reason: 'Awaiting wholesaler / distributor approval before portal invite.',
+      };
     } else {
-      expiresAt = inviteResult.expiresAt;
-      if (inviteResult.token && req.distributorOrg?.id) {
-        await registerInviteTokenRoute(inviteResult.token, req.distributorOrg.id);
-      }
-      let emailInviter = req.user;
-      if (isDistributor && assignedRepUserId) {
-        const repUser = await platformDb('users').where({ id: assignedRepUserId }).first();
-        if (repUser) {
-          emailInviter = {
-            ...req.user,
-            email: repUser.email,
-            displayName: repUser.display_name,
-            display_name: repUser.display_name,
+      const inviteResult = await createCrmUserInvite({
+        tenantId,
+        email: normalizedEmail,
+        teamMemberRole: 'retail',
+        invitedByUserId: req.user.userId,
+      });
+
+      if (!inviteResult.ok) {
+        invite = { status: 'skipped', reason: inviteResult.reason };
+      } else {
+        if (inviteResult.token && req.distributorOrg?.id) {
+          await registerInviteTokenRoute(inviteResult.token, req.distributorOrg.id);
+        }
+        let emailInviter = req.user;
+        if (isDistributor && assignedRepUserId) {
+          const repUser = await platformDb('users').where({ id: assignedRepUserId }).first();
+          if (repUser) {
+            emailInviter = {
+              ...req.user,
+              email: repUser.email,
+              displayName: repUser.display_name,
+              display_name: repUser.display_name,
+            };
+          }
+        }
+        const repDisplayName = resolveSalesRepLabelForUser(emailInviter) || salesOwner;
+        try {
+          const sendResult = await sendStoreSetupInviteEmail({
+            to: normalizedEmail,
+            inviteUrl: inviteResult.inviteUrl,
+            recipientName: resolvedContactName,
+            storeName: tradingName,
+            personalNote: message,
+            inviterDisplayName: repDisplayName,
+            wholesalerName,
+            pendingWholesalerApproval: false,
+          });
+          const exposeInviteUrl = isDev || !sendResult.sent;
+          const emailStatus = sendResult.sent ? 'sent' : 'logged';
+          invite = {
+            status: emailStatus,
+            emailDispatched: sendResult.sent,
+            ...(exposeInviteUrl && { inviteUrl: inviteResult.inviteUrl }),
+            expiresAt: inviteResult.expiresAt?.toISOString?.() ?? inviteResult.expiresAt,
+          };
+        } catch (emailErr) {
+          console.error('[API v1] Store invitation email failed:', emailErr);
+          invite = {
+            status: 'delivery_failed',
+            inviteUrl: inviteResult.inviteUrl,
+            expiresAt: inviteResult.expiresAt?.toISOString?.() ?? inviteResult.expiresAt,
           };
         }
-      }
-      const repDisplayName = resolveSalesRepLabelForUser(emailInviter) || salesOwner;
-      try {
-        const sendResult = await sendStoreSetupInviteEmail({
-          to: normalizedEmail,
-          inviteUrl: inviteResult.inviteUrl,
-          recipientName: resolvedContactName,
-          storeName: tradingName,
-          personalNote: message,
-          inviterDisplayName: repDisplayName,
-          wholesalerName,
-          pendingWholesalerApproval: pendingApproval,
-        });
-        const exposeInviteUrl = isDev || !sendResult.sent;
-        const emailStatus = sendResult.sent ? 'sent' : 'logged';
-        invite = {
-          status: pendingApproval ? 'pending_distributor_approval' : emailStatus,
-          emailDispatched: sendResult.sent,
-          ...(pendingApproval && {
-            reason:
-              'Application link sent — wholesaler must approve before ordering is enabled.',
-          }),
-          ...(exposeInviteUrl && { inviteUrl: inviteResult.inviteUrl }),
-          expiresAt: inviteResult.expiresAt?.toISOString?.() ?? inviteResult.expiresAt,
-        };
-      } catch (emailErr) {
-        console.error('[API v1] Store invitation email failed:', emailErr);
-        invite = {
-          status: 'delivery_failed',
-          inviteUrl: inviteResult.inviteUrl,
-          expiresAt: inviteResult.expiresAt?.toISOString?.() ?? inviteResult.expiresAt,
-        };
       }
     }
 
@@ -1996,9 +1562,11 @@ router.post('/accounts/send-store-invitation', requirePermission(Permission.ACCO
       assignedSalesRepId: assignedRepUserId,
       salesOwner,
       invitationResent,
-      message: invitationResent
-        ? 'Invitation resent for existing prospect account.'
-        : 'Store account created and invitation sent.',
+      message: pendingApproval
+        ? 'Retail request submitted — wholesaler must approve before the portal invite is sent.'
+        : invitationResent
+          ? 'Invitation resent for existing prospect account.'
+          : 'Store account created and invitation sent.',
     });
   } catch (err) {
     console.error('[API v1] Error sending store invitation:', err);
@@ -2037,6 +1605,8 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req
         ? String(accountData.market).trim()
         : [accountData.city, accountData.country].filter(Boolean).join(', ') || '—';
 
+    const distributorUserId = isDistributor && req.user?.userId ? Number(req.user.userId) : null;
+
     const [account] = await getDb('accounts')
       .insert({
         tenant_id: tenantId,
@@ -2055,6 +1625,7 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req
         sales_owner: accountData.salesOwner,
         notes: accountData.notes,
         portal_login_email: accountData.portalLoginEmail || accountData.portal_login_email || null,
+        ...(distributorUserId ? { managed_by_distributor_user_id: distributorUserId } : {}),
       })
       .returning('*');
 
@@ -2087,10 +1658,46 @@ router.post('/accounts', requirePermission(Permission.ACCOUNTS_READ), async (req
       }
     }
 
+    let invite = null;
+    const contactEmail = String(accountData.email || '').trim();
+    const contactName =
+      String(accountData.contactName || accountData.contact_name || '').trim() ||
+      tradingName;
+    try {
+      if (account && String(account.type || '').trim() === 'distributor' && contactEmail) {
+        const portal = await ensureAccountPortalContactAndInvite({
+          req,
+          tenantId,
+          account,
+          role: 'distributor',
+          email: contactEmail,
+          name: contactName,
+          phone: accountData.phone,
+        });
+        invite = portal.invite;
+      } else if (account && isOnPremiseAccountType(account.type) && contactEmail) {
+        const portal = await ensureAccountPortalContactAndInvite({
+          req,
+          tenantId,
+          account,
+          role: 'retail',
+          email: contactEmail,
+          name: contactName,
+          phone: accountData.phone,
+          distributorUserId,
+        });
+        invite = portal.invite;
+      }
+    } catch (inviteErr) {
+      console.error('[API v1] Account portal invite failed:', inviteErr);
+      invite = { status: 'skipped', reason: 'invite_creation_failed' };
+    }
+
     res.status(201).json({
       data: account,
       depotLink,
       portalProvision,
+      invite,
     });
   } catch (err) {
     console.error('[API v1] Error creating account:', err);
@@ -2215,7 +1822,34 @@ router.delete('/accounts/:id', requirePermission(Permission.ACCOUNTS_DELETE), as
     if (!account) {
       return res.status(404).json({ error: 'Account not found' });
     }
-    
+
+    const now = new Date();
+    await getDb('team_members')
+      .where({ tenant_id: tenantId })
+      .where((q) => {
+        q.where('linked_account_id', id);
+        const em = account.email != null ? String(account.email).trim().toLowerCase() : '';
+        if (em) q.orWhereRaw('LOWER(email) = ?', [em]);
+      })
+      .update({
+        is_active: false,
+        linked_account_id: null,
+        pending_distributor_approval: false,
+        updated_at: now,
+      });
+
+    if (String(account.type || '').trim() === 'distributor') {
+      const labels = [account.name, account.trading_name]
+        .filter(Boolean)
+        .map((s) => String(s).trim().toLowerCase());
+      if (labels.length > 0) {
+        await platformDb('distributor_organizations')
+          .where({ is_active: true })
+          .whereRaw('LOWER(TRIM(name)) in (' + labels.map(() => '?').join(',') + ')', labels)
+          .update({ is_active: false, updated_at: now });
+      }
+    }
+
     res.json({ data: account, message: 'Account deleted' });
   } catch (err) {
     console.error('[API v1] Error deleting account:', err);
@@ -6254,7 +5888,7 @@ router.post('/shipments/:id/receive', shipmentWriteMiddleware, async (req, res) 
         created_at: now,
       });
 
-      if (existing.order_id) {
+      if (existing.order_id && !existing.direct_export && !existing.export_order_id) {
         await trx('purchase_order_items')
           .where({ tenant_id: tenantId, purchase_order_id: existing.order_id, product_id: productId })
           .increment('quantity_received', delta);

@@ -185,12 +185,18 @@ function parseJsonLines(v) {
   return [];
 }
 
-export function serializeExportOrder(row, { includeInternalEconomics = false, buyerFacing = false } = {}) {
+export function serializeExportOrder(
+  row,
+  { includeInternalEconomics = false, buyerFacing = false, manufacturerFacing = false } = {},
+) {
   if (!row) return null;
   const priced = priceExportLines(parseJsonLines(row.lines));
-  const lines = includeInternalEconomics
+  let lines = includeInternalEconomics
     ? priced.lines
     : priced.lines.map(({ floorFobUsd, belowFloor, ...rest }) => rest);
+  if (manufacturerFacing) {
+    lines = lines.map(({ unitFobUsd, caseUsd, lineTotalUsd, floorFobUsd, belowFloor, ...rest }) => rest);
+  }
   const base = {
     id: String(row.id),
     displayId: row.display_id,
@@ -242,15 +248,30 @@ export function serializeExportOrder(row, { includeInternalEconomics = false, bu
     checklist: buyerFacing ? undefined : asJsonObject(row.checklist),
     checklistCleared: buyerFacing ? undefined : Boolean(row.checklist_cleared),
     checklistOpenItems: buyerFacing ? undefined : row.checklist_open_items,
-    exclusivity: buyerFacing ? false : Boolean(row.exclusivity),
-    notes: buyerFacing ? undefined : row.notes,
+    exclusivity: false,
+    productionPoId: row.production_po_id != null ? String(row.production_po_id) : null,
+    shipmentId: row.shipment_id != null ? String(row.shipment_id) : null,
+    nextAction: row.next_action || null,
+    holdReason: row.hold_reason || null,
+    notes: buyerFacing || manufacturerFacing ? undefined : row.notes,
     quoteValidUntil: row.quote_valid_until,
-    issuedDocs: buyerFacing ? undefined : asJsonObject(row.issued_docs),
+    issuedDocs: buyerFacing || manufacturerFacing ? undefined : asJsonObject(row.issued_docs),
     buyerDocStatus: buyerDocStatus(row),
-    belowFloor: includeInternalEconomics ? priced.belowFloor : undefined,
+    belowFloor: includeInternalEconomics && !manufacturerFacing ? priced.belowFloor : undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+  if (manufacturerFacing) {
+    delete base.subtotalUsd;
+    delete base.depositDueUsd;
+    delete base.balanceDueUsd;
+    delete base.depositReceivedUsd;
+    delete base.wireFeesUsd;
+    delete base.depositRef;
+    delete base.balanceReceivedUsd;
+    delete base.balanceRef;
+    delete base.buyerEmail;
+  }
   return base;
 }
 
@@ -349,6 +370,18 @@ export async function ensureExportOrdersTable(db) {
     await m049.up(db);
   } catch (e) {
     console.error("[export-orders] ensure origin column failed:", e);
+  }
+  try {
+    const m050 = await import("../migrations/050_export_order_spine.mjs");
+    await m050.up(db);
+  } catch (e) {
+    console.error("[export-orders] ensure spine tables failed:", e);
+  }
+  try {
+    const m051 = await import("../migrations/051_export_payments_pricing_rls.mjs");
+    await m051.up(db);
+  } catch (e) {
+    console.error("[export-orders] ensure payments/pricing failed:", e);
   }
   return true;
 }

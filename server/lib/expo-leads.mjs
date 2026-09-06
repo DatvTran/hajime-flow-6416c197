@@ -268,8 +268,7 @@ export async function insertExpoLead(db, tenantId, buyer) {
       .first();
     const seq = Number(agg?.max ?? 0) + 1;
     const displayId = `${buyer.event_code}-${String(seq).padStart(3, '0')}`;
-    const [row] = await trx('expo_leads')
-      .insert({
+    const payload = {
         tenant_id: tenantId,
         event_code: buyer.event_code,
         seq,
@@ -293,8 +292,11 @@ export async function insertExpoLead(db, tenantId, buyer) {
         submitted_at: now,
         met_at: now,
         status: 'new',
-      })
-      .returning('*');
+    };
+    if (await trx.schema.hasColumn('expo_leads', 'capture_ip')) {
+      payload.capture_ip = buyer.capture_ip || null;
+    }
+    const [row] = await trx('expo_leads').insert(payload).returning('*');
     return row;
   });
 }

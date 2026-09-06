@@ -7,6 +7,7 @@ import {
   getExportOrder,
   getExportOrders,
   patchExportOrder,
+  postExportOrderAction,
   type ExportOrderDto,
 } from "@/lib/api-v1";
 import { getDistributorOrganizations, type DistributorOrganizationRow } from "@/lib/api-v1-mutations";
@@ -37,7 +38,7 @@ import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 
 function canHq(role: string | undefined) {
-  return role === "brand_operator" || role === "founder_admin" || role === "operations";
+  return role === "brand_operator" || role === "founder_admin" || role === "operations" || role === "finance";
 }
 
 export default function HqExportOrdersPage() {
@@ -205,6 +206,20 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
     void load();
   }, [load]);
 
+  const act = async (path: string, body: Record<string, unknown> = {}, method: "POST" | "PATCH" = "POST") => {
+    if (!order) return;
+    setSaving(true);
+    try {
+      const res = await postExportOrderAction(String(order.displayId), path, body, method);
+      setOrder(res.data);
+      toast.success("Updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const save = async (patch: Record<string, unknown>) => {
     if (!order) return;
     setSaving(true);
@@ -295,11 +310,8 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
 
       <div className="mb-6 flex flex-wrap gap-1.5">
         {EXPORT_STAGES.map((s) => (
-          <button
+          <span
             key={s.id}
-            type="button"
-            disabled={saving}
-            onClick={() => void save({ stage: s.id })}
             className={cn(
               "rounded-full border px-2.5 py-1 text-[11px]",
               order.stage === s.id ? "border-accent bg-accent/10" : "border-border text-muted-foreground",
@@ -307,8 +319,76 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
             title={s.owner}
           >
             {s.n} {s.label}
-          </button>
+          </span>
         ))}
+      </div>
+      {order.nextAction ? (
+        <p className="mb-4 text-[13px] text-muted-foreground">Next: {String(order.nextAction)}</p>
+      ) : null}
+      <div className="mb-6 flex flex-wrap gap-2">
+        <Button type="button" size="sm" disabled={saving} onClick={() => void act("quotation")}>
+          Issue quotation
+        </Button>
+        <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void act("buyer-po", { buyerPoNo: order.buyerPoNo })}>
+          Record buyer PO
+        </Button>
+        <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void act("acceptance")}>
+          Accept PO
+        </Button>
+        <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void act("proforma")}>
+          Issue PI
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={saving}
+          onClick={() =>
+            void act("payments", {
+              paymentType: "deposit",
+              amountReceived: Number(order.depositDueUsd || 0),
+              bankFees: 0,
+            })
+          }
+        >
+          Record deposit
+        </Button>
+        <Button type="button" size="sm" disabled={saving || !paOk} onClick={() => void act("production-authorization")}>
+          Authorize production
+        </Button>
+        <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void act("balance-request")}>
+          Request balance
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={saving}
+          onClick={() =>
+            void act("payments", {
+              paymentType: "balance",
+              amountReceived: Number(order.balanceDueUsd || 0),
+              bankFees: 0,
+            })
+          }
+        >
+          Record balance
+        </Button>
+        <Button type="button" size="sm" disabled={saving} onClick={() => void act("release")}>
+          Release shipment
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={saving}
+          onClick={() => void act("handover", { transportReference: String(order.forwarderInstructions || "BL pending") })}
+        >
+          Confirm handover
+        </Button>
+        <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void act("close")}>
+          Close
+        </Button>
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -373,33 +453,31 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
 
         <div className="space-y-3 rounded-xl border border-border bg-card p-5">
           <h2 className="font-display text-lg">Money gates</h2>
-          <Label>Deposit</Label>
-          <select
-            className="flex h-10 w-full rounded-md border bg-background px-3 text-sm"
-            value={depositStatus}
-            onChange={(e) => void save({ depositStatus: e.target.value })}
-          >
-            <option value="pending">Pending</option>
-            <option value="cleared">Cleared in full</option>
-            <option value="short">Short / wire fees</option>
-            <option value="exception">Exception approved</option>
-          </select>
+          <Label>Deposit (read-only — record via payments)</Label>
+          <p className="text-[13px]">{depositStatus}</p>
           <Field
-            label="Deposit received USD"
+            label="Deposit received USD (notes)"
             value={String(order.depositReceivedUsd ?? "")}
-            onBlur={(v) => void save({ depositReceivedUsd: v ? Number(v) : null })}
+            onBlur={(v) => void save({ depositRef: v })}
           />
           <HqOperatorPill tone={paOk ? "green" : "red"}>{paOk ? "May authorize production" : "Hold production"}</HqOperatorPill>
           <Label>Final balance</Label>
-          <select
-            className="flex h-10 w-full rounded-md border bg-background px-3 text-sm"
-            value={balanceStatus}
-            onChange={(e) => void save({ balanceStatus: e.target.value })}
+          <p className="text-[13px]">{balanceStatus}</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={saving}
+            onClick={() =>
+              void act("exceptions", {
+                kind: "deposit_waived",
+                reason: "HQ documented exception",
+                shortfall: 0,
+              })
+            }
           >
-            <option value="pending">Pending</option>
-            <option value="cleared">Cleared</option>
-            <option value="exception">Exception approved</option>
-          </select>
+            Approve gate exception
+          </Button>
         </div>
 
         <div className="space-y-3 rounded-xl border border-border bg-card p-5">

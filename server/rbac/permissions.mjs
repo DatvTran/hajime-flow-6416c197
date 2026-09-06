@@ -70,6 +70,14 @@ export const Permission = {
   CSV_EXPORT: 'csv:export',
   CSV_IMPORT: 'csv:import',
 
+  EXPORT_READ: 'export:read',
+  EXPORT_WRITE: 'export:write',
+  EXPORT_APPROVE: 'export:approve',
+  EXPORT_RELEASE: 'export:release',
+
+  LEADS_READ: 'leads:read',
+  LEADS_WRITE: 'leads:write',
+
   /** Supply Chain Incentive Manager (/incentives) — persisted tenant snapshot */
   INCENTIVES_READ: 'incentives:read',
   INCENTIVES_WRITE: 'incentives:write',
@@ -99,6 +107,8 @@ export const ROLE_PERMISSIONS = {
     'reports:*',
     'forecasts:*',
     'csv:*',
+    'export:*',
+    'leads:*',
     Permission.INCENTIVES_READ,
     Permission.INCENTIVES_WRITE,
     Permission.INCENTIVES_SELF_READ,
@@ -113,6 +123,8 @@ export const ROLE_PERMISSIONS = {
     Permission.FORECASTS_READ,
     Permission.SHIPMENTS_READ,
     Permission.INCENTIVES_SELF_READ,
+    Permission.LEADS_READ,
+    Permission.LEADS_WRITE,
   ],
 
   [Role.SALES_REP]: [
@@ -124,6 +136,8 @@ export const ROLE_PERMISSIONS = {
     Permission.FORECASTS_READ,
     Permission.SHIPMENTS_READ,
     Permission.INCENTIVES_SELF_READ,
+    Permission.LEADS_READ,
+    Permission.LEADS_WRITE,
   ],
 
   [Role.OPERATIONS]: [
@@ -142,6 +156,8 @@ export const ROLE_PERMISSIONS = {
     Permission.INCENTIVES_READ,
     Permission.INCENTIVES_WRITE,
     Permission.INCENTIVES_SELF_READ,
+    Permission.EXPORT_READ,
+    Permission.EXPORT_WRITE,
   ],
 
   [Role.MANUFACTURER]: [
@@ -154,6 +170,7 @@ export const ROLE_PERMISSIONS = {
     /** Record inbound finished-goods shipment to brand / DC warehouse (purchase-order linked). */
     Permission.SHIPMENTS_WRITE,
     Permission.INVENTORY_READ,
+    Permission.EXPORT_READ,
   ],
 
   [Role.DISTRIBUTOR]: [
@@ -166,6 +183,8 @@ export const ROLE_PERMISSIONS = {
     Permission.SHIPMENTS_WRITE,
     Permission.ACCOUNTS_READ,
     Permission.INCENTIVES_SELF_READ,
+    Permission.EXPORT_READ,
+    Permission.EXPORT_WRITE,
   ],
 
   [Role.FINANCE]: [
@@ -176,6 +195,8 @@ export const ROLE_PERMISSIONS = {
     Permission.REPORTS_READ,
     Permission.INCENTIVES_READ,
     Permission.INCENTIVES_WRITE,
+    Permission.EXPORT_READ,
+    Permission.FINANCIALS_WRITE,
   ],
 
   [Role.RETAIL]: [

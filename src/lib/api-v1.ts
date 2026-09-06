@@ -735,6 +735,18 @@ export function patchExportOrder(id: string, body: Record<string, unknown>): Pro
   });
 }
 
+export function postExportOrderAction(
+  id: string,
+  actionPath: string,
+  body: Record<string, unknown> = {},
+  method: "POST" | "PATCH" = "POST",
+): Promise<{ data: ExportOrderDto }> {
+  return apiFetch(`/api/v1/export-orders/${encodeURIComponent(id)}/${actionPath}`, {
+    method,
+    body: JSON.stringify(body),
+  });
+}
+
 export function issueExportDoc(
   id: string,
   doc: string,

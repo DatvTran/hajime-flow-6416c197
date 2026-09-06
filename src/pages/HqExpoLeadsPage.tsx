@@ -253,9 +253,13 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
             <Button
               type="button"
               size="sm"
-              disabled={saving}
+              disabled={saving || lead.businessType !== "importer_distributor"}
               onClick={async () => {
                 if (!lead) return;
+                if (lead.businessType !== "importer_distributor") {
+                  toast.error("Only importer / distributor leads can open an export file.");
+                  return;
+                }
                 setSaving(true);
                 try {
                   const res = await createExportOrder({
@@ -284,6 +288,12 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
           </div>
         }
       />
+
+      {lead.businessType !== "importer_distributor" ? (
+        <p className="mb-4 text-[13px] text-muted-foreground">
+          This contact is not an importer/distributor. Send materials and close — do not convert to an export file.
+        </p>
+      ) : null}
 
       {error ? (
         <Alert variant="destructive" className="mb-4">
