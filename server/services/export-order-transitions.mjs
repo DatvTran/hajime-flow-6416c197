@@ -221,8 +221,8 @@ const TRANSITIONS = {
         exception,
       );
       if (!gate.ok) return gate;
-      if (!String(order.manufacturer_name || "").trim()) {
-        return { ok: false, code: "MANUFACTURER_REQUIRED" };
+      if (!String(order.manufacturer_id || "").trim() && !String(order.manufacturer_name || "").trim()) {
+        return { ok: false, code: "Pick a distillery from Network before authorizing production" };
       }
       return { ok: true };
     },

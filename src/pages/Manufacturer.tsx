@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
-import { computeInventorySummary, computeReorderRecommendations, deriveAlerts } from "@/lib/hajime-metrics";
+import { computeInventorySummary, computeReorderRecommendations, visibleDerivedAlerts } from "@/lib/hajime-metrics";
 import type { Shipment } from "@/data/mockData";
 import { TEAM_ROSTER } from "@/data/team-roster";
 import { resolveManufacturerAssignmentIdentity } from "@/lib/npr-manufacturer-scope";
@@ -83,7 +83,7 @@ export default function Manufacturer() {
       .sort((a, b) => b.bottles - a.bottles);
   }, [scopedPurchaseOrders]);
 
-  const mfgAlerts = useMemo(() => deriveAlerts(data).slice(0, 5), [data]);
+  const mfgAlerts = useMemo(() => visibleDerivedAlerts(data).slice(0, 5), [data]);
 
   const replenishmentSuggestions = useMemo(
     () => computeReorderRecommendations(data).filter((r) => r.suggestedBottles > 0).slice(0, 6),

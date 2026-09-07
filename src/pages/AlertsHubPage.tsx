@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { RetailPageHeader } from "@/components/retail/RetailPageHeader";
@@ -10,16 +10,19 @@ import { AlertsHubSkeleton } from "@/components/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 import { deriveAlerts } from "@/lib/hajime-metrics";
 import { resolveAlertHref } from "@/lib/alert-links";
+import { dismissAllAlertIds, loadDismissedAlertIds } from "@/lib/dismissed-alerts";
 import { AlertTriangle, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function AlertsHubPage() {
   const { data, loading } = useAppData();
   const { user } = useAuth();
+  const [dismissed, setDismissed] = useState<Set<string>>(() => loadDismissedAlertIds());
 
   const location = useLocation();
 
   const alerts = useMemo(() => {
-    const all = deriveAlerts(data);
+    const all = deriveAlerts(data).filter((a) => !dismissed.has(a.id));
     if (user.role === "manufacturer") {
       // Distilleries see: inventory low-stock, delays, shipments, reorders
       // Exclude: retailer payments AND retailer shelf stock alerts
@@ -31,7 +34,7 @@ export default function AlertsHubPage() {
       return all.filter((a) => !["payment", "reorder"].includes(a.type));
     }
     return all;
-  }, [data, user.role]);
+  }, [data, user.role, dismissed]);
 
   useEffect(() => {
     if (location.hash !== "#active-queue") return;
@@ -61,7 +64,8 @@ export default function AlertsHubPage() {
       )}
 
       <Card className={isRetail ? "rounded-[14px] border-border/70 shadow-[var(--shadow-soft)]" : undefined}>
-        <CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+          <div className="space-y-1.5">
           <CardTitle className="font-display text-lg">
             <Link
               to="#active-queue"
@@ -81,6 +85,17 @@ export default function AlertsHubPage() {
                     ? "HQ view: low stock, demand spikes, delays, reorder hints, and retailer onboarding awaiting brand approval."
                     : "Low stock, demand spikes, delays, reorder hints, and retailer onboarding pipeline."}
           </p>
+          </div>
+          {alerts.length > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDismissed(dismissAllAlertIds(alerts.map((a) => a.id)))}
+            >
+              Clear all
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent id="active-queue" className="space-y-3 scroll-mt-24" tabIndex={-1}>
           {alerts.length === 0 ? (

@@ -57,7 +57,7 @@ import {
   cityKeyFromMarket,
   computeInventorySummary,
   countActiveMarkets,
-  deriveAlerts,
+  visibleDerivedAlerts,
   computeManufacturerDashboardStatus,
   isRetailChannelOrder,
   revenueInWindow,
@@ -243,10 +243,10 @@ export default function Dashboard() {
   );
   const lowStockMarkets = useMemo(() => countLowStockMarkets(marketRows), [marketRows]);
   const shipmentAlerts = useMemo(() => countShipmentEtaAlerts(commandData.shipments), [commandData.shipments]);
-  const hubAlerts = useMemo(() => deriveAlerts(commandData), [commandData]);
+  const hubAlerts = useMemo(() => visibleDerivedAlerts(commandData), [commandData]);
   /** Same derivation rules as Alerts hub (`deriveAlerts` → unified queue). */
   const decisionAlerts = useMemo(
-    () => mapDerivedAlertsToDecisionAlerts(deriveAlerts(commandData)),
+    () => mapDerivedAlertsToDecisionAlerts(visibleDerivedAlerts(commandData)),
     [commandData],
   );
   const replenishment = useMemo(() => computeHQReplenishmentSuggestions(commandData), [commandData]);

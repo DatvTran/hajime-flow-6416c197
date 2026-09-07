@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   createExportOrder,
@@ -11,8 +11,12 @@ import {
   type ExportOrderDto,
 } from "@/lib/api-v1";
 import { getDistributorOrganizations, type DistributorOrganizationRow } from "@/lib/api-v1-mutations";
+import { useHqDistilleryCatalogOptions } from "@/hooks/useHqDistilleryCatalogOptions";
+import { manufacturerPartnerPath } from "@/lib/hq-manufacturers-metrics";
 import {
-  DEFAULT_EXPORT_CHECKLIST,
+  CORE_EXPORT_CHECKLIST,
+  OPTIONAL_EXPORT_CHECKLIST,
+  applyOrderStateToChecklist,
   EXPORT_SELLER,
   EXPORT_SKUS,
   EXPORT_STAGES,
@@ -191,6 +195,7 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
   const [order, setOrder] = useState<ExportOrderDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [optionalOpen, setOptionalOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -264,16 +269,26 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
   const priced = priceLines(lineCases(order));
   const depositStatus = String(order.depositStatus || "pending") as DepositStatus;
   const balanceStatus = String(order.balanceStatus || "pending") as "pending" | "cleared" | "exception";
-  const paOk = canAuthorizeProduction(depositStatus);
+  const hasDistillery = Boolean(String(order.manufacturerId || order.manufacturerName || "").trim());
+  const paOk = canAuthorizeProduction(depositStatus) && hasDistillery;
   const relOk = canReleaseShipment({
     balanceStatus,
     checklistCleared: Boolean(order.checklistCleared),
     fobNamedPoint: order.fobNamedPoint as string,
   });
-  const checklist = (order.checklist && typeof order.checklist === "object" ? order.checklist : {}) as Record<
-    string,
-    { status?: string; notes?: string }
-  >;
+  const checklist = applyOrderStateToChecklist(
+    order.checklist && typeof order.checklist === "object" ? order.checklist : {},
+    {
+      stage: String(order.stage || ""),
+      buyerPoNo: order.buyerPoNo as string | undefined,
+      depositStatus: String(order.depositStatus || ""),
+    },
+  );
+  const docsReady = requiredChecklistReady(checklist);
+  const coreDone = CORE_EXPORT_CHECKLIST.filter((row) => {
+    const st = String(checklist[row.key]?.status || "required");
+    return st === "complete" || st === "issued" || st === "na";
+  }).length;
 
   const docs = [
     ["quotation", "Quotation"],
@@ -460,7 +475,13 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
             value={String(order.depositReceivedUsd ?? "")}
             onBlur={(v) => void save({ depositRef: v })}
           />
-          <HqOperatorPill tone={paOk ? "green" : "red"}>{paOk ? "May authorize production" : "Hold production"}</HqOperatorPill>
+          <HqOperatorPill tone={paOk ? "green" : "red"}>
+            {paOk
+              ? "May authorize production"
+              : hasDistillery
+                ? "Hold production"
+                : "Pick a distillery to authorize"}
+          </HqOperatorPill>
           <Label>Final balance</Label>
           <p className="text-[13px]">{balanceStatus}</p>
           <Button
@@ -482,10 +503,10 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
 
         <div className="space-y-3 rounded-xl border border-border bg-card p-5">
           <h2 className="font-display text-lg">Thailand + forwarder</h2>
-          <Field
-            label="Manufacturer"
-            value={String(order.manufacturerName ?? "")}
-            onBlur={(v) => void save({ manufacturerName: v })}
+          <DistilleryPicker
+            manufacturerId={String(order.manufacturerId ?? "")}
+            manufacturerName={String(order.manufacturerName ?? "")}
+            onChange={(id, name) => void save({ manufacturerId: id || null, manufacturerName: name || null })}
           />
           <Field
             label="FOB named port / terminal"
@@ -505,46 +526,146 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
         </div>
       </div>
 
-      <div className="mt-6 space-y-2 rounded-xl border border-border bg-card p-5">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="font-display text-lg">Export document checklist</h2>
+      <div className="mt-6 space-y-4 rounded-xl border border-border bg-card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="font-display text-lg">Documents</h2>
+            <p className="text-[12px] text-muted-foreground">
+              Ops checklist only. Import stays with the buyer. {coreDone}/{CORE_EXPORT_CHECKLIST.length} Hajime items
+              ready.
+            </p>
+          </div>
           <Button
             type="button"
             size="sm"
-            variant="outline"
-            disabled={!order.checklistCleared && !requiredChecklistReady(checklist)}
-            onClick={() => void save({ checklistCleared: !order.checklistCleared })}
+            variant={order.checklistCleared ? "outline" : "default"}
+            disabled={saving || (!order.checklistCleared && !docsReady)}
+            onClick={() => void save({ checklist, checklistCleared: !order.checklistCleared })}
           >
-            {order.checklistCleared ? "Cleared for release" : "Mark checklist cleared"}
+            {order.checklistCleared ? "Docs ready" : "Mark docs ready"}
           </Button>
         </div>
-        <p className="text-[12px] text-muted-foreground">
-          Operational control only — not a legal determination. Destination import stays with the buyer/importer.
-          Thailand exporter-of-record remains to be confirmed.
-        </p>
-        <ul className="grid gap-2 sm:grid-cols-2">
-          {DEFAULT_EXPORT_CHECKLIST.map((row) => (
-            <li key={row.key} className="text-[12px]">
-              <span className="font-medium">{row.label}</span>
-              <span className="text-muted-foreground"> · {row.owner}</span>
-              <select
-                className="ml-2 rounded border bg-background px-1 py-0.5"
-                value={checklist[row.key]?.status || "required"}
-                onChange={(e) => {
-                  const next = { ...checklist, [row.key]: { ...checklist[row.key], status: e.target.value } };
-                  void save({ checklist: next });
-                }}
-              >
-                <option value="required">Required</option>
-                <option value="issued">Issued</option>
-                <option value="na">N/A</option>
-                <option value="complete">Complete</option>
-              </select>
-            </li>
+        <ul className="divide-y divide-border/60">
+          {CORE_EXPORT_CHECKLIST.map((row) => (
+            <ChecklistRow
+              key={row.key}
+              label={row.label}
+              status={String(checklist[row.key]?.status || "required")}
+              disabled={saving}
+              onChange={(status) => {
+                const next = { ...checklist, [row.key]: { ...checklist[row.key], status } };
+                void save({ checklist: next });
+              }}
+            />
           ))}
         </ul>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between rounded-lg border border-border/70 px-3 py-2 text-left text-[13px]"
+          onClick={() => setOptionalOpen((v) => !v)}
+        >
+          <span>If destination requires it ({OPTIONAL_EXPORT_CHECKLIST.length})</span>
+          <ChevronDown className={cn("size-4 text-muted-foreground transition-transform", optionalOpen && "rotate-180")} />
+        </button>
+        {optionalOpen ? (
+          <ul className="divide-y divide-border/60 rounded-lg border border-border/50 px-1">
+            {OPTIONAL_EXPORT_CHECKLIST.map((row) => (
+              <ChecklistRow
+                key={row.key}
+                label={row.label}
+                status={String(checklist[row.key]?.status || "na")}
+                disabled={saving}
+                onChange={(status) => {
+                  const next = { ...checklist, [row.key]: { ...checklist[row.key], status } };
+                  void save({ checklist: next });
+                }}
+              />
+            ))}
+          </ul>
+        ) : null}
       </div>
     </HqOperatorPage>
+  );
+}
+
+function ChecklistRow({
+  label,
+  status,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  status: string;
+  disabled?: boolean;
+  onChange: (status: string) => void;
+}) {
+  const ready = status === "issued" || status === "complete" || status === "na";
+  return (
+    <li className="flex items-center justify-between gap-3 py-2.5">
+      <span className="min-w-0 text-[13px] font-medium">{label}</span>
+      <select
+        className={cn(
+          "shrink-0 rounded-md border bg-background px-2 py-1 text-[12px]",
+          ready ? "border-accent/40 text-foreground" : "border-border text-muted-foreground",
+        )}
+        value={status}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="required">Needed</option>
+        <option value="issued">Done</option>
+        <option value="na">N/A</option>
+      </select>
+    </li>
+  );
+}
+
+function DistilleryPicker({
+  manufacturerId,
+  manufacturerName,
+  onChange,
+}: {
+  manufacturerId: string;
+  manufacturerName: string;
+  onChange: (id: string, name: string) => void;
+}) {
+  const distilleries = useHqDistilleryCatalogOptions();
+  const known = distilleries.some((d) => d.id === manufacturerId);
+  return (
+    <div className="space-y-1">
+      <Label>Distillery</Label>
+      <select
+        className="flex h-10 w-full rounded-md border bg-background px-3 text-sm"
+        value={manufacturerId}
+        onChange={(e) => {
+          const id = e.target.value;
+          const name = distilleries.find((d) => d.id === id)?.name || "";
+          onChange(id, name);
+        }}
+      >
+        <option value="">Select distillery</option>
+        {manufacturerId && manufacturerName && !known ? (
+          <option value={manufacturerId}>{manufacturerName}</option>
+        ) : null}
+        {distilleries.map((d) => (
+          <option key={d.id} value={d.id}>
+            {d.name}
+          </option>
+        ))}
+      </select>
+      {manufacturerId ? (
+        <Link
+          to={manufacturerPartnerPath(manufacturerId)}
+          className="inline-block text-[11px] text-accent no-underline hover:underline"
+        >
+          Open distillery in Network
+        </Link>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">
+          Same partners as Network → Distilleries. Required before authorizing production.
+        </p>
+      )}
+    </div>
   );
 }
 

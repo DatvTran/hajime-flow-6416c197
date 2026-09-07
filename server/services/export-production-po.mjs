@@ -9,8 +9,14 @@ export async function createProductionPoForExport(trx, { tenantId, order, actor 
       : [];
   const pack = priceExportLines(lines);
   const bottles = pack.lines.reduce((s, l) => s + l.totalBottles, 0);
-  const supplier = String(order.manufacturer_name || "Kosapan Distillery").trim();
-  const mfgId = canonicalizeManufacturerAssignmentId(null, supplier) || "kosapan";
+  const rawId = String(order.manufacturer_id || "").trim();
+  const supplier = String(order.manufacturer_name || "").trim() || rawId || "Distillery";
+  const mfgId = canonicalizeManufacturerAssignmentId(rawId || null, supplier) || rawId;
+  if (!mfgId) {
+    const err = new Error("Pick a distillery from Network before authorizing production");
+    err.status = 422;
+    throw err;
+  }
   const year = new Date().getUTCFullYear();
   const po_number = `PO-EX-${year}-${String(order.seq || order.id).padStart(4, "0")}`;
 

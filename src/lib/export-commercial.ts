@@ -290,34 +290,95 @@ export function assertAdvanceStage(opts: {
   return { ok: true };
 }
 
-export const DEFAULT_EXPORT_CHECKLIST: { key: string; label: string; owner: string }[] = [
-  { key: "buyer_po", label: "Accepted buyer Purchase Order", owner: "Hajime / Buyer" },
-  { key: "quote_acceptance", label: "Hajime quotation / PO acceptance", owner: "Hajime" },
-  { key: "proforma", label: "Pro forma invoice", owner: "Hajime" },
-  { key: "deposit", label: "Deposit confirmation", owner: "Hajime" },
-  { key: "production_auth", label: "Production authorization", owner: "Hajime" },
-  { key: "commercial_invoice", label: "Final commercial invoice", owner: "Hajime / exporter as legally required" },
-  { key: "packing_list", label: "Packing list", owner: "Manufacturer / exporter" },
-  { key: "pallet_config", label: "Final case & pallet configuration", owner: "Manufacturer" },
-  { key: "batch_lot", label: "Batch / lot information", owner: "Manufacturer" },
-  { key: "forwarder_booking", label: "Forwarder booking / shipping instructions", owner: "Buyer / Forwarder" },
-  { key: "transport_doc", label: "Transport document (as applicable)", owner: "Forwarder / Carrier" },
-  { key: "coo", label: "Certificate of origin (if required)", owner: "Exporter / authorized issuer" },
-  { key: "abv_analysis", label: "Product / ABV analysis (if required)", owner: "Manufacturer / laboratory" },
-  { key: "ingredient", label: "Ingredient / allergen statement (if required)", owner: "Manufacturer / Hajime" },
-  { key: "health_cert", label: "Health / sanitary or free-sale certificate (if required)", owner: "Responsible issuing party" },
-  { key: "export_declaration", label: "Export declaration / export permit (as required)", owner: "Thailand exporter / agent" },
-  { key: "import_permit", label: "Destination import permit / product registration (if required)", owner: "Distributor / Importer" },
-  { key: "insurance", label: "Insurance certificate (if buyer elects / requires)", owner: "Buyer / insurer" },
-  { key: "shipment_release", label: "Shipment release authorization", owner: "Hajime" },
+export type ExportChecklistKind = "core" | "optional";
+export type ExportChecklistStatus = "required" | "issued" | "na" | "complete";
+export type ExportChecklistRow = {
+  key: string;
+  label: string;
+  owner: string;
+  kind: ExportChecklistKind;
+};
+export type ExportChecklistState = Record<string, { status?: string; notes?: string }>;
+
+export const DEFAULT_EXPORT_CHECKLIST: ExportChecklistRow[] = [
+  { key: "buyer_po", label: "Buyer PO", owner: "Hajime / Buyer", kind: "core" },
+  { key: "quote_acceptance", label: "Quotation / PO acceptance", owner: "Hajime", kind: "core" },
+  { key: "proforma", label: "Pro forma invoice", owner: "Hajime", kind: "core" },
+  { key: "deposit", label: "Deposit", owner: "Hajime", kind: "core" },
+  { key: "production_auth", label: "Production authorization", owner: "Hajime", kind: "core" },
+  { key: "commercial_invoice", label: "Commercial invoice", owner: "Hajime / exporter", kind: "core" },
+  { key: "packing_list", label: "Packing list", owner: "Manufacturer", kind: "core" },
+  { key: "pallet_config", label: "Case & pallet configuration", owner: "Manufacturer", kind: "optional" },
+  { key: "batch_lot", label: "Batch / lot", owner: "Manufacturer", kind: "optional" },
+  { key: "forwarder_booking", label: "Forwarder booking", owner: "Buyer / Forwarder", kind: "optional" },
+  { key: "transport_doc", label: "Bill of lading / AWB", owner: "Forwarder / Carrier", kind: "optional" },
+  { key: "coo", label: "Certificate of origin", owner: "Exporter", kind: "optional" },
+  { key: "abv_analysis", label: "ABV / product analysis", owner: "Manufacturer / lab", kind: "optional" },
+  { key: "ingredient", label: "Ingredient / allergen statement", owner: "Manufacturer", kind: "optional" },
+  { key: "health_cert", label: "Health / free-sale certificate", owner: "Issuing party", kind: "optional" },
+  { key: "export_declaration", label: "Thai export declaration", owner: "Thailand exporter", kind: "optional" },
+  { key: "import_permit", label: "Destination import permit", owner: "Buyer / importer", kind: "optional" },
+  { key: "insurance", label: "Cargo insurance", owner: "Buyer / insurer", kind: "optional" },
+  { key: "shipment_release", label: "Shipment release", owner: "Hajime", kind: "optional" },
 ];
 
-export function requiredChecklistReady(checklist: Record<string, { status?: string }> | unknown): boolean {
-  const state = checklist && typeof checklist === "object" ? (checklist as Record<string, { status?: string }>) : {};
-  return DEFAULT_EXPORT_CHECKLIST.every((row) => {
-    const st = String(state[row.key]?.status || "required");
-    return st === "complete" || st === "issued" || st === "na";
-  });
+export const CORE_EXPORT_CHECKLIST = DEFAULT_EXPORT_CHECKLIST.filter((r) => r.kind === "core");
+export const OPTIONAL_EXPORT_CHECKLIST = DEFAULT_EXPORT_CHECKLIST.filter((r) => r.kind === "optional");
+
+function checklistDone(status: string | undefined): boolean {
+  const st = String(status || "required");
+  return st === "complete" || st === "issued" || st === "na";
+}
+
+export function defaultChecklistState(): ExportChecklistState {
+  const o: ExportChecklistState = {};
+  for (const row of DEFAULT_EXPORT_CHECKLIST) {
+    o[row.key] = { status: row.kind === "optional" ? "na" : "required", notes: "" };
+  }
+  return o;
+}
+
+/** Optional rows that were never touched stay N/A so they do not block release. */
+export function applyOrderStateToChecklist(
+  checklist: ExportChecklistState | unknown,
+  order: {
+    stage?: string;
+    buyerPoNo?: string | null;
+    depositStatus?: string | null;
+  },
+): ExportChecklistState {
+  const raw = checklist && typeof checklist === "object" ? (checklist as ExportChecklistState) : {};
+  const next: ExportChecklistState = { ...defaultChecklistState() };
+  for (const row of DEFAULT_EXPORT_CHECKLIST) {
+    const prev = raw[row.key] || {};
+    let status = String(prev.status || (row.kind === "optional" ? "na" : "required"));
+    if (row.kind === "optional" && status === "required") status = "na";
+    next[row.key] = { notes: prev.notes || "", status };
+  }
+  const bump = (key: string, cond: boolean) => {
+    if (!cond) return;
+    if (String(next[key]?.status || "required") === "required") {
+      next[key] = { ...next[key], status: "issued" };
+    }
+  };
+  const si = stageIndex(String(order.stage || "01_lead"));
+  bump("buyer_po", Boolean(String(order.buyerPoNo || "").trim()) || si >= stageIndex("03_buyer_po"));
+  bump("quote_acceptance", si >= stageIndex("02_quotation"));
+  bump("proforma", si >= stageIndex("05_proforma"));
+  bump("deposit", order.depositStatus === "cleared" || order.depositStatus === "exception");
+  bump("production_auth", si >= stageIndex("07_production_auth"));
+  bump("commercial_invoice", si >= stageIndex("11_balance"));
+  bump("packing_list", si >= stageIndex("10_ready_to_ship"));
+  bump("shipment_release", si >= stageIndex("12_shipment_release"));
+  return next;
+}
+
+export function requiredChecklistReady(
+  checklist: ExportChecklistState | unknown,
+  order?: { stage?: string; buyerPoNo?: string | null; depositStatus?: string | null },
+): boolean {
+  const state = applyOrderStateToChecklist(checklist, order ?? {});
+  return CORE_EXPORT_CHECKLIST.every((row) => checklistDone(state[row.key]?.status));
 }
 
 export function round2(n: number): number {

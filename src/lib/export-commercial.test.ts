@@ -7,6 +7,7 @@ import {
   distributorCanViewStage,
   isBuyerExportDoc,
   priceLines,
+  applyOrderStateToChecklist,
   requiredChecklistReady,
   EXPORT_SELLER,
 } from "@/lib/export-commercial";
@@ -72,8 +73,20 @@ describe("export commercial gates", () => {
     expect(distributorCanViewStage("12_shipment_release")).toBe(true);
   });
 
-  it("requires issued, complete, or N/A on every checklist row before clear", () => {
+  it("requires Hajime core docs before clear; optional rows default to N/A", () => {
     expect(requiredChecklistReady({})).toBe(false);
+    const ready = {
+      buyer_po: { status: "issued" },
+      quote_acceptance: { status: "issued" },
+      proforma: { status: "issued" },
+      deposit: { status: "issued" },
+      production_auth: { status: "issued" },
+      commercial_invoice: { status: "issued" },
+      packing_list: { status: "issued" },
+      coo: { status: "required" },
+    };
+    expect(requiredChecklistReady(ready)).toBe(true);
+    expect(requiredChecklistReady(ready, { stage: "05_proforma" })).toBe(true);
   });
 
   it("publishes Hajime Limited DBS Hong Kong receiving details", () => {

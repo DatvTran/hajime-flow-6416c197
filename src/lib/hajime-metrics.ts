@@ -6,6 +6,8 @@
 import type { AppData } from "@/types/app-data";
 import type { InventoryItem, SalesOrder } from "@/data/mockData";
 import { orderLineEntries } from "@/lib/order-lines";
+import { isSeedDemoAccount, isSeedDemoPartnerName } from "@/lib/normalize-app-data";
+import { loadDismissedAlertIds } from "@/lib/dismissed-alerts";
 
 const MS_DAY = 86400000;
 
@@ -137,7 +139,7 @@ function segmentSellIn(
 
 function isDemandSpike(recent: { revenue: number; count: number }, prior: { revenue: number; count: number }): boolean {
   if (recent.count < 2) return false;
-  if (prior.count === 0) return recent.count >= 2;
+  if (prior.count === 0) return recent.count >= 8;
   if (recent.count >= Math.ceil(prior.count * 1.5)) return true;
   if (prior.revenue > 0 && recent.revenue >= prior.revenue * 1.5) return true;
   return false;
@@ -173,6 +175,7 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
   const alerts: DerivedAlert[] = [];
   const settings = data.operationalSettings;
   const inv = data.inventory;
+  const velocity = velocityBySku(data.salesOrders, 120);
   const bySkuAvailable: Record<string, number> = {};
   for (const row of inv) {
     if (row.status !== "available") continue;
@@ -180,10 +183,12 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
   }
 
   const safety = settings?.safetyStockBySku ?? {};
-  const defaultSafety = 120;
   for (const sku of new Set(inv.map((i) => i.sku))) {
     const avail = bySkuAvailable[sku] ?? 0;
-    const th = safety[sku] ?? defaultSafety;
+    const explicit = safety[sku];
+    const sold = (velocity[sku] ?? 0) > 0;
+    if (explicit == null && !sold) continue;
+    const th = explicit ?? 120;
     if (avail < th) {
       alerts.push({
         id: `low-${sku}`,
@@ -199,7 +204,7 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
   const shelfMap = data.retailerShelfStock ?? {};
   const retailTypes = new Set(["retail", "bar", "restaurant", "hotel", "lifestyle"]);
   for (const acc of data.accounts) {
-    if (!retailTypes.has(acc.type)) continue;
+    if (!retailTypes.has(acc.type) || isSeedDemoAccount(acc)) continue;
     const perSku = shelfMap[acc.id];
     if (!perSku) continue;
     for (const [sku, bottles] of Object.entries(perSku)) {
@@ -217,19 +222,19 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
   appendDemandSpikeAlerts(alerts, data.salesOrders, now);
 
   for (const po of data.purchaseOrders) {
-    if (po.status === "delayed") {
-      alerts.push({
-        id: `po-delay-${po.id}`,
-        type: "delay",
-        message: `${po.id} production delayed — ${po.notes || "See PO details"}`,
-        time: po.issueDate,
-        severity: "high",
-      });
-    }
+    if (po.status !== "delayed") continue;
+    alerts.push({
+      id: `po-delay-${po.id}`,
+      type: "delay",
+      message: `${po.id} production delayed — ${po.notes || "See PO details"}`,
+      time: po.issueDate,
+      severity: "high",
+    });
   }
 
   const today = now.toISOString().slice(0, 10);
   for (const sh of data.shipments) {
+    if (isSeedDemoPartnerName(sh.destination)) continue;
     if (sh.status === "delayed") {
       alerts.push({
         id: `sh-${sh.id}`,
@@ -250,19 +255,19 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
   }
 
   for (const o of data.salesOrders) {
-    if (o.paymentStatus === "overdue") {
-      alerts.push({
-        id: `pay-${o.id}`,
-        type: "payment",
-        message: `Overdue payment — ${o.account} (${o.id})`,
-        time: o.orderDate,
-        severity: "medium",
-      });
-    }
+    if (o.paymentStatus !== "overdue") continue;
+    if (isSeedDemoPartnerName(o.account)) continue;
+    alerts.push({
+      id: `pay-${o.id}`,
+      type: "payment",
+      message: `Overdue payment — ${o.account} (${o.id})`,
+      time: o.orderDate,
+      severity: "medium",
+    });
   }
 
   const recs = computeReorderRecommendations(data, now);
-  for (const r of recs.filter((x) => x.urgency === "high")) {
+  for (const r of recs.filter((x) => x.urgency === "high" && (velocity[x.sku] ?? 0) > 0)) {
     alerts.push({
       id: `reorder-${r.sku}`,
       type: "reorder",
@@ -272,9 +277,10 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
     });
   }
 
-  // Onboarding pipeline alerts for distributors and brand operators
   const onboardingAccounts = data.accounts.filter(
-    (a) => a.onboardingPipeline === "sales_intake" || a.onboardingPipeline === "brand_review"
+    (a) =>
+      !isSeedDemoAccount(a) &&
+      (a.onboardingPipeline === "sales_intake" || a.onboardingPipeline === "brand_review"),
   );
   for (const acc of onboardingAccounts) {
     const stage = acc.onboardingPipeline === "sales_intake" ? "Wholesaler review" : "Brand approval";
@@ -288,10 +294,10 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
     });
   }
 
-  // Distributor-reported depletion alerts
   for (const r of data.depletionReports ?? []) {
     if (!r.flaggedForReplenishment) continue;
     const acc = data.accounts.find((a) => a.id === r.accountId);
+    if (acc && isSeedDemoAccount(acc)) continue;
     alerts.push({
       id: `depletion-${r.id}`,
       type: "reorder",
@@ -301,33 +307,16 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
     });
   }
 
-  // Distillery feedback loop alerts for Brand Operator command center.
-  const recentStatusRows = [...(data.productionStatuses ?? [])]
-    .filter((row) => !!row.poId && !!row.updatedAt)
-    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
-    .slice(0, 8);
-  for (const row of recentStatusRows) {
+  const delayedStatusRows = (data.productionStatuses ?? []).filter(
+    (row) => !!row.poId && /delayed|issue|blocked|hold/i.test(row.stage),
+  );
+  for (const row of delayedStatusRows) {
     alerts.push({
       id: `mfg-status-${row.poId}-${row.updatedAt}-${row.stage}`,
       type: "distillery-update",
       message: `Distillery update for ${row.poId}: ${row.stage}${row.notes ? ` — ${row.notes}` : ""}`,
-      time: row.updatedAt.slice(0, 10),
-      severity: /delayed|issue|blocked|hold/i.test(row.stage) ? "high" : "medium",
-    });
-  }
-
-  const recentProposals = [...(data.newProductRequests ?? [])]
-    .filter((req) => req.status === "proposed" || !!req.manufacturerProposal)
-    .sort((a, b) => String(b.proposalReceivedAt ?? b.requestedAt).localeCompare(String(a.proposalReceivedAt ?? a.requestedAt)))
-    .slice(0, 6);
-  for (const req of recentProposals) {
-    const at = (req.proposalReceivedAt ?? req.requestedAt).slice(0, 10);
-    alerts.push({
-      id: `mfg-proposal-${req.id}-${at}`,
-      type: "distillery-update",
-      message: `Distillery feedback received for ${req.title} (${req.id})`,
-      time: at,
-      severity: "medium",
+      time: String(row.updatedAt).slice(0, 10),
+      severity: "high",
     });
   }
 
@@ -336,7 +325,12 @@ export function deriveAlerts(data: AppData, now = new Date()): DerivedAlert[] {
     return rank[a.severity] - rank[b.severity];
   });
 
-  return alerts.slice(0, 20);
+  return alerts;
+}
+
+export function visibleDerivedAlerts(data: AppData, now = new Date()) {
+  const dismissed = loadDismissedAlertIds();
+  return deriveAlerts(data, now).filter((a) => !dismissed.has(a.id));
 }
 
 export type ReorderRec = {

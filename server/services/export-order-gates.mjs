@@ -35,7 +35,7 @@ export function assertReleaseGate(order, payments, checklist, exception) {
     failures.push("BALANCE_NOT_CLEARED");
   }
   const cl = asJsonObject(checklist ?? order.checklist);
-  if (!requiredChecklistReady(cl) && !order.checklist_cleared) {
+  if (!requiredChecklistReady(cl, order) && !order.checklist_cleared) {
     failures.push("CHECKLIST_OPEN");
   }
   if (!fobTerminalNamed(order.fob_named_point || order.fobNamedPoint)) {

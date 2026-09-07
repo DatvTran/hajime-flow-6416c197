@@ -258,7 +258,8 @@ router.post("/", async (req, res) => {
         buyer_po_no: buyerPoNo,
         forwarder_name: forwarderName,
         forwarder_instructions: forwarderInstructions,
-        manufacturer_name: body.manufacturerName || "Kosapan Distillery",
+        manufacturer_name: body.manufacturerName ? String(body.manufacturerName).trim() : null,
+        manufacturer_id: body.manufacturerId ? String(body.manufacturerId).trim() : null,
         stage: "02_quotation",
         lines: JSON.stringify(priced.lines.map((l) => ({ sku: l.sku, cases: l.cases, unitFobUsd: l.unitFobUsd }))),
         subtotal_usd: priced.subtotalUsd,
@@ -309,6 +310,9 @@ router.patch("/:id", async (req, res) => {
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
     const db = platformDb;
+    if (!(await ensureExportOrdersTable(db))) {
+      return res.status(500).json({ error: "Export orders table unavailable" });
+    }
     const row = await findExportOrder(db, tenantId, req.params.id);
     if (!row) return res.status(404).json({ error: "Not found" });
     const role = req.user?.role;
@@ -349,6 +353,7 @@ router.patch("/:id", async (req, res) => {
         balanceReceivedUsd: "balance_received_usd",
         balanceRef: "balance_ref",
         manufacturerName: "manufacturer_name",
+        manufacturerId: "manufacturer_id",
         requestedCompletion: "requested_completion",
         factoryContact: "factory_contact",
         forwarderName: "forwarder_name",
@@ -373,9 +378,9 @@ router.patch("/:id", async (req, res) => {
       if (body.checklist) updates.checklist = JSON.stringify(body.checklist);
       if (body.checklistCleared === true) {
         const cl = body.checklist || asJsonObject(row.checklist);
-        if (!requiredChecklistReady(cl)) {
+        if (!requiredChecklistReady(cl, row)) {
           return res.status(400).json({
-            error: "Mark remaining required checklist items issued, complete, or N/A before clearing for release.",
+            error: "Finish Hajime documents (PO, quote, PI, deposit, production auth, invoice, packing list) before marking docs ready.",
           });
         }
         updates.checklist_cleared = true;

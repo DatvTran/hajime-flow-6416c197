@@ -5,6 +5,7 @@ import {
   isBuyerExportDoc,
   distributorCanViewStage,
   applyIssueToChecklist,
+  applyOrderStateToChecklist,
   requiredChecklistReady,
   defaultChecklistState,
 } from "../lib/export-orders.mjs";
@@ -101,6 +102,20 @@ test("issuing commercial docs marks matching checklist keys issued", () => {
     allIssued[k] = { status: "issued", notes: "" };
   }
   assert.equal(requiredChecklistReady(allIssued), true);
+  const coreOnly = applyOrderStateToChecklist(
+    {
+      buyer_po: { status: "issued" },
+      quote_acceptance: { status: "issued" },
+      proforma: { status: "issued" },
+      deposit: { status: "issued" },
+      production_auth: { status: "issued" },
+      commercial_invoice: { status: "issued" },
+      packing_list: { status: "issued" },
+      coo: { status: "required" },
+    },
+    {},
+  );
+  assert.equal(requiredChecklistReady(coreOnly), true);
 });
 
 test("doc allowlist and stage gate", () => {

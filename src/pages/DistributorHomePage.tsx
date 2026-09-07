@@ -23,7 +23,7 @@ import {
 import { useAppData, usePurchaseOrders, useSalesOrders } from "@/contexts/AppDataContext";
 import { useShipmentsAutoRefresh } from "@/hooks/useShipmentsAutoRefresh";
 import { useAuth } from "@/contexts/AuthContext";
-import { computeInventorySummary, deriveAlerts } from "@/lib/hajime-metrics";
+import { computeInventorySummary, visibleDerivedAlerts } from "@/lib/hajime-metrics";
 import { shipmentLineContentsLabel } from "@/lib/order-lines";
 import { getMyWarehouseOptions, updateMyPrimaryWarehouse } from "@/lib/api-v1-mutations";
 import type { Warehouse } from "@/types/app-data";
@@ -95,7 +95,7 @@ export default function DistributorHomePage() {
   const [urgentDismissed, setUrgentDismissed] = useState(false);
 
   const inv = useMemo(() => computeInventorySummary(data.inventory, data.purchaseOrders), [data.inventory, data.purchaseOrders]);
-  const alerts = useMemo(() => deriveAlerts(data), [data]);
+  const alerts = useMemo(() => visibleDerivedAlerts(data), [data]);
 
   const openPurchaseOrders = useMemo(
     () => purchaseOrders.filter((p) => p.status !== "delivered" && p.status !== "cancelled"),

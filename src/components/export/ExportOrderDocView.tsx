@@ -237,8 +237,8 @@ function docCopy(doc: ExportDocType, order: ExportOrderDto) {
   if (doc === "export_checklist") {
     return (
       <p>
-        Operational control list for this file. Destination import permits remain with the buyer/importer. Thailand
-        exporter-of-record remains to be confirmed.
+        Operational list for Hajime documents on this file. Destination import stays with the buyer. Optional
+        certificates default to N/A until this destination needs them.
       </p>
     );
   }

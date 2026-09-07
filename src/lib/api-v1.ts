@@ -710,6 +710,8 @@ export type ExportOrderDto = Record<string, unknown> & {
   buyerName?: string;
   buyerEmail?: string;
   origin?: "portal" | "hq";
+  manufacturerId?: string | null;
+  manufacturerName?: string | null;
   lines?: unknown[];
   subtotalUsd?: number;
   depositDueUsd?: number;
