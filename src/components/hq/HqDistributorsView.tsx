@@ -9,6 +9,7 @@ import { manageOrgIdForRow, mergeHqDistributorAccountsForDisplay } from "@/lib/h
 import { isSeedDemoAccount } from "@/lib/normalize-app-data";
 import { mergeHqWholesaleOrdersForDisplay, mergeHqNetworkSalesForDisplay } from "@/lib/hq-orders-demo";
 import { partnerPathForOrg, resolveDistributorOrgId } from "@/lib/hq-distributor-orgs";
+import { filterPlatformAccountsForHq } from "@/lib/hq-order-scope";
 import {
   HqBtnLink,
   HqOperatorCard,
