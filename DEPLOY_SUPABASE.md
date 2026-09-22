@@ -37,6 +37,27 @@ Distributor isolation is **schemas** (`hajime_dist_*`), not extra databases. `DI
 
 `uuid-ossp` lives in `extensions`; `public.uuid_generate_v4()` is a wrapper used by restored tables.
 
+### Row Level Security (Data API)
+
+The app reads Postgres through Knex (`DATABASE_URL`, postgres role), not through PostgREST. Migration **054** turns on RLS for every table in `public` and `hajime_dist_*` with **no policies**, and revokes `anon` / `authenticated`. That closes Supabase linter findings `rls_disabled_in_public` and `sensitive_columns_exposed` (e.g. `users.password_hash`). Railway runs 054 on start via `migrate-release.mjs`.
+
+After deploy, in the Supabase SQL editor this should return **no rows**:
+
+```sql
+select n.nspname, c.relname
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+where c.relkind = 'r'
+  and (
+    n.nspname = 'public'
+    or n.nspname like 'hajime_dist_%'
+  )
+  and not c.relrowsecurity
+order by 1, 2;
+```
+
+Then dismiss the advisor cards. Login through the Railway app should still work (postgres bypasses RLS). Do not add `USING (true)` policies and do not `FORCE ROW LEVEL SECURITY`.
+
 ## Auth
 
 Until `SUPABASE_JWT_SECRET` and `SUPABASE_SERVICE_ROLE_KEY` are set, login uses existing `public.users` password hashes and app JWTs (`ACCESS_TOKEN_SECRET`).
