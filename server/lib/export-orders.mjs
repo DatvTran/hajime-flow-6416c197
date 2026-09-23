@@ -55,8 +55,8 @@ function round2(n) {
 const SKUS = {
   first_press_750: { product: "Hajime First Press Coffee Rhum Liqueur", size: "750 ml", bottlesPerCase: 12, floorFobUsd: 28, listFobUsd: 32 },
   yuzu_mint_750: { product: "Hajime Yuzu Mint Rhum Liqueur", size: "750 ml", bottlesPerCase: 12, floorFobUsd: 28, listFobUsd: 32 },
-  first_press_200: { product: "Hajime First Press Coffee Rhum Liqueur", size: "200 ml", bottlesPerCase: 20, floorFobUsd: 16, listFobUsd: 18 },
-  yuzu_mint_200: { product: "Hajime Yuzu Mint Rhum Liqueur", size: "200 ml", bottlesPerCase: 20, floorFobUsd: 16, listFobUsd: 18 },
+  first_press_200: { product: "Hajime First Press Coffee Rhum Liqueur", size: "200 ml", bottlesPerCase: 24, floorFobUsd: 16, listFobUsd: 18 },
+  yuzu_mint_200: { product: "Hajime Yuzu Mint Rhum Liqueur", size: "200 ml", bottlesPerCase: 24, floorFobUsd: 16, listFobUsd: 18 },
 };
 
 function cases750Total(lines) {

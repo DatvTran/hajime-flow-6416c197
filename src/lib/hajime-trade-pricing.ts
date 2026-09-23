@@ -6,65 +6,45 @@ export const TRADE_PRICING_CURRENCY = "CAD";
 /** Standard bottle ladder — First Press Coffee Rhum and comparable Hajime trade accounts. */
 export const TRADE_STANDARD = {
   landedPerBottle: 30,
-  sellInPerBottle: 48,
+  sellInPerBottle: 48.83,
   brokerPerBottle: 3,
   brokerRecurringMin: 1.5,
   brokerRecurringMax: 2,
-  wholesalerToRetailPerBottle: 60,
+  wholesalerToRetailPerBottle: 65.1,
   srpPerBottle: 93,
 } as const;
 
 export const TRADE_GUARDRAILS = {
   hajimeNetAfterBrokerMin: 44,
   hajimeNetAfterBrokerWarn: 45,
-  wholesalerMarginMinPct: 15,
-  wholesalerMarginTargetPct: 20,
+  wholesalerMarginMinPct: 25,
+  wholesalerMarginTargetPct: 25,
   retailerMarginMinPct: 30,
 } as const;
 
-export type TradeVolumeTierId = "none" | "up_to_1" | "up_to_2" | "custom";
+export type TradeOrderBandId = "below_trial" | "trial" | "bulk";
 
-export const TRADE_VOLUME_TIERS: {
-  id: TradeVolumeTierId;
-  minBottles: number;
-  maxBottles: number | null;
-  suggestedDiscount: string;
-  whoPaysFirst: string;
-  condition: string;
-}[] = [
+/** Standard case packs. Trial = 10 cases, bulk = 50 cases. */
+export const TRADE_ORDER_FORMATS = [
   {
-    id: "none",
-    minBottles: 1,
-    maxBottles: 499,
-    suggestedDiscount: "No standard discount",
-    whoPaysFirst: "None",
-    condition: "Base pricing applies",
+    id: "750ml",
+    label: "750 ml",
+    bottlesPerCase: 12,
+    trialBottles: 120,
+    trialCases: 10,
+    bulkBottles: 600,
+    bulkCases: 50,
   },
   {
-    id: "up_to_1",
-    minBottles: 500,
-    maxBottles: 999,
-    suggestedDiscount: "Up to $1.00 / bottle",
-    whoPaysFirst: "Wholesaler",
-    condition: "Case volume or faster payment",
+    id: "200ml",
+    label: "200 ml",
+    bottlesPerCase: 24,
+    trialBottles: 240,
+    trialCases: 10,
+    bulkBottles: 1200,
+    bulkCases: 50,
   },
-  {
-    id: "up_to_2",
-    minBottles: 1000,
-    maxBottles: 1999,
-    suggestedDiscount: "Up to $2.00 / bottle",
-    whoPaysFirst: "Wholesaler, then broker if needed",
-    condition: "Larger confirmed order",
-  },
-  {
-    id: "custom",
-    minBottles: 2000,
-    maxBottles: null,
-    suggestedDiscount: "Custom approval only",
-    whoPaysFirst: "Shared by approved parties",
-    condition: "Pallet, chain, or strategic regional account",
-  },
-];
+] as const;
 
 export const TRADE_WATERFALL_STEPS = [
   "Retailer requests better price from wholesaler.",
@@ -124,12 +104,16 @@ export function discountNeedsHajimeApproval(discountPerBottle: number): boolean 
   return discountPerBottle > 2;
 }
 
-export function volumeTierForBottles(bottles: number): (typeof TRADE_VOLUME_TIERS)[number] {
+export function tradeFormatForCaseSize(bottlesPerCase: number): (typeof TRADE_ORDER_FORMATS)[number] {
+  return bottlesPerCase === 24 ? TRADE_ORDER_FORMATS[1] : TRADE_ORDER_FORMATS[0];
+}
+
+export function orderBandForBottles(bottles: number, bottlesPerCase = 12): TradeOrderBandId {
+  const pack = tradeFormatForCaseSize(bottlesPerCase);
   const n = Math.max(0, Math.floor(bottles));
-  if (n >= 2000) return TRADE_VOLUME_TIERS[3];
-  if (n >= 1000) return TRADE_VOLUME_TIERS[2];
-  if (n >= 500) return TRADE_VOLUME_TIERS[1];
-  return TRADE_VOLUME_TIERS[0];
+  if (n >= pack.bulkBottles) return "bulk";
+  if (n >= pack.trialBottles) return "trial";
+  return "below_trial";
 }
 
 export function hajimeNetBreaksGuardrail(sellIn: number, broker: number): boolean {

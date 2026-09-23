@@ -8,25 +8,26 @@ import {
   looksLikeFirstPressSku,
   netAfterBroker,
   retailerMarginPct,
-  volumeTierForBottles,
+  orderBandForBottles,
   wholesalerMarginPct,
 } from "@/lib/hajime-trade-pricing";
 
 describe("hajime-trade-pricing", () => {
-  it("nets $45 after $3 broker on $48 sell-in", () => {
-    expect(netAfterBroker(TRADE_STANDARD.sellInPerBottle, TRADE_STANDARD.brokerPerBottle)).toBe(45);
+  it("nets $45.83 after $3 broker on $48.83 sell-in", () => {
+    expect(netAfterBroker(TRADE_STANDARD.sellInPerBottle, TRADE_STANDARD.brokerPerBottle)).toBe(45.83);
   });
 
   it("warns below $45 but does not break at exactly $45", () => {
-    expect(hajimeNetNeedsWarn(48, 3)).toBe(false);
-    expect(hajimeNetBreaksGuardrail(48, 3)).toBe(false);
+    expect(hajimeNetNeedsWarn(48.83, 3)).toBe(false);
+    expect(hajimeNetBreaksGuardrail(48.83, 3)).toBe(false);
     expect(hajimeNetNeedsWarn(48, 3.5)).toBe(true);
     expect(hajimeNetBreaksGuardrail(47, 4)).toBe(true);
   });
 
-  it("matches standard wholesaler 20% and retailer ~35.5%", () => {
-    expect(wholesalerMarginPct(60, 48)).toBe(20);
-    expect(retailerMarginPct(93, 60)).toBe(35.5);
+  it("matches standard distributor 25% and retailer 30%", () => {
+    expect(TRADE_STANDARD.sellInPerBottle - TRADE_STANDARD.landedPerBottle).toBeCloseTo(18.83);
+    expect(wholesalerMarginPct(TRADE_STANDARD.wholesalerToRetailPerBottle, TRADE_STANDARD.sellInPerBottle)).toBe(25);
+    expect(retailerMarginPct(TRADE_STANDARD.srpPerBottle, TRADE_STANDARD.wholesalerToRetailPerBottle)).toBe(30);
   });
 
   it("requires Hajime approval over $2 / bottle", () => {
@@ -34,19 +35,21 @@ describe("hajime-trade-pricing", () => {
     expect(discountNeedsHajimeApproval(2.01)).toBe(true);
   });
 
-  it("maps volume tiers", () => {
-    expect(volumeTierForBottles(1).id).toBe("none");
-    expect(volumeTierForBottles(499).id).toBe("none");
-    expect(volumeTierForBottles(500).id).toBe("up_to_1");
-    expect(volumeTierForBottles(1000).id).toBe("up_to_2");
-    expect(volumeTierForBottles(2000).id).toBe("custom");
+  it("maps trial and bulk bands by case pack", () => {
+    expect(orderBandForBottles(119, 12)).toBe("below_trial");
+    expect(orderBandForBottles(120, 12)).toBe("trial");
+    expect(orderBandForBottles(599, 12)).toBe("trial");
+    expect(orderBandForBottles(600, 12)).toBe("bulk");
+    expect(orderBandForBottles(239, 24)).toBe("below_trial");
+    expect(orderBandForBottles(240, 24)).toBe("trial");
+    expect(orderBandForBottles(1200, 24)).toBe("bulk");
   });
 
   it("fills 12-pack case prices from the bottle ladder", () => {
     const filled = applyTradeStandardToProduct({ sku: "HJM-FP-750", name: "First Press", size: "750ml", caseSize: 12, status: "active" });
     expect(filled.manufacturerCasePrice).toBe(360);
-    expect(filled.wholesaleCasePrice).toBe(576);
-    expect(filled.distributorSellOutCasePrice).toBe(720);
+    expect(filled.wholesaleCasePrice).toBe(586);
+    expect(filled.distributorSellOutCasePrice).toBe(781);
     expect(filled.msrpCasePrice).toBe(1116);
     expect(filled.brokerCommissionPerBottle).toBe(3);
   });

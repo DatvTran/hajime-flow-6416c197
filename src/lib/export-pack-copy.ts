@@ -11,7 +11,7 @@ export const EXPORT_BUYER_TERMS = [
   "Manufacturer is not the buyer’s contracting party.",
 ];
 
-export const EXPORT_FORMATS = "750 ml (12 bottles / case) and 200 ml (20 bottles / case).";
+export const EXPORT_FORMATS = "750 ml (12 bottles / case) and 200 ml (24 bottles / case).";
 
 export const EXPORT_PORTFOLIO = [
   {

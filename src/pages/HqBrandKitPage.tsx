@@ -9,7 +9,7 @@ import {
   TRADE_GUARDRAILS,
   TRADE_PRICING_CURRENCY,
   TRADE_STANDARD,
-  TRADE_VOLUME_TIERS,
+  TRADE_ORDER_FORMATS,
   TRADE_WATERFALL_STEPS,
   netAfterBroker,
   retailerMarginPct,
@@ -72,61 +72,70 @@ export default function HqBrandKitPage() {
             <table className="w-full text-left text-[12px]">
               <thead>
                 <tr className="border-b text-muted-foreground">
-                  <th className="py-1.5 pr-3 font-medium">Level</th>
-                  <th className="py-1.5 pr-3 font-medium">Standard price</th>
-                  <th className="py-1.5 pr-3 font-medium">Gross / margin</th>
-                  <th className="py-1.5 font-medium">Notes</th>
+                  <th className="py-1.5 pr-3 font-medium">Stage</th>
+                  <th className="py-1.5 pr-3 font-medium text-right">Price</th>
+                  <th className="py-1.5 font-medium text-right">Margin / Profit</th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="border-b">
-                  <td className="py-1.5 pr-3">Hajime landed cost</td>
-                  <td className="py-1.5 pr-3 font-mono">${TRADE_STANDARD.landedPerBottle.toFixed(2)}</td>
-                  <td className="py-1.5 pr-3">—</td>
-                  <td className="py-1.5 text-muted-foreground">Internal reference cost</td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-1.5 pr-3">Hajime sell-in to wholesaler</td>
-                  <td className="py-1.5 pr-3 font-mono">${TRADE_STANDARD.sellInPerBottle.toFixed(2)}</td>
-                  <td className="py-1.5 pr-3 font-mono">
-                    ${TRADE_STANDARD.sellInPerBottle - TRADE_STANDARD.landedPerBottle} gross before broker
+                  <td className="py-1.5 pr-3">Manufacturer → Hajime</td>
+                  <td className="py-1.5 pr-3 text-right font-mono font-semibold">
+                    ${TRADE_STANDARD.landedPerBottle.toFixed(2)}
                   </td>
-                  <td className="py-1.5 text-muted-foreground">Base standard price</td>
+                  <td className="py-1.5 text-right">Hajime cost</td>
                 </tr>
                 <tr className="border-b">
-                  <td className="py-1.5 pr-3">Broker commission</td>
-                  <td className="py-1.5 pr-3 font-mono">${TRADE_STANDARD.brokerPerBottle.toFixed(2)}</td>
-                  <td className="py-1.5 pr-3">5% to 7% equivalent</td>
-                  <td className="py-1.5 text-muted-foreground">Only for active account development or management</td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-1.5 pr-3">Wholesaler to retailer</td>
-                  <td className="py-1.5 pr-3 font-mono">${TRADE_STANDARD.wholesalerToRetailPerBottle.toFixed(2)}</td>
-                  <td className="py-1.5 pr-3 font-mono">
-                    ${TRADE_STANDARD.wholesalerToRetailPerBottle - TRADE_STANDARD.sellInPerBottle} gross /{" "}
-                    {wholesalerMarginPct(
-                      TRADE_STANDARD.wholesalerToRetailPerBottle,
-                      TRADE_STANDARD.sellInPerBottle,
-                    )}
-                    %
+                  <td className="py-1.5 pr-3">Hajime → Distributor</td>
+                  <td className="py-1.5 pr-3 text-right font-mono font-semibold">
+                    ${TRADE_STANDARD.sellInPerBottle.toFixed(2)}
                   </td>
-                  <td className="py-1.5 text-muted-foreground">Keeps retailer margin healthy</td>
+                  <td className="py-1.5 text-right">
+                    Hajime profit:{" "}
+                    <span className="font-semibold">
+                      $
+                      {(TRADE_STANDARD.sellInPerBottle - TRADE_STANDARD.landedPerBottle).toFixed(2)}
+                    </span>
+                  </td>
+                </tr>
+                <tr className="border-b">
+                  <td className="py-1.5 pr-3">Distributor → Retailer</td>
+                  <td className="py-1.5 pr-3 text-right font-mono font-semibold">
+                    ${TRADE_STANDARD.wholesalerToRetailPerBottle.toFixed(2)}
+                  </td>
+                  <td className="py-1.5 text-right">
+                    Distributor margin:{" "}
+                    <span className="font-semibold">
+                      {wholesalerMarginPct(
+                        TRADE_STANDARD.wholesalerToRetailPerBottle,
+                        TRADE_STANDARD.sellInPerBottle,
+                      )}
+                      %
+                    </span>
+                  </td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 pr-3">Suggested retail price</td>
-                  <td className="py-1.5 pr-3 font-mono">${TRADE_STANDARD.srpPerBottle.toFixed(2)}</td>
-                  <td className="py-1.5 pr-3 font-mono">
-                    ${TRADE_STANDARD.srpPerBottle - TRADE_STANDARD.wholesalerToRetailPerBottle} gross /{" "}
-                    {retailerMarginPct(TRADE_STANDARD.srpPerBottle, TRADE_STANDARD.wholesalerToRetailPerBottle)}%
+                  <td className="py-1.5 pr-3">Retailer → Consumer</td>
+                  <td className="py-1.5 pr-3 text-right font-mono font-semibold">
+                    ${TRADE_STANDARD.srpPerBottle.toFixed(2)}
                   </td>
-                  <td className="py-1.5 text-muted-foreground">Premium positioning target</td>
+                  <td className="py-1.5 text-right">
+                    Retailer margin:{" "}
+                    <span className="font-semibold">
+                      {retailerMarginPct(
+                        TRADE_STANDARD.srpPerBottle,
+                        TRADE_STANDARD.wholesalerToRetailPerBottle,
+                      )}
+                      %
+                    </span>
+                  </td>
                 </tr>
               </tbody>
             </table>
           </div>
           <p className="mt-2 text-muted-foreground">
-            Hajime net after broker at standard: ${netAfterBroker(TRADE_STANDARD.sellInPerBottle, TRADE_STANDARD.brokerPerBottle).toFixed(2)}{" "}
-            / bottle.
+            Broker (when used): ${TRADE_STANDARD.brokerPerBottle.toFixed(2)} / bottle. Hajime net after broker: $
+            {netAfterBroker(TRADE_STANDARD.sellInPerBottle, TRADE_STANDARD.brokerPerBottle).toFixed(2)} / bottle.
           </p>
 
           <h3 className="mt-5 font-medium">2. Margin guardrails</h3>
@@ -140,38 +149,37 @@ export default function HqBrandKitPage() {
               {TRADE_STANDARD.brokerRecurringMax.toFixed(2)} / bottle
             </li>
             <li>
-              Wholesaler target margin: {TRADE_GUARDRAILS.wholesalerMarginMinPct}% to{" "}
-              {TRADE_GUARDRAILS.wholesalerMarginTargetPct}% minimum
+              Distributor target margin: {TRADE_GUARDRAILS.wholesalerMarginTargetPct}% minimum
             </li>
             <li>Retailer target margin: {TRADE_GUARDRAILS.retailerMarginMinPct}%+ minimum</li>
           </ul>
 
-          <h3 className="mt-5 font-medium">3. Volume discount tiers</h3>
+          <h3 className="mt-5 font-medium">3. Order sizes</h3>
           <p className="mt-1 text-muted-foreground">
-            Discounts are not automatic. They must be tied to confirmed volume, payment terms, or strategic placement
-            value.
+            Trial is 10 cases. Bulk is 50 cases. Bottle count follows the case pack for each format. Discounts are not
+            automatic; they must be tied to confirmed volume, payment terms, or strategic placement value.
           </p>
           <div className="mt-2 overflow-x-auto">
             <table className="w-full text-left text-[12px]">
               <thead>
                 <tr className="border-b text-muted-foreground">
-                  <th className="py-1.5 pr-3 font-medium">Order size</th>
-                  <th className="py-1.5 pr-3 font-medium">Suggested discount</th>
-                  <th className="py-1.5 pr-3 font-medium">Who pays first</th>
-                  <th className="py-1.5 font-medium">Condition</th>
+                  <th className="py-1.5 pr-3 font-medium">Format</th>
+                  <th className="py-1.5 pr-3 font-medium">Bottles / case</th>
+                  <th className="py-1.5 pr-3 font-medium">Trial order</th>
+                  <th className="py-1.5 font-medium">Bulk order</th>
                 </tr>
               </thead>
               <tbody>
-                {TRADE_VOLUME_TIERS.map((tier) => (
-                  <tr key={tier.id} className="border-b last:border-0">
+                {TRADE_ORDER_FORMATS.map((fmt) => (
+                  <tr key={fmt.id} className="border-b last:border-0">
+                    <td className="py-1.5 pr-3">{fmt.label}</td>
+                    <td className="py-1.5 pr-3 font-mono">{fmt.bottlesPerCase}</td>
                     <td className="py-1.5 pr-3">
-                      {tier.maxBottles == null
-                        ? `${tier.minBottles.toLocaleString()}+ bottles`
-                        : `${tier.minBottles.toLocaleString()} to ${tier.maxBottles.toLocaleString()} bottles`}
+                      {fmt.trialBottles.toLocaleString()} bottles — {fmt.trialCases} cases
                     </td>
-                    <td className="py-1.5 pr-3">{tier.suggestedDiscount}</td>
-                    <td className="py-1.5 pr-3">{tier.whoPaysFirst}</td>
-                    <td className="py-1.5">{tier.condition}</td>
+                    <td className="py-1.5">
+                      {fmt.bulkBottles.toLocaleString()} bottles — {fmt.bulkCases} cases
+                    </td>
                   </tr>
                 ))}
               </tbody>
