@@ -1796,6 +1796,48 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
   }
 });
 
+// POST /api/v1/accounts/:id/send-portal-invite — create distributor CRM row if missing, then email setup link
+router.post('/accounts/:id/send-portal-invite', requirePermission(Permission.ACCOUNTS_WRITE), async (req, res) => {
+  try {
+    const loc = await resolveEntityWrite(req, req.params.id);
+    if (!loc) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    const { db, id, tenantId } = loc;
+    const account = await db('accounts')
+      .where({ id, tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .first();
+    if (!account) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    if (String(account.type || '').trim() !== 'distributor') {
+      return res.status(400).json({ error: 'Setup invite is for distributor accounts.' });
+    }
+    const email = String(account.portal_login_email || account.email || '').trim();
+    if (!email) {
+      return res.status(400).json({ error: 'Add a contact email on this account first.' });
+    }
+    const name =
+      String(account.trading_name || account.name || '').trim() || email;
+
+    const portal = await ensureAccountPortalContactAndInvite({
+      req,
+      tenantId,
+      account,
+      role: 'distributor',
+      email,
+      name,
+      phone: account.phone,
+      db,
+    });
+    res.json({ data: portal.member, invite: portal.invite });
+  } catch (err) {
+    console.error('[API v1] Error sending distributor portal invite:', err);
+    res.status(500).json({ error: 'Failed to send setup invite' });
+  }
+});
+
 // DELETE /api/v1/accounts/:id - Soft delete account
 router.delete('/accounts/:id', requirePermission(Permission.ACCOUNTS_DELETE), async (req, res) => {
   try {

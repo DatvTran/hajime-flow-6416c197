@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { ArrowLeft, Mail, Pencil, Trash2 } from "lucide-react";
 import { useAccounts, useAppData } from "@/contexts/AppDataContext";
+import { AccountDetailDialog } from "@/components/AccountDetailDialog";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { getDistributorOrganizations, type DistributorOrganizationRow } from "@/lib/api-v1-mutations";
+import { toast } from "@/components/ui/sonner";
+import {
+  getDistributorOrganizations,
+  sendAccountPortalInvite,
+  type DistributorOrganizationRow,
+} from "@/lib/api-v1-mutations";
 import {
   buildDistributorPartnerDetail,
   partnerInitials,
@@ -56,11 +62,15 @@ function InventoryStatus({ row }: { row: DcInventoryRow }) {
 
 export function HqDistributorPartnerManageView({ orgId, orgName: orgNameProp }: Props) {
   const { data, loading } = useAppData();
-  const { deleteAccount } = useAccounts();
+  const { deleteAccount, updateAccount } = useAccounts();
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [orgs, setOrgs] = useState<DistributorOrganizationRow[]>([]);
   const [deleting, setDeleting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
+  const [lastInviteEmail, setLastInviteEmail] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,16 +144,15 @@ export function HqDistributorPartnerManageView({ orgId, orgName: orgNameProp }: 
   );
 
   const liveAccount = useMemo(() => {
-    const distributors = filterPlatformAccountsForHq(displayContext.accounts).filter(
-      (a) => a.type === "distributor",
-    );
+    if (metricsRow?.account) return metricsRow.account;
+    const all = displayContext.accounts.filter((a) => a.type === "distributor");
     return (
-      distributors.find((a) => a.id === orgId) ||
-      distributors.find((a) => a.distributorOrgId === orgId) ||
-      distributors.find((a) => resolveDistributorOrgId(a, orgs) === orgId) ||
+      all.find((a) => a.id === orgId) ||
+      all.find((a) => String(a.distributorOrgId ?? "") === String(orgId)) ||
+      all.find((a) => resolveDistributorOrgId(a, orgs) === orgId) ||
       null
     );
-  }, [displayContext.accounts, orgId, orgs]);
+  }, [metricsRow, displayContext.accounts, orgId, orgs]);
 
   const handleDelete = async () => {
     if (!liveAccount) return;
@@ -153,6 +162,59 @@ export function HqDistributorPartnerManageView({ orgId, orgName: orgNameProp }: 
       if (result.success) navigate("/accounts");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleResendInvite = async () => {
+    if (!liveAccount) return;
+    const email = (liveAccount.portalLoginEmail || liveAccount.email || "").trim();
+    if (!email) {
+      toast.error(t("Add a contact email first"), {
+        description: t("Open Edit and save an email, then send the setup invite."),
+      });
+      return;
+    }
+    setInviting(true);
+    try {
+      const result = (await sendAccountPortalInvite(liveAccount.id)) as {
+        invite?: {
+          status?: string;
+          reason?: string;
+          emailDispatched?: boolean;
+          inviteUrl?: string;
+        };
+      };
+      const inv = result.invite;
+      const inviteUrl = inv?.inviteUrl;
+      if (inviteUrl) setLastInviteUrl(inviteUrl);
+      setLastInviteEmail(email);
+      const emailed = Boolean(inv?.emailDispatched);
+      toast.success(
+        emailed ? t("Setup invite emailed") : t("Setup invite ready — email not sent"),
+        {
+          description: emailed
+            ? `${email} — ${t("They can open the link in their inbox to set a password.")}`
+            : `${email} — ${t("Production has no mail key (RESEND_API_KEY). Copy the link below and send it yourself.")}`,
+          ...(inviteUrl
+            ? {
+                action: {
+                  label: t("Copy invite link"),
+                  onClick: () => {
+                    void navigator.clipboard.writeText(inviteUrl).then(() => {
+                      toast.success(t("Invite link copied"));
+                    });
+                  },
+                },
+              }
+            : {}),
+        },
+      );
+    } catch (err) {
+      toast.error(t("Could not send invite"), {
+        description: err instanceof Error ? err.message : t("Try again."),
+      });
+    } finally {
+      setInviting(false);
     }
   };
 
@@ -212,6 +274,23 @@ export function HqDistributorPartnerManageView({ orgId, orgName: orgNameProp }: 
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
                 {liveAccount ? (
+                  <HqBtn variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+                    <Pencil className="size-3.5" strokeWidth={1.75} />
+                    {t("Edit")}
+                  </HqBtn>
+                ) : null}
+                {liveAccount ? (
+                  <HqBtn
+                    variant="outline"
+                    size="sm"
+                    disabled={inviting}
+                    onClick={() => void handleResendInvite()}
+                  >
+                    <Mail className="size-3.5" strokeWidth={1.75} />
+                    {inviting ? t("Sending…") : t("Send setup invite")}
+                  </HqBtn>
+                ) : null}
+                {liveAccount ? (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <HqBtn variant="outline" size="sm" disabled={deleting}>
@@ -266,6 +345,31 @@ export function HqDistributorPartnerManageView({ orgId, orgName: orgNameProp }: 
               ))}
             </div>
           </HqOperatorCard>
+
+          {lastInviteUrl ? (
+            <HqOperatorCard className="p-5">
+              <p className="text-sm font-medium">
+                {t("Share this setup link")}
+                {lastInviteEmail ? ` · ${lastInviteEmail}` : ""}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("Email was not sent from the server. Copy this link and send it to the distributor.")}
+              </p>
+              <p className="mt-3 break-all font-mono text-xs text-foreground">{lastInviteUrl}</p>
+              <HqBtn
+                variant="accent"
+                size="sm"
+                className="mt-3"
+                onClick={() => {
+                  void navigator.clipboard.writeText(lastInviteUrl).then(() => {
+                    toast.success(t("Invite link copied"));
+                  });
+                }}
+              >
+                {t("Copy invite link")}
+              </HqBtn>
+            </HqOperatorCard>
+          ) : null}
 
           <HqOperatorTwoCol className="mb-0">
             <HqOperatorCard className="overflow-hidden p-0">
@@ -350,6 +454,22 @@ export function HqDistributorPartnerManageView({ orgId, orgName: orgNameProp }: 
               </div>
             </HqOperatorCard>
           </HqOperatorTwoCol>
+
+          <AccountDetailDialog
+            account={liveAccount}
+            open={editOpen}
+            startInEditMode
+            onOpenChange={setEditOpen}
+            onSave={updateAccount}
+            onDelete={async (account) => {
+              const result = await deleteAccount(account.id);
+              if (result.success) {
+                setEditOpen(false);
+                navigate("/accounts");
+              }
+              return result;
+            }}
+          />
         </>
       )}
     </HqOperatorPage>

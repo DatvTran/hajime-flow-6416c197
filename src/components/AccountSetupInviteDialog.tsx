@@ -363,7 +363,7 @@ export function AccountSetupInviteDialog({
                           <Label htmlFor="asi-store">Store / business name *</Label>
                           <Input
                             id="asi-store"
-                            placeholder="e.g. Album Hair"
+                            placeholder="e.g. Bar Isabel"
                             value={storeName}
                             onChange={(e) => setStoreName(e.target.value)}
                             disabled={submitting}

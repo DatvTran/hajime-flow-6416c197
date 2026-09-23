@@ -135,6 +135,12 @@ export async function createAccount(accountData: {
   });
 }
 
+export async function sendAccountPortalInvite(accountId: string) {
+  return apiFetch(`/api/v1/accounts/${encodeURIComponent(accountId)}/send-portal-invite`, {
+    method: "POST",
+  });
+}
+
 export async function updateAccount(id: string, accountData: Partial<{
   name: string;
   tradingName: string;

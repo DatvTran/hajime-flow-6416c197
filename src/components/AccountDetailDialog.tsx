@@ -62,6 +62,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   onSave: (account: Account) => void | Promise<{ success?: boolean } | void>;
   onDelete?: (account: Account) => void | Promise<{ success?: boolean } | void>;
+  /** When true, open directly in the edit form. */
+  startInEditMode?: boolean;
 };
 
 function parseTags(s: string): string[] {
@@ -71,7 +73,14 @@ function parseTags(s: string): string[] {
     .filter(Boolean);
 }
 
-export function AccountDetailDialog({ account, open, onOpenChange, onSave, onDelete }: Props) {
+export function AccountDetailDialog({
+  account,
+  open,
+  onOpenChange,
+  onSave,
+  onDelete,
+  startInEditMode = false,
+}: Props) {
   const { user } = useAuth();
   const { data } = useAppData();
   const [editing, setEditing] = useState(false);
@@ -96,13 +105,13 @@ export function AccountDetailDialog({ account, open, onOpenChange, onSave, onDel
     if (account) {
       setDraft({ ...account });
       setTagsInput((account.tags || []).join(", "));
-      setEditing(false);
+      setEditing(startInEditMode);
       setWhVerifyNotes(account.wholesalerReviewNotes ?? "");
       setBrandTier(account.pricingTier ?? "standard");
       setBrandCredit(account.creditLimitCad != null ? String(account.creditLimitCad) : "25000");
       setPortalEmail(account.portalLoginEmail ?? account.email ?? "");
     }
-  }, [account]);
+  }, [account, startInEditMode, open]);
 
   const handleClose = (next: boolean) => {
     if (!next) setEditing(false);

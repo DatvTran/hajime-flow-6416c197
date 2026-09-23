@@ -19,7 +19,7 @@ export function portalInviteUserMessage(invite?: PortalInviteStatus | null): str
     );
   }
   if (invite.status === "delivery_failed") {
-    return "Account saved, but the invitation email failed. Resend from Settings → CRM.";
+    return "Account saved, but the invitation email failed. Open Manage on the distributor and use Send setup invite.";
   }
   if (invite.status === "skipped" && invite.reason === "email_already_registered") {
     return "Account saved. No invite sent — that email already has a login.";

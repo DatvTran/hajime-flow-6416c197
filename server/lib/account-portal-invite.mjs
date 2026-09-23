@@ -92,6 +92,7 @@ export async function ensureAccountPortalContactAndInvite({
   phone,
   pendingApproval = false,
   distributorUserId = null,
+  db: dbOverride,
 }) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   if (!normalizedEmail) {
@@ -103,7 +104,7 @@ export async function ensureAccountPortalContactAndInvite({
     normalizedEmail;
   const accountId = account?.id != null ? String(account.id) : null;
   const roleToCreate = String(role).trim();
-  const db = getDb();
+  const db = dbOverride || getDb();
 
   const existing = await db('team_members')
     .where({ tenant_id: tenantId, email: normalizedEmail })

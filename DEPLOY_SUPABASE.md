@@ -39,7 +39,7 @@ Distributor isolation is **schemas** (`hajime_dist_*`), not extra databases. `DI
 
 ### Row Level Security (Data API)
 
-The app reads Postgres through Knex (`DATABASE_URL`, postgres role), not through PostgREST. Migration **054** turns on RLS for every table in `public` and `hajime_dist_*` with **no policies**, and revokes `anon` / `authenticated`. That closes Supabase linter findings `rls_disabled_in_public` and `sensitive_columns_exposed` (e.g. `users.password_hash`). Railway runs 054 on start via `migrate-release.mjs`.
+The app reads Postgres through Knex (`DATABASE_URL`, postgres role), not through PostgREST. Migrations **054** and **055** turn on RLS for every table in `public` and `hajime_dist_*` with **no policies**, and revoke `PUBLIC` / `anon` / `authenticated`. That closes Supabase linter findings `rls_disabled_in_public` and `sensitive_columns_exposed` (e.g. `users.password_hash`). Railway runs these on start via `migrate-release.mjs`.
 
 After deploy, in the Supabase SQL editor this should return **no rows**:
 
