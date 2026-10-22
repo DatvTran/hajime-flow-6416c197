@@ -306,7 +306,7 @@ export default function ConnectPage() {
       <main className="flex w-full max-w-[max(480px,min(640px,calc(100vw-128px)))] flex-col px-[18px] pb-[calc(24px+env(safe-area-inset-bottom))]">
         <header className="flex items-center gap-3 pb-3 pt-4">
           <img
-            src="/connect/hajime-logo-80.png"
+            src="/connect-img/hajime-logo-80.png"
             alt="Hajime"
             width={40}
             height={40}
@@ -482,7 +482,7 @@ export default function ConnectPage() {
           <section aria-labelledby="connect-h3" className="flex flex-col">
             <div className="-mx-[18px] -mt-2.5 mb-5 aspect-[2.4/1] overflow-hidden bg-[hsl(24_14%_10%)]">
               <img
-                src="/connect/banner.jpg"
+                src="/connect-img/banner.jpg"
                 alt="First Press and Second Bloom bottles"
                 width={876}
                 height={440}
