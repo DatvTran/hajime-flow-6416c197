@@ -24,7 +24,7 @@ try {
     const list = rows.rows || rows || [];
     console.log(`[lead-digest] ${list.length} overdue or unassigned expo leads`);
     for (const row of list.slice(0, 50)) {
-      console.log(`  ${row.display_id} ${row.company_name} ${row.status} ${row.owner_email || "unowned"}`);
+      console.log(`  ${row.display_id} ${row.company_name || row.full_name} ${row.status} ${row.owner_email || "unowned"}`);
     }
   } else {
     console.log("[lead-digest] expo_leads not present");

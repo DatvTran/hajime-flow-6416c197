@@ -206,7 +206,7 @@ router.post("/", async (req, res) => {
         })
         .first();
       if (!lead) return res.status(404).json({ error: "Expo lead not found" });
-      if (String(lead.business_type) !== "importer_distributor") {
+      if (!["importer_distributor", "importer"].includes(String(lead.business_type))) {
         return res.status(422).json({
           error: "Only importer / distributor leads can open an export file.",
           code: "LEAD_NOT_CONVERTIBLE",

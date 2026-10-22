@@ -7,11 +7,27 @@ export const BUSINESS_TYPES = [
   'duty_free',
   'media',
   'other',
+  'restaurant',
+  'bar',
+  'hotel',
+  'retail',
+  'wholesale',
+  'importer',
 ];
 
 export const EXPRESSIONS = ['first_press', 'yuzu_mint', 'both'];
 
+/** Product ids picked on the mobile Connect flow; stored in `expression`. */
+export const PRODUCT_IDS = ['first_press', 'second_bloom'];
+
+export const ENQUIRY_PURPOSES = ['pricing', 'tasting', 'distribution'];
+
+export const CONNECT_FORM_VERSION = 'hajime_supply_v1';
+
+const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'];
+
 export const INTERESTS = [
+  'tasting',
   'distribution',
   'importing',
   'retail_placement',
@@ -55,18 +71,45 @@ function optionalStr(v, max) {
   return s || null;
 }
 
-function parseInterests(raw) {
-  const list = Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : [];
+function isEmail(s) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
+}
+
+/** "+852 9123-4567" -> "+85291234567"; null when not 6–15 digits. */
+export function normalizePhone(raw) {
+  const s = trimStr(raw, 80);
+  const digits = s.replace(/\D/g, '');
+  if (digits.length < 6 || digits.length > 15) return null;
+  return s.startsWith('+') || s.startsWith('00') ? `+${digits.replace(/^00/, '')}` : digits;
+}
+
+function pickList(raw, allowed) {
+  const list = Array.isArray(raw) ? raw : typeof raw === 'string' && raw ? [raw] : [];
   const out = [];
   for (const item of list) {
     const key = String(item).trim();
-    if (INTERESTS.includes(key) && !out.includes(key)) out.push(key);
+    if (allowed.includes(key) && !out.includes(key)) out.push(key);
   }
   return out;
 }
 
-function isEmail(s) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+export function expressionFromProducts(products) {
+  const fp = products.includes('first_press');
+  const sb = products.includes('second_bloom');
+  if (fp && sb) return 'both';
+  if (fp) return 'first_press';
+  if (sb) return 'yuzu_mint';
+  return '';
+}
+
+function parseUtm(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  for (const key of UTM_KEYS) {
+    const v = trimStr(raw[key], 100);
+    if (v) out[key] = v;
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 export async function resolveExpoTenant(db) {
@@ -96,17 +139,18 @@ export function validateBuyerPayload(body) {
   const businessEmail = trimStr(body?.businessEmail ?? body?.business_email, 255).toLowerCase();
   const countryMarket = trimStr(body?.countryMarket ?? body?.country_market, 120);
   const businessType = trimStr(body?.businessType ?? body?.business_type, 64);
-  const expression = trimStr(body?.expression, 64);
-  const consent = body?.consent === true || body?.consent === 'true';
+  const products = pickList(body?.products, PRODUCT_IDS);
+  const expression = products.length ? expressionFromProducts(products) : trimStr(body?.expression, 64);
+  const purposes = pickList(body?.purposes, ENQUIRY_PURPOSES);
+  const interests = pickList([...purposes, ...pickList(body?.interests, INTERESTS)], INTERESTS);
+  const mobile = normalizePhone(body?.mobile ?? body?.phone);
 
-  if (!fullName) errors.push('Full name is required');
-  if (!companyName) errors.push('Company name is required');
-  if (!jobTitle) errors.push('Job title is required');
-  if (!businessEmail || !isEmail(businessEmail)) errors.push('A valid business email is required');
-  if (!countryMarket) errors.push('Country / market is required');
-  if (!BUSINESS_TYPES.includes(businessType)) errors.push('Select what best describes your business');
-  if (!EXPRESSIONS.includes(expression)) errors.push('Select which Hajime expression interests you');
-  if (!consent) errors.push('Consent is required to submit');
+  if (!fullName) errors.push('Please enter your name.');
+  if (!businessEmail || !isEmail(businessEmail)) errors.push('Please enter a valid email address.');
+  if (!mobile) errors.push('Please enter a valid phone number with country code.');
+  if (!BUSINESS_TYPES.includes(businessType)) errors.push('Please choose your business type.');
+  if (!EXPRESSIONS.includes(expression)) errors.push('Please choose at least one expression.');
+  if (!interests.length) errors.push('Please choose how we can help.');
 
   const bottleFormat = optionalStr(body?.bottleFormat ?? body?.bottle_format, 32);
   if (bottleFormat && !BOTTLE_FORMATS.includes(bottleFormat)) errors.push('Invalid bottle format');
@@ -124,20 +168,24 @@ export function validateBuyerPayload(body) {
     data: {
       event_code: normalizeEventCode(body?.eventCode ?? body?.event_code),
       full_name: fullName,
-      company_name: companyName,
-      job_title: jobTitle,
+      company_name: companyName || null,
+      job_title: jobTitle || null,
       business_email: businessEmail,
-      mobile: optionalStr(body?.mobile, 80),
-      country_market: countryMarket,
+      mobile,
+      country_market: countryMarket || null,
       company_website: optionalStr(body?.companyWebsite ?? body?.company_website, 512),
       business_type: businessType,
       expression,
-      interests: parseInterests(body?.interests),
+      interests,
       bottle_format: bottleFormat,
       volume,
       territory,
       timing,
       message: optionalStr(body?.message, 4000),
+      marketing_opt_in: body?.marketingOptIn === true || body?.marketing_opt_in === true,
+      submission_key: optionalStr(body?.submissionKey ?? body?.submission_key, 64),
+      utm: parseUtm(body?.utm),
+      form_version: optionalStr(body?.formVersion, 32) || CONNECT_FORM_VERSION,
     },
   };
 }
@@ -183,6 +231,9 @@ export function serializeExpoLead(row, { publicView = false } = {}) {
     territory: row.territory,
     timing: row.timing,
     message: row.message,
+    marketingOptIn: Boolean(row.marketing_opt_in),
+    utm: row.utm && typeof row.utm === 'object' ? row.utm : null,
+    formVersion: row.form_version ?? null,
     consentAt: row.consent_at,
     submittedAt: row.submitted_at,
     metAt: row.met_at,
@@ -262,6 +313,13 @@ export async function insertExpoLead(db, tenantId, buyer) {
   const now = new Date();
   return db.transaction(async (trx) => {
     await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [`expo_leads:${tenantId}:${buyer.event_code}`]);
+    const hasConnectCols = await trx.schema.hasColumn('expo_leads', 'submission_key');
+    if (hasConnectCols && buyer.submission_key) {
+      const existing = await trx('expo_leads')
+        .where({ tenant_id: tenantId, submission_key: buyer.submission_key })
+        .first();
+      if (existing) return existing;
+    }
     const agg = await trx('expo_leads')
       .where({ tenant_id: tenantId, event_code: buyer.event_code })
       .max('seq as max')
@@ -295,6 +353,12 @@ export async function insertExpoLead(db, tenantId, buyer) {
     };
     if (await trx.schema.hasColumn('expo_leads', 'capture_ip')) {
       payload.capture_ip = buyer.capture_ip || null;
+    }
+    if (hasConnectCols) {
+      payload.marketing_opt_in = Boolean(buyer.marketing_opt_in);
+      payload.submission_key = buyer.submission_key || null;
+      payload.utm = buyer.utm ? JSON.stringify(buyer.utm) : null;
+      payload.form_version = buyer.form_version || null;
     }
     const [row] = await trx('expo_leads').insert(payload).returning('*');
     return row;

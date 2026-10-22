@@ -7,6 +7,7 @@ import {
   EXPO_SCORES,
   EXPO_STATUSES,
   formatExpoLeadHeadline,
+  isImporterLead,
   optionLabel,
   slaForScore,
   type ExpoLead,
@@ -170,9 +171,9 @@ function HqExpoLeadList() {
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="font-medium">{row.fullName}</div>
-                    <div className="text-muted-foreground">{row.companyName}</div>
+                    <div className="text-muted-foreground">{row.companyName || row.businessEmail}</div>
                   </td>
-                  <td className="px-3 py-2.5">{row.countryMarket}</td>
+                  <td className="px-3 py-2.5">{row.countryMarket || "—"}</td>
                   <td className="px-3 py-2.5">{optionLabel("business", row.businessType)}</td>
                   <td className="px-3 py-2.5">{optionLabel("volume", row.volume)}</td>
                   <td className="px-3 py-2.5">{optionLabel("status", row.status)}</td>
@@ -253,10 +254,10 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
             <Button
               type="button"
               size="sm"
-              disabled={saving || lead.businessType !== "importer_distributor"}
+              disabled={saving || !isImporterLead(lead.businessType)}
               onClick={async () => {
                 if (!lead) return;
-                if (lead.businessType !== "importer_distributor") {
+                if (!isImporterLead(lead.businessType)) {
                   toast.error("Only importer / distributor leads can open an export file.");
                   return;
                 }
@@ -265,10 +266,10 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
                   const res = await createExportOrder({
                     expoLeadId: lead.displayId,
                     buyerName: lead.fullName,
-                    buyerCompany: lead.companyName,
+                    buyerCompany: lead.companyName || lead.fullName,
                     buyerEmail: lead.businessEmail,
-                    territory: lead.countryMarket,
-                    destinationCountry: lead.countryMarket,
+                    territory: lead.countryMarket || undefined,
+                    destinationCountry: lead.countryMarket || undefined,
                     lines: [{ sku: "first_press_750", cases: 25 }],
                   });
                   toast.success("Export file opened", { description: res.data.displayId });
@@ -289,7 +290,7 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
         }
       />
 
-      {lead.businessType !== "importer_distributor" ? (
+      {!isImporterLead(lead.businessType) ? (
         <p className="mb-4 text-[13px] text-muted-foreground">
           This contact is not an importer/distributor. Send materials and close — do not convert to an export file.
         </p>
@@ -311,11 +312,11 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
             </div>
             <div>
               <dt className="text-muted-foreground">Company</dt>
-              <dd className="font-medium">{lead.companyName}</dd>
+              <dd className="font-medium">{lead.companyName || "—"}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">Title</dt>
-              <dd>{lead.jobTitle}</dd>
+              <dd>{lead.jobTitle || "—"}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">Email</dt>
@@ -331,7 +332,7 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
             </div>
             <div>
               <dt className="text-muted-foreground">Market</dt>
-              <dd>{lead.countryMarket}</dd>
+              <dd>{lead.countryMarket || "—"}</dd>
             </div>
             <div className="sm:col-span-2">
               <dt className="text-muted-foreground">Website</dt>
@@ -364,6 +365,14 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
             <div className="sm:col-span-2">
               <dt className="text-muted-foreground">Interests</dt>
               <dd>{lead.interests.map((i) => optionLabel("interest", i)).join(" · ") || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">News emails</dt>
+              <dd>{lead.marketingOptIn ? "Opted in" : "No"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Source</dt>
+              <dd>{lead.utm ? Object.values(lead.utm).join(" · ") : "Direct"}</dd>
             </div>
             <div className="sm:col-span-2">
               <dt className="text-muted-foreground">Notes from buyer</dt>

@@ -14,37 +14,52 @@ test('normalizeEventCode defaults and sanitizes', () => {
   assert.equal(normalizeEventCode('vinexpo'), 'VINEXPO');
 });
 
-test('validateBuyerPayload requires core fields and ignores internal score', () => {
-  const parsed = validateBuyerPayload({
-    fullName: 'Alex Tan',
-    companyName: 'Lion City Spirits',
-    jobTitle: 'Buyer',
-    businessEmail: 'alex@lion.sg',
-    countryMarket: 'Singapore',
-    businessType: 'importer_distributor',
-    expression: 'both',
-    bottleFormat: 'both',
-    volume: '100_249',
-    timing: '1_3_months',
-    consent: true,
-    score: 'A',
-  });
+const mobileEnquiry = {
+  fullName: 'Mei',
+  businessEmail: 'mei@gmail.com',
+  mobile: '+852 9123 4567',
+  businessType: 'restaurant',
+  products: ['first_press', 'second_bloom'],
+  purposes: ['pricing', 'tasting'],
+  submissionKey: 'abc123',
+  utm: { utm_source: 'hk_expo_2026', utm_medium: 'qr', evil: 'x' },
+};
+
+test('validateBuyerPayload accepts the mobile enquiry with only name, email, phone typed', () => {
+  const parsed = validateBuyerPayload({ ...mobileEnquiry, score: 'A' });
   assert.equal(parsed.ok, true);
-  assert.equal(parsed.data.full_name, 'Alex Tan');
+  assert.equal(parsed.data.full_name, 'Mei');
+  assert.equal(parsed.data.mobile, '+85291234567');
+  assert.equal(parsed.data.expression, 'both');
+  assert.deepEqual(parsed.data.interests, ['pricing', 'tasting']);
+  assert.equal(parsed.data.company_name, null);
+  assert.equal(parsed.data.marketing_opt_in, false);
+  assert.equal(parsed.data.submission_key, 'abc123');
+  assert.deepEqual(parsed.data.utm, { utm_source: 'hk_expo_2026', utm_medium: 'qr' });
   assert.equal(parsed.data.score, undefined);
 });
 
-test('validateBuyerPayload rejects missing consent', () => {
+test('validateBuyerPayload maps Second Bloom alone to yuzu_mint', () => {
+  const parsed = validateBuyerPayload({ ...mobileEnquiry, products: ['second_bloom'] });
+  assert.equal(parsed.data.expression, 'yuzu_mint');
+});
+
+test('validateBuyerPayload rejects missing phone, products or purposes', () => {
+  for (const patch of [{ mobile: '12' }, { products: [] }, { purposes: [] }, { businessType: 'nope' }]) {
+    const parsed = validateBuyerPayload({ ...mobileEnquiry, ...patch });
+    assert.equal(parsed.ok, false, JSON.stringify(patch));
+  }
+});
+
+test('validateBuyerPayload still accepts the legacy expression field', () => {
   const parsed = validateBuyerPayload({
-    fullName: 'A',
-    companyName: 'B',
-    jobTitle: 'C',
-    businessEmail: 'a@b.com',
-    countryMarket: 'SG',
-    businessType: 'retailer',
+    ...mobileEnquiry,
+    products: undefined,
     expression: 'first_press',
+    businessType: 'importer_distributor',
   });
-  assert.equal(parsed.ok, false);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.data.expression, 'first_press');
 });
 
 test('validateInternalPatch accepts A–D score', () => {

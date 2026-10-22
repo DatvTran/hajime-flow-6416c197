@@ -1,329 +1,771 @@
-import { useMemo, useState, type FormEvent } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { CheckCircle2, Loader2 } from "lucide-react";
-import { HajimeLogo } from "@/components/HajimeLogo";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import { submitExpoConnect } from "@/lib/expo-connect-api";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { AlertCircle, Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { CountryPhoneField } from "@/components/connect/CountryPhoneField";
+import { PhotoChoice } from "@/components/connect/PhotoChoice";
+import { CONNECT_COUNTRIES, DEFAULT_CONNECT_COUNTRY } from "@/lib/connect-countries";
 import {
-  EXPO_BOTTLE_FORMATS,
-  EXPO_BUSINESS_TYPES,
-  EXPO_EXPRESSIONS,
-  EXPO_INTERESTS,
-  EXPO_TERRITORIES,
-  EXPO_TIMINGS,
-  EXPO_VOLUMES,
-} from "@/lib/expo-leads";
+  CONNECT_BUSINESS,
+  CONNECT_CHOICES_KEY,
+  CONNECT_PRODUCTS,
+  CONNECT_PURPOSES,
+  UTM_KEYS,
+  internationalPhone,
+  isValidEnquiryEmail,
+  newSubmissionKey,
+  phoneDigits,
+} from "@/lib/connect-enquiry";
+import { submitExpoConnect } from "@/lib/expo-connect-api";
 import { cn } from "@/lib/utils";
 
-function FieldLabel({ htmlFor, children, required }: { htmlFor: string; children: string; required?: boolean }) {
-  return (
-    <Label htmlFor={htmlFor} className="text-[13px] font-medium">
-      {children}
-      {required ? <span className="text-destructive"> *</span> : null}
-    </Label>
-  );
+type Step = 1 | 2 | 3 | "done";
+type Choices = { business: string | null; products: string[]; purposes: string[] };
+type Errors = Partial<Record<"business" | "products" | "purposes" | "name" | "email" | "phone", string>>;
+
+const PAGE_TITLE = "Hajime Trade Enquiries";
+
+function loadChoices(): Choices {
+  try {
+    const s = JSON.parse(sessionStorage.getItem(CONNECT_CHOICES_KEY) || "{}");
+    return {
+      business: typeof s.business === "string" ? s.business : null,
+      products: Array.isArray(s.products) ? s.products : [],
+      purposes: Array.isArray(s.purposes) ? s.purposes : [],
+    };
+  } catch {
+    return { business: null, products: [], purposes: [] };
+  }
 }
 
-function ChoiceRow({
-  name,
-  options,
-  value,
-  onChange,
-  required,
-}: {
-  name: string;
-  options: readonly { value: string; label: string }[];
-  value: string;
-  onChange: (v: string) => void;
-  required?: boolean;
-}) {
+function toggle(list: string[], id: string): string[] {
+  return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+}
+
+const primaryBtn =
+  "relative flex min-h-[52px] w-full items-center justify-center rounded-[10px] border border-[hsl(40_60%_46%/0.7)] " +
+  "bg-[hsl(24_10%_10%)] font-display text-[22px] font-medium text-[hsl(40_20%_97%)] transition-[background,transform] " +
+  "hover:bg-[hsl(24_10%_18%)] active:scale-[0.98] focus-visible:outline focus-visible:outline-2 " +
+  "focus-visible:outline-offset-[3px] focus-visible:outline-[hsl(40_88%_42%)]";
+const secondaryBtn =
+  "flex min-h-[52px] items-center justify-center gap-2.5 rounded-[10px] border border-[hsl(35_12%_82%)] " +
+  "bg-[hsl(40_20%_99%)] text-base font-medium hover:bg-[hsl(35_16%_93%)] focus-visible:outline " +
+  "focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-[hsl(40_88%_42%)]";
+const headingCls =
+  "m-0 text-center font-display text-[34px] font-medium leading-[1.1] tracking-[-0.02em] outline-none";
+const helperCls = "mb-5 mt-1.5 text-center text-base text-[hsl(24_8%_32%)]";
+const srOnlyLegend = "sr-only";
+
+function ErrorLine({ id, message }: { id: string; message?: string }) {
   return (
-    <div className="flex flex-wrap gap-2" role="radiogroup" aria-required={required}>
-      {options.map((opt) => {
-        const selected = value === opt.value;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            name={name}
-            onClick={() => onChange(opt.value)}
-            className={cn(
-              "rounded-full border px-3 py-1.5 text-left text-[13px] transition-colors",
-              selected
-                ? "border-accent bg-accent/10 text-foreground"
-                : "border-border bg-card text-muted-foreground hover:border-foreground/30 hover:text-foreground",
-            )}
-            aria-pressed={selected}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
+    <div id={id} aria-live="polite">
+      {message ? (
+        <p className="mb-0 mt-3 flex items-center gap-2 text-[15px] text-[hsl(0_68%_40%)]">
+          <AlertCircle className="h-4 w-4 flex-none" strokeWidth={1.75} aria-hidden />
+          {message}
+        </p>
+      ) : null}
     </div>
   );
 }
 
-export default function ConnectPage() {
-  const [searchParams] = useSearchParams();
-  const eventCode = (searchParams.get("event") || "HK26").toUpperCase();
+function TextField({
+  id,
+  label,
+  error,
+  children,
+}: {
+  id: string;
+  label: string;
+  error?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-[15px] font-medium">
+        {label}{" "}
+        <span aria-hidden className="text-[hsl(0_68%_44%)]">
+          *
+        </span>
+      </label>
+      {children}
+      <div id={`${id}-error`} aria-live="polite">
+        {error ? <p className="m-0 text-sm text-[hsl(0_68%_40%)]">{error}</p> : null}
+      </div>
+    </div>
+  );
+}
 
-  const [fullName, setFullName] = useState("");
-  const [companyName, setCompanyName] = useState("");
-  const [jobTitle, setJobTitle] = useState("");
-  const [businessEmail, setBusinessEmail] = useState("");
-  const [mobile, setMobile] = useState("");
-  const [countryMarket, setCountryMarket] = useState("");
-  const [companyWebsite, setCompanyWebsite] = useState("");
-  const [businessType, setBusinessType] = useState("");
-  const [expression, setExpression] = useState("");
-  const [interests, setInterests] = useState<string[]>([]);
-  const [bottleFormat, setBottleFormat] = useState("");
-  const [volume, setVolume] = useState("");
-  const [territory, setTerritory] = useState("");
-  const [timing, setTiming] = useState("");
-  const [message, setMessage] = useState("");
-  const [consent, setConsent] = useState(false);
-  const [fax, setFax] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ displayId: string } | null>(null);
-
-  const canSubmit = useMemo(
-    () =>
-      Boolean(
-        fullName.trim() &&
-          companyName.trim() &&
-          jobTitle.trim() &&
-          businessEmail.trim() &&
-          countryMarket.trim() &&
-          businessType &&
-          expression &&
-          consent,
-      ),
-    [fullName, companyName, jobTitle, businessEmail, countryMarket, businessType, expression, consent],
+const inputCls = (invalid: boolean) =>
+  cn(
+    "h-[52px] w-full rounded-lg border bg-[hsl(40_20%_99%)] px-3.5 text-base outline-none",
+    "focus:border-[hsl(40_88%_42%)] focus:shadow-[0_0_0_3px_hsl(40_88%_42%/0.25)]",
+    invalid ? "border-[hsl(0_68%_48%)]" : "border-[hsl(35_12%_84%)]",
   );
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!canSubmit || submitting) return;
+export default function ConnectPage() {
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const eventCode = (searchParams.get("event") || "HK26").toUpperCase();
+  const utm = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const key of UTM_KEYS) {
+      const v = searchParams.get(key);
+      if (v) out[key] = v.slice(0, 100);
+    }
+    return out;
+  }, [searchParams]);
+
+  const [choices, setChoices] = useState<Choices>(loadChoices);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [country, setCountry] = useState(DEFAULT_CONNECT_COUNTRY);
+  const [phone, setPhone] = useState("");
+  const [optIn, setOptIn] = useState(false);
+  const [fax, setFax] = useState("");
+  const [errors, setErrors] = useState<Errors>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
+  const [submissionKey, setSubmissionKey] = useState(newSubmissionKey);
+  const [leadRef, setLeadRef] = useState<string | null>(null);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
+
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const phoneRef = useRef<HTMLInputElement>(null);
+  const privacyCloseRef = useRef<HTMLButtonElement>(null);
+  const lastFocus = useRef<HTMLElement | null>(null);
+  const firstRender = useRef(true);
+
+  const rawStep = (location.state as { connectStep?: Step } | null)?.connectStep ?? 1;
+  const step: Step =
+    rawStep === "done" && !leadRef
+      ? 1
+      : rawStep !== 1 && rawStep !== "done" && !choices.business
+        ? 1
+        : rawStep;
+
+  useEffect(() => {
+    const prev = document.title;
+    document.title = PAGE_TITLE;
+    return () => {
+      document.title = prev;
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(CONNECT_CHOICES_KEY, JSON.stringify(choices));
+    } catch {
+      /* private mode */
+    }
+  }, [choices]);
+
+  useEffect(() => {
+    setErrors({});
+    setSubmitError(false);
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    window.scrollTo(0, 0);
+    headingRef.current?.focus({ preventScroll: true });
+  }, [step]);
+
+  useEffect(() => {
+    if (!privacyOpen) return;
+    privacyCloseRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closePrivacy();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [privacyOpen]);
+
+  function goTo(next: Step, replace = false) {
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { state: { connectStep: next }, replace },
+    );
+  }
+
+  function openPrivacy(e?: { preventDefault: () => void }) {
+    e?.preventDefault();
+    lastFocus.current = document.activeElement as HTMLElement | null;
+    setPrivacyOpen(true);
+  }
+
+  function closePrivacy() {
+    setPrivacyOpen(false);
+    lastFocus.current?.focus?.();
+  }
+
+  function next1() {
+    if (!choices.business) setErrors({ business: "Please choose your business type." });
+    else goTo(2);
+  }
+
+  function next2() {
+    const e: Errors = {};
+    if (!choices.products.length) e.products = "Please choose at least one expression.";
+    if (!choices.purposes.length) e.purposes = "Please choose how we can help.";
+    if (e.products || e.purposes) setErrors(e);
+    else goTo(3);
+  }
+
+  const dial = (CONNECT_COUNTRIES.find((c) => c.iso === country) ?? CONNECT_COUNTRIES[0]).dial;
+
+  async function onSubmit(ev: FormEvent) {
+    ev.preventDefault();
+    if (submitting) return;
+    const e: Errors = {};
+    if (!name.trim()) e.name = "Please enter your name.";
+    if (!isValidEnquiryEmail(email)) e.email = "Please enter a valid email address.";
+    const digits = phoneDigits(phone).length;
+    if (digits < 6 || digits > 15) e.phone = "Please enter a valid phone number with country code.";
+    if (e.name || e.email || e.phone) {
+      setErrors(e);
+      setSubmitError(false);
+      (e.name ? nameRef : e.email ? emailRef : phoneRef).current?.focus();
+      return;
+    }
+    setErrors({});
     setSubmitting(true);
-    setError(null);
+    setSubmitError(false);
     try {
       const res = await submitExpoConnect({
         eventCode,
-        fullName: fullName.trim(),
-        companyName: companyName.trim(),
-        jobTitle: jobTitle.trim(),
-        businessEmail: businessEmail.trim(),
-        mobile: mobile.trim() || undefined,
-        countryMarket: countryMarket.trim(),
-        companyWebsite: companyWebsite.trim() || undefined,
-        businessType,
-        expression,
-        interests,
-        bottleFormat: bottleFormat || undefined,
-        volume: volume || undefined,
-        territory: territory || undefined,
-        timing: timing || undefined,
-        message: message.trim() || undefined,
-        consent: true,
+        businessType: choices.business ?? "",
+        products: choices.products,
+        purposes: choices.purposes,
+        fullName: name.trim().slice(0, 100),
+        businessEmail: email.trim().slice(0, 254),
+        mobile: internationalPhone(dial, phone),
+        marketingOptIn: optIn,
+        submissionKey,
+        utm: Object.keys(utm).length ? utm : undefined,
         fax,
       });
-      setDone({ displayId: res.data.displayId });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not submit");
+      setLeadRef(res.data.displayId);
+      goTo("done", true);
+    } catch {
+      setSubmitError(true);
     } finally {
       setSubmitting(false);
     }
   }
 
-  function toggleInterest(value: string) {
-    setInterests((prev) => (prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]));
+  function restart() {
+    try {
+      sessionStorage.removeItem(CONNECT_CHOICES_KEY);
+    } catch {
+      /* private mode */
+    }
+    setChoices({ business: null, products: [], purposes: [] });
+    setName("");
+    setEmail("");
+    setPhone("");
+    setCountry(DEFAULT_CONNECT_COUNTRY);
+    setOptIn(false);
+    setLeadRef(null);
+    setSubmissionKey(newSubmissionKey());
+    goTo(1);
   }
 
+  const bizSel = CONNECT_BUSINESS.find((b) => b.id === choices.business);
+  const prodSel = CONNECT_PRODUCTS.filter((p) => choices.products.includes(p.id));
+  const purpSel = CONNECT_PURPOSES.filter((q) => choices.purposes.includes(q.id));
+
+  const summaryRows = [
+    {
+      title: "Business",
+      editLabel: "Edit business type",
+      onEdit: () => goTo(1),
+      chips: bizSel ? [{ label: bizSel.label, img: bizSel.img, pos: "center" }] : [],
+    },
+    {
+      title: "Expressions",
+      editLabel: "Edit expressions",
+      onEdit: () => goTo(2),
+      chips: prodSel.map((p) => ({ label: p.name, img: p.img as string | null, pos: "50% 45%" })),
+    },
+    {
+      title: "How we can help",
+      editLabel: "Edit enquiry purpose",
+      onEdit: () => goTo(2),
+      chips: purpSel.map((q) => ({ label: q.label, img: q.img, pos: "center" })),
+    },
+  ];
+
+  const stepNum = step === "done" ? 3 : step;
+  const [hero, ...smallBusiness] = CONNECT_BUSINESS;
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border/80 bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-2xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <HajimeLogo className="h-7 w-auto" />
-            <div>
-              <p className="font-display text-lg font-semibold tracking-tight">Connect with Hajime</p>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Buyer registration</p>
-            </div>
-          </div>
-          <Link to="/login" className="text-xs text-muted-foreground hover:text-foreground">
-            Sign in
-          </Link>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
-        {done ? (
-          <div className="rounded-xl border border-border bg-card p-8 text-center shadow-[var(--shadow-soft)]">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-success/25 bg-success/10">
-              <CheckCircle2 className="h-7 w-7 text-success" strokeWidth={1.75} aria-hidden />
-            </div>
-            <h1 className="font-display text-2xl font-semibold tracking-tight">We have your details</h1>
-            <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-              Thank you. Mention this reference if you return to the booth:
-            </p>
-            <p className="mt-4 font-mono text-xl tracking-wide text-foreground">{done.displayId}</p>
-            <p className="mx-auto mt-4 max-w-md text-sm text-muted-foreground">
-              Our team will be in touch regarding your inquiry.
-            </p>
-          </div>
-        ) : (
-          <form onSubmit={onSubmit} className="space-y-8">
-            <div className="border-b border-border/60 pb-6">
-              <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.16em] text-accent">Connect with Hajime</p>
-              <h1 className="font-display text-3xl font-semibold tracking-tight">Interested in representing, stocking, serving, or featuring Hajime?</h1>
-              <p className="mt-3 text-sm text-muted-foreground">
-                Share a few details and our team will follow up. Fields marked with an asterisk are required.
-              </p>
-            </div>
-
-            {error ? (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            ) : null}
-
-            <div className="hidden" aria-hidden="true">
-              <label htmlFor="fax">Fax</label>
-              <input id="fax" name="fax" tabIndex={-1} autoComplete="off" value={fax} onChange={(e) => setFax(e.target.value)} />
-            </div>
-
-            <div className="grid gap-5 sm:grid-cols-2">
-              <div className="space-y-1.5 sm:col-span-2">
-                <FieldLabel htmlFor="fullName" required>
-                  Full name
-                </FieldLabel>
-                <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} required autoComplete="name" />
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <FieldLabel htmlFor="companyName" required>
-                  Company name
-                </FieldLabel>
-                <Input id="companyName" value={companyName} onChange={(e) => setCompanyName(e.target.value)} required autoComplete="organization" />
-              </div>
-              <div className="space-y-1.5">
-                <FieldLabel htmlFor="jobTitle" required>
-                  Job title / position
-                </FieldLabel>
-                <Input id="jobTitle" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} required autoComplete="organization-title" />
-              </div>
-              <div className="space-y-1.5">
-                <FieldLabel htmlFor="businessEmail" required>
-                  Business email
-                </FieldLabel>
-                <Input id="businessEmail" type="email" value={businessEmail} onChange={(e) => setBusinessEmail(e.target.value)} required autoComplete="email" />
-              </div>
-              <div className="space-y-1.5">
-                <FieldLabel htmlFor="mobile">Mobile / WhatsApp</FieldLabel>
-                <Input id="mobile" value={mobile} onChange={(e) => setMobile(e.target.value)} autoComplete="tel" />
-              </div>
-              <div className="space-y-1.5">
-                <FieldLabel htmlFor="countryMarket" required>
-                  Country / market
-                </FieldLabel>
-                <Input id="countryMarket" value={countryMarket} onChange={(e) => setCountryMarket(e.target.value)} required />
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <FieldLabel htmlFor="companyWebsite">Company website</FieldLabel>
-                <Input id="companyWebsite" value={companyWebsite} onChange={(e) => setCompanyWebsite(e.target.value)} autoComplete="url" />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[13px] font-medium">
-                What best describes your business?<span className="text-destructive"> *</span>
-              </p>
-              <ChoiceRow name="businessType" options={EXPO_BUSINESS_TYPES} value={businessType} onChange={setBusinessType} required />
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[13px] font-medium">
-                Which Hajime expression interests you?<span className="text-destructive"> *</span>
-              </p>
-              <ChoiceRow name="expression" options={EXPO_EXPRESSIONS} value={expression} onChange={setExpression} required />
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[13px] font-medium">What are you interested in?</p>
-              <div className="flex flex-wrap gap-2">
-                {EXPO_INTERESTS.map((opt) => {
-                  const selected = interests.includes(opt.value);
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => toggleInterest(opt.value)}
-                      className={cn(
-                        "rounded-full border px-3 py-1.5 text-[13px]",
-                        selected
-                          ? "border-accent bg-accent/10 text-foreground"
-                          : "border-border bg-card text-muted-foreground hover:border-foreground/30",
-                      )}
-                      aria-pressed={selected}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[13px] font-medium">Which bottle format interests you?</p>
-              <ChoiceRow name="bottleFormat" options={EXPO_BOTTLE_FORMATS} value={bottleFormat} onChange={setBottleFormat} />
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[13px] font-medium">Estimated purchasing volume / opportunity</p>
-              <ChoiceRow name="volume" options={EXPO_VOLUMES} value={volume} onChange={setVolume} />
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[13px] font-medium">Are you interested in discussing territory representation?</p>
-              <ChoiceRow name="territory" options={EXPO_TERRITORIES} value={territory} onChange={setTerritory} />
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[13px] font-medium">When are you looking to move forward?</p>
-              <ChoiceRow name="timing" options={EXPO_TIMINGS} value={timing} onChange={setTiming} />
-            </div>
-
-            <div className="space-y-1.5">
-              <FieldLabel htmlFor="message">Message / notes</FieldLabel>
-              <Textarea id="message" value={message} onChange={(e) => setMessage(e.target.value)} rows={4} />
-            </div>
-
-            <label className="flex items-start gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm">
-              <Checkbox checked={consent} onCheckedChange={(v) => setConsent(v === true)} className="mt-0.5" />
-              <span>
-                I agree that Hajime Ltd. may contact me regarding this inquiry.
-                <span className="text-destructive"> *</span>
-              </span>
-            </label>
-
-            <Button type="submit" disabled={!canSubmit || submitting} className="w-full sm:w-auto">
-              {submitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting
-                </>
-              ) : (
-                "Send to Hajime"
+    <div className="flex min-h-screen justify-center bg-[hsl(40_18%_97%)] font-body text-[hsl(24_10%_10%)] antialiased [-webkit-tap-highlight-color:transparent]">
+      <main className="flex w-full max-w-[max(480px,min(640px,calc(100vw-128px)))] flex-col px-[18px] pb-[calc(24px+env(safe-area-inset-bottom))]">
+        <header className="flex items-center gap-3 pb-3 pt-4">
+          <img
+            src="/connect/hajime-logo-80.png"
+            alt="Hajime"
+            width={40}
+            height={40}
+            className="block h-10 w-10 object-contain"
+          />
+          <span aria-hidden className="font-display text-[17px] font-semibold tracking-[0.34em]">
+            HAJIME
+          </span>
+          {step !== "done" ? (
+            <span
+              aria-hidden
+              className="ml-auto font-display text-[19px] font-medium tabular-nums tracking-[0.08em]"
+            >
+              {step} / 3
+            </span>
+          ) : null}
+        </header>
+        <div
+          role="progressbar"
+          aria-label="Enquiry progress"
+          aria-valuemin={1}
+          aria-valuemax={3}
+          aria-valuenow={stepNum}
+          aria-valuetext={step === "done" ? "Enquiry sent" : `Step ${step} of 3`}
+          className="mb-[22px] grid grid-cols-3 gap-1"
+        >
+          {[1, 2, 3].map((n) => (
+            <span
+              key={n}
+              className={cn(
+                "h-[3px] rounded-full transition-colors duration-[400ms]",
+                step === "done" || stepNum >= n ? "bg-[hsl(40_88%_42%)]" : "bg-[hsl(35_12%_86%)]",
               )}
-            </Button>
-          </form>
-        )}
+            />
+          ))}
+        </div>
+
+        {step === 1 ? (
+          <section aria-labelledby="connect-h1" className="flex flex-col">
+            <h1 id="connect-h1" ref={headingRef} tabIndex={-1} className={headingCls}>
+              Your business
+            </h1>
+            <p className={helperCls}>Tap the image that fits.</p>
+            <fieldset aria-describedby="connect-err-business" className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
+              <legend className={srOnlyLegend}>Business type</legend>
+              <PhotoChoice
+                type="radio"
+                name="business"
+                value={hero.id}
+                label={hero.label}
+                img={hero.img}
+                checked={choices.business === hero.id}
+                onChange={() => {
+                  setChoices((c) => ({ ...c, business: hero.id }));
+                  setErrors({});
+                }}
+                variant="hero"
+              />
+              <div className="grid grid-cols-2 gap-3 min-[360px]:grid-cols-3">
+                {smallBusiness.map((b) => (
+                  <PhotoChoice
+                    key={b.id}
+                    type="radio"
+                    name="business"
+                    value={b.id}
+                    label={b.label}
+                    img={b.img}
+                    checked={choices.business === b.id}
+                    onChange={() => {
+                      setChoices((c) => ({ ...c, business: b.id }));
+                      setErrors({});
+                    }}
+                    variant="tile"
+                    lazy
+                  />
+                ))}
+              </div>
+            </fieldset>
+            <ErrorLine id="connect-err-business" message={errors.business} />
+            <button type="button" onClick={next1} className={cn(primaryBtn, "mt-[22px]")}>
+              Continue
+              <ChevronRight className="absolute right-[18px] h-5 w-5" strokeWidth={1.75} aria-hidden />
+            </button>
+          </section>
+        ) : null}
+
+        {step === 2 ? (
+          <section aria-labelledby="connect-h2" className="flex flex-col">
+            <h1 id="connect-h2" ref={headingRef} tabIndex={-1} className={headingCls}>
+              Your interests
+            </h1>
+            <p id="connect-help-products" className={helperCls}>
+              Choose one or both.
+            </p>
+            <fieldset
+              aria-describedby="connect-help-products connect-err-products"
+              className="m-0 min-w-0 border-0 p-0"
+            >
+              <legend className={srOnlyLegend}>Expressions</legend>
+              <div className="grid grid-cols-2 gap-3">
+                {CONNECT_PRODUCTS.map((p) => (
+                  <PhotoChoice
+                    key={p.id}
+                    type="checkbox"
+                    name="products"
+                    value={p.id}
+                    label={p.name}
+                    description={p.desc}
+                    img={p.img}
+                    checked={choices.products.includes(p.id)}
+                    onChange={() => {
+                      setChoices((c) => ({ ...c, products: toggle(c.products, p.id) }));
+                      setErrors((e) => ({ ...e, products: undefined }));
+                    }}
+                    variant="product"
+                  />
+                ))}
+              </div>
+            </fieldset>
+            <p className="mb-0 mt-3 text-center text-sm tracking-[0.01em] text-[hsl(24_8%_32%)]">
+              Ready to pour. Serve chilled. Store refrigerated.
+            </p>
+            <ErrorLine id="connect-err-products" message={errors.products} />
+
+            <div className="mb-5 mt-6 h-px bg-[hsl(35_12%_89%)]" />
+
+            <fieldset
+              aria-describedby="connect-help-purposes connect-err-purposes"
+              className="m-0 min-w-0 border-0 p-0"
+            >
+              <legend className="p-0 font-display text-[27px] font-medium leading-[1.15] tracking-[-0.015em]">
+                How can we help?
+              </legend>
+              <p id="connect-help-purposes" className="mb-3.5 mt-1 text-base text-[hsl(24_8%_32%)]">
+                Choose all that apply.
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                {CONNECT_PURPOSES.map((q) => (
+                  <PhotoChoice
+                    key={q.id}
+                    type="checkbox"
+                    name="purposes"
+                    value={q.id}
+                    label={q.label}
+                    img={q.img}
+                    checked={choices.purposes.includes(q.id)}
+                    onChange={() => {
+                      setChoices((c) => ({ ...c, purposes: toggle(c.purposes, q.id) }));
+                      setErrors((e) => ({ ...e, purposes: undefined }));
+                    }}
+                    variant="tile"
+                    lazy
+                  />
+                ))}
+              </div>
+            </fieldset>
+            <ErrorLine id="connect-err-purposes" message={errors.purposes} />
+
+            <div className="mt-6 grid grid-cols-[minmax(0,1fr)_minmax(0,1.8fr)] gap-3">
+              <button type="button" onClick={() => goTo(1)} className={secondaryBtn}>
+                <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden />
+                Back
+              </button>
+              <button type="button" onClick={next2} className={primaryBtn}>
+                Continue
+                <ChevronRight className="absolute right-4 h-5 w-5" strokeWidth={1.75} aria-hidden />
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {step === 3 ? (
+          <section aria-labelledby="connect-h3" className="flex flex-col">
+            <div className="-mx-[18px] -mt-2.5 mb-5 aspect-[2.4/1] overflow-hidden bg-[hsl(24_14%_10%)]">
+              <img
+                src="/connect/banner.jpg"
+                alt="First Press and Second Bloom bottles"
+                width={876}
+                height={440}
+                className="block h-full w-full object-cover [object-position:60%_55%]"
+              />
+            </div>
+            <h1 id="connect-h3" ref={headingRef} tabIndex={-1} className={headingCls}>
+              Let’s connect
+            </h1>
+            <p className="mb-[18px] mt-1.5 text-center text-base text-[hsl(24_8%_32%)]">
+              Tell us a little about yourself.
+            </p>
+
+            <div
+              role="group"
+              aria-label="Your selections"
+              className="rounded-xl border border-[hsl(35_12%_89%)] bg-[hsl(40_20%_99%)] px-3.5 py-1.5"
+            >
+              {summaryRows.map((r, i) => (
+                <div
+                  key={r.title}
+                  className={cn(
+                    "flex flex-col gap-1.5 py-2",
+                    i < summaryRows.length - 1 && "border-b border-[hsl(35_12%_91%)]",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[hsl(24_8%_34%)]">
+                      {r.title}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={r.onEdit}
+                      aria-label={r.editLabel}
+                      className="-my-2.5 -mr-2.5 min-h-11 min-w-11 px-2.5 text-sm font-medium underline underline-offset-[3px] hover:text-[hsl(32_78%_34%)] focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-[hsl(40_88%_42%)]"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {r.chips.map((c) => (
+                      <span
+                        key={c.label}
+                        className="inline-flex items-center gap-2 rounded-full border border-[hsl(35_12%_89%)] bg-[hsl(40_18%_97%)] py-[3px] pl-[3px] pr-3 text-sm font-medium"
+                      >
+                        <span
+                          aria-hidden
+                          className="flex h-[30px] w-[30px] flex-none items-center justify-center overflow-hidden rounded-full bg-[hsl(24_10%_13%)]"
+                        >
+                          {c.img ? (
+                            <img
+                              src={c.img}
+                              alt=""
+                              width={30}
+                              height={30}
+                              className="block h-full w-full object-cover"
+                              style={{ objectPosition: c.pos }}
+                            />
+                          ) : (
+                            <span className="text-xs leading-none tracking-[1px] text-[hsl(40_20%_92%)]">•••</span>
+                          )}
+                        </span>
+                        {c.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <form noValidate onSubmit={onSubmit} className="mt-[22px] flex flex-col gap-[18px]">
+              <input
+                type="text"
+                name="fax"
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                value={fax}
+                onChange={(e) => setFax(e.target.value)}
+                className="absolute -left-[9999px] h-px w-px"
+              />
+              <TextField id="connect-name" label="Name" error={errors.name}>
+                <input
+                  ref={nameRef}
+                  id="connect-name"
+                  type="text"
+                  name="name"
+                  autoComplete="name"
+                  maxLength={100}
+                  required
+                  aria-required="true"
+                  aria-invalid={errors.name ? "true" : "false"}
+                  aria-describedby="connect-name-error"
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setErrors((x) => ({ ...x, name: undefined }));
+                  }}
+                  className={inputCls(Boolean(errors.name))}
+                />
+              </TextField>
+              <TextField id="connect-email" label="Email address" error={errors.email}>
+                <input
+                  ref={emailRef}
+                  id="connect-email"
+                  type="email"
+                  inputMode="email"
+                  name="email"
+                  autoComplete="email"
+                  maxLength={254}
+                  required
+                  aria-required="true"
+                  aria-invalid={errors.email ? "true" : "false"}
+                  aria-describedby="connect-email-error"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setErrors((x) => ({ ...x, email: undefined }));
+                  }}
+                  className={inputCls(Boolean(errors.email))}
+                />
+              </TextField>
+              <CountryPhoneField
+                ref={phoneRef}
+                country={country}
+                onCountryChange={setCountry}
+                phone={phone}
+                onPhoneChange={(v) => {
+                  setPhone(v);
+                  setErrors((x) => ({ ...x, phone: undefined }));
+                }}
+                error={errors.phone}
+              />
+
+              <p className="m-0 text-[15px] leading-normal text-[hsl(24_8%_30%)]">
+                We’ll contact you about your enquiry. See our{" "}
+                <a href="#privacy" onClick={openPrivacy} className="underline underline-offset-[3px]">
+                  Privacy Notice
+                </a>
+                .
+              </p>
+              <label className="-mt-2 flex min-h-11 cursor-pointer items-center gap-3 text-[15px]">
+                <input
+                  type="checkbox"
+                  name="marketing_opt_in"
+                  checked={optIn}
+                  onChange={(e) => setOptIn(e.target.checked)}
+                  className="m-0 h-[22px] w-[22px] flex-none accent-[hsl(24_10%_10%)]"
+                />
+                Send me Hajime news by email.
+              </label>
+
+              <div aria-live="assertive">
+                {submitError ? (
+                  <div className="flex items-start gap-2.5 rounded-[10px] border border-[hsl(0_68%_48%/0.25)] bg-[hsl(0_68%_48%/0.08)] px-3.5 py-3 text-[15px] leading-[1.45] text-[hsl(0_68%_34%)]">
+                    <AlertCircle className="mt-0.5 h-[18px] w-[18px] flex-none" strokeWidth={1.75} aria-hidden />
+                    <span>We couldn’t send your enquiry. Please try again.</span>
+                  </div>
+                ) : null}
+              </div>
+
+              <button
+                type="submit"
+                aria-disabled={submitting}
+                className={cn(primaryBtn, "-mt-1.5", submitting && "opacity-75")}
+              >
+                {submitting ? "Sending..." : "Send enquiry"}
+                <ChevronRight className="absolute right-[18px] h-5 w-5" strokeWidth={1.75} aria-hidden />
+              </button>
+              <button
+                type="button"
+                onClick={() => goTo(2)}
+                className="-mt-2 flex min-h-11 items-center gap-1.5 self-center px-4 text-base font-medium hover:text-[hsl(32_78%_34%)] focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(40_88%_42%)]"
+              >
+                <ChevronLeft className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                Back
+              </button>
+            </form>
+          </section>
+        ) : null}
+
+        {step === "done" ? (
+          <section role="status" aria-labelledby="connect-hdone" className="flex flex-col items-center pt-5 text-center">
+            <span
+              aria-hidden
+              className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-[hsl(40_88%_42%)] text-[hsl(40_88%_36%)]"
+            >
+              <Check className="h-7 w-7" strokeWidth={2} />
+            </span>
+            <h1
+              id="connect-hdone"
+              ref={headingRef}
+              tabIndex={-1}
+              className="mb-0 mt-5 font-display text-4xl font-medium leading-[1.1] tracking-[-0.02em] outline-none"
+            >
+              Thank you.
+            </h1>
+            <p className="mb-0 mt-2.5 max-w-[34ch] text-base leading-relaxed text-[hsl(24_8%_28%)]">
+              Your enquiry has been received. Our team will contact you using the details you provided.
+            </p>
+
+            <div className="mt-7 w-full overflow-hidden rounded-[14px] border border-[hsl(35_12%_89%)] bg-[hsl(40_20%_99%)] text-left">
+              <div className="flex items-baseline justify-between gap-3 border-b border-[hsl(35_12%_89%)] px-[18px] py-4">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[hsl(24_8%_34%)]">
+                  Enquiry reference
+                </span>
+                <span className="font-mono text-base font-medium tracking-[0.02em]">{leadRef}</span>
+              </div>
+              <dl className="m-0 px-[18px] pb-2.5 pt-1.5">
+                {[
+                  { title: "Business", value: bizSel?.label ?? "" },
+                  { title: "Expressions", value: prodSel.map((p) => p.name).join(", ") },
+                  { title: "How we can help", value: purpSel.map((q) => q.label).join(", ") },
+                ].map((d, i, a) => (
+                  <div
+                    key={d.title}
+                    className={cn(
+                      "grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)] gap-3 py-2.5",
+                      i < a.length - 1 && "border-b border-[hsl(35_12%_91%)]",
+                    )}
+                  >
+                    <dt className="text-sm text-[hsl(24_8%_34%)]">{d.title}</dt>
+                    <dd className="m-0 text-[15px] font-medium">{d.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+
+            <div className="mt-6 flex w-full flex-col gap-3">
+              <a href="https://drinkhajime.jp" className={cn(primaryBtn, "text-[21px] no-underline")}>
+                Visit drinkhajime.jp
+              </a>
+              <button type="button" onClick={restart} className={secondaryBtn}>
+                Start a new enquiry
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        <footer className="mt-auto flex justify-center pt-7">
+          <a
+            href="#privacy"
+            onClick={openPrivacy}
+            className="flex min-h-11 items-center px-3 text-sm text-[hsl(24_8%_30%)] underline underline-offset-[3px]"
+          >
+            Privacy Notice
+          </a>
+        </footer>
       </main>
+
+      {privacyOpen ? (
+        <>
+          <div onClick={closePrivacy} className="fixed inset-0 z-20 bg-black/50" />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="connect-privacy-title"
+            className="fixed bottom-0 left-1/2 z-[21] flex w-full max-w-[520px] -translate-x-1/2 flex-col gap-3 rounded-t-[18px] bg-[hsl(40_20%_99%)] px-5 pb-[calc(20px+env(safe-area-inset-bottom))] pt-[22px] shadow-[var(--shadow-float)]"
+          >
+            <h2
+              id="connect-privacy-title"
+              className="m-0 font-display text-[28px] font-medium tracking-[-0.015em]"
+            >
+              Privacy Notice
+            </h2>
+            <p className="m-0 text-[15px] leading-relaxed text-[hsl(24_8%_28%)]">
+              Hajime uses the details you send here to respond to your trade enquiry. News emails are sent only if you
+              tick the box. The full privacy notice will be published here.
+            </p>
+            <p className="m-0 text-sm leading-relaxed text-[hsl(24_8%_34%)]">
+              Your answers stay on this page while you read.
+            </p>
+            <button
+              type="button"
+              ref={privacyCloseRef}
+              onClick={closePrivacy}
+              className={cn(primaryBtn, "mt-1.5 font-body text-base")}
+            >
+              Return to enquiry
+            </button>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

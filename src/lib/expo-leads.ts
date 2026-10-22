@@ -1,4 +1,10 @@
 export const EXPO_BUSINESS_TYPES = [
+  { value: "restaurant", label: "Restaurant" },
+  { value: "bar", label: "Bar" },
+  { value: "hotel", label: "Hotel" },
+  { value: "retail", label: "Retail" },
+  { value: "wholesale", label: "Wholesale" },
+  { value: "importer", label: "Importer" },
   { value: "importer_distributor", label: "Importer / Distributor" },
   { value: "retailer", label: "Retailer" },
   { value: "hospitality", label: "Hotel / Restaurant / Bar" },
@@ -9,11 +15,12 @@ export const EXPO_BUSINESS_TYPES = [
 
 export const EXPO_EXPRESSIONS = [
   { value: "first_press", label: "First Press Coffee Rhum" },
-  { value: "yuzu_mint", label: "Yuzu Mint Rhum" },
+  { value: "yuzu_mint", label: "Second Bloom Yuzu Mint Rhum" },
   { value: "both", label: "Both" },
 ] as const;
 
 export const EXPO_INTERESTS = [
+  { value: "tasting", label: "Tasting" },
   { value: "distribution", label: "Distribution" },
   { value: "importing", label: "Importing" },
   { value: "retail_placement", label: "Retail placement" },
@@ -75,11 +82,11 @@ export type ExpoLead = {
   seq: number;
   displayId: string;
   fullName: string;
-  companyName: string;
-  jobTitle: string;
+  companyName: string | null;
+  jobTitle: string | null;
   businessEmail: string;
   mobile: string | null;
-  countryMarket: string;
+  countryMarket: string | null;
   companyWebsite: string | null;
   businessType: string;
   expression: string;
@@ -89,6 +96,9 @@ export type ExpoLead = {
   territory: string | null;
   timing: string | null;
   message: string | null;
+  marketingOptIn?: boolean;
+  utm?: Record<string, string> | null;
+  formVersion?: string | null;
   consentAt: string;
   submittedAt: string;
   metAt: string | null;
@@ -126,13 +136,18 @@ export function slaForScore(score: ExpoLead["score"]): string {
 export function expressionHeadline(expression: string | null | undefined): string {
   if (expression === "both") return "Both SKUs";
   if (expression === "first_press") return "First Press";
-  if (expression === "yuzu_mint") return "Yuzu Mint";
+  if (expression === "yuzu_mint") return "Second Bloom";
   return "—";
 }
 
 export function businessHeadline(businessType: string | null | undefined): string {
   if (businessType === "importer_distributor") return "Distributor";
   return labelOf(EXPO_BUSINESS_TYPES, businessType);
+}
+
+/** Leads that may be converted into an export file. */
+export function isImporterLead(businessType: string | null | undefined): boolean {
+  return businessType === "importer_distributor" || businessType === "importer";
 }
 
 export function volumeHeadline(volume: string | null | undefined): string {
@@ -161,9 +176,11 @@ export function formatExpoLeadHeadline(lead: Pick<ExpoLead, "score" | "countryMa
     lead.countryMarket,
     businessHeadline(lead.businessType),
     expressionHeadline(lead.expression),
-    volumeHeadline(lead.volume),
+    lead.volume ? volumeHeadline(lead.volume) : null,
     slaForScore(lead.score),
-  ].join(" — ");
+  ]
+    .filter(Boolean)
+    .join(" — ");
 }
 
 export function optionLabel(
