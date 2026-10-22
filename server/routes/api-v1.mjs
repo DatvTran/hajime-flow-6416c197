@@ -319,13 +319,27 @@ async function resolveEntityWrite(req, entityId) {
   return { db: getDb(), id: raw, tenantId: platformTenantId };
 }
 
+/** Address columns are jsonb: plain text like "12 Main St" must be sent as a JSON string literal. */
+function toJsonbValue(value) {
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object') return value;
+    } catch {
+      /* plain text */
+    }
+  }
+  return JSON.stringify(value);
+}
+
 function mergeContactIntoAddress(existing, contactName, contactRole) {
   let base = {};
   if (existing != null) {
     if (typeof existing === 'string') {
       try {
         const parsed = JSON.parse(existing);
-        base = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : { line: existing };
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) base = parsed;
+        else base = { line: typeof parsed === 'string' ? parsed : existing };
       } catch {
         base = { line: existing };
       }
@@ -1735,18 +1749,8 @@ router.put('/accounts/:id', requirePermission(Permission.ACCOUNTS_WRITE), async 
       return res.status(404).json({ error: 'Account not found' });
     }
 
-    if (body.billingAddress != null) {
-      updates.billing_address =
-        typeof body.billingAddress === 'string'
-          ? body.billingAddress
-          : JSON.stringify(body.billingAddress);
-    }
-    if (body.shippingAddress != null) {
-      updates.shipping_address =
-        typeof body.shippingAddress === 'string'
-          ? body.shippingAddress
-          : JSON.stringify(body.shippingAddress);
-    }
+    if (body.billingAddress != null) updates.billing_address = toJsonbValue(body.billingAddress);
+    if (body.shippingAddress != null) updates.shipping_address = toJsonbValue(body.shippingAddress);
     if (body.contactName !== undefined || body.contactRole !== undefined) {
       const existingBill = updates.billing_address ?? current.billing_address;
       updates.billing_address = mergeContactIntoAddress(
