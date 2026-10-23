@@ -23,6 +23,8 @@ type Choices = { business: string | null; products: string[]; purposes: string[]
 type Errors = Partial<Record<"business" | "products" | "purposes" | "name" | "email" | "phone", string>>;
 
 const PAGE_TITLE = "Hajime Trade Enquiries";
+/** Long enough to see the gold check before step 2 opens. */
+const AUTO_ADVANCE_MS = 300;
 
 function loadChoices(): Choices {
   try {
@@ -137,6 +139,14 @@ export default function ConnectPage() {
   const privacyCloseRef = useRef<HTMLButtonElement>(null);
   const lastFocus = useRef<HTMLElement | null>(null);
   const firstRender = useRef(true);
+  const advanceTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (advanceTimer.current) window.clearTimeout(advanceTimer.current);
+    },
+    [],
+  );
 
   const rawStep = (location.state as { connectStep?: Step } | null)?.connectStep ?? 1;
   const step: Step =
@@ -163,6 +173,8 @@ export default function ConnectPage() {
   }, [choices]);
 
   useEffect(() => {
+    if (advanceTimer.current) window.clearTimeout(advanceTimer.current);
+    advanceTimer.current = null;
     setErrors({});
     setSubmitError(false);
     if (firstRender.current) {
@@ -201,7 +213,16 @@ export default function ConnectPage() {
     lastFocus.current?.focus?.();
   }
 
+  function pickBusiness(id: string, viaPointer: boolean) {
+    setChoices((c) => ({ ...c, business: id }));
+    setErrors({});
+    if (!viaPointer) return;
+    if (advanceTimer.current) window.clearTimeout(advanceTimer.current);
+    advanceTimer.current = window.setTimeout(() => goTo(2), AUTO_ADVANCE_MS);
+  }
+
   function next1() {
+    if (advanceTimer.current) return;
     if (!choices.business) setErrors({ business: "Please choose your business type." });
     else goTo(2);
   }
@@ -349,7 +370,7 @@ export default function ConnectPage() {
             <h1 id="connect-h1" ref={headingRef} tabIndex={-1} className={headingCls}>
               Your business
             </h1>
-            <p className={helperCls}>Tap the image that fits.</p>
+            <p className={helperCls}>Tap your business to continue.</p>
             <fieldset aria-describedby="connect-err-business" className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
               <legend className={srOnlyLegend}>Business type</legend>
               <PhotoChoice
@@ -359,10 +380,8 @@ export default function ConnectPage() {
                 label={hero.label}
                 img={hero.img}
                 checked={choices.business === hero.id}
-                onChange={() => {
-                  setChoices((c) => ({ ...c, business: hero.id }));
-                  setErrors({});
-                }}
+                onChange={(viaPointer) => pickBusiness(hero.id, viaPointer)}
+                onReselect={() => pickBusiness(hero.id, true)}
                 variant="hero"
               />
               <div className="grid grid-cols-2 gap-3 min-[360px]:grid-cols-3">
@@ -375,10 +394,8 @@ export default function ConnectPage() {
                     label={b.label}
                     img={b.img}
                     checked={choices.business === b.id}
-                    onChange={() => {
-                      setChoices((c) => ({ ...c, business: b.id }));
-                      setErrors({});
-                    }}
+                    onChange={(viaPointer) => pickBusiness(b.id, viaPointer)}
+                    onReselect={() => pickBusiness(b.id, true)}
                     variant="tile"
                     lazy
                   />

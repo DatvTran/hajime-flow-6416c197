@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +13,10 @@ type PhotoChoiceProps = {
   description?: string;
   img: string | null;
   checked: boolean;
-  onChange: () => void;
+  /** `viaPointer` is false for keyboard selection (arrow keys / space). */
+  onChange: (viaPointer: boolean) => void;
+  /** Radio only: a tap on the already-selected photo. */
+  onReselect?: () => void;
   variant: Variant;
   lazy?: boolean;
 };
@@ -46,19 +50,42 @@ export function PhotoChoice({
   img,
   checked,
   onChange,
+  onReselect,
   variant,
   lazy,
 }: PhotoChoiceProps) {
+  const pointerDown = useRef(false);
   const input = (
     <input
       type={type}
       name={name}
       value={value}
       checked={checked}
-      onChange={onChange}
+      onChange={() => {
+        const viaPointer = pointerDown.current;
+        pointerDown.current = false;
+        onChange(viaPointer);
+      }}
       className="absolute m-0 h-px w-px opacity-0"
     />
   );
+  const pointerHandlers = {
+    onPointerDown: () => {
+      pointerDown.current = true;
+    },
+    onPointerCancel: () => {
+      pointerDown.current = false;
+    },
+    onClick: () => {
+      if (checked && pointerDown.current && onReselect) {
+        pointerDown.current = false;
+        onReselect();
+      }
+      window.setTimeout(() => {
+        pointerDown.current = false;
+      }, 0);
+    },
+  };
 
   if (variant === "product") {
     return (
@@ -92,6 +119,7 @@ export function PhotoChoice({
         hero ? "aspect-[16/10] bg-[hsl(24_12%_12%)]" : "aspect-square bg-[hsl(24_10%_13%)]",
         checked && selectedRing,
       )}
+      {...pointerHandlers}
     >
       {input}
       {img ? (
