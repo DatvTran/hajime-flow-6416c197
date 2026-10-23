@@ -306,11 +306,11 @@ export default function ConnectPage() {
       <main className="flex w-full max-w-[max(480px,min(640px,calc(100vw-128px)))] flex-col px-[18px] pb-[calc(24px+env(safe-area-inset-bottom))]">
         <header className="flex items-center gap-3 pb-3 pt-4">
           <img
-            src="/connect-img/hajime-logo-80.png"
+            src="/connect-img/hajime-enso.png"
             alt="Hajime"
             width={40}
             height={40}
-            className="block h-10 w-10 object-contain"
+            className="block h-10 w-10 object-contain mix-blend-multiply"
           />
           <span aria-hidden className="font-display text-[17px] font-semibold tracking-[0.34em]">
             HAJIME
