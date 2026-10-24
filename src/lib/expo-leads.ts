@@ -115,6 +115,23 @@ export type ExpoLead = {
   accountId: string | null;
 };
 
+export const LEAD_ACCOUNT_TYPES = ["retail", "bar", "restaurant", "hotel", "distributor", "lifestyle"] as const;
+
+/** Server-built defaults for the "Create account" form. */
+export type LeadAccountDraft = {
+  tradingName: string;
+  legalName: string;
+  type: (typeof LEAD_ACCOUNT_TYPES)[number];
+  contactName: string;
+  email: string;
+  phone: string;
+  country: string;
+  city: string;
+  notes: string;
+};
+
+export type ExpoLeadDetail = ExpoLead & { accountDraft?: LeadAccountDraft };
+
 export type ExpoLeadPublicSubmit = {
   displayId: string;
   submittedAt: string;

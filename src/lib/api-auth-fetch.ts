@@ -152,7 +152,10 @@ export async function apiFetch(url: string, options: RequestInit = {}): Promise<
     const error = (await response.json().catch(() => ({ error: "Unknown error" }))) as {
       error?: string;
     };
-    throw new Error(error.error || `HTTP ${response.status}`);
+    throw Object.assign(new Error(error.error || `HTTP ${response.status}`), {
+      status: response.status,
+      body: error as Record<string, unknown>,
+    });
   }
 
   return response.json();

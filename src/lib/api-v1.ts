@@ -686,10 +686,55 @@ export function getExpoLeads(params?: {
   }>;
 }
 
-export function getExpoLead(id: string): Promise<{ data: import("@/lib/expo-leads").ExpoLead }> {
+export function getExpoLead(id: string): Promise<{ data: import("@/lib/expo-leads").ExpoLeadDetail }> {
   return apiFetch(`/api/v1/expo-leads/${encodeURIComponent(id)}`) as Promise<{
-    data: import("@/lib/expo-leads").ExpoLead;
+    data: import("@/lib/expo-leads").ExpoLeadDetail;
   }>;
+}
+
+export type LeadAccountBody = Partial<import("@/lib/expo-leads").LeadAccountDraft> & {
+  salesOwner?: string;
+  linkAccountId?: string;
+  allowDuplicate?: boolean;
+};
+
+export type LeadAccountConflict =
+  | { code: "already_linked"; error: string; accountId: string }
+  | {
+      code: "possible_duplicate";
+      error: string;
+      match: { id: string; tradingName: string; email: string | null };
+    };
+
+export class LeadAccountConflictError extends Error {
+  constructor(readonly conflict: LeadAccountConflict) {
+    super(conflict.error);
+  }
+}
+
+export async function createAccountFromExpoLead(
+  id: string,
+  body: LeadAccountBody,
+): Promise<{
+  data: {
+    lead: import("@/lib/expo-leads").ExpoLead;
+    account: Record<string, unknown> & { id: string | number };
+    created: boolean;
+  };
+}> {
+  try {
+    return (await apiFetch(`/api/v1/expo-leads/${encodeURIComponent(id)}/account`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    })) as Awaited<ReturnType<typeof createAccountFromExpoLead>>;
+  } catch (e) {
+    const err = e as Error & { status?: number; body?: Record<string, unknown> };
+    const code = err.body?.code;
+    if (err.status === 409 && (code === "already_linked" || code === "possible_duplicate")) {
+      throw new LeadAccountConflictError(err.body as LeadAccountConflict);
+    }
+    throw e;
+  }
 }
 
 export function patchExpoLead(

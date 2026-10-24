@@ -6,7 +6,11 @@ import {
   validateInternalPatch,
   serializeExpoLead,
   canManageExpoLeads,
+  accountTypeForLead,
+  accountDraftFromLead,
+  validateLeadAccountBody,
 } from '../lib/expo-leads.mjs';
+import { countryFromPhone } from '../lib/dial-countries.mjs';
 
 test('normalizeEventCode defaults and sanitizes', () => {
   assert.equal(normalizeEventCode(''), 'HK26');
@@ -77,6 +81,63 @@ test('serializeExpoLead public view hides scoring', () => {
   assert.equal(pub.displayId, 'HK26-001');
   assert.equal(pub.score, undefined);
   assert.equal(pub.fullName, undefined);
+});
+
+test('accountTypeForLead maps venues to themselves and trade buyers to distributor', () => {
+  for (const t of ['restaurant', 'bar', 'hotel', 'retail']) assert.equal(accountTypeForLead(t), t);
+  for (const t of ['wholesale', 'importer', 'importer_distributor']) assert.equal(accountTypeForLead(t), 'distributor');
+  assert.equal(accountTypeForLead('retailer'), 'retail');
+  assert.equal(accountTypeForLead('other'), 'retail');
+  assert.equal(accountTypeForLead(null), 'retail');
+});
+
+test('countryFromPhone resolves dial codes and leaves +1 blank', () => {
+  assert.equal(countryFromPhone('+85291234567'), 'Hong Kong');
+  assert.equal(countryFromPhone('+447700900123'), 'United Kingdom');
+  assert.equal(countryFromPhone('+12645551234'), 'Anguilla');
+  assert.equal(countryFromPhone('+14165551234'), null);
+  assert.equal(countryFromPhone('91234567'), null);
+  assert.equal(countryFromPhone(null), null);
+});
+
+const mobileLeadRow = {
+  display_id: 'HK26-006',
+  event_code: 'HK26',
+  full_name: 'Mei',
+  company_name: null,
+  business_email: 'mei@gmail.com',
+  mobile: '+85291234567',
+  country_market: null,
+  business_type: 'importer',
+  expression: 'both',
+  interests: '["pricing","tasting"]',
+  message: null,
+};
+
+test('accountDraftFromLead fills contact details and leaves the business name to staff', () => {
+  const draft = accountDraftFromLead(mobileLeadRow);
+  assert.equal(draft.tradingName, '');
+  assert.equal(draft.type, 'distributor');
+  assert.equal(draft.contactName, 'Mei');
+  assert.equal(draft.email, 'mei@gmail.com');
+  assert.equal(draft.phone, '+85291234567');
+  assert.equal(draft.country, 'Hong Kong');
+  assert.match(draft.notes, /HK26-006/);
+  assert.match(draft.notes, /Pricing, Tasting/);
+  assert.equal(accountDraftFromLead({ ...mobileLeadRow, country_market: 'Japan' }).country, 'Japan');
+});
+
+test('validateLeadAccountBody requires a business name and falls back to lead contact details', () => {
+  assert.equal(validateLeadAccountBody({}, mobileLeadRow).ok, false);
+  assert.equal(validateLeadAccountBody({ tradingName: 'X', type: 'manufacturer' }, mobileLeadRow).ok, false);
+  assert.equal(validateLeadAccountBody({ tradingName: 'X', email: 'bad' }, mobileLeadRow).ok, false);
+  const parsed = validateLeadAccountBody({ tradingName: ' Mei Trading ' }, mobileLeadRow);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.data.tradingName, 'Mei Trading');
+  assert.equal(parsed.data.legalName, 'Mei Trading');
+  assert.equal(parsed.data.type, 'distributor');
+  assert.equal(parsed.data.email, 'mei@gmail.com');
+  assert.equal(validateLeadAccountBody({ tradingName: 'X', email: '' }, mobileLeadRow).data.email, '');
 });
 
 test('canManageExpoLeads is HQ and operations only', () => {

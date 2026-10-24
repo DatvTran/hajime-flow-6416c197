@@ -102,6 +102,8 @@ import {
   serializeExpoLead,
   validateBuyerPayload,
   validateInternalPatch,
+  accountDraftFromLead,
+  validateLeadAccountBody,
 } from '../lib/expo-leads.mjs';
 import { sendTradePackEmail, clientBaseUrl } from '../services/export-notify.mjs';
 import { canManageExportOrders } from '../lib/export-orders.mjs';
@@ -422,7 +424,7 @@ router.get('/expo-leads/:id', async (req, res) => {
       })
       .first();
     if (!row) return res.status(404).json({ error: 'Lead not found' });
-    res.json({ data: serializeExpoLead(row) });
+    res.json({ data: { ...serializeExpoLead(row), accountDraft: accountDraftFromLead(row) } });
   } catch (err) {
     console.error('[API v1] expo-leads get:', err);
     res.status(500).json({ error: 'Failed to load lead' });
@@ -464,6 +466,121 @@ router.patch('/expo-leads/:id', async (req, res) => {
   } catch (err) {
     console.error('[API v1] expo-leads patch:', err);
     res.status(500).json({ error: 'Failed to update lead' });
+  }
+});
+
+class LeadAccountConflict extends Error {
+  constructor(body) {
+    super(body.error);
+    this.body = body;
+  }
+}
+
+/** Create (or link) the CRM account for an expo lead and mark the lead converted, atomically. */
+router.post('/expo-leads/:id/account', async (req, res) => {
+  try {
+    if (!canManageExpoLeads(req.user?.role) || !hasPermission(req.user?.role, Permission.ACCOUNTS_WRITE)) {
+      return res.status(403).json({ error: 'You do not have permission to create accounts.' });
+    }
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = platformDb;
+    if (!(await db.schema.hasColumn('expo_leads', 'account_id'))) {
+      return res.status(503).json({ error: 'Lead to account is not ready yet (run migration 057).' });
+    }
+    const id = String(req.params.id);
+    const body = req.body ?? {};
+    const linkAccountId = body.linkAccountId != null && body.linkAccountId !== '' ? String(body.linkAccountId) : null;
+    if (linkAccountId && !/^\d+$/.test(linkAccountId)) {
+      return res.status(400).json({ error: 'Invalid account to link.' });
+    }
+
+    const result = await db.transaction(async (trx) => {
+      const lead = await trx('expo_leads')
+        .where({ tenant_id: tenantId })
+        .andWhere((qb) => {
+          qb.where({ display_id: id });
+          if (/^\d+$/.test(id)) qb.orWhere({ id: Number(id) });
+        })
+        .forUpdate()
+        .first();
+      if (!lead) return { status: 404, body: { error: 'Lead not found' } };
+
+      const liveAccount = (accountId) =>
+        trx('accounts').where({ id: accountId, tenant_id: tenantId }).whereNull('deleted_at').first();
+
+      if (lead.account_id != null && (await liveAccount(lead.account_id))) {
+        throw new LeadAccountConflict({
+          error: 'This lead already has an account.',
+          code: 'already_linked',
+          accountId: String(lead.account_id),
+        });
+      }
+
+      let account;
+      let created = false;
+      if (linkAccountId) {
+        account = await liveAccount(linkAccountId);
+        if (!account) return { status: 404, body: { error: 'That account no longer exists.' } };
+      } else {
+        const parsed = validateLeadAccountBody(body, lead);
+        if (!parsed.ok) return { status: 400, body: { error: parsed.error } };
+        const a = parsed.data;
+
+        if (body.allowDuplicate !== true) {
+          const match = await trx('accounts')
+            .where({ tenant_id: tenantId })
+            .whereNull('deleted_at')
+            .andWhere((qb) => {
+              if (a.email) qb.orWhereRaw('lower(email) = ?', [a.email]);
+              qb.orWhereRaw('lower(coalesce(trading_name, name)) = ?', [a.tradingName.toLowerCase()]);
+            })
+            .orderBy('id', 'asc')
+            .first('id', 'name', 'trading_name', 'email');
+          if (match) {
+            throw new LeadAccountConflict({
+              error: 'An account with this email or business name already exists.',
+              code: 'possible_duplicate',
+              match: {
+                id: String(match.id),
+                tradingName: match.trading_name || match.name,
+                email: match.email || null,
+              },
+            });
+          }
+        }
+
+        [account] = await trx('accounts')
+          .insert({
+            tenant_id: tenantId,
+            name: a.legalName,
+            trading_name: a.tradingName,
+            type: a.type,
+            market: [a.city, a.country].filter(Boolean).join(', ') || '—',
+            status: 'prospect',
+            email: a.email || null,
+            phone: a.phone || null,
+            billing_address: JSON.stringify({ contactName: a.contactName }),
+            sales_owner: a.salesOwner,
+            notes: a.notes || null,
+            portal_login_email: null,
+          })
+          .returning('*');
+        created = true;
+      }
+
+      const patch = { status: 'converted', account_id: account.id, updated_at: new Date() };
+      if (!lead.staff_user_id && req.user?.userId) patch.staff_user_id = req.user.userId;
+      await trx('expo_leads').where({ id: lead.id, tenant_id: tenantId }).update(patch);
+      const row = await expoLeadListQuery(trx, tenantId).where('e.id', lead.id).first();
+      return { status: created ? 201 : 200, body: { data: { lead: serializeExpoLead(row), account, created } } };
+    });
+
+    res.status(result.status).json(result.body);
+  } catch (err) {
+    if (err instanceof LeadAccountConflict) return res.status(409).json(err.body);
+    console.error('[API v1] expo-lead to account:', err);
+    res.status(500).json({ error: 'Could not create account' });
   }
 });
 

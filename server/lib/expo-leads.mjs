@@ -1,3 +1,5 @@
+import { countryFromPhone } from './dial-countries.mjs';
+
 const DEFAULT_EVENT = 'HK26';
 
 export const BUSINESS_TYPES = [
@@ -363,6 +365,81 @@ export async function insertExpoLead(db, tenantId, buyer) {
     const [row] = await trx('expo_leads').insert(payload).returning('*');
     return row;
   });
+}
+
+export const LEAD_ACCOUNT_TYPES = ['retail', 'bar', 'restaurant', 'hotel', 'distributor', 'lifestyle'];
+
+const DISTRIBUTOR_BUSINESS_TYPES = new Set(['wholesale', 'importer', 'importer_distributor']);
+
+export function accountTypeForLead(businessType) {
+  const t = String(businessType ?? '');
+  if (['restaurant', 'bar', 'hotel', 'retail'].includes(t)) return t;
+  if (t === 'retailer') return 'retail';
+  if (DISTRIBUTOR_BUSINESS_TYPES.has(t)) return 'distributor';
+  return 'retail';
+}
+
+const EXPRESSION_NOTES = {
+  first_press: 'First Press Coffee Rhum',
+  yuzu_mint: 'Second Bloom Yuzu Mint Rhum',
+  both: 'First Press Coffee Rhum, Second Bloom Yuzu Mint Rhum',
+};
+
+function humanize(key) {
+  const s = String(key).replace(/_/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Default values for the "Create account" form, from an expo_leads row. */
+export function accountDraftFromLead(row) {
+  const interests = parseJsonb(row.interests).map(humanize);
+  const notes = [
+    `From expo lead ${row.display_id} (${row.event_code}).`,
+    row.expression && EXPRESSION_NOTES[row.expression] ? `Interested in: ${EXPRESSION_NOTES[row.expression]}.` : '',
+    interests.length ? `Asked about: ${interests.join(', ')}.` : '',
+    row.message ? `Buyer notes: ${row.message}` : '',
+  ].filter(Boolean);
+  return {
+    tradingName: row.company_name || '',
+    legalName: row.company_name || '',
+    type: accountTypeForLead(row.business_type),
+    contactName: row.full_name || '',
+    email: row.business_email || '',
+    phone: row.mobile || '',
+    country: row.country_market || countryFromPhone(row.mobile) || '',
+    city: '',
+    notes: notes.join('\n'),
+  };
+}
+
+/** Validates the "Create account" body; missing contact fields fall back to the lead. */
+export function validateLeadAccountBody(body, row) {
+  const draft = accountDraftFromLead(row);
+  const pick = (key, max) => {
+    if (!Object.prototype.hasOwnProperty.call(body ?? {}, key)) return trimStr(draft[key], max);
+    return trimStr(body[key], max);
+  };
+  const tradingName = trimStr(body?.tradingName, 255);
+  if (!tradingName) return { ok: false, error: 'Please enter the business name.' };
+  const type = trimStr(body?.type, 50) || draft.type;
+  if (!LEAD_ACCOUNT_TYPES.includes(type)) return { ok: false, error: 'Please choose a valid account type.' };
+  const email = pick('email', 255).toLowerCase();
+  if (email && !isEmail(email)) return { ok: false, error: 'Please enter a valid email address.' };
+  return {
+    ok: true,
+    data: {
+      tradingName,
+      legalName: trimStr(body?.legalName, 255) || tradingName,
+      type,
+      contactName: pick('contactName', 255),
+      email,
+      phone: pick('phone', 50),
+      country: pick('country', 100),
+      city: pick('city', 100),
+      salesOwner: trimStr(body?.salesOwner, 255) || null,
+      notes: pick('notes', 4000),
+    },
+  };
 }
 
 export function expoLeadListQuery(db, tenantId) {

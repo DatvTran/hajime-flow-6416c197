@@ -558,6 +558,88 @@ function parsePartnerConfigsFromOperationalSettings(
   }
 }
 
+/** Server `accounts` row -> client `Account` (same mapping as the app data load). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function mapServerAccountRow(a: any) {
+  // Convert address objects to strings if needed
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const formatAddress = (addr: any): string | undefined => {
+    if (!addr) return undefined;
+    if (typeof addr === "string") return addr;
+    if (typeof addr === "object") {
+      const parts = [addr.street, addr.city, addr.province, addr.postal, addr.line].filter(Boolean);
+      return parts.join(", ") || undefined;
+    }
+    return String(addr);
+  };
+
+  const bill = a.billing_address;
+  const billObj =
+    bill && typeof bill === "object" && !Array.isArray(bill)
+      ? (bill as Record<string, unknown>)
+      : typeof bill === "string"
+        ? (() => {
+            try {
+              return JSON.parse(bill) as Record<string, unknown>;
+            } catch {
+              return {};
+            }
+          })()
+        : {};
+  const marketStr = String(a.market ?? "");
+  const marketParts = marketStr.split(",").map((s: string) => s.trim()).filter(Boolean);
+  const city =
+    String(a.city ?? "").trim() ||
+    (marketParts.length >= 1 ? marketParts[0] : "");
+  const country =
+    String(a.country ?? "").trim() ||
+    (marketParts.length >= 2 ? marketParts.slice(1).join(", ") : "Canada");
+  
+  return {
+    id: a.id,
+    accountNumber: a.account_number,
+    name: a.name,
+    legalName: a.legal_name || a.name,
+    tradingName: a.trading_name || a.name,
+    type: a.type || "retail",
+    market: a.market,
+    status: a.status || "active",
+    email: a.email || "",
+    phone: a.phone || "",
+    city,
+    country: country || "Canada",
+    contactName: String(billObj.contactName ?? a.contact_name ?? ""),
+    contactRole: String(billObj.contactRole ?? a.contact_role ?? ""),
+    billingAddress: formatAddress(a.billing_address),
+    shippingAddress: formatAddress(a.shipping_address),
+    deliveryAddress: formatAddress(a.shipping_address),
+    paymentTerms: a.payment_terms || "Net 30",
+    creditLimit: a.credit_limit,
+    notes: a.notes,
+    salesOwner: a.sales_owner || "Unassigned",
+    ...(a.managed_by_distributor_user_id != null
+      ? { managedByDistributorUserId: String(a.managed_by_distributor_user_id) }
+      : {}),
+    ...(a.assigned_sales_rep_id != null
+      ? { assignedSalesRepUserId: String(a.assigned_sales_rep_id) }
+      : {}),
+    ...(a.distributor_org_id != null
+      ? {
+          distributorOrgId: String(a.distributor_org_id),
+          distributorOrgName:
+            a.distributor_org_name != null ? String(a.distributor_org_name) : undefined,
+        }
+      : {}),
+    ...(a.portal_login_email != null && String(a.portal_login_email).trim() !== ""
+      ? { portalLoginEmail: String(a.portal_login_email) }
+      : {}),
+    tags: a.tags || [],
+    avgOrderSize: a.avg_order_size || 0,
+    firstOrderDate: a.first_order_date || new Date().toISOString(),
+    lastOrderDate: a.last_order_date || new Date().toISOString(),
+  };
+}
+
 function transformToAppData(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   products: any[],
@@ -611,85 +693,7 @@ function transformToAppData(
         imageUrl: p.metadata?.imageUrl || p.metadata?.image,
         minOrderCases: Number(p.metadata?.minOrderCases ?? 1),
       })),
-      accounts: (accounts || []).map(a => {
-        // Convert address objects to strings if needed
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const formatAddress = (addr: any): string | undefined => {
-          if (!addr) return undefined;
-          if (typeof addr === "string") return addr;
-          if (typeof addr === "object") {
-            const parts = [addr.street, addr.city, addr.province, addr.postal, addr.line].filter(Boolean);
-            return parts.join(", ") || undefined;
-          }
-          return String(addr);
-        };
-
-        const bill = a.billing_address;
-        const billObj =
-          bill && typeof bill === "object" && !Array.isArray(bill)
-            ? (bill as Record<string, unknown>)
-            : typeof bill === "string"
-              ? (() => {
-                  try {
-                    return JSON.parse(bill) as Record<string, unknown>;
-                  } catch {
-                    return {};
-                  }
-                })()
-              : {};
-        const marketStr = String(a.market ?? "");
-        const marketParts = marketStr.split(",").map((s: string) => s.trim()).filter(Boolean);
-        const city =
-          String(a.city ?? "").trim() ||
-          (marketParts.length >= 1 ? marketParts[0] : "");
-        const country =
-          String(a.country ?? "").trim() ||
-          (marketParts.length >= 2 ? marketParts.slice(1).join(", ") : "Canada");
-        
-        return {
-          id: a.id,
-          accountNumber: a.account_number,
-          name: a.name,
-          legalName: a.legal_name || a.name,
-          tradingName: a.trading_name || a.name,
-          type: a.type || "retail",
-          market: a.market,
-          status: a.status || "active",
-          email: a.email || "",
-          phone: a.phone || "",
-          city,
-          country: country || "Canada",
-          contactName: String(billObj.contactName ?? a.contact_name ?? ""),
-          contactRole: String(billObj.contactRole ?? a.contact_role ?? ""),
-          billingAddress: formatAddress(a.billing_address),
-          shippingAddress: formatAddress(a.shipping_address),
-          deliveryAddress: formatAddress(a.shipping_address),
-          paymentTerms: a.payment_terms || "Net 30",
-          creditLimit: a.credit_limit,
-          notes: a.notes,
-          salesOwner: a.sales_owner || "Unassigned",
-          ...(a.managed_by_distributor_user_id != null
-            ? { managedByDistributorUserId: String(a.managed_by_distributor_user_id) }
-            : {}),
-          ...(a.assigned_sales_rep_id != null
-            ? { assignedSalesRepUserId: String(a.assigned_sales_rep_id) }
-            : {}),
-          ...(a.distributor_org_id != null
-            ? {
-                distributorOrgId: String(a.distributor_org_id),
-                distributorOrgName:
-                  a.distributor_org_name != null ? String(a.distributor_org_name) : undefined,
-              }
-            : {}),
-          ...(a.portal_login_email != null && String(a.portal_login_email).trim() !== ""
-            ? { portalLoginEmail: String(a.portal_login_email) }
-            : {}),
-          tags: a.tags || [],
-          avgOrderSize: a.avg_order_size || 0,
-          firstOrderDate: a.first_order_date || new Date().toISOString(),
-          lastOrderDate: a.last_order_date || new Date().toISOString(),
-        };
-      }),
+      accounts: (accounts || []).map(mapServerAccountRow),
       salesOrders: mapApiOrdersToSalesOrders(
         (orders || []) as Record<string, unknown>[],
         (accounts || []).map((a) => ({

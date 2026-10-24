@@ -11,7 +11,13 @@ import {
   optionLabel,
   slaForScore,
   type ExpoLead,
+  type ExpoLeadDetail,
 } from "@/lib/expo-leads";
+import { ConvertLeadDialog } from "@/components/expo/ConvertLeadDialog";
+import { useAppData } from "@/contexts/AppDataContext";
+import { mapServerAccountRow } from "@/lib/data-service";
+import { isOnPremiseAccountType } from "@/lib/hq-order-scope";
+import type { Account } from "@/data/mockData";
 import {
   HqOperatorPage,
   HqOperatorPageHeader,
@@ -176,7 +182,12 @@ function HqExpoLeadList() {
                   <td className="px-3 py-2.5">{row.countryMarket || "—"}</td>
                   <td className="px-3 py-2.5">{optionLabel("business", row.businessType)}</td>
                   <td className="px-3 py-2.5">{optionLabel("volume", row.volume)}</td>
-                  <td className="px-3 py-2.5">{optionLabel("status", row.status)}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {optionLabel("status", row.status)}
+                      {row.accountId ? <HqOperatorPill tone="green">Account</HqOperatorPill> : null}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -190,9 +201,11 @@ function HqExpoLeadList() {
 function HqExpoLeadDetail({ leadId }: { leadId: string }) {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [lead, setLead] = useState<ExpoLead | null>(null);
+  const { data: appData, updateData } = useAppData();
+  const [lead, setLead] = useState<ExpoLeadDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [convertOpen, setConvertOpen] = useState(false);
 
   const reload = useCallback(async () => {
     const res = await getExpoLead(leadId);
@@ -202,6 +215,12 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
   useEffect(() => {
     void reload().catch((e) => setError(e instanceof Error ? e.message : "Not found"));
   }, [reload]);
+
+  function accountHref(accountId: string) {
+    const acct = appData.accounts.find((a) => String(a.id) === accountId);
+    const view = acct && isOnPremiseAccountType(acct.type) ? "view=retail&" : "";
+    return `/accounts?${view}account=${encodeURIComponent(accountId)}`;
+  }
 
   async function save(partial: Record<string, unknown>) {
     if (!lead) return;
@@ -213,7 +232,7 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
         staffUserId: user?.id,
         ...partial,
       });
-      setLead(res.data);
+      setLead((prev) => ({ ...res.data, accountDraft: prev?.accountDraft }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -250,10 +269,20 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
         description={formatExpoLeadHeadline(lead)}
         rawDescription
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {lead.accountId ? (
+              <Button type="button" size="sm" asChild>
+                <Link to={accountHref(lead.accountId)}>View account</Link>
+              </Button>
+            ) : (
+              <Button type="button" size="sm" disabled={saving} onClick={() => setConvertOpen(true)}>
+                Create account
+              </Button>
+            )}
             <Button
               type="button"
               size="sm"
+              variant="outline"
               disabled={saving || !isImporterLead(lead.businessType)}
               onClick={async () => {
                 if (!lead) return;
@@ -292,9 +321,31 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
 
       {!isImporterLead(lead.businessType) ? (
         <p className="mb-4 text-[13px] text-muted-foreground">
-          This contact is not an importer/distributor. Send materials and close — do not convert to an export file.
+          This contact is not an importer/distributor. Do not open an export file; create an account instead.
         </p>
       ) : null}
+
+      <ConvertLeadDialog
+        open={convertOpen}
+        onOpenChange={setConvertOpen}
+        lead={lead}
+        onAlreadyLinked={() => {
+          toast.message("This lead already has an account");
+          void reload().catch(() => undefined);
+        }}
+        onConverted={({ lead: updated, account, created }) => {
+          setLead((prev) => ({ ...updated, accountDraft: prev?.accountDraft }));
+          const mapped = mapServerAccountRow(account) as Account;
+          updateData((d) =>
+            d.accounts.some((a) => String(a.id) === String(mapped.id))
+              ? d
+              : { ...d, accounts: [...d.accounts, mapped] },
+          );
+          toast.success(created ? "Account created" : "Lead linked to account", {
+            description: `${mapped.tradingName}. No portal invite was sent.`,
+          });
+        }}
+      />
 
       {error ? (
         <Alert variant="destructive" className="mb-4">
