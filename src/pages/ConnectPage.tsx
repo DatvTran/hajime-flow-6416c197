@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertCircle, Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertCircle, Check, ChevronLeft, ChevronRight, MessageCircle } from "lucide-react";
 import { CountryPhoneField } from "@/components/connect/CountryPhoneField";
 import { PhotoChoice } from "@/components/connect/PhotoChoice";
 import { CONNECT_COUNTRIES, DEFAULT_CONNECT_COUNTRY } from "@/lib/connect-countries";
@@ -23,6 +23,8 @@ type Choices = { business: string | null; products: string[]; purposes: string[]
 type Errors = Partial<Record<"business" | "products" | "purposes" | "name" | "email" | "phone", string>>;
 
 const PAGE_TITLE = "Hajime Trade Enquiries";
+/** Contact link from the Drink Hajime WhatsApp QR; breaks if the QR is reset in WhatsApp. */
+const WHATSAPP_URL = "https://wa.me/qr/DIXQDR63EM7TF1";
 /** Long enough to see the gold check before step 2 opens. */
 const AUTO_ADVANCE_MS = 300;
 
@@ -729,7 +731,16 @@ export default function ConnectPage() {
             </div>
 
             <div className="mt-6 flex w-full flex-col gap-3">
-              <a href="https://drinkhajime.jp" className={cn(primaryBtn, "text-[21px] no-underline")}>
+              <a
+                href={WHATSAPP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(primaryBtn, "gap-2.5 text-[21px] no-underline")}
+              >
+                <MessageCircle aria-hidden className="h-5 w-5" strokeWidth={1.75} />
+                Message us on WhatsApp
+              </a>
+              <a href="https://drinkhajime.jp" className={cn(secondaryBtn, "text-[hsl(24_10%_10%)] no-underline")}>
                 Visit drinkhajime.jp
               </a>
               <button type="button" onClick={restart} className={secondaryBtn}>
