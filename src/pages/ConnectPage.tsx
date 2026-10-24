@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { AlertCircle, Check, ChevronLeft, ChevronRight, MessageCircle } from "lucide-react";
+import { ChoiceChip } from "@/components/connect/ChoiceChip";
 import { CountryPhoneField } from "@/components/connect/CountryPhoneField";
-import { PhotoChoice } from "@/components/connect/PhotoChoice";
+import { ProductCard } from "@/components/connect/ProductCard";
 import { CONNECT_COUNTRIES, DEFAULT_CONNECT_COUNTRY } from "@/lib/connect-countries";
 import {
   CONNECT_BUSINESS,
@@ -25,8 +26,6 @@ type Errors = Partial<Record<"business" | "products" | "purposes" | "name" | "em
 const PAGE_TITLE = "Hajime Trade Enquiries";
 /** Contact link from the Drink Hajime WhatsApp QR; breaks if the QR is reset in WhatsApp. */
 const WHATSAPP_URL = "https://wa.me/qr/DIXQDR63EM7TF1";
-/** Long enough to see the gold check before step 2 opens. */
-const AUTO_ADVANCE_MS = 300;
 
 function loadChoices(): Choices {
   try {
@@ -58,6 +57,7 @@ const headingCls =
   "m-0 text-center font-display text-[34px] font-medium leading-[1.1] tracking-[-0.02em] outline-none";
 const helperCls = "mb-5 mt-1.5 text-center text-base text-[hsl(24_8%_32%)]";
 const srOnlyLegend = "sr-only";
+const sectionLegendCls = "mb-2.5 p-0 text-[17px] font-semibold";
 
 function ErrorLine({ id, message }: { id: string; message?: string }) {
   return (
@@ -141,22 +141,18 @@ export default function ConnectPage() {
   const privacyCloseRef = useRef<HTMLButtonElement>(null);
   const lastFocus = useRef<HTMLElement | null>(null);
   const firstRender = useRef(true);
-  const advanceTimer = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (advanceTimer.current) window.clearTimeout(advanceTimer.current);
-    },
-    [],
-  );
 
   const rawStep = (location.state as { connectStep?: Step } | null)?.connectStep ?? 1;
   const step: Step =
-    rawStep === "done" && !leadRef
-      ? 1
-      : rawStep !== 1 && rawStep !== "done" && !choices.business
+    rawStep === "done"
+      ? leadRef
+        ? "done"
+        : 1
+      : rawStep !== 1 && !choices.products.length
         ? 1
-        : rawStep;
+        : rawStep === 3 && (!choices.business || !choices.purposes.length)
+          ? 2
+          : rawStep;
 
   useEffect(() => {
     const prev = document.title;
@@ -175,8 +171,6 @@ export default function ConnectPage() {
   }, [choices]);
 
   useEffect(() => {
-    if (advanceTimer.current) window.clearTimeout(advanceTimer.current);
-    advanceTimer.current = null;
     setErrors({});
     setSubmitError(false);
     if (firstRender.current) {
@@ -215,25 +209,16 @@ export default function ConnectPage() {
     lastFocus.current?.focus?.();
   }
 
-  function pickBusiness(id: string, viaPointer: boolean) {
-    setChoices((c) => ({ ...c, business: id }));
-    setErrors({});
-    if (!viaPointer) return;
-    if (advanceTimer.current) window.clearTimeout(advanceTimer.current);
-    advanceTimer.current = window.setTimeout(() => goTo(2), AUTO_ADVANCE_MS);
-  }
-
   function next1() {
-    if (advanceTimer.current) return;
-    if (!choices.business) setErrors({ business: "Please choose your business type." });
+    if (!choices.products.length) setErrors({ products: "Please choose at least one beverage." });
     else goTo(2);
   }
 
   function next2() {
     const e: Errors = {};
-    if (!choices.products.length) e.products = "Please choose at least one expression.";
+    if (!choices.business) e.business = "Please choose your business type.";
     if (!choices.purposes.length) e.purposes = "Please choose how we can help.";
-    if (e.products || e.purposes) setErrors(e);
+    if (e.business || e.purposes) setErrors(e);
     else goTo(3);
   }
 
@@ -302,27 +287,26 @@ export default function ConnectPage() {
 
   const summaryRows = [
     {
-      title: "Business",
-      editLabel: "Edit business type",
+      title: "Beverage",
+      editLabel: "Edit beverage",
       onEdit: () => goTo(1),
-      chips: bizSel ? [{ label: bizSel.label, img: bizSel.img, pos: "center" }] : [],
+      value: prodSel.map((p) => p.name).join(", "),
     },
     {
-      title: "Expressions",
-      editLabel: "Edit expressions",
+      title: "Business",
+      editLabel: "Edit business type",
       onEdit: () => goTo(2),
-      chips: prodSel.map((p) => ({ label: p.name, img: p.img as string | null, pos: "50% 45%" })),
+      value: bizSel?.label ?? "",
     },
     {
       title: "How we can help",
       editLabel: "Edit enquiry purpose",
       onEdit: () => goTo(2),
-      chips: purpSel.map((q) => ({ label: q.label, img: q.img, pos: "center" })),
+      value: purpSel.map((q) => q.label).join(", "),
     },
   ];
 
   const stepNum = step === "done" ? 3 : step;
-  const [hero, ...smallBusiness] = CONNECT_BUSINESS;
 
   return (
     <div className="flex min-h-screen justify-center bg-[hsl(40_18%_97%)] font-body text-[hsl(24_10%_10%)] antialiased [-webkit-tap-highlight-color:transparent]">
@@ -370,42 +354,38 @@ export default function ConnectPage() {
         {step === 1 ? (
           <section aria-labelledby="connect-h1" className="flex flex-col">
             <h1 id="connect-h1" ref={headingRef} tabIndex={-1} className={headingCls}>
-              Your business
+              Pick your beverage
             </h1>
-            <p className={helperCls}>Tap your business to continue.</p>
-            <fieldset aria-describedby="connect-err-business" className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
-              <legend className={srOnlyLegend}>Business type</legend>
-              <PhotoChoice
-                type="radio"
-                name="business"
-                value={hero.id}
-                label={hero.label}
-                img={hero.img}
-                checked={choices.business === hero.id}
-                onChange={(viaPointer) => pickBusiness(hero.id, viaPointer)}
-                onReselect={() => pickBusiness(hero.id, true)}
-                variant="hero"
-              />
-              <div className="grid grid-cols-2 gap-3 min-[360px]:grid-cols-3">
-                {smallBusiness.map((b) => (
-                  <PhotoChoice
-                    key={b.id}
-                    type="radio"
-                    name="business"
-                    value={b.id}
-                    label={b.label}
-                    img={b.img}
-                    checked={choices.business === b.id}
-                    onChange={(viaPointer) => pickBusiness(b.id, viaPointer)}
-                    onReselect={() => pickBusiness(b.id, true)}
-                    variant="tile"
-                    lazy
+            <p id="connect-help-products" className={helperCls}>
+              Choose one or both.
+            </p>
+            <fieldset
+              aria-describedby="connect-help-products connect-err-products"
+              className="m-0 min-w-0 border-0 p-0"
+            >
+              <legend className={srOnlyLegend}>Beverage</legend>
+              <div className="grid grid-cols-2 gap-3">
+                {CONNECT_PRODUCTS.map((p) => (
+                  <ProductCard
+                    key={p.id}
+                    value={p.id}
+                    name={p.name}
+                    description={p.desc}
+                    img={p.img}
+                    checked={choices.products.includes(p.id)}
+                    onChange={() => {
+                      setChoices((c) => ({ ...c, products: toggle(c.products, p.id) }));
+                      setErrors({});
+                    }}
                   />
                 ))}
               </div>
             </fieldset>
-            <ErrorLine id="connect-err-business" message={errors.business} />
-            <button type="button" onClick={next1} className={cn(primaryBtn, "mt-[22px]")}>
+            <p className="mb-0 mt-3 text-center text-sm text-[hsl(24_8%_32%)]">
+              Ready to pour. Serve chilled. Store refrigerated.
+            </p>
+            <ErrorLine id="connect-err-products" message={errors.products} />
+            <button type="button" onClick={next1} className={cn(primaryBtn, "mt-5")}>
               Continue
               <ChevronRight className="absolute right-[18px] h-5 w-5" strokeWidth={1.75} aria-hidden />
             </button>
@@ -415,69 +395,54 @@ export default function ConnectPage() {
         {step === 2 ? (
           <section aria-labelledby="connect-h2" className="flex flex-col">
             <h1 id="connect-h2" ref={headingRef} tabIndex={-1} className={headingCls}>
-              Your interests
+              Refine your list
             </h1>
-            <p id="connect-help-products" className={helperCls}>
-              Choose one or both.
-            </p>
-            <fieldset
-              aria-describedby="connect-help-products connect-err-products"
-              className="m-0 min-w-0 border-0 p-0"
-            >
-              <legend className={srOnlyLegend}>Expressions</legend>
-              <div className="grid grid-cols-2 gap-3">
-                {CONNECT_PRODUCTS.map((p) => (
-                  <PhotoChoice
-                    key={p.id}
-                    type="checkbox"
-                    name="products"
-                    value={p.id}
-                    label={p.name}
-                    description={p.desc}
-                    img={p.img}
-                    checked={choices.products.includes(p.id)}
+            <p className={helperCls}>Two quick questions.</p>
+
+            <fieldset aria-describedby="connect-err-business" className="m-0 min-w-0 border-0 p-0">
+              <legend className={sectionLegendCls}>Your business</legend>
+              <div className="grid grid-cols-3 gap-2">
+                {CONNECT_BUSINESS.map((b) => (
+                  <ChoiceChip
+                    key={b.id}
+                    type="radio"
+                    name="business"
+                    value={b.id}
+                    label={b.label}
+                    checked={choices.business === b.id}
                     onChange={() => {
-                      setChoices((c) => ({ ...c, products: toggle(c.products, p.id) }));
-                      setErrors((e) => ({ ...e, products: undefined }));
+                      setChoices((c) => ({ ...c, business: b.id }));
+                      setErrors((e) => ({ ...e, business: undefined }));
                     }}
-                    variant="product"
                   />
                 ))}
               </div>
             </fieldset>
-            <p className="mb-0 mt-3 text-center text-sm tracking-[0.01em] text-[hsl(24_8%_32%)]">
-              Ready to pour. Serve chilled. Store refrigerated.
-            </p>
-            <ErrorLine id="connect-err-products" message={errors.products} />
-
-            <div className="mb-5 mt-6 h-px bg-[hsl(35_12%_89%)]" />
+            <ErrorLine id="connect-err-business" message={errors.business} />
 
             <fieldset
               aria-describedby="connect-help-purposes connect-err-purposes"
-              className="m-0 min-w-0 border-0 p-0"
+              className="m-0 mt-6 min-w-0 border-0 p-0"
             >
-              <legend className="p-0 font-display text-[27px] font-medium leading-[1.15] tracking-[-0.015em]">
-                How can we help?
+              <legend className={sectionLegendCls}>
+                How can we help?{" "}
+                <span id="connect-help-purposes" className="whitespace-nowrap text-sm font-normal text-[hsl(24_8%_32%)]">
+                  Choose all that apply.
+                </span>
               </legend>
-              <p id="connect-help-purposes" className="mb-3.5 mt-1 text-base text-[hsl(24_8%_32%)]">
-                Choose all that apply.
-              </p>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-2">
                 {CONNECT_PURPOSES.map((q) => (
-                  <PhotoChoice
+                  <ChoiceChip
                     key={q.id}
                     type="checkbox"
                     name="purposes"
                     value={q.id}
                     label={q.label}
-                    img={q.img}
                     checked={choices.purposes.includes(q.id)}
                     onChange={() => {
                       setChoices((c) => ({ ...c, purposes: toggle(c.purposes, q.id) }));
                       setErrors((e) => ({ ...e, purposes: undefined }));
                     }}
-                    variant="tile"
-                    lazy
                   />
                 ))}
               </div>
@@ -499,15 +464,6 @@ export default function ConnectPage() {
 
         {step === 3 ? (
           <section aria-labelledby="connect-h3" className="flex flex-col">
-            <div className="-mx-[18px] -mt-2.5 mb-5 aspect-[2.4/1] overflow-hidden bg-[hsl(24_14%_10%)]">
-              <img
-                src="/connect-img/banner.jpg"
-                alt="First Press and Second Bloom bottles"
-                width={876}
-                height={440}
-                className="block h-full w-full object-cover [object-position:60%_55%]"
-              />
-            </div>
             <h1 id="connect-h3" ref={headingRef} tabIndex={-1} className={headingCls}>
               Let’s connect
             </h1>
@@ -524,50 +480,20 @@ export default function ConnectPage() {
                 <div
                   key={r.title}
                   className={cn(
-                    "flex flex-col gap-1.5 py-2",
+                    "grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)_auto] items-center gap-3 py-1",
                     i < summaryRows.length - 1 && "border-b border-[hsl(35_12%_91%)]",
                   )}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[hsl(24_8%_34%)]">
-                      {r.title}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={r.onEdit}
-                      aria-label={r.editLabel}
-                      className="-my-2.5 -mr-2.5 min-h-11 min-w-11 px-2.5 text-sm font-medium underline underline-offset-[3px] hover:text-[hsl(32_78%_34%)] focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-[hsl(40_88%_42%)]"
-                    >
-                      Edit
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {r.chips.map((c) => (
-                      <span
-                        key={c.label}
-                        className="inline-flex items-center gap-2 rounded-full border border-[hsl(35_12%_89%)] bg-[hsl(40_18%_97%)] py-[3px] pl-[3px] pr-3 text-sm font-medium"
-                      >
-                        <span
-                          aria-hidden
-                          className="flex h-[30px] w-[30px] flex-none items-center justify-center overflow-hidden rounded-full bg-[hsl(24_10%_13%)]"
-                        >
-                          {c.img ? (
-                            <img
-                              src={c.img}
-                              alt=""
-                              width={30}
-                              height={30}
-                              className="block h-full w-full object-cover"
-                              style={{ objectPosition: c.pos }}
-                            />
-                          ) : (
-                            <span className="text-xs leading-none tracking-[1px] text-[hsl(40_20%_92%)]">•••</span>
-                          )}
-                        </span>
-                        {c.label}
-                      </span>
-                    ))}
-                  </div>
+                  <span className="text-sm text-[hsl(24_8%_34%)]">{r.title}</span>
+                  <span className="text-[15px] font-medium">{r.value}</span>
+                  <button
+                    type="button"
+                    onClick={r.onEdit}
+                    aria-label={r.editLabel}
+                    className="-mr-2.5 min-h-11 min-w-11 px-2.5 text-sm font-medium underline underline-offset-[3px] hover:text-[hsl(32_78%_34%)] focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-[hsl(40_88%_42%)]"
+                  >
+                    Edit
+                  </button>
                 </div>
               ))}
             </div>
@@ -712,8 +638,8 @@ export default function ConnectPage() {
               </div>
               <dl className="m-0 px-[18px] pb-2.5 pt-1.5">
                 {[
+                  { title: "Beverage", value: prodSel.map((p) => p.name).join(", ") },
                   { title: "Business", value: bizSel?.label ?? "" },
-                  { title: "Expressions", value: prodSel.map((p) => p.name).join(", ") },
                   { title: "How we can help", value: purpSel.map((q) => q.label).join(", ") },
                 ].map((d, i, a) => (
                   <div
