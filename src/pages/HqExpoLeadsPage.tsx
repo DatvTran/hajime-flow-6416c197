@@ -16,7 +16,7 @@ import {
 import { ConvertLeadDialog } from "@/components/expo/ConvertLeadDialog";
 import { useAppData } from "@/contexts/AppDataContext";
 import { mapServerAccountRow } from "@/lib/data-service";
-import { isOnPremiseAccountType } from "@/lib/hq-order-scope";
+import { partnerPathForOrg } from "@/lib/hq-distributor-orgs";
 import type { Account } from "@/data/mockData";
 import {
   HqOperatorPage,
@@ -218,8 +218,8 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
 
   function accountHref(accountId: string) {
     const acct = appData.accounts.find((a) => String(a.id) === accountId);
-    const view = acct && isOnPremiseAccountType(acct.type) ? "view=retail&" : "";
-    return `/accounts?${view}account=${encodeURIComponent(accountId)}`;
+    if (acct?.type === "distributor") return partnerPathForOrg(acct.distributorOrgId || accountId);
+    return `/accounts?view=retail&account=${encodeURIComponent(accountId)}`;
   }
 
   async function save(partial: Record<string, unknown>) {
@@ -335,7 +335,7 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
         }}
         onConverted={({ lead: updated, account, created }) => {
           setLead((prev) => ({ ...updated, accountDraft: prev?.accountDraft }));
-          const mapped = mapServerAccountRow(account) as Account;
+          const mapped = { ...mapServerAccountRow(account), id: String(account.id) } as Account;
           updateData((d) =>
             d.accounts.some((a) => String(a.id) === String(mapped.id))
               ? d

@@ -17,6 +17,7 @@ import { getOperationalSettings, getTeamMembers, getWarehouses, getAppBootstrap,
 import type { AppData, OperationalSettings, TeamMember, TeamMemberPortalRole, VisitNoteEntry, Warehouse } from "@/types/app-data";
 import type { InventoryItem, NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
 import { isSeedStyleSalesOrderId } from "@/lib/sales-order-utils";
+import { CONNECT_COUNTRIES } from "@/lib/connect-countries";
 
 // Feature flag to control granular API usage - Stage 3: Always use granular
 const USE_GRANULAR_API = true;
@@ -558,6 +559,8 @@ function parsePartnerConfigsFromOperationalSettings(
   }
 }
 
+const COUNTRY_NAMES = new Set(CONNECT_COUNTRIES.map((c) => c.name.toLowerCase()));
+
 /** Server `accounts` row -> client `Account` (same mapping as the app data load). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function mapServerAccountRow(a: any) {
@@ -588,12 +591,13 @@ export function mapServerAccountRow(a: any) {
         : {};
   const marketStr = String(a.market ?? "");
   const marketParts = marketStr.split(",").map((s: string) => s.trim()).filter(Boolean);
+  const countryOnly = marketParts.length === 1 && COUNTRY_NAMES.has(marketParts[0].toLowerCase());
   const city =
     String(a.city ?? "").trim() ||
-    (marketParts.length >= 1 ? marketParts[0] : "");
+    (marketParts.length >= 1 && !countryOnly ? marketParts[0] : "");
   const country =
     String(a.country ?? "").trim() ||
-    (marketParts.length >= 2 ? marketParts.slice(1).join(", ") : "Canada");
+    (countryOnly ? marketParts[0] : marketParts.length >= 2 ? marketParts.slice(1).join(", ") : "Canada");
   
   return {
     id: a.id,

@@ -197,7 +197,7 @@ export function ConvertLeadDialog({ open, onOpenChange, lead, onConverted, onAlr
                   onValueChange={(v) => set("type", v as LeadAccountDraft["type"])}
                   disabled={saving}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="capitalize">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
