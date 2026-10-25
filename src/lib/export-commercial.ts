@@ -3,6 +3,8 @@
 export const EXPORT_SELLER = {
   legalName: "Hajime Ltd.",
   legalNameFull: "Hajime Limited",
+  registrationNo: "80698695",
+  registeredAddress: "21/F, CMA Building, 64 Connaught Road, Central, Hong Kong",
   jurisdiction: "Hong Kong",
   productionBase: "Thailand",
   workingIncoterm: "FOB Bangkok, Thailand",

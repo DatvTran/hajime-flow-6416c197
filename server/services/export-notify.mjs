@@ -48,6 +48,54 @@ export async function sendExportDocIssuedEmail({ to, buyerName, docTitle, displa
   return sendPlainEmail({ to, subject, text });
 }
 
+function longDate(d) {
+  return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Hong_Kong" });
+}
+
+export async function sendPoAcceptanceEmail({ to, buyerName, displayId, docNumber, signUrl, sellerName, expiresAt }) {
+  const subject = `Hajime Ltd. — Purchase order acceptance ${docNumber} for your countersignature`;
+  const text = [
+    `Hi ${buyerName || "there"},`,
+    "",
+    `Hajime Ltd. has accepted your purchase order on commercial file ${displayId}. The purchase order acceptance ${docNumber} has been signed for Hajime Ltd.${sellerName ? ` by ${sellerName}` : ""} and is ready for your countersignature.`,
+    "",
+    "Review all three pages and countersign here (no login needed):",
+    signUrl,
+    "",
+    `This link is personal to your company and works until ${longDate(expiresAt)}. Please don't forward it.`,
+    "The order becomes binding once you countersign. Hajime Ltd. will then issue the pro forma invoice for the 50% deposit.",
+    "",
+    "Hajime Ltd. · Hong Kong · drinkhajime.jp",
+  ].join("\n");
+  return sendPlainEmail({ to, subject, text });
+}
+
+export async function sendPoAcceptanceSignedEmail({
+  to,
+  recipientName,
+  displayId,
+  docNumber,
+  legalName,
+  signerName,
+  signerTitle,
+  signedAt,
+  viewUrl,
+}) {
+  const subject = `Countersigned — Purchase order acceptance ${docNumber} (${displayId})`;
+  const text = [
+    `Hi ${recipientName || "there"},`,
+    "",
+    `Purchase order acceptance ${docNumber} was countersigned for ${legalName} by ${signerName}, ${signerTitle}, on ${longDate(signedAt)}.`,
+    "The order is now binding on both parties. Next step: Hajime Ltd. issues the pro forma invoice for the 50% deposit.",
+    "",
+    "View or save the signed copy:",
+    viewUrl,
+    "",
+    "Hajime Ltd. · Hong Kong · drinkhajime.jp",
+  ].join("\n");
+  return sendPlainEmail({ to, subject, text });
+}
+
 export async function sendTradePackEmail({ to, recipientName, items, links }) {
   const name = recipientName || "there";
   const subject = "Hajime — trade materials";

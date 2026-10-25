@@ -39,6 +39,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "@/components/ui/sonner";
+import { HqPoAcceptancePanel } from "@/components/export/HqPoAcceptancePanel";
 import { cn } from "@/lib/utils";
 
 function canHq(role: string | undefined) {
@@ -347,7 +348,12 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
         <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void act("buyer-po", { buyerPoNo: order.buyerPoNo })}>
           Record buyer PO
         </Button>
-        <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void act("acceptance")}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => document.getElementById("po-acceptance")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        >
           Accept PO
         </Button>
         <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void act("proforma")}>
@@ -524,6 +530,10 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
             {relOk ? "Release conditions met" : "Release blocked until balance, checklist, named FOB"}
           </HqOperatorPill>
         </div>
+      </div>
+
+      <div id="po-acceptance" className="scroll-mt-4">
+        <HqPoAcceptancePanel order={order} saving={saving} save={save} onOrder={setOrder} />
       </div>
 
       <div className="mt-6 space-y-4 rounded-xl border border-border bg-card p-5">

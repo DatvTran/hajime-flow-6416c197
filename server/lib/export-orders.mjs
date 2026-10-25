@@ -1,3 +1,5 @@
+import { orderTotals } from "./po-acceptance.mjs";
+
 const STAGE_IDS = [
   "01_lead",
   "02_quotation",
@@ -226,6 +228,7 @@ export function serializeExportOrder(
   if (manufacturerFacing) {
     lines = lines.map(({ unitFobUsd, caseUsd, lineTotalUsd, floorFobUsd, belowFloor, ...rest }) => rest);
   }
+  const totals = orderTotals(row.deposit_amount_frozen ? row.subtotal_usd : priced.subtotalUsd, row.other_charges_usd);
   const base = {
     id: String(row.id),
     displayId: row.display_id,
@@ -248,9 +251,22 @@ export function serializeExportOrder(
     buyerPoNo: row.buyer_po_no,
     stage: row.stage,
     lines,
-    subtotalUsd: Number(row.subtotal_usd),
-    depositDueUsd: Number(row.deposit_due_usd),
-    balanceDueUsd: Number(row.balance_due_usd),
+    subtotalUsd: totals.subtotalUsd,
+    otherChargesUsd: totals.otherChargesUsd,
+    otherChargesNote: row.other_charges_note || null,
+    totalOrderUsd: totals.totalOrderUsd,
+    depositDueUsd: row.deposit_amount_frozen ? Number(row.deposit_due_usd) : totals.depositDueUsd,
+    balanceDueUsd: row.deposit_amount_frozen ? Number(row.balance_due_usd) : totals.balanceDueUsd,
+    depositFrozen: buyerFacing ? undefined : Boolean(row.deposit_amount_frozen),
+    buyerLegalName: row.buyer_legal_name || null,
+    buyerRegistrationNo: row.buyer_registration_no || null,
+    buyerRegisteredAddress: row.buyer_registered_address || null,
+    buyerNoticeEmail: row.buyer_notice_email || null,
+    consignee: row.consignee || null,
+    incotermRule: row.incoterm_rule || null,
+    deliveryWindow: row.delivery_window || null,
+    specLabelRef: row.spec_label_ref || null,
+    specialConditions: row.special_conditions || null,
     depositStatus: row.deposit_status,
     depositReceivedUsd: row.deposit_received_usd != null ? Number(row.deposit_received_usd) : null,
     wireFeesUsd: row.wire_fees_usd != null ? Number(row.wire_fees_usd) : null,
@@ -293,6 +309,9 @@ export function serializeExportOrder(
   };
   if (manufacturerFacing) {
     delete base.subtotalUsd;
+    delete base.otherChargesUsd;
+    delete base.otherChargesNote;
+    delete base.totalOrderUsd;
     delete base.depositDueUsd;
     delete base.balanceDueUsd;
     delete base.depositReceivedUsd;
@@ -419,6 +438,12 @@ export async function ensureExportOrdersTable(db) {
     await m053.up(db);
   } catch (e) {
     console.error("[export-orders] ensure manufacturer_id failed:", e);
+  }
+  try {
+    const m057 = await import("../migrations/057_po_acceptance_esign.mjs");
+    await m057.up(db);
+  } catch (e) {
+    console.error("[export-orders] ensure PO acceptance columns failed:", e);
   }
   return true;
 }

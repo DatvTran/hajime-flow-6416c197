@@ -28,6 +28,7 @@ import LicenseeApplicationPage from "./pages/LicenseeApplicationPage";
 import ConnectPage from "./pages/ConnectPage";
 import ConnectSignPage from "./pages/ConnectSignPage";
 import TradePackPage from "./pages/TradePackPage";
+import PoAcceptanceSignPage from "./pages/PoAcceptanceSignPage";
 import NotFound from "./pages/NotFound";
 
 // Lazy-loaded by route group for better chunking
@@ -200,6 +201,7 @@ const App = () => {
               <Route path="/licensee-application" element={<LicenseeApplicationPage />} />
               <Route path="/connect" element={<ConnectPage />} />
               <Route path="/connect-sign" element={<ConnectSignPage />} />
+              <Route path="/po-acceptance/:token" element={<PoAcceptanceSignPage />} />
               <Route path="/trade-pack" element={<TradePackPage />} />
               <Route element={<RequireAuth />}>
                 <Route element={<RouteErrorOutlet />}>

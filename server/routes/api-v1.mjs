@@ -105,6 +105,7 @@ import {
   accountDraftFromLead,
   validateLeadAccountBody,
 } from '../lib/expo-leads.mjs';
+import { countersignPoa, loadPoaForSigning } from '../services/po-acceptance.mjs';
 import { sendTradePackEmail, clientBaseUrl } from '../services/export-notify.mjs';
 import { canManageExportOrders } from '../lib/export-orders.mjs';
 import exportOrdersRouter from './export-orders.mjs';
@@ -284,6 +285,36 @@ router.post('/expo-leads', rateLimiters.expoLeads, async (req, res) => {
   } catch (err) {
     console.error('[API v1] expo-leads submit:', err);
     res.status(500).json({ error: 'Failed to submit registration' });
+  }
+});
+
+router.get('/po-acceptance/:token', rateLimiters.poAcceptanceView, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const data = await loadPoaForSigning(platformDb, req.params.token);
+    if (!data) return res.status(404).json({ error: 'This signing link is not valid.' });
+    res.json({ data });
+  } catch (err) {
+    console.error('[API v1] po-acceptance view:', err);
+    res.status(500).json({ error: 'Could not load the document' });
+  }
+});
+
+router.post('/po-acceptance/:token/accept', rateLimiters.poAcceptanceSign, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    if (String(req.body?.fax ?? '').trim()) {
+      return res.status(400).json({ error: 'Could not sign this document' });
+    }
+    const data = await countersignPoa(platformDb, req.params.token, req.body || {}, {
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+    res.json({ data });
+  } catch (err) {
+    const status = err.status || 500;
+    if (status >= 500) console.error('[API v1] po-acceptance sign:', err);
+    res.status(status).json({ error: status >= 500 ? 'Could not sign the document' : err.message, ...(err.payload || {}) });
   }
 });
 

@@ -10,6 +10,18 @@ import { assertLinesAboveFloor } from "./pricing.mjs";
 import { issueDocument } from "./export-issue-document.mjs";
 import { createProductionPoForExport } from "./export-production-po.mjs";
 import {
+  PO_ACCEPTANCE_SELLER,
+  PO_ACCEPTANCE_TERMS_VERSION,
+  asPayload,
+  hashSignToken,
+  latestPoaDoc,
+  newSignToken,
+  orderTotals,
+  poaContentHash,
+  poaIssueGaps,
+  signLinkExpiry,
+} from "../lib/po-acceptance.mjs";
+import {
   bookExportOriginInventory,
   createDirectExportShipment,
   shipExportOriginInventory,
@@ -109,34 +121,93 @@ const TRANSITIONS = {
     },
   },
   accept_po: {
-    from: ["03_buyer_po"],
+    from: ["03_buyer_po", "04_po_acceptance"],
     to: "04_po_acceptance",
     actors: HQ,
-    async guard() {
-      return { ok: true };
-    },
-    async effect({ trx, order, actor }) {
-      const docs = await stampIssued(trx, order, "po_acceptance", actor);
+    async guard({ order, payload }) {
       const pack = priceExportLines(parseLines(order));
-      return { orderPatch: { ...docs, subtotal_usd: pack.subtotalUsd } };
+      const gaps = poaIssueGaps(order, pack.lines.length);
+      if (gaps.length) {
+        return { ok: false, code: `Complete before issuing: ${gaps.join(", ")}`, gaps };
+      }
+      const sellerTitle = String(payload.sellerTitle || "").trim().slice(0, 255);
+      if (!sellerTitle) return { ok: false, code: "Enter your title to sign for Hajime Ltd.", gaps: ["seller title"] };
+      return { ok: true, pack, sellerTitle };
+    },
+    async effect({ trx, tenantId, order, actor, guard }) {
+      const totals = orderTotals(guard.pack.subtotalUsd, order.other_charges_usd);
+      const priced = {
+        ...order,
+        subtotal_usd: totals.subtotalUsd,
+        deposit_due_usd: totals.depositDueUsd,
+        balance_due_usd: totals.balanceDueUsd,
+      };
+      const docs = await stampIssued(trx, priced, "po_acceptance", actor);
+      const orderPatch = {
+        issued_docs: docs.issued_docs,
+        checklist: docs.checklist,
+        subtotal_usd: totals.subtotalUsd,
+      };
+      if (!order.deposit_amount_frozen) {
+        orderPatch.deposit_due_usd = totals.depositDueUsd;
+        orderPatch.balance_due_usd = totals.balanceDueUsd;
+      }
+      if (!docs.doc) return { orderPatch };
+
+      const user = actor.userId
+        ? await trx("users").where({ id: actor.userId, tenant_id: tenantId }).first().catch(() => null)
+        : null;
+      const signToken = newSignToken();
+      const now = new Date();
+      const seller = {
+        ...PO_ACCEPTANCE_SELLER,
+        signedName: String(user?.display_name || actor.email || "Hajime Ltd.").trim(),
+        signedTitle: guard.sellerTitle,
+        noticeEmail: String(user?.email || actor.email || "").trim().toLowerCase() || null,
+      };
+      await trx("export_documents")
+        .where({ id: docs.doc.id })
+        .update({
+          sign_token_hash: hashSignToken(signToken),
+          sign_token_expires_at: signLinkExpiry(now),
+          seller_signed_name: seller.signedName,
+          seller_signed_title: seller.signedTitle,
+          seller_signed_at: now,
+          seller_notice_email: seller.noticeEmail,
+          terms_version: PO_ACCEPTANCE_TERMS_VERSION,
+          content_hash: poaContentHash({
+            payload: asPayload(docs.doc.payload),
+            termsVersion: PO_ACCEPTANCE_TERMS_VERSION,
+            seller,
+          }),
+        });
+      return {
+        orderPatch,
+        detail: { doc: docs.doc.doc_number, revision: docs.doc.revision },
+        secret: { signToken, docNumber: docs.doc.doc_number, revision: docs.doc.revision },
+      };
     },
   },
   issue_pi: {
     from: ["04_po_acceptance"],
     to: "05_proforma",
     actors: FIN,
-    async guard({ order }) {
+    async guard({ trx, tenantId, order }) {
       const pack = priceExportLines(parseLines(order));
       if (!pack.lines.length) return { ok: false, code: "NO_LINES" };
-      return { ok: true, pack };
+      const poa = await latestPoaDoc(trx, tenantId, order.id);
+      if (!poa?.buyer_signed_at) {
+        return { ok: false, code: "The buyer must countersign the PO acceptance before the pro forma is issued." };
+      }
+      return { ok: true, pack, totals: orderTotals(pack.subtotalUsd, order.other_charges_usd) };
     },
     async effect({ trx, order, actor, guard }) {
       const docs = await stampIssued(trx, order, "proforma", actor);
       const patch = {
         ...docs,
-        deposit_due_usd: guard.pack.depositDueUsd,
-        balance_due_usd: guard.pack.balanceDueUsd,
-        subtotal_usd: guard.pack.subtotalUsd,
+        deposit_due_usd: guard.totals.depositDueUsd,
+        balance_due_usd: guard.totals.balanceDueUsd,
+        subtotal_usd: guard.totals.subtotalUsd,
         deposit_amount_frozen: true,
       };
       if (docs.doc?.doc_number) patch.pi_no = docs.doc.doc_number;
@@ -195,7 +266,7 @@ const TRANSITIONS = {
           },
         };
       }
-      const value = Number(order.subtotal_usd || 0);
+      const value = orderTotals(order.subtotal_usd, order.other_charges_usd).totalOrderUsd;
       const cleared = payments
         .filter((p) => p.status === "cleared")
         .reduce((s, p) => s + Number(p.net_credited_amount), 0);
@@ -309,7 +380,8 @@ const TRANSITIONS = {
     async guard({ trx, tenantId, order }) {
       const payments = await loadPayments(trx, tenantId, order.id);
       const exception = await latestException(trx, tenantId, order.id);
-      return assertReleaseGate(order, payments, order.checklist, exception);
+      const confirmed = orderTotals(order.subtotal_usd, order.other_charges_usd).totalOrderUsd;
+      return assertReleaseGate({ ...order, confirmed_order_value: confirmed }, payments, order.checklist, exception);
     },
     async effect({ trx, tenantId, order, actor }) {
       const ship = await createDirectExportShipment(trx, { tenantId, order, actor });
@@ -461,7 +533,12 @@ export async function applyTransition({ tenantId, orderId, action, actor, payloa
       actor,
     });
 
-    return trx("export_orders").where({ id: orderId, tenant_id: tenantId }).first();
+    const fresh = await trx("export_orders").where({ id: orderId, tenant_id: tenantId }).first();
+    if (effects.secret) {
+      // Non-enumerable so the one-time signing token never reaches a response or log by accident.
+      Object.defineProperty(fresh, "secret", { value: effects.secret, enumerable: false });
+    }
+    return fresh;
   });
 }
 

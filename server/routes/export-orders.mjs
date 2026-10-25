@@ -3,6 +3,8 @@ import { platformDb } from "../config/database.mjs";
 import { Permission, hasPermission } from "../rbac/permissions.mjs";
 import { sendExportDocIssuedEmail, clientBaseUrl } from "../services/export-notify.mjs";
 import { applyTransition, approveException } from "../services/export-order-transitions.mjs";
+import { emailPoaLink, poaSignUrl, rotatePoaLink } from "../services/po-acceptance.mjs";
+import { INCOTERM_RULES, latestPoaDoc, orderTotals, serializePoaDoc } from "../lib/po-acceptance.mjs";
 import {
   canManageExportOrders,
   isManufacturer,
@@ -57,6 +59,26 @@ export function parseExportLines(raw) {
       ...(l.unitFobUsd != null ? { unitFobUsd: Number(l.unitFobUsd) } : {}),
     }))
     .filter((l) => l.cases > 0);
+}
+
+async function withPoaSummary(db, req, row) {
+  const data = exportSerializeForRole(req, row);
+  if (!data || isManufacturer(req.user?.role)) return data;
+  const hq = canManageExportOrders(req.user?.role) || req.user?.role === "finance";
+  const doc = await latestPoaDoc(db, row.tenant_id, row.id);
+  return { ...data, poAcceptance: serializePoaDoc(doc, { includeAudit: hq }) };
+}
+
+async function emailIssuedPoa(updated) {
+  const s = updated?.secret;
+  if (!s?.signToken) return { sent: false, skipped: true };
+  const doc = await latestPoaDoc(platformDb, updated.tenant_id, updated.id);
+  return emailPoaLink(updated, {
+    token: s.signToken,
+    docNumber: s.docNumber,
+    sellerName: doc?.seller_signed_name,
+    expiresAt: doc?.sign_token_expires_at,
+  });
 }
 
 function actorFrom(req) {
@@ -299,7 +321,7 @@ router.get("/:id", async (req, res) => {
     } else if (!canManageExportOrders(role) && role !== "finance" && !hasPermission(role, Permission.EXPORT_READ)) {
       return res.status(403).json({ error: "Forbidden" });
     }
-    res.json({ data: exportSerializeForRole(req, row) });
+    res.json({ data: await withPoaSummary(db, req, row) });
   } catch (err) {
     sendErr(res, err);
   }
@@ -363,17 +385,47 @@ router.patch("/:id", async (req, res) => {
         checklistOpenItems: "checklist_open_items",
         notes: "notes",
         quoteValidUntil: "quote_valid_until",
+        buyerLegalName: "buyer_legal_name",
+        buyerRegistrationNo: "buyer_registration_no",
+        buyerRegisteredAddress: "buyer_registered_address",
+        buyerNoticeEmail: "buyer_notice_email",
+        consignee: "consignee",
+        deliveryWindow: "delivery_window",
+        specLabelRef: "spec_label_ref",
+        specialConditions: "special_conditions",
+        otherChargesNote: "other_charges_note",
       };
       for (const [k, col] of Object.entries(map)) {
         if (body[k] !== undefined) updates[col] = body[k] === "" ? null : body[k];
       }
-      if (body.lines && !row.deposit_amount_frozen) {
-        const lines = parseExportLines(body.lines);
-        const priced = priceExportLines(lines);
-        updates.lines = JSON.stringify(priced.lines.map((l) => ({ sku: l.sku, cases: l.cases, unitFobUsd: l.unitFobUsd })));
-        updates.subtotal_usd = priced.subtotalUsd;
-        updates.deposit_due_usd = priced.depositDueUsd;
-        updates.balance_due_usd = priced.balanceDueUsd;
+      if (body.incotermRule !== undefined) {
+        const rule = String(body.incotermRule || "").toUpperCase();
+        if (rule && !INCOTERM_RULES.includes(rule)) {
+          return res.status(400).json({ error: "Incoterms rule must be FOB or FCA." });
+        }
+        updates.incoterm_rule = rule || null;
+      }
+      if (body.otherChargesUsd !== undefined) {
+        const n = body.otherChargesUsd === "" || body.otherChargesUsd == null ? 0 : Number(body.otherChargesUsd);
+        if (!Number.isFinite(n) || n < 0) return res.status(400).json({ error: "Other agreed charges must be 0 or more." });
+        if (row.deposit_amount_frozen && n !== Number(row.other_charges_usd || 0)) {
+          return res.status(409).json({ error: "Charges are locked once the pro forma is issued." });
+        }
+        updates.other_charges_usd = n;
+      }
+      if (!row.deposit_amount_frozen) {
+        let subtotal = Number(row.subtotal_usd || 0);
+        if (body.lines) {
+          const priced = priceExportLines(parseExportLines(body.lines));
+          updates.lines = JSON.stringify(priced.lines.map((l) => ({ sku: l.sku, cases: l.cases, unitFobUsd: l.unitFobUsd })));
+          subtotal = priced.subtotalUsd;
+        }
+        if (body.lines || updates.other_charges_usd !== undefined) {
+          const t = orderTotals(subtotal, updates.other_charges_usd ?? row.other_charges_usd);
+          updates.subtotal_usd = t.subtotalUsd;
+          updates.deposit_due_usd = t.depositDueUsd;
+          updates.balance_due_usd = t.balanceDueUsd;
+        }
       }
       if (body.checklist) updates.checklist = JSON.stringify(body.checklist);
       if (body.checklistCleared === true) {
@@ -395,7 +447,7 @@ router.patch("/:id", async (req, res) => {
       .where({ id: row.id, tenant_id: tenantId })
       .update(updates)
       .returning("*");
-    res.json({ data: exportSerializeForRole(req, updated) });
+    res.json({ data: await withPoaSummary(db, req, updated) });
   } catch (err) {
     sendErr(res, err);
   }
@@ -425,7 +477,55 @@ async function runAction(req, res, action, payload) {
 
 router.post("/:id/quotation", (req, res) => runAction(req, res, req.body?.requote ? "requote" : "issue_quotation"));
 router.post("/:id/buyer-po", (req, res) => runAction(req, res, "record_buyer_po"));
-router.post("/:id/acceptance", (req, res) => runAction(req, res, "accept_po"));
+router.post("/:id/acceptance", async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = platformDb;
+    await ensureExportOrdersTable(db);
+    const row = await findExportOrder(db, tenantId, req.params.id);
+    if (!row) return res.status(404).json({ error: "Not found" });
+    const updated = await applyTransition({
+      tenantId,
+      orderId: row.id,
+      action: "accept_po",
+      actor: actorFrom(req),
+      payload: req.body || {},
+      db,
+    });
+    const email = await emailIssuedPoa(updated);
+    const token = updated?.secret?.signToken;
+    res.json({ data: await withPoaSummary(db, req, updated), email, url: token ? poaSignUrl(token) : null });
+  } catch (err) {
+    sendErr(res, err);
+  }
+});
+
+router.post("/:id/po-acceptance/link", async (req, res) => {
+  try {
+    if (!canManageExportOrders(req.user?.role)) return res.status(403).json({ error: "Forbidden" });
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = platformDb;
+    await ensureExportOrdersTable(db);
+    const row = await findExportOrder(db, tenantId, req.params.id);
+    if (!row) return res.status(404).json({ error: "Not found" });
+    const { token, expiresAt, doc } = await rotatePoaLink(db, { tenantId, order: row });
+    const email =
+      req.body?.email === true
+        ? await emailPoaLink(row, {
+            token,
+            docNumber: doc.doc_number,
+            sellerName: doc.seller_signed_name,
+            expiresAt,
+          })
+        : { sent: false, skipped: true };
+    const fresh = await findExportOrder(db, tenantId, row.id);
+    res.json({ data: await withPoaSummary(db, req, fresh), url: poaSignUrl(token), expiresAt, email });
+  } catch (err) {
+    sendErr(res, err);
+  }
+});
 router.post("/:id/proforma", (req, res) => runAction(req, res, "issue_pi"));
 router.post("/:id/payments", (req, res) => runAction(req, res, "record_payment"));
 router.post("/:id/production-authorization", (req, res) => runAction(req, res, "authorize_production"));
@@ -497,7 +597,9 @@ router.post("/:id/docs/:doc/issue", async (req, res) => {
       db,
     });
     let email = { sent: false, skipped: true };
-    if (isBuyerExportDoc(doc) && updated.buyer_email) {
+    if (doc === "po_acceptance") {
+      email = await emailIssuedPoa(updated);
+    } else if (isBuyerExportDoc(doc) && updated.buyer_email) {
       const titles = {
         quotation: "International distributor quotation",
         po_acceptance: "Purchase order acceptance",
@@ -514,7 +616,7 @@ router.post("/:id/docs/:doc/issue", async (req, res) => {
         docUrl,
       });
     }
-    res.json({ data: exportSerializeForRole(req, updated), email });
+    res.json({ data: await withPoaSummary(db, req, updated), email });
   } catch (err) {
     sendErr(res, err);
   }

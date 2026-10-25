@@ -9,6 +9,8 @@ import {
 import { EXPORT_BUYER_TERMS } from "@/lib/export-pack-copy";
 import { Button } from "@/components/ui/button";
 import { HajimeLogo } from "@/components/HajimeLogo";
+import { PoAcceptanceDocument } from "@/components/export/PoAcceptanceDocument";
+import { poaStatusLabel, type PoaSummary } from "@/lib/po-acceptance-terms";
 
 type Line = {
   sku: string;
@@ -37,6 +39,32 @@ export function ExportOrderDocView({
   const issuedAt =
     (order.issuedDocs as Record<string, { issuedAt?: string }> | undefined)?.[doc]?.issuedAt ||
     (order.buyerDocStatus as Record<string, { issuedAt?: string }> | undefined)?.[doc]?.issuedAt;
+
+  if (doc === "po_acceptance") {
+    const poa = (order.poAcceptance as PoaSummary | null | undefined) ?? null;
+    return (
+      <div className="mx-auto max-w-[860px] px-4 py-6 print:max-w-none print:px-0 print:py-0">
+        <style>{`
+          @media print {
+            .export-doc-chrome { display: none !important; }
+            body { background: #fff !important; }
+          }
+        `}</style>
+        <div className="export-doc-chrome mb-4 flex flex-wrap items-center justify-between gap-2">
+          <Link to={backTo} className="text-sm text-accent underline-offset-2 hover:underline">
+            Back to file
+          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">{poaStatusLabel(poa)}</span>
+            <Button type="button" variant="outline" size="sm" onClick={() => window.print()}>
+              Print / Save PDF
+            </Button>
+          </div>
+        </div>
+        <PoAcceptanceDocument order={order} poa={poa} showAudit={Boolean(onIssue)} />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[800px] px-4 py-6 print:max-w-none print:px-0 print:py-0">
@@ -190,15 +218,6 @@ function docCopy(doc: ExportDocType, order: ExportOrderDto) {
       <p>
         This quotation is issued by Hajime Ltd. for the territory named above. Volume bands apply to 750 ml cases. 200 ml
         is quoted at list and is not 1:1 with 750 ml tiers. Valid {String(order.quoteValidUntil || "as stated on issue")}.
-      </p>
-    );
-  }
-  if (doc === "po_acceptance") {
-    return (
-      <p>
-        Hajime Ltd. accepts the buyer purchase order {String(order.buyerPoNo || "(number to follow)")} against the quoted
-        SKUs and FOB amounts. This acceptance does not modify Incoterms or payment until named FOB point and deposit are
-        confirmed.
       </p>
     );
   }

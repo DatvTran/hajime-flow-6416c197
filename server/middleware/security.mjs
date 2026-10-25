@@ -108,4 +108,20 @@ export const rateLimiters = {
     standardHeaders: true,
     legacyHeaders: false,
   }),
+
+  poAcceptanceView: rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 60,
+    message: { error: 'Too many requests. Please try again shortly.', code: 'POA_RATE_LIMIT' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+
+  poAcceptanceSign: rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 10,
+    message: { error: 'Too many signing attempts. Please try again shortly.', code: 'POA_SIGN_RATE_LIMIT' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
 };

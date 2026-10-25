@@ -797,9 +797,22 @@ export function postExportOrderAction(
 export function issueExportDoc(
   id: string,
   doc: string,
-): Promise<{ data: ExportOrderDto; email?: { sent?: boolean; logged?: boolean } }> {
+  body: Record<string, unknown> = {},
+): Promise<{ data: ExportOrderDto; email?: { sent?: boolean; logged?: boolean; skipped?: boolean } }> {
   return apiFetch(`/api/v1/export-orders/${encodeURIComponent(id)}/docs/${encodeURIComponent(doc)}/issue`, {
     method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** New countersign link for the current PO acceptance; the previous link stops working. */
+export function rotatePoaLink(
+  id: string,
+  email: boolean,
+): Promise<{ data: ExportOrderDto; url: string; expiresAt: string; email?: { sent?: boolean; logged?: boolean; skipped?: boolean } | null }> {
+  return apiFetch(`/api/v1/export-orders/${encodeURIComponent(id)}/po-acceptance/link`, {
+    method: "POST",
+    body: JSON.stringify({ email }),
   });
 }
 
