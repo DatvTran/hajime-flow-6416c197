@@ -126,7 +126,7 @@ export const EXPORT_SKUS = [
     workingCostUsd: 6.6,
     floorFobUsd: 16,
     listFobUsd: 16,
-    guide: { landedUsd: "17.60", wholesaleUsd: "22", retailUsd: "31.42", canadaMsrpCad: "44" },
+    guide: { landedUsd: "17.60", wholesaleUsd: "22", retailUsd: "31.50", canadaMsrpCad: "44" },
   },
   {
     sku: "yuzu_mint_200",
