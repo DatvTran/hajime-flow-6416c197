@@ -48,15 +48,15 @@ describe("export commercial gates", () => {
   it("prices First Press at one FOB per bottle with no volume discount, 50/50", () => {
     for (const cases of [40, 80, 300]) {
       const q = priceLines([{ sku: "first_press_750", cases }]);
-      expect(q.lines[0].unitFobUsd).toBe(34);
-      expect(q.lines[0].caseUsd).toBe(408);
+      expect(q.lines[0].unitFobUsd).toBe(34.1);
+      expect(q.lines[0].caseUsd).toBe(409.2);
       expect(q.lines[0].belowFloor).toBe(false);
     }
     const q = priceLines([
       { sku: "first_press_750", cases: 40 },
       { sku: "first_press_200", cases: 10 },
     ]);
-    expect(q.subtotalUsd).toBe(40 * 408 + 10 * 384);
+    expect(q.subtotalUsd).toBe(16368 + 3840);
     expect(q.depositDueUsd).toBe(q.balanceDueUsd);
     expect(q.depositDueUsd * 2).toBe(q.subtotalUsd);
   });

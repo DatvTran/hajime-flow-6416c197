@@ -105,8 +105,8 @@ export const EXPORT_SKUS = [
     bottlesPerCase: 12,
     workingCostUsd: 20.92,
     floorFobUsd: 34,
-    listFobUsd: 34,
-    guide: { landedUsd: "37.40", wholesaleUsd: "46–47", retailUsd: "66", canadaMsrpCad: "93" },
+    listFobUsd: 34.1,
+    guide: { landedUsd: "37.52", wholesaleUsd: "46.90", retailUsd: "67.00", canadaMsrpCad: "93" },
   },
   {
     sku: "yuzu_mint_750",

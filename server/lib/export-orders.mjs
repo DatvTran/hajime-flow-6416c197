@@ -56,7 +56,7 @@ function round2(n) {
 
 /** Keep in sync with EXPORT_SKUS in src/lib/export-commercial.ts. One FOB price per bottle, no volume discount. */
 const SKUS = {
-  first_press_750: { product: "Hajime First Press Coffee Rhum Liqueur", size: "750 ml", bottlesPerCase: 12, floorFobUsd: 34, listFobUsd: 34 },
+  first_press_750: { product: "Hajime First Press Coffee Rhum Liqueur", size: "750 ml", bottlesPerCase: 12, floorFobUsd: 34, listFobUsd: 34.1 },
   yuzu_mint_750: { product: "Hajime Yuzu Mint Rhum Liqueur", size: "750 ml", bottlesPerCase: 12, floorFobUsd: 28, listFobUsd: 32 },
   first_press_200: { product: "Hajime First Press Coffee Rhum Liqueur", size: "200 ml", bottlesPerCase: 24, floorFobUsd: 16, listFobUsd: 16 },
   yuzu_mint_200: { product: "Hajime Yuzu Mint Rhum Liqueur", size: "200 ml", bottlesPerCase: 24, floorFobUsd: 16, listFobUsd: 18 },
