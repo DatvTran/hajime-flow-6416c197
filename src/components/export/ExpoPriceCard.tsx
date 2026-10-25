@@ -45,7 +45,7 @@ export function ExpoPriceCard({ sku, tone = "light" }: { sku: Sku; tone?: "light
         {rows(sku).map(([k, v]) => (
           <div key={k} className={dark ? "border-white/10" : "border-border/60"}>
             <dt className={dark ? "text-[hsl(35_14%_72%)]" : "text-muted-foreground"}>{k}</dt>
-            <dd className="m-0 text-right font-medium tabular-nums">{v}</dd>
+            <dd className="m-0 whitespace-nowrap text-right font-medium tabular-nums">{v}</dd>
           </div>
         ))}
       </dl>
