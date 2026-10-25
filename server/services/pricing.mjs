@@ -69,7 +69,7 @@ function fallbackPrice(sku, cases) {
     ok: true,
     currency: "USD",
     priceListId: null,
-    tier: { code: cases >= 250 ? "strategic" : cases >= 100 ? "standard" : "trial" },
+    tier: { code: "list" },
     casePrice: line.caseUsd,
     unitPrice: line.unitFobUsd,
     internalFloorCase: line.floorFobUsd * line.bottlesPerCase,

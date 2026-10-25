@@ -39,7 +39,7 @@ function BuyerList() {
   const [buyerPoNo, setBuyerPoNo] = useState("");
   const [forwarderName, setForwarderName] = useState("");
   const [casesBySku, setCasesBySku] = useState<Record<string, number>>({
-    first_press_750: 25,
+    first_press_750: 40,
     yuzu_mint_750: 0,
     first_press_200: 0,
     yuzu_mint_200: 0,

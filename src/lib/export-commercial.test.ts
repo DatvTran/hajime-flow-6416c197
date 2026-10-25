@@ -45,22 +45,26 @@ describe("export commercial gates", () => {
     ).toBe(true);
   });
 
-  it("prices 50/50 and applies 750 ml volume tiers without exposing floor to math of deposit", () => {
+  it("prices First Press at one FOB per bottle with no volume discount, 50/50", () => {
+    for (const cases of [40, 80, 300]) {
+      const q = priceLines([{ sku: "first_press_750", cases }]);
+      expect(q.lines[0].unitFobUsd).toBe(34);
+      expect(q.lines[0].caseUsd).toBe(408);
+      expect(q.lines[0].belowFloor).toBe(false);
+    }
     const q = priceLines([
-      { sku: "first_press_750", cases: 100 },
-      { sku: "yuzu_mint_750", cases: 50 },
+      { sku: "first_press_750", cases: 40 },
+      { sku: "first_press_200", cases: 10 },
     ]);
-    expect(q.tier.id).toBe("standard");
-    expect(q.lines[0].unitFobUsd).toBe(31);
+    expect(q.subtotalUsd).toBe(40 * 408 + 10 * 384);
     expect(q.depositDueUsd).toBe(q.balanceDueUsd);
     expect(q.depositDueUsd * 2).toBe(q.subtotalUsd);
-    expect(q.lines.some((l) => l.belowFloor)).toBe(false);
   });
 
   it("flags unit FOB below internal floor", () => {
-    const q = priceLines([{ sku: "first_press_750", cases: 25, unitFobUsd: 27 }]);
+    const q = priceLines([{ sku: "first_press_750", cases: 40, unitFobUsd: 32 }]);
     expect(q.lines[0].belowFloor).toBe(true);
-    expect(defaultUnitFob("first_press_200", 25)).toBe(18);
+    expect(defaultUnitFob("first_press_200")).toBe(16);
   });
 
   it("allows buyer docs and hides lead-stage files from distributors", () => {

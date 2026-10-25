@@ -2,7 +2,8 @@ import { Link, Navigate, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { HqOperatorPage, HqOperatorPageHeader } from "@/components/hq/HqOperatorUi";
-import { EXPORT_SELLER, EXPORT_SKUS, VOLUME_TIERS } from "@/lib/export-commercial";
+import { EXPO_PRICED_SKUS, EXPORT_SELLER, EXPORT_SKUS } from "@/lib/export-commercial";
+import { ExpoPriceCard } from "@/components/export/ExpoPriceCard";
 import {
   TRADE_APPROVAL_MATRIX,
   TRADE_COMMERCIAL_TERMS,
@@ -278,32 +279,31 @@ export default function HqBrandKitPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-border bg-card p-5">
-          <h2 className="font-display text-lg">International FOB (USD) — 750 ml list bands</h2>
-          <p className="mt-1 text-muted-foreground">Buyer-facing list FOB only. Do not put floors on sell sheets.</p>
-          <ul className="mt-3 list-disc pl-5">
-            {VOLUME_TIERS.map((t) => (
-              <li key={t.id}>
-                {t.label}: from {t.minCases750} cases of 750 ml at ${t.fob750} FOB / bottle.
-              </li>
+        <section className="space-y-3">
+          <div>
+            <h2 className="font-display text-lg">Expo price cards (USD)</h2>
+            <p className="mt-1 text-muted-foreground">Exactly what buyers see on the trade pack. Do not add cost or floors.</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {EXPO_PRICED_SKUS.map((s) => (
+              <ExpoPriceCard key={s.sku} sku={s} />
             ))}
-          </ul>
-          <p className="mt-2 text-muted-foreground">
-            200 ml list ${EXPORT_SKUS.find((s) => s.size === "200 ml")?.listFobUsd} / bottle (volume tiers are not 1:1
-            with 750 ml).
-          </p>
+          </div>
         </section>
 
         <section className="rounded-xl border border-border bg-card p-5">
           <h2 className="font-display text-lg">International FOB internals (USD, never share)</h2>
           <p className="text-muted-foreground">
-            Working cost and floors for operator pricing only. Never print on quotation, PI, press, or the distributor
-            portal.
+            Working cost, floors, landed cost and Canadian MSRP for operator pricing only. Never print on quotation, PI,
+            press, or the distributor portal.
           </p>
-          <ul className="mt-3 list-disc pl-5">
+          <ul className="mt-3 list-disc space-y-1 pl-5">
             {EXPORT_SKUS.map((s) => (
               <li key={s.sku}>
                 {s.product} {s.size}: list ${s.listFobUsd} · floor ${s.floorFobUsd} · working cost ${s.workingCostUsd}
+                {s.guide
+                  ? ` · landed ~$${s.guide.landedUsd} · wholesale ~$${s.guide.wholesaleUsd} · retail ~$${s.guide.retailUsd} · Canada MSRP C$${s.guide.canadaMsrpCad}`
+                  : " · price guide not set"}
               </li>
             ))}
           </ul>

@@ -6,7 +6,8 @@ import {
   EXPORT_PORTFOLIO,
   EXPORT_PRESS_TO_CONFIRM,
 } from "@/lib/export-pack-copy";
-import { EXPORT_SELLER, VOLUME_TIERS } from "@/lib/export-commercial";
+import { EXPO_PRICED_SKUS, EXPORT_SELLER } from "@/lib/export-commercial";
+import { ExpoPriceCard } from "@/components/export/ExpoPriceCard";
 
 export default function TradePackPage() {
   return (
@@ -28,17 +29,11 @@ export default function TradePackPage() {
           ))}
         </div>
 
-        <section className="mt-8 rounded-xl border border-white/10 p-5 text-[13px]">
-          <h2 className="font-display text-lg">750 ml list bands (FOB / bottle)</h2>
-          <ul className="mt-3 list-disc pl-5 text-[hsl(35_14%_78%)]">
-            {VOLUME_TIERS.map((t) => (
-              <li key={t.id}>
-                {t.label}: from {t.minCases750} cases at ${t.fob750}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-[hsl(35_14%_78%)]">200 ml list $18 / bottle. Working cost and floors are not published here.</p>
-        </section>
+        <div className="mt-8 grid gap-4 sm:grid-cols-2">
+          {EXPO_PRICED_SKUS.map((s) => (
+            <ExpoPriceCard key={s.sku} sku={s} tone="dark" />
+          ))}
+        </div>
 
         <section className="mt-6 rounded-xl border border-white/10 p-5 text-[13px]">
           <h2 className="font-display text-lg">Connect</h2>

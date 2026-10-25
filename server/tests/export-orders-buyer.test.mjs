@@ -88,7 +88,7 @@ test("HQ serialize keeps internals", () => {
   assert.equal(data.notes, "do not share");
   assert.equal(data.paNo, "HJ-PA-0009");
   assert.equal(data.exclusivity, false);
-  assert.equal(data.lines[0].floorFobUsd, 28);
+  assert.equal(data.lines[0].floorFobUsd, 34);
 });
 
 test("issuing commercial docs marks matching checklist keys issued", () => {

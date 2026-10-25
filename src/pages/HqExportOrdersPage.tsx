@@ -17,6 +17,7 @@ import {
   CORE_EXPORT_CHECKLIST,
   OPTIONAL_EXPORT_CHECKLIST,
   applyOrderStateToChecklist,
+  EXPORT_ORDER_SIZES,
   EXPORT_SELLER,
   EXPORT_SKUS,
   EXPORT_STAGES,
@@ -89,7 +90,7 @@ function ExportOrderList() {
         buyerName: company.trim(),
         buyerCompany: company.trim(),
         territory: territory.trim(),
-        lines: [{ sku: "first_press_750", cases: 25 }],
+        lines: [{ sku: "first_press_750", cases: EXPORT_ORDER_SIZES[0].cases750 }],
       });
       toast.success("Commercial file opened", { description: res.data.displayId });
       navigate(`/export-orders/${res.data.displayId}`);
@@ -468,7 +469,7 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
           })}
           <p className="text-[13px]">
             Subtotal ${priced.subtotalUsd.toLocaleString()} · Deposit ${priced.depositDueUsd.toLocaleString()} · Balance $
-            {priced.balanceDueUsd.toLocaleString()} · {priced.tier.label} tier
+            {priced.balanceDueUsd.toLocaleString()} · {priced.cases750} cases 750 ml
           </p>
         </div>
 

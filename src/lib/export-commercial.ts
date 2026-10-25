@@ -92,15 +92,21 @@ export function exportDocTitle(doc: ExportDocType): string {
   }
 }
 
+/**
+ * One FOB Bangkok price per bottle, no volume discount. `guide` is the downstream
+ * price ladder: wholesale/retail are buyer-safe; cost, landed and CAD MSRP are HQ only.
+ * Keep listFobUsd / floorFobUsd in sync with SKUS in server/lib/export-orders.mjs.
+ */
 export const EXPORT_SKUS = [
   {
     sku: "first_press_750",
     product: "Hajime First Press Coffee Rhum Liqueur",
     size: "750 ml",
     bottlesPerCase: 12,
-    workingCostUsd: 20,
-    floorFobUsd: 28,
-    listFobUsd: 32,
+    workingCostUsd: 20.92,
+    floorFobUsd: 34,
+    listFobUsd: 34,
+    guide: { landedUsd: "37.40", wholesaleUsd: "46–47", retailUsd: "66", canadaMsrpCad: "93" },
   },
   {
     sku: "yuzu_mint_750",
@@ -110,15 +116,17 @@ export const EXPORT_SKUS = [
     workingCostUsd: 20,
     floorFobUsd: 28,
     listFobUsd: 32,
+    guide: null,
   },
   {
     sku: "first_press_200",
     product: "Hajime First Press Coffee Rhum Liqueur",
     size: "200 ml",
     bottlesPerCase: 24,
-    workingCostUsd: 12,
+    workingCostUsd: 6.6,
     floorFobUsd: 16,
-    listFobUsd: 18,
+    listFobUsd: 16,
+    guide: { landedUsd: "17.60", wholesaleUsd: "22", retailUsd: "31.42", canadaMsrpCad: "44" },
   },
   {
     sku: "yuzu_mint_200",
@@ -128,15 +136,19 @@ export const EXPORT_SKUS = [
     workingCostUsd: 12,
     floorFobUsd: 16,
     listFobUsd: 18,
+    guide: null,
   },
 ] as const;
 
 export type ExportSkuCode = (typeof EXPORT_SKUS)[number]["sku"];
 
-export const VOLUME_TIERS = [
-  { id: "trial", label: "Trial", minCases750: 25, fob750: 32 },
-  { id: "standard", label: "Standard", minCases750: 100, fob750: 31 },
-  { id: "strategic", label: "Strategic", minCases750: 250, fob750: 30 },
+/** SKUs published on Expo materials: those with an agreed price guide. */
+export const EXPO_PRICED_SKUS = EXPORT_SKUS.filter((s) => s.guide);
+
+/** Standard 750 ml order sizes shown on Expo materials; both at list FOB. */
+export const EXPORT_ORDER_SIZES = [
+  { id: "trial", label: "Trial order", cases750: 40 },
+  { id: "bulk", label: "Bulk order", cases750: 80 },
 ] as const;
 
 export type DepositStatus = "pending" | "cleared" | "short" | "exception";
@@ -172,29 +184,18 @@ export function cases750Total(lines: ExportLineInput[]): number {
   );
 }
 
-export function suggestTier(cases750: number): (typeof VOLUME_TIERS)[number] {
-  if (cases750 >= 250) return VOLUME_TIERS[2];
-  if (cases750 >= 100) return VOLUME_TIERS[1];
-  return VOLUME_TIERS[0];
-}
-
-export function defaultUnitFob(sku: ExportSkuCode, cases750: number): number {
-  const m = skuMeta(sku);
-  if (!m) return 0;
-  if (m.size === "750 ml") return suggestTier(cases750).fob750;
-  return m.listFobUsd;
+export function defaultUnitFob(sku: ExportSkuCode): number {
+  return skuMeta(sku)?.listFobUsd ?? 0;
 }
 
 export function priceLines(lines: ExportLineInput[]): {
   lines: PricedExportLine[];
   subtotalUsd: number;
   cases750: number;
-  tier: (typeof VOLUME_TIERS)[number];
   depositDueUsd: number;
   balanceDueUsd: number;
 } {
   const cases750 = cases750Total(lines);
-  const tier = suggestTier(cases750);
   const priced: PricedExportLine[] = [];
   for (const l of lines) {
     const m = skuMeta(l.sku);
@@ -203,7 +204,7 @@ export function priceLines(lines: ExportLineInput[]): {
     if (cases <= 0) continue;
     const unit = l.unitFobUsd != null && Number.isFinite(Number(l.unitFobUsd))
       ? Number(l.unitFobUsd)
-      : defaultUnitFob(l.sku, cases750);
+      : defaultUnitFob(l.sku);
     const bottles = cases * m.bottlesPerCase;
     const caseUsd = round2(unit * m.bottlesPerCase);
     const lineTotalUsd = round2(caseUsd * cases);
@@ -227,7 +228,6 @@ export function priceLines(lines: ExportLineInput[]): {
     lines: priced,
     subtotalUsd,
     cases750,
-    tier,
     depositDueUsd,
     balanceDueUsd: round2(subtotalUsd - depositDueUsd),
   };
