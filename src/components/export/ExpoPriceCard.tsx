@@ -3,19 +3,9 @@ import { cn } from "@/lib/utils";
 
 type Sku = (typeof EXPORT_SKUS)[number];
 
-function money(n: number): string {
-  return n.toLocaleString("en-US", {
-    minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
-    maximumFractionDigits: 2,
-  });
-}
-
+/** FOB prices are quoted per order, not published on Expo materials. */
 function rows(s: Sku): [string, string][] {
-  const out: [string, string][] = [
-    ["FOB Bangkok", `US$${s.listFobUsd.toFixed(2)} / bottle`],
-    ["Case pack", `${s.bottlesPerCase} bottles`],
-    ["FOB case", `US$${money(s.listFobUsd * s.bottlesPerCase)}`],
-  ];
+  const out: [string, string][] = [["Case pack", `${s.bottlesPerCase} bottles`]];
   if (s.size === "750 ml") {
     for (const o of EXPORT_ORDER_SIZES) {
       out.push([o.label, `${o.cases750} cases / ${o.cases750 * s.bottlesPerCase} bottles`]);

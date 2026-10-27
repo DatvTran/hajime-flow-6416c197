@@ -282,7 +282,7 @@ export default function HqBrandKitPage() {
         <section className="space-y-3">
           <div>
             <h2 className="font-display text-lg">Expo price cards (USD)</h2>
-            <p className="mt-1 text-muted-foreground">Exactly what buyers see on the trade pack. Do not add cost or floors.</p>
+            <p className="mt-1 text-muted-foreground">Exactly what buyers see on the trade pack. FOB is quoted per order; do not add FOB, cost or floors.</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {EXPO_PRICED_SKUS.map((s) => (

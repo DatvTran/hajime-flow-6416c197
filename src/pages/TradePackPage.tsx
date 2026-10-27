@@ -17,7 +17,7 @@ export default function TradePackPage() {
         <p className="text-[11px] uppercase tracking-[0.16em] text-[hsl(40_88%_62%)]">Hajime Ltd. · Hong Kong</p>
         <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight">Trade pack</h1>
         <p className="mt-3 text-[14px] text-[hsl(35_14%_78%)]">
-          Sell-in materials for distributors and on-premise partners. Buyer-facing list FOB only. {EXPORT_FORMATS}
+          Sell-in materials for distributors and on-premise partners. {EXPORT_FORMATS} FOB pricing is quoted per order.
         </p>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
