@@ -1,6 +1,47 @@
 (function () {
+  // Runs before React. Bump BOOT_V whenever login/demo UI must force-drop stale SW caches.
+  var BOOT_V = "2026-11-19-login-clean-8";
+  var BOOT_KEY = "hajime_boot_v";
   var RELOAD_KEY = "hajime_entry_reload";
   var booted = false;
+
+  try {
+    if (localStorage.getItem(BOOT_KEY) !== BOOT_V) {
+      localStorage.setItem(BOOT_KEY, BOOT_V);
+      var finish = function () {
+        location.reload();
+      };
+      var clearAll = function () {
+        var tasks = [];
+        if ("caches" in window) {
+          tasks.push(
+            caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (k) {
+                return caches.delete(k);
+              }));
+            })
+          );
+        }
+        if (navigator.serviceWorker) {
+          tasks.push(
+            navigator.serviceWorker.getRegistrations().then(function (regs) {
+              return Promise.all(
+                regs.map(function (r) {
+                  return r.unregister();
+                })
+              );
+            })
+          );
+        }
+        Promise.all(tasks).then(finish).catch(finish);
+      };
+      clearAll();
+      return;
+    }
+  } catch (e) {
+    /* ignore storage / SW errors */
+  }
+
   window.__hajimeMarkBooted = function () {
     booted = true;
     sessionStorage.removeItem(RELOAD_KEY);

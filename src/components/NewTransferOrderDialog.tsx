@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { TransferOrder, InventoryItem } from "@/data/mockData";
-import { useProducts, useInventory, useInventoryForRole } from "@/contexts/AppDataContext";
+import { useAppData, useProducts, useInventoryForRole, useAccounts } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  activeDestinationWarehouses,
+  warehousesForDistributorMember,
+} from "@/lib/po-destination-warehouse";
 import {
   Dialog,
   DialogContent,
@@ -16,10 +21,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
-import { useAccounts } from "@/contexts/AppDataContext";
+import { Link } from "react-router-dom";
 import { Package, Truck, Store, AlertCircle } from "lucide-react";
-
-const LOCATIONS = ["Toronto Main", "Milan DC", "Paris Hub", "NYC Warehouse"] as const;
 
 const TO_STATUSES: TransferOrder["status"][] = ["draft", "picked", "packed", "shipped", "delivered", "cancelled"];
 
@@ -50,12 +53,24 @@ type Props = {
 export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) {
   const { products } = useProducts();
   const { accounts } = useAccounts();
+  const { data } = useAppData();
+  const { user } = useAuth();
+  const locationOptions = useMemo(() => {
+    if (user?.role === "distributor") {
+      const em = user.email?.trim().toLowerCase();
+      const member = em
+        ? (data.teamMembers ?? []).find((m) => m.email?.toLowerCase() === em)
+        : undefined;
+      return warehousesForDistributorMember(data.warehouses, member).map((w) => w.name);
+    }
+    return activeDestinationWarehouses(data.warehouses).map((w) => w.name);
+  }, [data.warehouses, data.teamMembers, user?.email, user?.role]);
   const { availableBottlesAtWarehouse, getInventoryBreakdownForSku } = useInventoryForRole();
   const [submitting, setSubmitting] = useState(false);
 
-  const [fromLocation, setFromLocation] = useState<typeof LOCATIONS[number]>(LOCATIONS[0]);
+  const [fromLocation, setFromLocation] = useState("");
   const [toAccountId, setToAccountId] = useState<string | undefined>(undefined);
-  const [sku, setSku] = useState(products[0]?.sku ?? "HJM-OG-750");
+  const [sku, setSku] = useState(products[0]?.sku ?? "");
   const [quantity, setQuantity] = useState("48");
   const [shipDate, setShipDate] = useState(todayISO());
   const [deliveryDate, setDeliveryDate] = useState(addDaysISO(2));
@@ -65,9 +80,9 @@ export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) 
 
   useEffect(() => {
     if (!open) return;
-    setFromLocation(LOCATIONS[0]);
+    setFromLocation(locationOptions[0] ?? "");
     setToAccountId(accounts[0]?.id);
-    const defaultSku = products[0]?.sku ?? "HJM-OG-750";
+    const defaultSku = products[0]?.sku ?? "";
     setSku(defaultSku);
     setQuantity("48");
     setShipDate(todayISO());
@@ -75,7 +90,7 @@ export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) 
     setStatus("draft");
     setTrackingNumber("");
     setNotes("");
-  }, [open, products, accounts]);
+  }, [open, products, accounts, locationOptions]);
 
   const availableForSku = useMemo(() => availableBottlesAtWarehouse(sku, fromLocation), [availableBottlesAtWarehouse, sku, fromLocation]);
   const inventoryBreakdown = useMemo(() => getInventoryBreakdownForSku(sku), [getInventoryBreakdownForSku, sku]);
@@ -91,6 +106,12 @@ export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) 
     e.preventDefault();
     if (!sku.trim() || products.length === 0) {
       toast.error("Select a SKU");
+      return;
+    }
+    if (!fromLocation.trim()) {
+      toast.error("Select a from warehouse", {
+        description: "Add a warehouse in Settings first.",
+      });
       return;
     }
     if (hasShortfall) {
@@ -174,16 +195,28 @@ export function NewTransferOrderDialog({ open, onOpenChange, onCreate }: Props) 
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>From Location</Label>
-              <Select value={fromLocation} onValueChange={(v) => setFromLocation(v as typeof LOCATIONS[number])}>
-                <SelectTrigger className="touch-manipulation">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LOCATIONS.map((loc) => (
-                    <SelectItem key={loc} value={loc}>{loc}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {locationOptions.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Add a warehouse in{" "}
+                  <Link to="/settings#warehouses" className="font-medium text-primary underline-offset-2 hover:underline">
+                    Settings → Warehouses
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <Select value={fromLocation} onValueChange={setFromLocation}>
+                  <SelectTrigger className="touch-manipulation">
+                    <SelectValue placeholder="Select warehouse" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locationOptions.map((loc) => (
+                      <SelectItem key={loc} value={loc}>
+                        {loc}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <p className="text-xs text-muted-foreground">
                 Available: <strong className="tabular-nums text-foreground">{availableForSku.toLocaleString()}</strong> bottles
               </p>

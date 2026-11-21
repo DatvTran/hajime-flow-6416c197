@@ -30,6 +30,7 @@ import {
   HqOperatorPill,
   HqOperatorTwoCol,
 } from "@/components/hq/HqOperatorUi";
+import { PartnerSkuPricesPanel } from "@/components/PartnerSkuPricesPanel";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
@@ -189,26 +190,48 @@ export function HqDistributorPartnerManageView({ orgId, orgName: orgNameProp }: 
       if (inviteUrl) setLastInviteUrl(inviteUrl);
       setLastInviteEmail(email);
       const emailed = Boolean(inv?.emailDispatched);
-      toast.success(
-        emailed ? t("Setup invite emailed") : t("Setup invite ready — email not sent"),
-        {
-          description: emailed
-            ? `${email} — ${t("They can open the link in their inbox to set a password.")}`
-            : `${email} — ${t("Production has no mail key (RESEND_API_KEY). Copy the link below and send it yourself.")}`,
-          ...(inviteUrl
-            ? {
-                action: {
-                  label: t("Copy invite link"),
-                  onClick: () => {
-                    void navigator.clipboard.writeText(inviteUrl).then(() => {
-                      toast.success(t("Invite link copied"));
-                    });
-                  },
-                },
-              }
-            : {}),
-        },
-      );
+      const status = inv?.status;
+      const reason = inv?.reason;
+      const copyAction = inviteUrl
+        ? {
+            action: {
+              label: t("Copy invite link"),
+              onClick: () => {
+                void navigator.clipboard.writeText(inviteUrl).then(() => {
+                  toast.success(t("Invite link copied"));
+                });
+              },
+            },
+          }
+        : {};
+
+      if (emailed) {
+        toast.success(t("Setup invite emailed"), {
+          description: `${email} — ${t("They can open the link in their inbox to set a password.")}`,
+        });
+      } else if (status === "skipped" && reason === "email_used_by_other_role") {
+        toast.error(t("Could not send invite"), {
+          description: `${email} — ${t(
+            "This email already belongs to another portal role (for example manufacturer). Use a different email on this distributor, or invite that person from their existing portal.",
+          )}`,
+        });
+      } else if (status === "skipped" || status === "pending_distributor_approval") {
+        toast.error(t("Could not send invite"), {
+          description: `${email} — ${reason || t("Invite was skipped.")}`,
+        });
+      } else if (status === "delivery_failed") {
+        toast.error(t("Could not send invite"), {
+          description: `${email} — ${t("Email delivery failed. Copy the link below and send it yourself.")}`,
+          ...copyAction,
+        });
+      } else {
+        toast.success(t("Setup invite ready — email not sent"), {
+          description: `${email} — ${t(
+            "Production has no mail key (RESEND_API_KEY). Copy the link below and send it yourself.",
+          )}`,
+          ...copyAction,
+        });
+      }
     } catch (err) {
       toast.error(t("Could not send invite"), {
         description: err instanceof Error ? err.message : t("Try again."),
@@ -370,6 +393,8 @@ export function HqDistributorPartnerManageView({ orgId, orgName: orgNameProp }: 
               </HqBtn>
             </HqOperatorCard>
           ) : null}
+
+          <PartnerSkuPricesPanel mode="hq_sell_in" accountId={liveAccount.id} />
 
           <HqOperatorTwoCol className="mb-0">
             <HqOperatorCard className="overflow-hidden p-0">

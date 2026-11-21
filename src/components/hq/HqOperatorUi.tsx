@@ -143,8 +143,20 @@ export function HqOperatorKpiCard({
   return <div className={className}>{inner}</div>;
 }
 
-export function HqOperatorCard({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("hq-card", className)}>{children}</div>;
+export function HqOperatorCard({
+  children,
+  className,
+  id,
+}: {
+  children: ReactNode;
+  className?: string;
+  id?: string;
+}) {
+  return (
+    <div id={id} className={cn("hq-card", className)}>
+      {children}
+    </div>
+  );
 }
 
 export function HqOperatorCardHead({

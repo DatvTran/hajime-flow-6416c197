@@ -17,6 +17,8 @@ export function DistributorPageHeader({
   rawTitle,
   rawDescription,
   className,
+  titleClassName,
+  descriptionClassName,
 }: {
   title: string;
   description?: string;
@@ -25,16 +27,23 @@ export function DistributorPageHeader({
   rawTitle?: boolean;
   rawDescription?: boolean;
   className?: string;
+  titleClassName?: string;
+  descriptionClassName?: string;
 }) {
   const { t } = useLanguage();
   return (
     <div className={cn("dist-ph-row flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between", className)}>
       <div className="min-w-0">
-        <h1 className="font-display text-[26px] font-semibold tracking-[-0.02em] text-foreground sm:text-[30px]">
+        <h1
+          className={cn(
+            "font-display text-[26px] font-semibold tracking-[-0.02em] text-foreground sm:text-[30px]",
+            titleClassName,
+          )}
+        >
           {rawTitle ? title : t(title)}
         </h1>
         {description ? (
-          <p className="mt-1 max-w-[56ch] text-[13px] text-muted-foreground">
+          <p className={cn("mt-1 max-w-[56ch] text-[13px] text-muted-foreground", descriptionClassName)}>
             {rawDescription ? description : t(description)}
           </p>
         ) : null}

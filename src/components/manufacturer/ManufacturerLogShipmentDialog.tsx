@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FinishedGoodsRow } from "@/lib/manufacturer-finished-goods";
 import { availableCasesForSku } from "@/lib/manufacturer-finished-goods";
+import { useAppData } from "@/contexts/AppDataContext";
+import { activeDestinationWarehouses } from "@/lib/po-destination-warehouse";
 import {
   Dialog,
   DialogContent,
@@ -14,12 +16,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLanguage } from "@/contexts/LanguageContext";
-
-const DESTINATIONS = [
-  "Hajime HQ · Tokyo DC",
-  "Hajime HQ · Toronto Main",
-  "Hajime HQ · Milan Depot",
-] as const;
 
 const CARRIERS = ["Nippon Freight", "Nippon Express", "DHL Global"] as const;
 
@@ -39,6 +35,11 @@ type Props = {
 
 export function ManufacturerLogShipmentDialog({ open, onOpenChange, finishedGoods, onSubmit }: Props) {
   const { t } = useLanguage();
+  const { data } = useAppData();
+  const destinations = useMemo(
+    () => activeDestinationWarehouses(data.warehouses).map((w) => w.name),
+    [data.warehouses],
+  );
 
   const shippable = useMemo(
     () => finishedGoods.filter((r) => r.cases - r.reserved > 0),
@@ -49,7 +50,7 @@ export function ManufacturerLogShipmentDialog({ open, onOpenChange, finishedGood
 
   const [selectedKey, setSelectedKey] = useState<string>("");
   const [cases, setCases] = useState<string>("");
-  const [destination, setDestination] = useState<string>(DESTINATIONS[0]);
+  const [destination, setDestination] = useState<string>("");
   const [carrier, setCarrier] = useState<string>(CARRIERS[0]);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,10 +66,10 @@ export function ManufacturerLogShipmentDialog({ open, onOpenChange, finishedGood
     const first = shippable[0];
     setSelectedKey(first ? keyFor(first) : "");
     setCases(first ? String(first.cases - first.reserved) : "");
-    setDestination(DESTINATIONS[0]);
+    setDestination(destinations[0] ?? "");
     setCarrier(CARRIERS[0]);
     setError(null);
-  }, [open, shippable]);
+  }, [open, shippable, destinations]);
 
   useEffect(() => {
     if (selected) setCases(String(selected.cases - selected.reserved));
@@ -77,6 +78,10 @@ export function ManufacturerLogShipmentDialog({ open, onOpenChange, finishedGood
   const submit = () => {
     if (!selected) {
       setError(t("Select a finished-goods lot to ship."));
+      return;
+    }
+    if (!destination.trim()) {
+      setError(t("Select a destination warehouse. Add one in Settings if the list is empty."));
       return;
     }
     const n = Number(cases);
@@ -147,18 +152,24 @@ export function ManufacturerLogShipmentDialog({ open, onOpenChange, finishedGood
 
             <div className="space-y-1.5">
               <Label>{t("Destination")}</Label>
-              <Select value={destination} onValueChange={setDestination}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DESTINATIONS.map((d) => (
-                    <SelectItem key={d} value={d}>
-                      {d}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {destinations.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("No warehouses yet. Ask HQ to add one in Settings → Warehouses.")}
+                </p>
+              ) : (
+                <Select value={destination} onValueChange={setDestination}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("Select warehouse")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {destinations.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {d}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <div className="space-y-1.5">

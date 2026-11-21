@@ -101,7 +101,7 @@ export default function ManufacturerProductRequestsPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="card-interactive p-4 space-y-1">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Feasibility review</p>
           <p className="font-display text-2xl font-semibold tabular-nums">{feasibilityCount}</p>

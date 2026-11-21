@@ -1,10 +1,33 @@
 import { Router } from "express";
 import { platformDb } from "../config/database.mjs";
 import { Permission, hasPermission } from "../rbac/permissions.mjs";
-import { sendExportDocIssuedEmail, clientBaseUrl } from "../services/export-notify.mjs";
+import {
+  sendExportDocIssuedEmail,
+  sendPortalExportOrderPlacedEmail,
+  clientBaseUrl,
+} from "../services/export-notify.mjs";
 import { applyTransition, approveException } from "../services/export-order-transitions.mjs";
 import { emailPoaLink, poaSignUrl, rotatePoaLink } from "../services/po-acceptance.mjs";
+import {
+  buyerPoSignUrl,
+  emailBuyerPoLink,
+  latestBuyerPoDoc,
+  rotateBuyerPoLink,
+  serializeBuyerPoDoc,
+} from "../services/buyer-po.mjs";
 import { INCOTERM_RULES, latestPoaDoc, orderTotals, serializePoaDoc } from "../lib/po-acceptance.mjs";
+import {
+  assertMonthHasRoom,
+  capacityByMonth,
+  firstPressMl,
+  followMonth,
+  ensureCapacityColumns,
+  isBookableDeliveryMonth,
+  monthLabel,
+  newOrderMonthFields,
+  productionMonth,
+} from "../lib/first-press-capacity.mjs";
+import { httpError } from "../lib/http-error.mjs";
 import {
   canManageExportOrders,
   isManufacturer,
@@ -19,9 +42,22 @@ import {
   isBuyerExportDoc,
   distributorCanViewStage,
   findExportOrder,
+  findExportOrderAnyTenant,
+  resolveExportBrandTenantId,
+  reconcilePortalExportOrdersToBrandTenant,
+  repricePortalQuotationsToListFob,
+  applyNegotiatedCaseUsdToLines,
+  negotiatedSellInCaseByExportSku,
+  resolvePortalWholesaleAccountId,
   requiredChecklistReady,
   asJsonObject,
+  isExportLeadType,
+  findLiveOrderForLead,
+  leadStarterLines,
+  TRIAL_ORDER_CASES,
 } from "../lib/export-orders.mjs";
+import { normalizeExportLineSku } from "../lib/export-catalog-map.mjs";
+import { ensurePortalDistributorOrg } from "../lib/distributor-organization.mjs";
 
 const router = Router();
 
@@ -32,6 +68,83 @@ function getTenantId(req, res) {
     return null;
   }
   return tenantId;
+}
+
+/** Brand HQ tenant for export_orders rows (never the distributor org CRM tenant). */
+async function getExportTenantId(req, res) {
+  const brand = await resolveExportBrandTenantId(platformDb, req.user);
+  if (brand) return brand;
+  return getTenantId(req, res);
+}
+
+async function hqNotifyEmails() {
+  const fromEnv = String(process.env.EXPORT_HQ_NOTIFY_EMAIL || process.env.HQ_NOTIFY_EMAIL || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (fromEnv.length) return fromEnv;
+  try {
+    const rows = await platformDb("users")
+      .whereIn("role", ["brand_operator", "founder_admin", "operations"])
+      .where({ is_active: true })
+      .whereNull("deleted_at")
+      .select("email")
+      .limit(8);
+    return rows.map((r) => String(r.email || "").trim().toLowerCase()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function loadExportOrderForRequest(db, req, idOrDisplay) {
+  const role = req.user?.role;
+  const brandTenantId = await resolveExportBrandTenantId(db, req.user);
+
+  if (role === "distributor") {
+    let orgId = req.user?.distributorOrgId || req.distributorOrg?.id;
+    if (!orgId) {
+      try {
+        const org = await ensurePortalDistributorOrg(req.user);
+        orgId = org?.id;
+        if (org) {
+          req.user.distributorOrgId = org.id;
+          req.distributorOrg = org;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!orgId) return null;
+    const id = String(idOrDisplay || "").trim();
+    return db("export_orders")
+      .where({ distributor_org_id: orgId })
+      .andWhere((qb) => {
+        qb.where("display_id", id);
+        if (/^\d+$/.test(id)) qb.orWhere("id", Number(id));
+      })
+      .first();
+  }
+
+  if (brandTenantId) {
+    try {
+      await reconcilePortalExportOrdersToBrandTenant(db, brandTenantId);
+      await repricePortalQuotationsToListFob(db, brandTenantId);
+    } catch {
+      /* ignore */
+    }
+    const onBrand = await findExportOrder(db, brandTenantId, idOrDisplay);
+    if (onBrand) return onBrand;
+  }
+
+  // HQ recovery: portal rows created under an org tenant before the brand-tenant fix.
+  if (canManageExportOrders(role) || role === "finance") {
+    return findExportOrderAnyTenant(db, idOrDisplay);
+  }
+
+  if (req.user?.tenantId) {
+    return findExportOrder(db, req.user.tenantId, idOrDisplay);
+  }
+  return findExportOrderAnyTenant(db, idOrDisplay);
 }
 
 export function exportSerializeForRole(req, row) {
@@ -49,16 +162,35 @@ export function exportSerializeForRole(req, row) {
   return toBuyerFacingOrder(serializeExportOrder(row, { includeInternalEconomics: false, buyerFacing: true }));
 }
 
-export function parseExportLines(raw) {
+export function parseExportLines(raw, { portalOfferOnly = false } = {}) {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter((l) => isExportSku(l?.sku))
-    .map((l) => ({
-      sku: String(l.sku),
-      cases: Math.max(0, Math.floor(Number(l.cases) || 0)),
-      ...(l.unitFobUsd != null ? { unitFobUsd: Number(l.unitFobUsd) } : {}),
-    }))
-    .filter((l) => l.cases > 0);
+    .map((l) => {
+      const normalized = normalizeExportLineSku(
+        l?.sku,
+        {
+          name: l?.product || l?.name,
+          size: l?.size,
+        },
+        { portalOfferOnly },
+      );
+      if (!normalized) return null;
+      const caseUsd =
+        l?.caseUsd != null && Number.isFinite(Number(l.caseUsd)) && Number(l.caseUsd) > 0
+          ? Math.round(Number(l.caseUsd) * 100) / 100
+          : null;
+      const unitFobUsd =
+        l?.unitFobUsd != null && Number.isFinite(Number(l.unitFobUsd)) && Number(l.unitFobUsd) >= 0
+          ? Math.round(Number(l.unitFobUsd) * 100) / 100
+          : null;
+      return {
+        sku: normalized,
+        cases: Math.max(0, Math.floor(Number(l?.cases) || 0)),
+        ...(caseUsd != null ? { caseUsd } : {}),
+        ...(unitFobUsd != null ? { unitFobUsd } : {}),
+      };
+    })
+    .filter((l) => l && isExportSku(l.sku) && l.cases > 0);
 }
 
 async function withPoaSummary(db, req, row) {
@@ -66,7 +198,23 @@ async function withPoaSummary(db, req, row) {
   if (!data || isManufacturer(req.user?.role)) return data;
   const hq = canManageExportOrders(req.user?.role) || req.user?.role === "finance";
   const doc = await latestPoaDoc(db, row.tenant_id, row.id);
-  return { ...data, poAcceptance: serializePoaDoc(doc, { includeAudit: hq }) };
+  const bpo = await latestBuyerPoDoc(db, row.tenant_id, row.id);
+  return {
+    ...data,
+    poAcceptance: serializePoaDoc(doc, { includeAudit: hq }),
+    buyerPo: serializeBuyerPoDoc(bpo, { includeAudit: hq }),
+  };
+}
+
+async function emailIssuedBuyerPo(updated) {
+  const s = updated?.secret;
+  if (!s?.signToken) return { sent: false, skipped: true };
+  const doc = await latestBuyerPoDoc(platformDb, updated.tenant_id, updated.id);
+  return emailBuyerPoLink(updated, {
+    token: s.signToken,
+    docNumber: s.docNumber,
+    expiresAt: doc?.sign_token_expires_at,
+  });
 }
 
 async function emailIssuedPoa(updated) {
@@ -149,23 +297,60 @@ router.get("/tracker", async (req, res) => {
   }
 });
 
-router.get("/", async (req, res) => {
+router.get("/capacity", async (req, res) => {
   try {
+    if (!canManageExportOrders(req.user?.role)) return res.status(403).json({ error: "Forbidden" });
     const tenantId = getTenantId(req, res);
     if (!tenantId) return;
+    const db = platformDb;
+    await ensureExportOrdersTable(db);
+    const exclude = req.query.excludeOrder ? await findExportOrder(db, tenantId, String(req.query.excludeOrder)) : null;
+    res.json({ data: await capacityByMonth(db, tenantId, { excludeOrderId: exclude?.id }) });
+  } catch (err) {
+    sendErr(res, err);
+  }
+});
+
+router.get("/", async (req, res) => {
+  try {
     const db = platformDb;
     if (!(await ensureExportOrdersTable(db))) return res.json({ data: [] });
     const role = req.user?.role;
     if (!canRead(role)) return res.status(403).json({ error: "Forbidden" });
-    let q = db("export_orders").where({ tenant_id: tenantId }).orderBy("created_at", "desc");
+    const brandTenantId = await getExportTenantId(req, res);
+    if (!brandTenantId) return;
+    try {
+      await reconcilePortalExportOrdersToBrandTenant(db, brandTenantId);
+      await repricePortalQuotationsToListFob(db, brandTenantId);
+    } catch (e) {
+      console.warn("[export-orders] portal reconcile/reprice failed:", e?.message || e);
+    }
+
+    let q = db("export_orders").orderBy("created_at", "desc");
     if (role === "distributor") {
-      const orgId = req.user?.distributorOrgId || req.distributorOrg?.id;
+      let orgId = req.user?.distributorOrgId || req.distributorOrg?.id;
+      if (!orgId) {
+        try {
+          const org = await ensurePortalDistributorOrg(req.user);
+          orgId = org?.id;
+          if (org) {
+            req.user.distributorOrgId = org.id;
+            req.distributorOrg = org;
+          }
+        } catch (e) {
+          console.warn("[export-orders] ensure org on list failed:", e?.message || e);
+        }
+      }
       if (!orgId) return res.json({ data: [] });
+      // Portal files are stored on the brand tenant; scope by org link, not CRM tenant.
       q = q.where({ distributor_org_id: orgId });
     } else if (isManufacturer(role)) {
       q = q
+        .where({ tenant_id: brandTenantId })
         .whereIn("deposit_status", ["cleared", "exception"])
         .whereNotIn("stage", ["01_lead", "02_quotation", "03_buyer_po", "04_po_acceptance", "05_proforma", "06_deposit"]);
+    } else {
+      q = q.where({ tenant_id: brandTenantId });
     }
     const rows = await q.limit(200);
     const data = rows
@@ -183,7 +368,8 @@ router.post("/", async (req, res) => {
     const isHq = canManageExportOrders(role);
     const isDist = role === "distributor";
     if (!isHq && !isDist) return res.status(403).json({ error: "Forbidden" });
-    const tenantId = getTenantId(req, res);
+    // Always write under Brand HQ tenant so portal orders appear in HQ International orders.
+    const tenantId = await getExportTenantId(req, res);
     if (!tenantId) return;
     const db = platformDb;
     if (!(await ensureExportOrdersTable(db))) {
@@ -202,16 +388,36 @@ router.post("/", async (req, res) => {
     let buyerPoNo = body.buyerPoNo != null ? String(body.buyerPoNo).trim() : null;
     let forwarderName = body.forwarderName != null ? String(body.forwarderName).trim() : null;
     let forwarderInstructions = body.forwarderInstructions != null ? String(body.forwarderInstructions) : null;
+    const monthPick = isHq ? newOrderMonthFields(body.requestedMonth) : { fields: {} };
+    if (monthPick.error) return res.status(400).json({ error: monthPick.error });
 
     if (isDist) {
-      const orgId = req.user?.distributorOrgId || req.distributorOrg?.id;
+      let org = req.distributorOrg;
+      let orgId = req.user?.distributorOrgId || org?.id || null;
+      if (!orgId || !org) {
+        try {
+          org = await ensurePortalDistributorOrg(req.user);
+          orgId = org?.id || null;
+          if (org) {
+            req.user.distributorOrgId = org.id;
+            req.distributorOrg = org;
+          }
+        } catch (e) {
+          console.error("[export-orders] ensure distributor org failed:", e);
+          return res.status(500).json({
+            error: "Could not link this login to a distributor organization. Ask HQ to provision your wholesaler portal.",
+          });
+        }
+      }
       if (!orgId) {
-        return res.status(400).json({ error: "This login is not linked to a distributor organization." });
+        return res.status(400).json({
+          error: "This login is not linked to a distributor organization. Ask HQ to provision your wholesaler portal.",
+        });
       }
       distributorOrgId = orgId;
       origin = "portal";
       expoLeadId = null;
-      const orgName = String(req.distributorOrg?.name || "").trim();
+      const orgName = String(org?.name || req.distributorOrg?.name || "").trim();
       buyerName = String(req.user?.displayName || buyerName || orgName || "Buyer").trim();
       buyerCompany = orgName || buyerCompany || buyerName;
       buyerEmail = String(req.user?.email || buyerEmail || "").trim().toLowerCase() || null;
@@ -219,6 +425,7 @@ router.post("/", async (req, res) => {
       destinationCountry = destinationCountry || territory || null;
     }
 
+    let expoLead = null;
     if (expoLeadId) {
       const lead = await db("expo_leads")
         .where({ tenant_id: tenantId })
@@ -228,12 +435,17 @@ router.post("/", async (req, res) => {
         })
         .first();
       if (!lead) return res.status(404).json({ error: "Expo lead not found" });
-      if (!["importer_distributor", "importer"].includes(String(lead.business_type))) {
+      if (!isExportLeadType(lead.business_type)) {
         return res.status(422).json({
-          error: "Only importer / distributor leads can open an export file.",
+          error: "Only importer, distributor, wholesale and duty-free leads can open an export file.",
           code: "LEAD_NOT_CONVERTIBLE",
         });
       }
+      const existing = await findLiveOrderForLead(db, tenantId, lead.id);
+      if (existing) {
+        return res.status(200).json({ data: exportSerializeForRole(req, existing), existing: true });
+      }
+      expoLead = lead;
       expoLeadId = lead.id;
       buyerName = buyerName || String(lead.full_name || "").trim();
       buyerCompany = buyerCompany || String(lead.company_name || buyerName).trim();
@@ -248,52 +460,119 @@ router.post("/", async (req, res) => {
 
     let rawLines = Array.isArray(body.lines) ? body.lines : [];
     if (isDist) {
-      rawLines = rawLines.map((l) => ({ sku: l?.sku, cases: l?.cases }));
+      // Catalog SKU + cases only — negotiated sell-in / list FOB applied server-side.
+      rawLines = rawLines.map((l) => ({
+        sku: l?.sku,
+        cases: l?.cases,
+        ...(l?.name || l?.product ? { name: l?.name || l?.product } : {}),
+        ...(l?.size ? { size: l.size } : {}),
+      }));
     } else if (!rawLines.length) {
-      rawLines = [{ sku: "first_press_750", cases: 25 }];
+      rawLines = expoLead ? leadStarterLines(expoLead) : [{ sku: "first_press_750", cases: TRIAL_ORDER_CASES }];
     }
-    const lines = parseExportLines(rawLines);
-    if (!lines.length) return res.status(400).json({ error: "Add at least one SKU with cases" });
+    let lines = parseExportLines(rawLines, { portalOfferOnly: isDist });
+    if (!lines.length) {
+      return res.status(400).json({
+        error: isDist
+          ? "Add at least one First Press SKU with cases (Yuzu / Second Bloom is not offered yet)."
+          : "Add at least one SKU with cases",
+      });
+    }
+    // Portal: this distributor's negotiated sell-in USD / case × cases (list FOB if unset).
+    if (isDist) {
+      try {
+        const accountId = await resolvePortalWholesaleAccountId(db, tenantId, {
+          user: req.user,
+          distributorOrgId,
+        });
+        let caseMap = new Map();
+        if (accountId) {
+          caseMap = await negotiatedSellInCaseByExportSku(db, tenantId, accountId);
+          if (caseMap.size === 0 && req.user?.tenantId && String(req.user.tenantId) !== String(tenantId)) {
+            caseMap = await negotiatedSellInCaseByExportSku(db, req.user.tenantId, accountId);
+          }
+        }
+        lines = applyNegotiatedCaseUsdToLines(lines, caseMap);
+      } catch (e) {
+        console.warn("[export-orders] partner sell-in lookup failed, using list FOB:", e?.message || e);
+        lines = applyNegotiatedCaseUsdToLines(lines, new Map());
+      }
+    }
     const priced = priceExportLines(lines);
-    const seq = await nextSeq(db, tenantId);
-    const displayId = padDoc("HX", seq);
+    if (monthPick.fields.requested_month) await ensureCapacityColumns(db);
     const now = new Date();
-    const [row] = await db("export_orders")
-      .insert({
-        tenant_id: tenantId,
-        seq,
-        display_id: displayId,
-        quote_no: padDoc("Q", seq),
-        pi_no: padDoc("PI", seq),
-        deposit_no: padDoc("DP", seq),
-        pa_no: padDoc("PA", seq),
-        release_no: padDoc("SR", seq),
-        expo_lead_id: expoLeadId,
-        distributor_org_id: distributorOrgId,
-        origin,
-        buyer_name: buyerName,
-        buyer_company: buyerCompany,
-        buyer_address: buyerAddress,
-        buyer_email: buyerEmail,
-        territory,
-        destination_country: destinationCountry,
-        buyer_po_no: buyerPoNo,
-        forwarder_name: forwarderName,
-        forwarder_instructions: forwarderInstructions,
-        manufacturer_name: body.manufacturerName ? String(body.manufacturerName).trim() : null,
-        manufacturer_id: body.manufacturerId ? String(body.manufacturerId).trim() : null,
-        stage: "02_quotation",
-        lines: JSON.stringify(priced.lines.map((l) => ({ sku: l.sku, cases: l.cases, unitFobUsd: l.unitFobUsd }))),
-        subtotal_usd: priced.subtotalUsd,
-        deposit_due_usd: priced.depositDueUsd,
-        balance_due_usd: priced.balanceDueUsd,
-        checklist: JSON.stringify(defaultChecklistState()),
-        issued_docs: JSON.stringify({}),
-        exclusivity: false,
-        created_at: now,
-        updated_at: now,
-      })
-      .returning("*");
+    const row = await db.transaction(async (trx) => {
+      const seq = await nextSeq(trx, tenantId);
+      const displayId = padDoc("HX", seq);
+      const [inserted] = await trx("export_orders")
+        .insert({
+          tenant_id: tenantId,
+          seq,
+          display_id: displayId,
+          quote_no: padDoc("Q", seq),
+          pi_no: padDoc("PI", seq),
+          deposit_no: padDoc("DP", seq),
+          pa_no: padDoc("PA", seq),
+          release_no: padDoc("SR", seq),
+          expo_lead_id: expoLeadId,
+          distributor_org_id: distributorOrgId,
+          origin,
+          buyer_name: buyerName,
+          buyer_company: buyerCompany,
+          buyer_address: buyerAddress,
+          buyer_email: buyerEmail,
+          territory,
+          destination_country: destinationCountry,
+          buyer_po_no: buyerPoNo,
+          forwarder_name: forwarderName,
+          forwarder_instructions: forwarderInstructions,
+          manufacturer_name: body.manufacturerName ? String(body.manufacturerName).trim() : null,
+          manufacturer_id: body.manufacturerId ? String(body.manufacturerId).trim() : null,
+          stage: "02_quotation",
+          lines: JSON.stringify(
+            priced.lines.map((l) => ({
+              sku: l.sku,
+              cases: l.cases,
+              unitFobUsd: l.unitFobUsd,
+              caseUsd: l.caseUsd,
+            })),
+          ),
+          subtotal_usd: priced.subtotalUsd,
+          deposit_due_usd: priced.depositDueUsd,
+          balance_due_usd: priced.balanceDueUsd,
+          checklist: JSON.stringify(defaultChecklistState()),
+          issued_docs: JSON.stringify({}),
+          exclusivity: false,
+          ...monthPick.fields,
+          created_at: now,
+          updated_at: now,
+        })
+        .returning("*");
+      if (expoLead && expoLead.status !== "converted") {
+        await trx("expo_leads").where({ tenant_id: tenantId, id: expoLead.id }).update({ status: "converted" });
+      }
+      return inserted;
+    });
+
+    if (isDist) {
+      try {
+        const emails = await hqNotifyEmails();
+        const pricedSer = exportSerializeForRole(req, row);
+        await sendPortalExportOrderPlacedEmail({
+          to: emails,
+          displayId: String(row.display_id || pricedSer.displayId || ""),
+          buyerCompany: String(row.buyer_company || ""),
+          buyerEmail: String(row.buyer_email || ""),
+          territory: String(row.territory || ""),
+          subtotalUsd: Number(pricedSer.subtotalUsd ?? priced.subtotalUsd ?? row.subtotal_usd ?? 0),
+          hqUrl: `${clientBaseUrl()}/export-orders/${row.display_id}`,
+          lines: pricedSer.lines || priced.lines,
+        });
+      } catch (e) {
+        console.warn("[export-orders] HQ notify failed:", e?.message || e);
+      }
+    }
+
     res.status(201).json({ data: exportSerializeForRole(req, row) });
   } catch (err) {
     sendErr(res, err);
@@ -302,16 +581,13 @@ router.post("/", async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
     const db = platformDb;
     if (!(await ensureExportOrdersTable(db))) return res.status(404).json({ error: "Not found" });
-    const row = await findExportOrder(db, tenantId, req.params.id);
+    const row = await loadExportOrderForRequest(db, req, req.params.id);
     if (!row) return res.status(404).json({ error: "Not found" });
     const role = req.user?.role;
     if (role === "distributor") {
-      const orgId = req.user?.distributorOrgId || req.distributorOrg?.id;
-      if (!orgId || String(row.distributor_org_id) !== String(orgId) || !distributorCanViewStage(row.stage)) {
+      if (!distributorCanViewStage(row.stage)) {
         return res.status(404).json({ error: "Not found" });
       }
     } else if (isManufacturer(role)) {
@@ -329,15 +605,14 @@ router.get("/:id", async (req, res) => {
 
 router.patch("/:id", async (req, res) => {
   try {
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
     const db = platformDb;
     if (!(await ensureExportOrdersTable(db))) {
       return res.status(500).json({ error: "Export orders table unavailable" });
     }
-    const row = await findExportOrder(db, tenantId, req.params.id);
+    const row = await loadExportOrderForRequest(db, req, req.params.id);
     if (!row) return res.status(404).json({ error: "Not found" });
     const role = req.user?.role;
+    const tenantId = row.tenant_id;
     const body = req.body || {};
     if (body.stage != null || body.depositStatus != null || body.balanceStatus != null) {
       return res.status(400).json({
@@ -417,7 +692,14 @@ router.patch("/:id", async (req, res) => {
         let subtotal = Number(row.subtotal_usd || 0);
         if (body.lines) {
           const priced = priceExportLines(parseExportLines(body.lines));
-          updates.lines = JSON.stringify(priced.lines.map((l) => ({ sku: l.sku, cases: l.cases, unitFobUsd: l.unitFobUsd })));
+          updates.lines = JSON.stringify(
+            priced.lines.map((l) => ({
+              sku: l.sku,
+              cases: l.cases,
+              unitFobUsd: l.unitFobUsd,
+              caseUsd: l.caseUsd,
+            })),
+          );
           subtotal = priced.subtotalUsd;
         }
         if (body.lines || updates.other_charges_usd !== undefined) {
@@ -426,6 +708,21 @@ router.patch("/:id", async (req, res) => {
           updates.deposit_due_usd = t.depositDueUsd;
           updates.balance_due_usd = t.balanceDueUsd;
         }
+      }
+      if (body.requestedMonth !== undefined) {
+        const month = String(body.requestedMonth || "").trim();
+        if (row.capacity_reserved_at && month !== String(row.requested_month || "")) {
+          return res.status(409).json({
+            error: `Reserved for production in ${monthLabel(productionMonth(row.requested_month))}. Cancel and re-book the order to change the month.`,
+          });
+        }
+        if (month && month !== String(row.requested_month || "") && !isBookableDeliveryMonth(month)) {
+          return res.status(400).json({ error: "Pick a delivery month from next month onwards." });
+        }
+        updates.requested_month = month || null;
+        const window = updates.delivery_window !== undefined ? updates.delivery_window : row.delivery_window;
+        const follow = followMonth(window, row.requested_month, month);
+        if (follow) updates.delivery_window = follow;
       }
       if (body.checklist) updates.checklist = JSON.stringify(body.checklist);
       if (body.checklistCleared === true) {
@@ -443,10 +740,15 @@ router.patch("/:id", async (req, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const [updated] = await db("export_orders")
-      .where({ id: row.id, tenant_id: tenantId })
-      .update(updates)
-      .returning("*");
+    const recheck = row.capacity_reserved_at && updates.lines && firstPressMl(updates.lines) > firstPressMl(row.lines);
+    const updated = await db.transaction(async (trx) => {
+      if (recheck) {
+        const room = await assertMonthHasRoom(trx, tenantId, row, { lines: updates.lines });
+        if (!room.ok) throw httpError(409, room.code, { code: "CAPACITY_FULL" });
+      }
+      const [u] = await trx("export_orders").where({ id: row.id, tenant_id: tenantId }).update(updates).returning("*");
+      return u;
+    });
     res.json({ data: await withPoaSummary(db, req, updated) });
   } catch (err) {
     sendErr(res, err);
@@ -455,12 +757,11 @@ router.patch("/:id", async (req, res) => {
 
 async function runAction(req, res, action, payload) {
   try {
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
     const db = platformDb;
     await ensureExportOrdersTable(db);
-    const row = await findExportOrder(db, tenantId, req.params.id);
+    const row = await loadExportOrderForRequest(db, req, req.params.id);
     if (!row) return res.status(404).json({ error: "Not found" });
+    const tenantId = row.tenant_id;
     const updated = await applyTransition({
       tenantId,
       orderId: row.id,
@@ -469,7 +770,7 @@ async function runAction(req, res, action, payload) {
       payload: payload || req.body || {},
       db,
     });
-    res.json({ data: exportSerializeForRole(req, updated) });
+    res.json({ data: await withPoaSummary(db, req, updated) });
   } catch (err) {
     sendErr(res, err);
   }
@@ -479,12 +780,11 @@ router.post("/:id/quotation", (req, res) => runAction(req, res, req.body?.requot
 router.post("/:id/buyer-po", (req, res) => runAction(req, res, "record_buyer_po"));
 router.post("/:id/acceptance", async (req, res) => {
   try {
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
     const db = platformDb;
     await ensureExportOrdersTable(db);
-    const row = await findExportOrder(db, tenantId, req.params.id);
+    const row = await loadExportOrderForRequest(db, req, req.params.id);
     if (!row) return res.status(404).json({ error: "Not found" });
+    const tenantId = row.tenant_id;
     const updated = await applyTransition({
       tenantId,
       orderId: row.id,
@@ -504,12 +804,11 @@ router.post("/:id/acceptance", async (req, res) => {
 router.post("/:id/po-acceptance/link", async (req, res) => {
   try {
     if (!canManageExportOrders(req.user?.role)) return res.status(403).json({ error: "Forbidden" });
-    const tenantId = getTenantId(req, res);
-    if (!tenantId) return;
     const db = platformDb;
     await ensureExportOrdersTable(db);
-    const row = await findExportOrder(db, tenantId, req.params.id);
+    const row = await loadExportOrderForRequest(db, req, req.params.id);
     if (!row) return res.status(404).json({ error: "Not found" });
+    const tenantId = row.tenant_id;
     const { token, expiresAt, doc } = await rotatePoaLink(db, { tenantId, order: row });
     const email =
       req.body?.email === true
@@ -522,6 +821,47 @@ router.post("/:id/po-acceptance/link", async (req, res) => {
         : { sent: false, skipped: true };
     const fresh = await findExportOrder(db, tenantId, row.id);
     res.json({ data: await withPoaSummary(db, req, fresh), url: poaSignUrl(token), expiresAt, email });
+  } catch (err) {
+    sendErr(res, err);
+  }
+});
+router.post("/:id/buyer-po/send", async (req, res) => {
+  try {
+    const db = platformDb;
+    await ensureExportOrdersTable(db);
+    const row = await loadExportOrderForRequest(db, req, req.params.id);
+    if (!row) return res.status(404).json({ error: "Not found" });
+    const tenantId = row.tenant_id;
+    const updated = await applyTransition({
+      tenantId,
+      orderId: row.id,
+      action: "issue_buyer_po",
+      actor: actorFrom(req),
+      payload: req.body || {},
+      db,
+    });
+    const email = await emailIssuedBuyerPo(updated);
+    const token = updated?.secret?.signToken;
+    res.json({ data: await withPoaSummary(db, req, updated), email, url: token ? buyerPoSignUrl(token) : null });
+  } catch (err) {
+    sendErr(res, err);
+  }
+});
+router.post("/:id/buyer-po/link", async (req, res) => {
+  try {
+    if (!canManageExportOrders(req.user?.role)) return res.status(403).json({ error: "Forbidden" });
+    const db = platformDb;
+    await ensureExportOrdersTable(db);
+    const row = await loadExportOrderForRequest(db, req, req.params.id);
+    if (!row) return res.status(404).json({ error: "Not found" });
+    const tenantId = row.tenant_id;
+    const { token, expiresAt, doc } = await rotateBuyerPoLink(db, { tenantId, order: row });
+    const email =
+      req.body?.email === true
+        ? await emailBuyerPoLink(row, { token, docNumber: doc.doc_number, expiresAt })
+        : { sent: false, skipped: true };
+    const fresh = await findExportOrder(db, tenantId, row.id);
+    res.json({ data: await withPoaSummary(db, req, fresh), url: buyerPoSignUrl(token), expiresAt, email });
   } catch (err) {
     sendErr(res, err);
   }
@@ -570,6 +910,7 @@ router.post("/:id/docs/:doc/issue", async (req, res) => {
   const doc = String(req.params.doc || "");
   const map = {
     quotation: "issue_quotation",
+    buyer_po: "issue_buyer_po",
     po_acceptance: "accept_po",
     proforma: "issue_pi",
     deposit: "record_payment",
@@ -599,6 +940,8 @@ router.post("/:id/docs/:doc/issue", async (req, res) => {
     let email = { sent: false, skipped: true };
     if (doc === "po_acceptance") {
       email = await emailIssuedPoa(updated);
+    } else if (doc === "buyer_po") {
+      email = await emailIssuedBuyerPo(updated);
     } else if (isBuyerExportDoc(doc) && updated.buyer_email) {
       const titles = {
         quotation: "International distributor quotation",
@@ -607,13 +950,25 @@ router.post("/:id/docs/:doc/issue", async (req, res) => {
         deposit: "Deposit confirmation",
         shipment_release: "Final payment and shipment release",
       };
-      const docUrl = `${clientBaseUrl()}/distributor/international-orders/${updated.display_id}/docs/${doc}`;
+      const snap = serializeExportOrder(updated, { buyerFacing: true });
+      const docUrl = updated.distributor_org_id
+        ? `${clientBaseUrl()}/distributor/international-orders/${updated.display_id}/docs/${doc}`
+        : null;
       email = await sendExportDocIssuedEmail({
         to: updated.buyer_email,
         buyerName: updated.buyer_name,
         docTitle: titles[doc] || doc,
         displayId: updated.display_id,
         docUrl,
+        commercial:
+          doc === "quotation"
+            ? {
+                lines: snap?.lines || [],
+                subtotalUsd: snap?.subtotalUsd,
+                depositDueUsd: snap?.depositDueUsd,
+                balanceDueUsd: snap?.balanceDueUsd,
+              }
+            : null,
       });
     }
     res.json({ data: await withPoaSummary(db, req, updated), email });

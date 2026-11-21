@@ -256,12 +256,12 @@ export function RetailLayout() {
   );
 
   return (
-    <div className="flex min-h-svh bg-background text-foreground">
+    <div className="flex h-svh max-h-svh overflow-hidden overscroll-none bg-background text-foreground">
       {/* Desktop sidebar — retail-store-app shell */}
-      <aside className="relative hidden w-[252px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex lg:h-svh lg:overflow-hidden">
+      <aside className="relative hidden h-full w-[252px] shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
         <div className="shrink-0 border-b border-sidebar-border">{logoBlock}</div>
         {tierPill}
-        <nav className="flex flex-1 flex-col overflow-y-auto pb-3 text-sm" aria-label="Retail">
+        <nav className="flex flex-1 flex-col overflow-y-auto overscroll-contain pb-3 text-sm" aria-label="Retail">
           <RetailSidebarNav
             key={language}
             cartCases={totalCases}
@@ -271,21 +271,21 @@ export function RetailLayout() {
         {userBlock}
       </aside>
 
-      {/* Main column */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:h-svh lg:overflow-hidden">
+      {/* Main column — single scroll owner on phone/tablet (avoids body + main fighting) */}
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Mobile header */}
-        <header className="glass-header sticky top-0 z-40 flex h-14 items-center gap-3 px-4 pt-[env(safe-area-inset-top)] lg:hidden">
+        <header className="glass-header z-40 flex h-14 shrink-0 items-center gap-3 px-4 pt-[env(safe-area-inset-top)] lg:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button type="button" variant="ghost" size="icon" className="shrink-0 touch-manipulation" aria-label="Open menu">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[280px] border-sidebar-border bg-sidebar p-0 text-sidebar-foreground">
+            <SheetContent side="left" className="w-[280px] max-w-[85vw] border-sidebar-border bg-sidebar p-0 text-sidebar-foreground">
               <div className="flex h-full flex-col overflow-hidden">
                 <div className="shrink-0 border-b border-sidebar-border">{logoBlock}</div>
                 {tierPill}
-                <nav className="flex flex-1 flex-col overflow-y-auto pb-4 text-sm" aria-label="Retail menu">
+                <nav className="flex flex-1 flex-col overflow-y-auto overscroll-contain pb-4 text-sm" aria-label="Retail menu">
                   <RetailSidebarNav
                     key={language}
                     cartCases={totalCases}
@@ -307,9 +307,9 @@ export function RetailLayout() {
         </header>
 
         {/* Top bar — crumbs + actions (matches retail-store-app.html) */}
-        <header className="glass-header sticky top-0 z-30 hidden h-[54px] shrink-0 items-center justify-between gap-4 px-8 lg:flex">
+        <header className="glass-header z-30 hidden h-[54px] shrink-0 items-center justify-between gap-4 px-8 lg:flex">
           <div className="text-[13px] text-muted-foreground">
-            {t(section)} › <strong className="font-medium text-foreground">{t(page)}</strong>
+            {storeName ?? t(section)} › <strong className="font-medium text-foreground">{t(page)}</strong>
           </div>
           <div className="flex items-center gap-2.5">
             <Button variant="outline" size="sm" className="h-[30px] text-xs" asChild>
@@ -340,10 +340,10 @@ export function RetailLayout() {
         ) : null}
 
         <div className="shrink-0 border-b border-border/40 px-4 py-2.5 text-[13px] text-muted-foreground lg:hidden">
-          {t(section)} › <strong className="font-medium text-foreground">{t(page)}</strong>
+          {storeName ?? t(section)} › <strong className="font-medium text-foreground">{t(page)}</strong>
         </div>
 
-        <main className="scrollbar-thin mx-auto w-full max-w-[1200px] flex-1 overflow-y-auto px-[30px] pb-20 pt-[30px] lg:pb-[80px]">
+        <main className="scrollbar-thin mx-auto min-h-0 w-full min-w-0 max-w-[1200px] flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain touch-pan-y px-4 pb-[max(5rem,env(safe-area-inset-bottom))] pt-5 sm:px-5 sm:pt-6 lg:px-[30px] lg:pb-[80px] lg:pt-[30px]">
           <Suspense fallback={<RetailOutletFallback />}>
             <Outlet key={language} />
           </Suspense>

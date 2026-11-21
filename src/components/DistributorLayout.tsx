@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAppData } from "@/contexts/AppDataContext";
+import { distributorChromeOrgLabel } from "@/lib/distributor-accounts";
 import { distributorRouteChrome } from "@/lib/distributor-chrome";
 import { DistributorSidebar } from "@/components/distributor/DistributorSidebar";
 import { Button } from "@/components/ui/button";
@@ -41,23 +42,19 @@ export function DistributorLayout() {
     if (pathChanged) main.scrollTo({ top: 0, behavior: "instant" });
   }, [pathname, hash]);
 
-  const orgLabel = useMemo(() => {
-    if (!user) return "Distributor";
-    const distAccount = data.accounts.find(
-      (a) => a.type === "distributor" && String(a.managedByDistributorUserId ?? "") === String(user.id),
-    );
-    if (distAccount?.tradingName) return distAccount.tradingName;
-    return "Empire Wines";
-  }, [data.accounts, user]);
+  const orgLabel = useMemo(
+    () => distributorChromeOrgLabel(pathname, data.accounts, user),
+    [data.accounts, pathname, user],
+  );
 
   const { page } = distributorRouteChrome(pathname, search);
 
   return (
-    <div className="distributor-shell flex min-h-svh flex-col bg-background text-foreground lg:grid lg:h-svh lg:grid-cols-[256px_1fr] lg:overflow-hidden">
+    <div className="distributor-shell flex h-svh max-h-svh flex-col overflow-hidden overscroll-none bg-background text-foreground lg:grid lg:grid-cols-[256px_1fr]">
       <DistributorSidebar key={language} className="hidden lg:flex" />
 
-      <div className="main flex min-h-0 min-w-0 flex-1 flex-col lg:h-svh lg:overflow-hidden">
-        <header className="topbar glass-header sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 px-4 pt-[env(safe-area-inset-top)] lg:hidden">
+      <div className="main flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="topbar glass-header z-40 flex h-14 shrink-0 items-center gap-3 px-4 pt-[env(safe-area-inset-top)] lg:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button type="button" variant="ghost" size="icon" className="shrink-0 touch-manipulation" aria-label="Open menu">
@@ -73,13 +70,17 @@ export function DistributorLayout() {
             </SheetContent>
           </Sheet>
           <div className="crumbs min-w-0 flex-1 truncate font-display text-sm font-medium text-foreground/80">{orgLabel}</div>
-          <Link to="/distributor/shipments" className="dist-btn dist-btn-accent dist-btn-sm shrink-0 no-underline">
+          <Link
+            to="/distributor/shipments"
+            className="dist-btn dist-btn-accent dist-btn-sm shrink-0 touch-manipulation no-underline"
+            aria-label={t("Log shipment")}
+          >
             <Truck className="size-3.5" strokeWidth={1.75} />
-            {t("Log shipment")}
+            <span className="hidden sm:inline">{t("Log shipment")}</span>
           </Link>
         </header>
 
-        <header className="topbar glass-header sticky top-0 z-30 hidden h-[54px] shrink-0 items-center justify-between gap-4 px-8 lg:flex">
+        <header className="topbar glass-header z-30 hidden h-[54px] shrink-0 items-center justify-between gap-4 px-8 lg:flex">
           <div className="crumbs text-[13px] text-muted-foreground">
             {orgLabel} › <strong className="font-medium text-foreground">{t(page)}</strong>
           </div>
@@ -102,7 +103,7 @@ export function DistributorLayout() {
           ref={mainScrollRef}
           id="pg"
           data-distributor-scroll
-          className="scrollbar-thin flex-1 overflow-y-auto px-[30px] pb-20 pt-[30px] lg:pb-[80px]"
+          className="scrollbar-thin min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain touch-pan-y px-4 pb-[max(5rem,env(safe-area-inset-bottom))] pt-5 sm:px-5 sm:pt-6 lg:px-[30px] lg:pb-[80px] lg:pt-[30px]"
         >
           <div className="pw mx-auto max-w-[1260px]">
             <Suspense fallback={<OperatorOutletFallback />}>

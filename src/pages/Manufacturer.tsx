@@ -364,7 +364,7 @@ export default function Manufacturer() {
             <p className="text-sm text-muted-foreground">Log stage changes for audit trail (contractual logging requirements).</p>
           </CardHeader>
           <CardContent className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
-            <div className="min-w-[200px] flex-1 space-y-2">
+            <div className="w-full min-w-0 flex-1 space-y-2 sm:min-w-[200px]">
               <Label>Purchase order</Label>
               <Select value={selectedPo?.id ?? ""} onValueChange={setSelectedPoId}>
                 <SelectTrigger className="touch-manipulation">
@@ -379,7 +379,7 @@ export default function Manufacturer() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="min-w-[200px] flex-1 space-y-2">
+            <div className="w-full min-w-0 flex-1 space-y-2 sm:min-w-[200px]">
               <Label>Stage</Label>
               <Select value={stage} onValueChange={setStage}>
                 <SelectTrigger className="touch-manipulation">
@@ -394,11 +394,11 @@ export default function Manufacturer() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="min-w-[220px] flex-[2] space-y-2">
+            <div className="w-full min-w-0 flex-[2] space-y-2 sm:min-w-[220px]">
               <Label htmlFor="mfg-notes">Notes</Label>
               <Textarea id="mfg-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Materials, packaging, ETA…" />
             </div>
-            <Button type="button" className="touch-manipulation" onClick={submitUpdate}>
+            <Button type="button" className="w-full touch-manipulation sm:w-auto" onClick={submitUpdate}>
               Save update
             </Button>
           </CardContent>

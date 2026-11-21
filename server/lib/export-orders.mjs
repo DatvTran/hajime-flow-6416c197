@@ -54,8 +54,8 @@ function round2(n) {
   return Math.round(Number(n) * 100) / 100;
 }
 
-/** Keep in sync with EXPORT_SKUS in src/lib/export-commercial.ts. One FOB price per bottle, no volume discount. */
-const SKUS = {
+/** Keep in sync with EXPORT_SKUS in src/lib/export-commercial.ts. List FOB stored per bottle; orders priced per case. */
+export const SKUS = {
   first_press_750: { product: "Hajime First Press Coffee Rhum Liqueur", size: "750 ml", bottlesPerCase: 12, floorFobUsd: 34, listFobUsd: 34.1 },
   yuzu_mint_750: { product: "Hajime Yuzu Mint Rhum Liqueur", size: "750 ml", bottlesPerCase: 12, floorFobUsd: 28, listFobUsd: 32 },
   first_press_200: { product: "Hajime First Press Coffee Rhum Liqueur", size: "200 ml", bottlesPerCase: 24, floorFobUsd: 16, listFobUsd: 16 },
@@ -78,18 +78,28 @@ export function priceExportLines(rawLines) {
     if (!SKUS[sku]) continue;
     const cases = Math.max(0, Math.floor(Number(l.cases) || 0));
     if (cases <= 0) continue;
+    const caseOverride = l.caseUsd != null ? Number(l.caseUsd) : NaN;
     normalized.push({
       sku,
       cases,
       unitFobUsd: l.unitFobUsd != null ? Number(l.unitFobUsd) : undefined,
+      caseUsd: Number.isFinite(caseOverride) && caseOverride > 0 ? caseOverride : undefined,
     });
   }
   const c750 = cases750Total(normalized);
   const priced = [];
   for (const l of normalized) {
     const m = SKUS[l.sku];
-    const unit = l.unitFobUsd != null && Number.isFinite(l.unitFobUsd) ? l.unitFobUsd : m.listFobUsd;
-    const caseUsd = round2(unit * m.bottlesPerCase);
+    // Prefer explicit case USD (negotiated sell-in) so 20/case stays 20 — not 19.92 from rounded unit.
+    let caseUsd;
+    let unit;
+    if (l.caseUsd != null && Number.isFinite(l.caseUsd) && l.caseUsd > 0) {
+      caseUsd = round2(l.caseUsd);
+      unit = caseUsd / m.bottlesPerCase;
+    } else {
+      unit = l.unitFobUsd != null && Number.isFinite(l.unitFobUsd) ? l.unitFobUsd : m.listFobUsd;
+      caseUsd = round2(unit * m.bottlesPerCase);
+    }
     priced.push({
       sku: l.sku,
       product: m.product,
@@ -206,12 +216,53 @@ function parseJsonLines(v) {
   return [];
 }
 
+/**
+ * Apply case USD (per export SKU). Missing SKUs keep list FOB.
+ * Line total = caseUsd × cases = FOB/bottle × bottles/case × cases.
+ */
+export function applyNegotiatedCaseUsdToLines(rawLines, caseUsdByExportSku) {
+  const map = caseUsdByExportSku instanceof Map ? caseUsdByExportSku : new Map(Object.entries(caseUsdByExportSku || {}));
+  return (Array.isArray(rawLines) ? rawLines : [])
+    .map((l) => {
+      const sku = String(l?.sku || "");
+      const m = SKUS[sku];
+      if (!m) return null;
+      const cases = Math.max(0, Math.floor(Number(l?.cases) || 0));
+      if (cases <= 0) return null;
+      const caseUsd = Number(map.get(sku));
+      if (Number.isFinite(caseUsd) && caseUsd > 0) {
+        const rounded = round2(caseUsd);
+        return {
+          sku,
+          cases,
+          caseUsd: rounded,
+          unitFobUsd: rounded / m.bottlesPerCase,
+        };
+      }
+      return { sku, cases };
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Partner negotiated field for export SKUs is FOB USD per bottle.
+ * Case USD = FOB × bottles/case; order line = Case × cases.
+ */
+export function exportCaseUsdFromNegotiatedFobPerBottle(fobPerBottle, bottlesPerCase) {
+  const unit = Number(fobPerBottle);
+  const bpc = Math.max(1, Math.floor(Number(bottlesPerCase) || 0));
+  if (!Number.isFinite(unit) || unit <= 0) return null;
+  return round2(unit * bpc);
+}
+
 export function serializeExportOrder(
   row,
   { includeInternalEconomics = false, buyerFacing = false, manufacturerFacing = false } = {},
 ) {
   if (!row) return null;
-  const priced = priceExportLines(parseJsonLines(row.lines));
+  const rawLines = parseJsonLines(row.lines);
+  // Prefer stored caseUsd / unitFobUsd (negotiated sell-in when set on portal create).
+  const priced = priceExportLines(rawLines);
   let lines = includeInternalEconomics
     ? priced.lines
     : priced.lines.map(({ floorFobUsd, belowFloor, ...rest }) => rest);
@@ -255,6 +306,8 @@ export function serializeExportOrder(
     consignee: row.consignee || null,
     incotermRule: row.incoterm_rule || null,
     deliveryWindow: row.delivery_window || null,
+    requestedMonth: row.requested_month || null,
+    capacityReservedAt: buyerFacing ? undefined : row.capacity_reserved_at || null,
     specLabelRef: row.spec_label_ref || null,
     specialConditions: row.special_conditions || null,
     depositStatus: row.deposit_status,
@@ -326,7 +379,7 @@ export const ISSUE_DOC_TO_CHECKLIST = {
 export function buyerDocStatus(row) {
   const issued = asJsonObject(row.issued_docs);
   const out = {};
-  for (const doc of ["quotation", "po_acceptance", "proforma", "deposit", "shipment_release"]) {
+  for (const doc of ["quotation", "buyer_po", "po_acceptance", "proforma", "deposit", "shipment_release"]) {
     out[doc] = issued[doc] ? { issuedAt: issued[doc].issuedAt || issued[doc].issued_at || null } : { issuedAt: null };
   }
   return out;
@@ -353,7 +406,7 @@ export function requiredChecklistReady(checklist, order = {}) {
 }
 
 export function isBuyerExportDoc(doc) {
-  return ["quotation", "po_acceptance", "proforma", "deposit", "shipment_release"].includes(String(doc));
+  return ["quotation", "buyer_po", "po_acceptance", "proforma", "deposit", "shipment_release"].includes(String(doc));
 }
 
 export function distributorCanViewStage(stage) {
@@ -435,6 +488,12 @@ export async function ensureExportOrdersTable(db) {
   } catch (e) {
     console.error("[export-orders] ensure PO acceptance columns failed:", e);
   }
+  try {
+    const m058 = await import("../migrations/058_export_capacity_month.mjs");
+    await m058.up(db);
+  } catch (e) {
+    console.error("[export-orders] ensure capacity month columns failed:", e);
+  }
   return true;
 }
 
@@ -448,6 +507,247 @@ export async function findExportOrder(db, tenantId, idOrDisplay) {
       if (/^\d+$/.test(id)) qb.orWhere("id", Number(id));
     })
     .first();
+}
+
+/** Find by display id / numeric id without tenant scope (HQ recovery + portal org scope). */
+export async function findExportOrderAnyTenant(db, idOrDisplay) {
+  const id = String(idOrDisplay || "").trim();
+  if (!id) return null;
+  return db("export_orders")
+    .andWhere((qb) => {
+      qb.where("display_id", id);
+      if (/^\d+$/.test(id)) qb.orWhere("id", Number(id));
+    })
+    .first();
+}
+
+/**
+ * Hajime Ltd. export files always live on the Brand HQ platform tenant.
+ * Distributor org DBs use a different tenant_id for CRM/inventory — never use that for export_orders.
+ */
+export async function resolveExportBrandTenantId(db, reqUser) {
+  const envId = String(process.env.EXPORT_BRAND_TENANT_ID || process.env.PLATFORM_TENANT_ID || "").trim();
+  if (envId) return envId;
+
+  if (reqUser?.role && canManageExportOrders(reqUser.role) && reqUser.tenantId) {
+    return String(reqUser.tenantId);
+  }
+
+  try {
+    const { platformDb } = await import("../config/database.mjs");
+    const hqUser = await platformDb("users")
+      .whereIn("role", ["brand_operator", "founder_admin", "founder", "operations"])
+      .where({ is_active: true })
+      .whereNull("deleted_at")
+      .orderBy("id", "asc")
+      .first("tenant_id");
+    if (hqUser?.tenant_id) return String(hqUser.tenant_id);
+  } catch (err) {
+    console.warn("[export-orders] brand tenant HQ user lookup failed:", err?.message || err);
+  }
+
+  const popular = await db("export_orders")
+    .select("tenant_id")
+    .count("* as c")
+    .groupBy("tenant_id")
+    .orderBy("c", "desc")
+    .first();
+  if (popular?.tenant_id) return String(popular.tenant_id);
+
+  if (reqUser?.tenantId) return String(reqUser.tenantId);
+  return null;
+}
+
+/** Move portal-origin rows onto the brand tenant so HQ list/detail can see them. */
+export async function reconcilePortalExportOrdersToBrandTenant(db, brandTenantId) {
+  if (!brandTenantId) return 0;
+  const n = await db("export_orders")
+    .where({ origin: "portal" })
+    .whereNot("tenant_id", brandTenantId)
+    .update({ tenant_id: brandTenantId, updated_at: db.fn.now() });
+  return Number(n) || 0;
+}
+
+/**
+ * Negotiated FOB case USD keyed by export SKU.
+ * partner_sku_prices.sell_in_case_price for export SKUs = FOB USD per bottle;
+ * case = FOB × bottles/case (not Canada catalog wholesale).
+ */
+export async function negotiatedSellInCaseByExportSku(db, tenantId, accountId) {
+  if (!tenantId || !accountId) return new Map();
+  const { catalogSkuToExportCode, INTERNATIONAL_ORDER_SKUS } = await import("./export-catalog-map.mjs");
+  const { listPartnerSkuPrices, ensurePartnerPricingTables } = await import("./partner-sku-prices.mjs");
+  await ensurePartnerPricingTables(db);
+  const offered = new Set(INTERNATIONAL_ORDER_SKUS);
+  const priceRows = await listPartnerSkuPrices(db, tenantId, accountId);
+  const products = await db("products")
+    .where({ tenant_id: tenantId })
+    .whereNull("deleted_at")
+    .select("sku", "name", "unit_size", "metadata");
+  const bySku = new Map(priceRows.map((r) => [String(r.sku), r]));
+  const out = new Map();
+  const putFobBottle = (exportSku, fobPerBottle) => {
+    const m = SKUS[exportSku];
+    if (!m || out.has(exportSku)) return;
+    const caseUsd = exportCaseUsdFromNegotiatedFobPerBottle(fobPerBottle, m.bottlesPerCase);
+    if (caseUsd != null) out.set(exportSku, caseUsd);
+  };
+  for (const p of products) {
+    const catalogSku = String(p.sku || "").trim();
+    if (!catalogSku) continue;
+    const exportSku = catalogSkuToExportCode(catalogSku, {
+      name: p.name,
+      size: p.unit_size || p.metadata?.size,
+    });
+    if (!exportSku || !offered.has(exportSku) || !SKUS[exportSku]) continue;
+    const row = bySku.get(catalogSku);
+    const negotiated = Number(row?.sell_in_case_price);
+    if (!Number.isFinite(negotiated) || negotiated <= 0) continue;
+    putFobBottle(exportSku, negotiated);
+  }
+  for (const r of priceRows) {
+    const sku = String(r.sku || "").trim();
+    if (!SKUS[sku] || !offered.has(sku)) continue;
+    const negotiated = Number(r.sell_in_case_price);
+    if (!Number.isFinite(negotiated) || negotiated <= 0) continue;
+    putFobBottle(sku, negotiated);
+  }
+  return out;
+}
+
+/** Resolve brand-tenant wholesale account id for a portal distributor user / org. */
+export async function resolvePortalWholesaleAccountId(db, brandTenantId, { user, distributorOrgId } = {}) {
+  const { resolveWholesaleAccountIdForUser } = await import("./partner-sku-prices.mjs");
+  if (user) {
+    const fromUser = await resolveWholesaleAccountIdForUser(db, brandTenantId, user);
+    if (fromUser) return fromUser;
+    if (user.tenantId && String(user.tenantId) !== String(brandTenantId)) {
+      const fromCrm = await resolveWholesaleAccountIdForUser(db, user.tenantId, user);
+      if (fromCrm) return fromCrm;
+    }
+  }
+  if (!distributorOrgId) return null;
+  try {
+    const { platformDb } = await import("../config/database.mjs");
+    const org = await platformDb("distributor_organizations").where({ id: distributorOrgId }).first();
+    if (!org?.owner_user_id) return null;
+    const owner = await platformDb("users").where({ id: org.owner_user_id }).whereNull("deleted_at").first();
+    if (!owner) return null;
+    const ownerUser = {
+      email: owner.email,
+      role: "distributor",
+      userId: owner.id,
+      tenantId: owner.tenant_id || brandTenantId,
+    };
+    return (
+      (await resolveWholesaleAccountIdForUser(db, brandTenantId, ownerUser)) ||
+      (owner.tenant_id ? await resolveWholesaleAccountIdForUser(db, owner.tenant_id, ownerUser) : null)
+    );
+  } catch (err) {
+    console.warn("[export-orders] wholesale account from org failed:", err?.message || err);
+    return null;
+  }
+}
+
+/**
+ * Reprice portal quotations from that distributor's negotiated sell-in (case × cases).
+ * Falls back to list FOB when unset. Drops Yuzu / zero-case. Safe while unfrozen quotation.
+ */
+export async function repricePortalQuotationsToListFob(db, brandTenantId = null) {
+  const { INTERNATIONAL_ORDER_SKUS } = await import("./export-catalog-map.mjs");
+  const offered = new Set(INTERNATIONAL_ORDER_SKUS);
+  const rows = await db("export_orders")
+    .where({ origin: "portal", stage: "02_quotation", deposit_status: "pending" })
+    .where((qb) => {
+      qb.whereNull("deposit_amount_frozen").orWhere("deposit_amount_frozen", false);
+    })
+    .select(
+      "id",
+      "tenant_id",
+      "distributor_org_id",
+      "lines",
+      "subtotal_usd",
+      "deposit_due_usd",
+      "balance_due_usd",
+    );
+  let fixed = 0;
+  const caseCache = new Map();
+  for (const row of rows) {
+    let raw = row.lines;
+    if (typeof raw === "string") {
+      try {
+        raw = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+    }
+    if (!Array.isArray(raw) || !raw.length) continue;
+    const cleaned = raw
+      .map((l) => ({
+        sku: String(l?.sku || ""),
+        cases: Math.max(0, Math.floor(Number(l?.cases) || 0)),
+      }))
+      .filter((l) => offered.has(l.sku) && SKUS[l.sku] && l.cases > 0);
+    if (!cleaned.length) continue;
+
+    const tenantId = brandTenantId || row.tenant_id;
+    const orgId = row.distributor_org_id != null ? String(row.distributor_org_id) : "";
+    const cacheKey = `${tenantId}:${orgId}`;
+    let caseMap = caseCache.get(cacheKey);
+    if (!caseMap) {
+      const accountId = await resolvePortalWholesaleAccountId(db, tenantId, {
+        distributorOrgId: orgId || null,
+      });
+      caseMap = accountId ? await negotiatedSellInCaseByExportSku(db, tenantId, accountId) : new Map();
+      if (caseMap.size === 0 && accountId && orgId) {
+        try {
+          const { platformDb } = await import("../config/database.mjs");
+          const org = await platformDb("distributor_organizations").where({ id: orgId }).first();
+          const owner = org?.owner_user_id
+            ? await platformDb("users").where({ id: org.owner_user_id }).first()
+            : null;
+          if (owner?.tenant_id && String(owner.tenant_id) !== String(tenantId)) {
+            caseMap = await negotiatedSellInCaseByExportSku(db, owner.tenant_id, accountId);
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      caseCache.set(cacheKey, caseMap || new Map());
+      caseMap = caseCache.get(cacheKey);
+    }
+
+    const priced = priceExportLines(applyNegotiatedCaseUsdToLines(cleaned, caseMap));
+    if (!priced.lines.length) continue;
+    const subtotalOk = Math.abs(Number(row.subtotal_usd) - priced.subtotalUsd) < 0.02;
+    const depositOk = Math.abs(Number(row.deposit_due_usd) - priced.depositDueUsd) < 0.02;
+    const balanceOk = Math.abs(Number(row.balance_due_usd) - priced.balanceDueUsd) < 0.02;
+    const casesOk = priced.lines.every((l) => {
+      const expected = caseMap.get(l.sku);
+      if (expected != null && expected > 0) return Math.abs(l.caseUsd - expected) < 0.02;
+      const m = SKUS[l.sku];
+      return m && Math.abs(l.caseUsd - round2(m.listFobUsd * m.bottlesPerCase)) < 0.02;
+    });
+    if (subtotalOk && depositOk && balanceOk && casesOk) continue;
+    await db("export_orders")
+      .where({ id: row.id })
+      .update({
+        lines: JSON.stringify(
+          priced.lines.map((l) => ({
+            sku: l.sku,
+            cases: l.cases,
+            unitFobUsd: l.unitFobUsd,
+            caseUsd: l.caseUsd,
+          })),
+        ),
+        subtotal_usd: priced.subtotalUsd,
+        deposit_due_usd: priced.depositDueUsd,
+        balance_due_usd: priced.balanceDueUsd,
+        updated_at: db.fn.now(),
+      });
+    fixed += 1;
+  }
+  return fixed;
 }
 
 export async function nextSeq(db, tenantId) {
@@ -465,4 +765,35 @@ export function isExportStageId(v) {
 
 export function isExportSku(v) {
   return Boolean(SKUS[v]);
+}
+
+/** Keep in sync with EXPORT_ORDER_SIZES[0] (trial) in src/lib/export-commercial.ts. */
+export const TRIAL_ORDER_CASES = 40;
+
+/** Keep in sync with isExportLead in src/lib/expo-leads.ts. */
+export const EXPORT_LEAD_TYPES = ["importer", "importer_distributor", "wholesale", "duty_free"];
+
+export function isExportLeadType(businessType) {
+  return EXPORT_LEAD_TYPES.includes(String(businessType || ""));
+}
+
+/** SKUs offered at the expo (booth quotes and lead transfers). Second Bloom is off until its cost is confirmed. Keep in sync with ROWS in src/pages/HqExpoBoothPage.tsx. */
+export const EXPO_SKUS = ["first_press_750", "first_press_200"];
+
+/** Starting lines for a lead's export file: the expo SKUs in the sizes they picked, one trial order split evenly. */
+export function leadStarterLines(lead) {
+  const format = String(lead?.bottle_format ?? lead?.bottleFormat ?? "");
+  const sizes = format === "both" ? ["750", "200"] : format === "200ml" ? ["200"] : ["750"];
+  const skus = sizes.map((s) => `first_press_${s}`).filter((sku) => EXPO_SKUS.includes(sku));
+  const base = Math.floor(TRIAL_ORDER_CASES / skus.length);
+  const extra = TRIAL_ORDER_CASES - base * skus.length;
+  return skus.map((sku, i) => ({ sku, cases: base + (i < extra ? 1 : 0) }));
+}
+
+export async function findLiveOrderForLead(db, tenantId, leadId) {
+  return db("export_orders")
+    .where({ tenant_id: tenantId, expo_lead_id: leadId })
+    .whereNot("stage", "cancelled")
+    .orderBy("created_at", "desc")
+    .first();
 }

@@ -239,9 +239,9 @@ export function HqAddSkuView({ existingSkus, onCreate }: Props) {
             </HqOperatorCard>
 
             <HqOperatorCard className="hq-settings-panel">
-              <div className="hq-settings-title">{t("Canada trade pricing (CAD / bottle)")}</div>
+              <div className="hq-settings-title">{t("Trade pricing (USD / bottle)")}</div>
               <p className="mb-3 text-[12px] text-muted-foreground">
-                Defaults to First Press standard.{" "}
+                Catalog list defaults in USD. Defaults to First Press standard.{" "}
                 <Link to="/brand-kit#trade-pricing" className="text-accent underline">
                   Trade pricing policy
                 </Link>
@@ -286,7 +286,7 @@ export function HqAddSkuView({ existingSkus, onCreate }: Props) {
                   />
                 </div>
                 <div className="hq-form-group mb-0">
-                  <label htmlFor="add-sku-wholesale">{t("Hajime sell-in")}</label>
+                  <label htmlFor="add-sku-wholesale">{t("List sell-in (default until negotiated)")}</label>
                   <input
                     id="add-sku-wholesale"
                     value={wholesale}
@@ -296,7 +296,7 @@ export function HqAddSkuView({ existingSkus, onCreate }: Props) {
                   />
                 </div>
                 <div className="hq-form-group mb-0">
-                  <label htmlFor="add-sku-sellout">{t("Wholesaler to retailer")}</label>
+                  <label htmlFor="add-sku-sellout">{t("Suggested sell-out (until partner sets)")}</label>
                   <input
                     id="add-sku-sellout"
                     value={sellOut}
@@ -306,7 +306,7 @@ export function HqAddSkuView({ existingSkus, onCreate }: Props) {
                   />
                 </div>
                 <div className="hq-form-group mb-0">
-                  <label htmlFor="add-sku-msrp">{t("Suggested retail")}</label>
+                  <label htmlFor="add-sku-msrp">{t("MSRP reference (not enforced)")}</label>
                   <input
                     id="add-sku-msrp"
                     value={msrp}

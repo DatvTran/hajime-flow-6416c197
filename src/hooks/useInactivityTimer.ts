@@ -34,6 +34,11 @@ export function useInactivityTimer() {
 
     // Set new inactivity timer
     inactivityTimerRef.current = setTimeout(() => {
+      // Signing in needs the network, so an offline expo iPad would be locked out of the booth until it reconnects.
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        resetTimer();
+        return;
+      }
       setState("warning");
       
       // Start countdown
@@ -48,6 +53,10 @@ export function useInactivityTimer() {
 
       // Set logout timer
       warningTimerRef.current = setTimeout(() => {
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          resetTimer();
+          return;
+        }
         setState("logged_out");
         signOut();
       }, WARNING_DURATION);

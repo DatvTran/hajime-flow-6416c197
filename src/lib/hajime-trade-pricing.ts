@@ -1,9 +1,23 @@
 import type { Product } from "@/data/mockData";
 
-/** Canada trade policy currency (internal). Not Hong Kong export FOB USD. */
+/** Canada trade policy currency (source figures). Brand kit displays USD. */
 export const TRADE_PRICING_CURRENCY = "CAD";
 
-/** Standard bottle ladder — First Press Coffee Rhum and comparable Hajime trade accounts. */
+/**
+ * CAD per 1 USD — locks First Press Canada MSRP C$93 to the export retail guide US$67.
+ * Brand kit converts every CAD trade figure with this rate.
+ */
+export const TRADE_CAD_PER_USD = 93 / 67;
+
+export function cadToUsd(cad: number): number {
+  return Math.round((cad / TRADE_CAD_PER_USD) * 100) / 100;
+}
+
+export function usdMoney(n: number): string {
+  return `US$${n.toFixed(2)}`;
+}
+
+/** Standard bottle ladder — First Press Coffee Rhum and comparable Hajime trade accounts (CAD). */
 export const TRADE_STANDARD = {
   landedPerBottle: 30,
   sellInPerBottle: 48.83,
@@ -14,12 +28,31 @@ export const TRADE_STANDARD = {
   srpPerBottle: 93,
 } as const;
 
+/** Same ladder in USD for brand kit / booth reference. */
+export const TRADE_STANDARD_USD = {
+  landedPerBottle: cadToUsd(TRADE_STANDARD.landedPerBottle),
+  sellInPerBottle: cadToUsd(TRADE_STANDARD.sellInPerBottle),
+  brokerPerBottle: cadToUsd(TRADE_STANDARD.brokerPerBottle),
+  brokerRecurringMin: cadToUsd(TRADE_STANDARD.brokerRecurringMin),
+  brokerRecurringMax: cadToUsd(TRADE_STANDARD.brokerRecurringMax),
+  wholesalerToRetailPerBottle: cadToUsd(TRADE_STANDARD.wholesalerToRetailPerBottle),
+  srpPerBottle: cadToUsd(TRADE_STANDARD.srpPerBottle),
+} as const;
+
 export const TRADE_GUARDRAILS = {
   hajimeNetAfterBrokerMin: 44,
   hajimeNetAfterBrokerWarn: 45,
   wholesalerMarginMinPct: 25,
   wholesalerMarginTargetPct: 25,
   retailerMarginMinPct: 30,
+} as const;
+
+export const TRADE_GUARDRAILS_USD = {
+  hajimeNetAfterBrokerMin: cadToUsd(TRADE_GUARDRAILS.hajimeNetAfterBrokerMin),
+  hajimeNetAfterBrokerWarn: cadToUsd(TRADE_GUARDRAILS.hajimeNetAfterBrokerWarn),
+  wholesalerMarginMinPct: TRADE_GUARDRAILS.wholesalerMarginMinPct,
+  wholesalerMarginTargetPct: TRADE_GUARDRAILS.wholesalerMarginTargetPct,
+  retailerMarginMinPct: TRADE_GUARDRAILS.retailerMarginMinPct,
 } as const;
 
 export type TradeOrderBandId = "below_trial" | "trial" | "bulk";
@@ -77,11 +110,47 @@ export const TRADE_APPROVAL_MATRIX: {
   },
 ];
 
+/** Brand kit: same approval bands converted CAD → USD. */
+export const TRADE_APPROVAL_MATRIX_USD: {
+  discount: string;
+  approval: string;
+  typicalUse: string;
+}[] = [
+  {
+    discount: `Up to ${usdMoney(cadToUsd(1))} / bottle`,
+    approval: "Wholesaler level",
+    typicalUse: "Case volume, local store deal",
+  },
+  {
+    discount: `${usdMoney(cadToUsd(1.01))} to ${usdMoney(cadToUsd(2))} / bottle`,
+    approval: "Wholesaler plus broker discussion",
+    typicalUse: "Bigger recurring order",
+  },
+  {
+    discount: `Over ${usdMoney(cadToUsd(2))} / bottle`,
+    approval: "Hajime written approval required",
+    typicalUse: "Chain placement, launch account, regional expansion",
+  },
+  {
+    discount: "Custom market program",
+    approval: "Hajime management approval",
+    typicalUse: "Prestige account, strategic launch, multi-store rollout",
+  },
+];
+
 export const TRADE_COMMERCIAL_TERMS = [
   "Discounts must be tied to confirmed bottle quantity, payment timing, or strategic account value.",
   "Discounts do not apply retroactively unless approved in writing by Hajime.",
   "Broker may not independently discount Hajime pricing without prior written approval.",
   "For matured recurring accounts, broker commission may step down from $3.00 toward $1.50 to $2.00 per bottle.",
+  "All pricing, programs, and trade support should be reviewed quarterly.",
+] as const;
+
+export const TRADE_COMMERCIAL_TERMS_USD = [
+  "Discounts must be tied to confirmed bottle quantity, payment timing, or strategic account value.",
+  "Discounts do not apply retroactively unless approved in writing by Hajime.",
+  "Broker may not independently discount Hajime pricing without prior written approval.",
+  `For matured recurring accounts, broker commission may step down from ${usdMoney(TRADE_STANDARD_USD.brokerPerBottle)} toward ${usdMoney(TRADE_STANDARD_USD.brokerRecurringMin)} to ${usdMoney(TRADE_STANDARD_USD.brokerRecurringMax)} per bottle.`,
   "All pricing, programs, and trade support should be reviewed quarterly.",
 ] as const;
 

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   TRADE_STANDARD,
+  TRADE_STANDARD_USD,
   applyTradeStandardToProduct,
+  cadToUsd,
   discountNeedsHajimeApproval,
   hajimeNetBreaksGuardrail,
   hajimeNetNeedsWarn,
@@ -57,5 +59,12 @@ describe("hajime-trade-pricing", () => {
   it("detects First Press SKUs", () => {
     expect(looksLikeFirstPressSku({ sku: "HJM-FP-750", name: "Hajime First Press Coffee Rhum Liqueur" })).toBe(true);
     expect(looksLikeFirstPressSku({ sku: "HJM-YZ-750", name: "Yuzu Mint" })).toBe(false);
+  });
+
+  it("converts Canada CAD ladder to USD locked on C$93 → US$67", () => {
+    expect(cadToUsd(93)).toBe(67);
+    expect(TRADE_STANDARD_USD.srpPerBottle).toBe(67);
+    expect(TRADE_STANDARD_USD.wholesalerToRetailPerBottle).toBe(46.9);
+    expect(TRADE_STANDARD.srpPerBottle).toBe(93);
   });
 });

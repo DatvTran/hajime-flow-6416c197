@@ -1,4 +1,8 @@
-import type { Warehouse } from "@/types/app-data";
+import type { Warehouse, WarehouseKind } from "@/types/app-data";
+
+function kindFromApi(value: unknown): WarehouseKind {
+  return String(value ?? "").trim().toLowerCase() === "distributor" ? "distributor" : "brand";
+}
 
 /** Map GET /warehouses row to client `Warehouse` (shared by Settings + CRM). */
 export function warehouseFromApi(row: {
@@ -6,6 +10,7 @@ export function warehouseFromApi(row: {
   name: string;
   is_active?: boolean;
   sort_order?: number;
+  kind?: string | null;
   linked_account_id?: string | null;
   linked_team_member_id?: string | null;
 }): Warehouse {
@@ -20,6 +25,7 @@ export function warehouseFromApi(row: {
     name: row.name,
     isActive: row.is_active !== false,
     sortOrder: Number(row.sort_order ?? 0),
+    kind: kindFromApi(row.kind),
     ...(linkedAccountId ? { linkedAccountId } : {}),
     ...(linkedTeamMemberId ? { linkedTeamMemberId } : {}),
   };

@@ -6,10 +6,12 @@ import {
   defaultUnitFob,
   distributorCanViewStage,
   isBuyerExportDoc,
+  listFobCaseUsd,
   priceLines,
   applyOrderStateToChecklist,
   requiredChecklistReady,
   EXPORT_SELLER,
+  unitFobFromCase,
 } from "@/lib/export-commercial";
 
 describe("export commercial gates", () => {
@@ -45,11 +47,12 @@ describe("export commercial gates", () => {
     ).toBe(true);
   });
 
-  it("prices First Press at one FOB per bottle with no volume discount, 50/50", () => {
+  it("prices First Press at list FOB with case totals and no volume discount, 50/50", () => {
     for (const cases of [40, 80, 300]) {
       const q = priceLines([{ sku: "first_press_750", cases }]);
       expect(q.lines[0].unitFobUsd).toBe(34.1);
       expect(q.lines[0].caseUsd).toBe(409.2);
+      expect(q.lines[0].bottlesPerCase).toBe(12);
       expect(q.lines[0].belowFloor).toBe(false);
     }
     const q = priceLines([
@@ -65,6 +68,14 @@ describe("export commercial gates", () => {
     const q = priceLines([{ sku: "first_press_750", cases: 40, unitFobUsd: 32 }]);
     expect(q.lines[0].belowFloor).toBe(true);
     expect(defaultUnitFob("first_press_200")).toBe(16);
+  });
+
+  it("exposes list FOB per case for order entry (HQ catalog pack sizes)", () => {
+    expect(listFobCaseUsd("first_press_750")).toBe(409.2);
+    expect(listFobCaseUsd("yuzu_mint_750")).toBe(384);
+    expect(listFobCaseUsd("first_press_200")).toBe(384);
+    expect(listFobCaseUsd("yuzu_mint_200")).toBe(432);
+    expect(unitFobFromCase(409.2, 12)).toBe(34.1);
   });
 
   it("allows buyer docs and hides lead-stage files from distributors", () => {

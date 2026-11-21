@@ -46,6 +46,7 @@ export type ExportStageId = (typeof EXPORT_STAGES)[number]["id"];
 
 export const EXPORT_DOC_TYPES = [
   "quotation",
+  "buyer_po",
   "po_acceptance",
   "proforma",
   "deposit",
@@ -59,6 +60,7 @@ export type ExportDocType = (typeof EXPORT_DOC_TYPES)[number];
 /** Quote / PI / PO / deposit / shipment — never production auth or HQ checklist. */
 export const BUYER_EXPORT_DOC_TYPES = [
   "quotation",
+  "buyer_po",
   "po_acceptance",
   "proforma",
   "deposit",
@@ -75,6 +77,8 @@ export function exportDocTitle(doc: ExportDocType): string {
   switch (doc) {
     case "quotation":
       return "International distributor quotation";
+    case "buyer_po":
+      return "Purchase order";
     case "po_acceptance":
       return "Purchase order acceptance";
     case "proforma":
@@ -93,9 +97,11 @@ export function exportDocTitle(doc: ExportDocType): string {
 }
 
 /**
- * One FOB Bangkok price per bottle, no volume discount. `guide` is the downstream
- * price ladder: wholesale/retail are buyer-safe; cost, landed and CAD MSRP are HQ only.
+ * One FOB Bangkok list price per bottle; orders and buyer-facing copy are priced per case
+ * (listFobUsd × bottlesPerCase). No volume discount. `guide` is the downstream price ladder:
+ * wholesale/retail are buyer-safe; cost, landed and CAD MSRP are HQ only.
  * Keep listFobUsd / floorFobUsd in sync with SKUS in server/lib/export-orders.mjs.
+ * Pack: 750 ml = 12 btls/case, 200 ml = 24 btls/case (same as HQ catalog case sizes).
  */
 export const EXPORT_SKUS = [
   {
@@ -154,7 +160,13 @@ export const EXPORT_ORDER_SIZES = [
 export type DepositStatus = "pending" | "cleared" | "short" | "exception";
 export type BalanceStatus = "pending" | "cleared" | "exception";
 
-export type ExportLineInput = { sku: ExportSkuCode; cases: number; unitFobUsd?: number };
+export type ExportLineInput = {
+  sku: ExportSkuCode;
+  cases: number;
+  unitFobUsd?: number;
+  /** Exact case USD (negotiated sell-in) — preferred over unit×bpc to avoid rounding drift. */
+  caseUsd?: number;
+};
 
 export type PricedExportLine = {
   sku: ExportSkuCode;
@@ -188,6 +200,31 @@ export function defaultUnitFob(sku: ExportSkuCode): number {
   return skuMeta(sku)?.listFobUsd ?? 0;
 }
 
+/** List FOB case price (USD) — what distributors order against. */
+export function listFobCaseUsd(sku: string): number {
+  const m = skuMeta(sku);
+  if (!m) return 0;
+  return round2(m.listFobUsd * m.bottlesPerCase);
+}
+
+export function caseFobFromUnit(unitFobUsd: number, bottlesPerCase: number): number {
+  return round2(Number(unitFobUsd) * Number(bottlesPerCase));
+}
+
+export function unitFobFromCase(caseFobUsd: number, bottlesPerCase: number): number {
+  const bpc = Number(bottlesPerCase);
+  if (!Number.isFinite(bpc) || bpc <= 0) return 0;
+  return round2(Number(caseFobUsd) / bpc);
+}
+
+/** Compact USD for list labels ($409.2, $384). */
+export function formatListFobUsd(n: number): string {
+  return Number(n)
+    .toFixed(2)
+    .replace(/\.00$/, "")
+    .replace(/(\.\d)0$/, "$1");
+}
+
 export function priceLines(lines: ExportLineInput[]): {
   lines: PricedExportLine[];
   subtotalUsd: number;
@@ -202,11 +239,20 @@ export function priceLines(lines: ExportLineInput[]): {
     if (!m) continue;
     const cases = Math.max(0, Math.floor(Number(l.cases) || 0));
     if (cases <= 0) continue;
-    const unit = l.unitFobUsd != null && Number.isFinite(Number(l.unitFobUsd))
-      ? Number(l.unitFobUsd)
-      : defaultUnitFob(l.sku);
+    const caseOverride = l.caseUsd != null ? Number(l.caseUsd) : NaN;
+    let unit: number;
+    let caseUsd: number;
+    if (Number.isFinite(caseOverride) && caseOverride > 0) {
+      caseUsd = round2(caseOverride);
+      unit = caseUsd / m.bottlesPerCase;
+    } else {
+      unit =
+        l.unitFobUsd != null && Number.isFinite(Number(l.unitFobUsd))
+          ? Number(l.unitFobUsd)
+          : defaultUnitFob(l.sku);
+      caseUsd = round2(unit * m.bottlesPerCase);
+    }
     const bottles = cases * m.bottlesPerCase;
-    const caseUsd = round2(unit * m.bottlesPerCase);
     const lineTotalUsd = round2(caseUsd * cases);
     priced.push({
       sku: l.sku,

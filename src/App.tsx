@@ -11,6 +11,7 @@ import { DistributorLayout } from "@/components/DistributorLayout";
 import { ManufacturerShellLayout } from "@/components/ManufacturerShellLayout";
 import { AppDataProvider } from "@/contexts/AppDataContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { BoothOutboxSync } from "@/components/expo/BoothOutboxSync";
 import { RetailCartProvider } from "@/contexts/RetailCartContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -29,6 +30,7 @@ import ConnectPage from "./pages/ConnectPage";
 import ConnectSignPage from "./pages/ConnectSignPage";
 import TradePackPage from "./pages/TradePackPage";
 import PoAcceptanceSignPage from "./pages/PoAcceptanceSignPage";
+import BuyerPoSignPage from "./pages/BuyerPoSignPage";
 import NotFound from "./pages/NotFound";
 
 // Lazy-loaded by route group for better chunking
@@ -75,6 +77,7 @@ const HqIncentiveProgramEditPage = lazyWithChunkReload(() => import("./pages/HqI
 const HqIncentivePayoutSchedulePage = lazyWithChunkReload(() => import("./pages/HqIncentivePayoutSchedulePage"));
 const ProductDevelopmentPage = lazyWithChunkReload(() => import("./pages/ProductDevelopmentPage"));
 const HqExpoLeadsPage = lazyWithChunkReload(() => import("./pages/HqExpoLeadsPage"));
+const HqExpoBoothPage = lazyWithChunkReload(() => import("./pages/HqExpoBoothPage"));
 const HqExportOrdersPage = lazyWithChunkReload(() => import("./pages/HqExportOrdersPage"));
 const HqExportOrderDocPage = lazyWithChunkReload(() => import("./pages/HqExportOrderDocPage"));
 const HqBrandKitPage = lazyWithChunkReload(() => import("./pages/HqBrandKitPage"));
@@ -191,6 +194,7 @@ const App = () => {
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          <BoothOutboxSync />
           {/* Lazy routes suspend inside AppLayout / RetailLayout (Suspense around Outlet) so operator/distributor/sales sidebars stay mounted. */}
           <BrowserRouter>
             <Routes>
@@ -202,6 +206,7 @@ const App = () => {
               <Route path="/connect" element={<ConnectPage />} />
               <Route path="/connect-sign" element={<ConnectSignPage />} />
               <Route path="/po-acceptance/:token" element={<PoAcceptanceSignPage />} />
+              <Route path="/buyer-po/:token" element={<BuyerPoSignPage />} />
               <Route path="/trade-pack" element={<TradePackPage />} />
               <Route element={<RequireAuth />}>
                 <Route element={<RouteErrorOutlet />}>
@@ -255,6 +260,7 @@ const App = () => {
                     <Route path="/incentives/:programId/edit" element={<HqIncentiveProgramEditPage />} />
                     <Route path="/incentives" element={<IncentiveManagerPage />} />
                     <Route path="/crm" element={<CrmPage />} />
+                    <Route path="/expo-leads/booth" element={<HqExpoBoothPage />} />
                     <Route path="/expo-leads/:leadId" element={<HqExpoLeadsPage />} />
                     <Route path="/expo-leads" element={<HqExpoLeadsPage />} />
                     <Route path="/export-orders/:orderId/docs/:docType" element={<HqExportOrderDocPage />} />

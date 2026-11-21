@@ -1,3 +1,5 @@
+import { EXPORT_SELLER } from "@/lib/export-commercial";
+
 /** Top-bar breadcrumbs for the HQ operator shell (hq-operator-app.html IA). */
 export function hqRouteChrome(pathname: string, search = ""): { section: string; page: string } {
   const path = pathname.replace(/\/$/, "") || "/";
@@ -75,8 +77,17 @@ export function hqRouteChrome(pathname: string, search = ""): { section: string;
   if (path.startsWith("/shipments")) {
     return { section: "Command", page: "Shipments" };
   }
+  if (path.startsWith("/expo-leads/booth")) {
+    return { section: "Command", page: "Expo booth" };
+  }
   if (path.startsWith("/expo-leads")) {
     return { section: "Command", page: "Expo leads" };
+  }
+  if (path.startsWith("/export-orders")) {
+    return { section: "Command", page: "Export orders" };
+  }
+  if (path.startsWith("/brand-kit")) {
+    return { section: "Brand", page: "Brand kit" };
   }
   if (path.startsWith("/crm")) {
     return { section: "Network", page: "Sales reps" };
@@ -89,4 +100,23 @@ export function hqRouteChrome(pathname: string, search = ""): { section: string;
   }
 
   return { section: "HQ", page: "Workspace" };
+}
+
+/**
+ * Left crumb account/org for HQ top bar.
+ * Export commercial surfaces → Hajime Ltd.; partner detail → that wholesaler; else HQ.
+ */
+export function hqChromeOrgLabel(
+  pathname: string,
+  opts?: { partnerOrgName?: string | null },
+): string {
+  const path = pathname.replace(/\/$/, "") || "/";
+  if (path.startsWith("/export-orders") || path.startsWith("/brand-kit")) {
+    return EXPORT_SELLER.legalName;
+  }
+  if (path.startsWith("/partners/distributor")) {
+    const name = (opts?.partnerOrgName || "").trim();
+    if (name) return name;
+  }
+  return "HQ";
 }

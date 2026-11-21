@@ -5,15 +5,17 @@ import { HqOperatorPage, HqOperatorPageHeader } from "@/components/hq/HqOperator
 import { EXPO_PRICED_SKUS, EXPORT_SELLER, EXPORT_SKUS } from "@/lib/export-commercial";
 import { ExpoPriceCard } from "@/components/export/ExpoPriceCard";
 import {
-  TRADE_APPROVAL_MATRIX,
-  TRADE_COMMERCIAL_TERMS,
-  TRADE_GUARDRAILS,
-  TRADE_PRICING_CURRENCY,
-  TRADE_STANDARD,
+  TRADE_APPROVAL_MATRIX_USD,
+  TRADE_CAD_PER_USD,
+  TRADE_COMMERCIAL_TERMS_USD,
+  TRADE_GUARDRAILS_USD,
+  TRADE_STANDARD_USD,
   TRADE_ORDER_FORMATS,
   TRADE_WATERFALL_STEPS,
+  cadToUsd,
   netAfterBroker,
   retailerMarginPct,
+  usdMoney,
   wholesalerMarginPct,
 } from "@/lib/hajime-trade-pricing";
 import {
@@ -45,7 +47,7 @@ export default function HqBrandKitPage() {
     <HqOperatorPage>
       <HqOperatorPageHeader
         title="Brand kit"
-        description="Approved Hajime language for booth, press, and sell-in. Canada trade pricing (CAD) is internal. International FOB (USD) is separate. Public catalogs stay price-free."
+        description="Approved Hajime language for booth, press, and sell-in. Trade and FOB figures on this page are USD. Public catalogs stay price-free."
         actions={
           <div className="flex gap-2">
             <Button type="button" size="sm" variant="outline" asChild>
@@ -61,11 +63,12 @@ export default function HqBrandKitPage() {
 
       <div className="space-y-6 text-[13px] leading-relaxed">
         <section id="trade-pricing" className="scroll-mt-20 rounded-xl border border-border bg-card p-5">
-          <h2 className="font-display text-lg">Canada trade pricing ({TRADE_PRICING_CURRENCY})</h2>
+          <h2 className="font-display text-lg">Trade pricing (USD)</h2>
           <p className="mt-2 text-muted-foreground">
-            Internal working policy for First Press Coffee Rhum and comparable Hajime trade accounts. Protect brand
+            Internal working policy for First Press Coffee Rhum and comparable Hajime trade accounts, shown in USD
+            (converted from Canada CAD at {TRADE_CAD_PER_USD.toFixed(4)} CAD per USD so C$93 SRP = US$67). Protect brand
             positioning and margin at each layer. Any discount must be tied to volume, payment terms, or strategic
-            account value. Adjust by market, province, and account type as needed. Not international FOB.
+            account value. Adjust by market and account type as needed. Not international FOB.
           </p>
 
           <h3 className="mt-5 font-medium">1. Standard trade structure (per bottle)</h3>
@@ -74,7 +77,7 @@ export default function HqBrandKitPage() {
               <thead>
                 <tr className="border-b text-muted-foreground">
                   <th className="py-1.5 pr-3 font-medium">Stage</th>
-                  <th className="py-1.5 pr-3 font-medium text-right">Price</th>
+                  <th className="py-1.5 pr-3 font-medium text-right">Price (USD)</th>
                   <th className="py-1.5 font-medium text-right">Margin / Profit</th>
                 </tr>
               </thead>
@@ -82,34 +85,33 @@ export default function HqBrandKitPage() {
                 <tr className="border-b">
                   <td className="py-1.5 pr-3">Manufacturer → Hajime</td>
                   <td className="py-1.5 pr-3 text-right font-mono font-semibold">
-                    ${TRADE_STANDARD.landedPerBottle.toFixed(2)}
+                    {usdMoney(TRADE_STANDARD_USD.landedPerBottle)}
                   </td>
                   <td className="py-1.5 text-right">Hajime cost</td>
                 </tr>
                 <tr className="border-b">
                   <td className="py-1.5 pr-3">Hajime → Distributor</td>
                   <td className="py-1.5 pr-3 text-right font-mono font-semibold">
-                    ${TRADE_STANDARD.sellInPerBottle.toFixed(2)}
+                    {usdMoney(TRADE_STANDARD_USD.sellInPerBottle)}
                   </td>
                   <td className="py-1.5 text-right">
                     Hajime profit:{" "}
                     <span className="font-semibold">
-                      $
-                      {(TRADE_STANDARD.sellInPerBottle - TRADE_STANDARD.landedPerBottle).toFixed(2)}
+                      {usdMoney(TRADE_STANDARD_USD.sellInPerBottle - TRADE_STANDARD_USD.landedPerBottle)}
                     </span>
                   </td>
                 </tr>
                 <tr className="border-b">
                   <td className="py-1.5 pr-3">Distributor → Retailer</td>
                   <td className="py-1.5 pr-3 text-right font-mono font-semibold">
-                    ${TRADE_STANDARD.wholesalerToRetailPerBottle.toFixed(2)}
+                    {usdMoney(TRADE_STANDARD_USD.wholesalerToRetailPerBottle)}
                   </td>
                   <td className="py-1.5 text-right">
                     Distributor margin:{" "}
                     <span className="font-semibold">
                       {wholesalerMarginPct(
-                        TRADE_STANDARD.wholesalerToRetailPerBottle,
-                        TRADE_STANDARD.sellInPerBottle,
+                        TRADE_STANDARD_USD.wholesalerToRetailPerBottle,
+                        TRADE_STANDARD_USD.sellInPerBottle,
                       )}
                       %
                     </span>
@@ -118,14 +120,14 @@ export default function HqBrandKitPage() {
                 <tr>
                   <td className="py-1.5 pr-3">Retailer → Consumer</td>
                   <td className="py-1.5 pr-3 text-right font-mono font-semibold">
-                    ${TRADE_STANDARD.srpPerBottle.toFixed(2)}
+                    {usdMoney(TRADE_STANDARD_USD.srpPerBottle)}
                   </td>
                   <td className="py-1.5 text-right">
                     Retailer margin:{" "}
                     <span className="font-semibold">
                       {retailerMarginPct(
-                        TRADE_STANDARD.srpPerBottle,
-                        TRADE_STANDARD.wholesalerToRetailPerBottle,
+                        TRADE_STANDARD_USD.srpPerBottle,
+                        TRADE_STANDARD_USD.wholesalerToRetailPerBottle,
                       )}
                       %
                     </span>
@@ -135,24 +137,27 @@ export default function HqBrandKitPage() {
             </table>
           </div>
           <p className="mt-2 text-muted-foreground">
-            Broker (when used): ${TRADE_STANDARD.brokerPerBottle.toFixed(2)} / bottle. Hajime net after broker: $
-            {netAfterBroker(TRADE_STANDARD.sellInPerBottle, TRADE_STANDARD.brokerPerBottle).toFixed(2)} / bottle.
+            Broker (when used): {usdMoney(TRADE_STANDARD_USD.brokerPerBottle)} / bottle. Hajime net after broker:{" "}
+            {usdMoney(
+              netAfterBroker(TRADE_STANDARD_USD.sellInPerBottle, TRADE_STANDARD_USD.brokerPerBottle),
+            )}{" "}
+            / bottle.
           </p>
 
           <h3 className="mt-5 font-medium">2. Margin guardrails</h3>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>
-              Hajime minimum net after broker: ${TRADE_GUARDRAILS.hajimeNetAfterBrokerMin.toFixed(2)} to $
-              {TRADE_GUARDRAILS.hajimeNetAfterBrokerWarn.toFixed(2)} / bottle
+              Hajime minimum net after broker: {usdMoney(TRADE_GUARDRAILS_USD.hajimeNetAfterBrokerMin)} to{" "}
+              {usdMoney(TRADE_GUARDRAILS_USD.hajimeNetAfterBrokerWarn)} / bottle
             </li>
             <li>
-              Broker minimum recurring commission: ${TRADE_STANDARD.brokerRecurringMin.toFixed(2)} to $
-              {TRADE_STANDARD.brokerRecurringMax.toFixed(2)} / bottle
+              Broker minimum recurring commission: {usdMoney(TRADE_STANDARD_USD.brokerRecurringMin)} to{" "}
+              {usdMoney(TRADE_STANDARD_USD.brokerRecurringMax)} / bottle
             </li>
             <li>
-              Distributor target margin: {TRADE_GUARDRAILS.wholesalerMarginTargetPct}% minimum
+              Distributor target margin: {TRADE_GUARDRAILS_USD.wholesalerMarginTargetPct}% minimum
             </li>
-            <li>Retailer target margin: {TRADE_GUARDRAILS.retailerMarginMinPct}%+ minimum</li>
+            <li>Retailer target margin: {TRADE_GUARDRAILS_USD.retailerMarginMinPct}%+ minimum</li>
           </ul>
 
           <h3 className="mt-5 font-medium">3. Order sizes</h3>
@@ -210,7 +215,7 @@ export default function HqBrandKitPage() {
                 </tr>
               </thead>
               <tbody>
-                {TRADE_APPROVAL_MATRIX.map((row) => (
+                {TRADE_APPROVAL_MATRIX_USD.map((row) => (
                   <tr key={row.discount} className="border-b last:border-0">
                     <td className="py-1.5 pr-3">{row.discount}</td>
                     <td className="py-1.5 pr-3">{row.approval}</td>
@@ -223,7 +228,7 @@ export default function HqBrandKitPage() {
 
           <h3 className="mt-5 font-medium">6. Commercial terms</h3>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-            {TRADE_COMMERCIAL_TERMS.map((t) => (
+            {TRADE_COMMERCIAL_TERMS_USD.map((t) => (
               <li key={t}>{t}</li>
             ))}
           </ul>
@@ -300,9 +305,10 @@ export default function HqBrandKitPage() {
           <ul className="mt-3 list-disc space-y-1 pl-5">
             {EXPORT_SKUS.map((s) => (
               <li key={s.sku}>
-                {s.product} {s.size}: list ${s.listFobUsd} · floor ${s.floorFobUsd} · working cost ${s.workingCostUsd}
+                {s.product} {s.size}: list {usdMoney(s.listFobUsd)} · floor {usdMoney(s.floorFobUsd)} · working cost{" "}
+                {usdMoney(s.workingCostUsd)}
                 {s.guide
-                  ? ` · landed ~$${s.guide.landedUsd} · wholesale ~$${s.guide.wholesaleUsd} · retail ~$${s.guide.retailUsd} · Canada MSRP C$${s.guide.canadaMsrpCad}`
+                  ? ` · landed ~${usdMoney(Number(s.guide.landedUsd))} · wholesale ~${usdMoney(Number(s.guide.wholesaleUsd))} · retail ~${usdMoney(Number(s.guide.retailUsd))} · Canada MSRP ${usdMoney(cadToUsd(Number(s.guide.canadaMsrpCad)))}`
                   : " · price guide not set"}
               </li>
             ))}

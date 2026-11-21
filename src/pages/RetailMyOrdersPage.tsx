@@ -102,41 +102,77 @@ export default function RetailMyOrdersPage() {
         {filtered.length === 0 ? (
           <p className="px-4 py-10 text-center text-[13px] text-muted-foreground">No orders in this view.</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                {["Order", "Items", "Total", "Status", ""].map((h) => (
-                  <TableHead key={h || "actions"} className="bg-muted/50 text-[10px] font-semibold uppercase tracking-[0.1em]">
-                    {h}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            <ul className="divide-y divide-border/40 md:hidden">
               {filtered.map((o) => (
-                <TableRow
-                  key={o.id}
-                  className="cursor-pointer border-border/40 hover:bg-muted/30"
-                  onClick={() => navigate(`/retail/orders/${encodeURIComponent(o.id)}`)}
-                >
-                  <TableCell>
-                    <div className="font-mono text-xs font-medium">{retailOrderDisplayId(o.id)}</div>
-                    <div className="text-[11px] text-muted-foreground">Placed {o.orderDate}</div>
-                  </TableCell>
-                  <TableCell className="max-w-[240px] text-xs text-muted-foreground">{lineSummary(o, data.products)}</TableCell>
-                  <TableCell className="font-mono text-[13px] font-medium tabular-nums">${formatMoney(o.price)}</TableCell>
-                  <TableCell>
-                    <RetailStatusPill status={o.status} />
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Button variant="outline" size="sm" className="h-[30px] text-xs" asChild>
-                      <Link to="/shipments">Track</Link>
-                    </Button>
-                  </TableCell>
-                </TableRow>
+                <li key={o.id}>
+                  <button
+                    type="button"
+                    className="flex w-full flex-col gap-2 px-4 py-3.5 text-left touch-manipulation active:bg-muted/40"
+                    onClick={() => navigate(`/retail/orders/${encodeURIComponent(o.id)}`)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-medium">{retailOrderDisplayId(o.id)}</p>
+                        <p className="text-[11px] text-muted-foreground">Placed {o.orderDate}</p>
+                      </div>
+                      <RetailStatusPill status={o.status} />
+                    </div>
+                    <p className="line-clamp-2 text-xs text-muted-foreground">{lineSummary(o, data.products)}</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-mono text-[13px] font-medium tabular-nums">${formatMoney(o.price)}</span>
+                      <span
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        className="inline-flex"
+                      >
+                        <Button variant="outline" size="sm" className="h-9 min-w-[72px] touch-manipulation text-xs" asChild>
+                          <Link to="/shipments">Track</Link>
+                        </Button>
+                      </span>
+                    </div>
+                  </button>
+                </li>
               ))}
-            </TableBody>
-          </Table>
+            </ul>
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    {["Order", "Items", "Total", "Status", ""].map((h) => (
+                      <TableHead key={h || "actions"} className="bg-muted/50 text-[10px] font-semibold uppercase tracking-[0.1em]">
+                        {h}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((o) => (
+                    <TableRow
+                      key={o.id}
+                      className="cursor-pointer border-border/40 hover:bg-muted/30"
+                      onClick={() => navigate(`/retail/orders/${encodeURIComponent(o.id)}`)}
+                    >
+                      <TableCell>
+                        <div className="font-mono text-xs font-medium">{retailOrderDisplayId(o.id)}</div>
+                        <div className="text-[11px] text-muted-foreground">Placed {o.orderDate}</div>
+                      </TableCell>
+                      <TableCell className="max-w-[240px] text-xs text-muted-foreground">{lineSummary(o, data.products)}</TableCell>
+                      <TableCell className="font-mono text-[13px] font-medium tabular-nums">${formatMoney(o.price)}</TableCell>
+                      <TableCell>
+                        <RetailStatusPill status={o.status} />
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Button variant="outline" size="sm" className="h-[30px] text-xs" asChild>
+                          <Link to="/shipments">Track</Link>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAppData, usePurchaseOrders, useSalesOrders } from "@/contexts/AppDataContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSelect } from "@/components/LanguageSelect";
+import { distributorPortalAccountLabel } from "@/lib/distributor-accounts";
 import { filterAccountsForDistributor, filterTeamMembersForDistributor } from "@/lib/distributor-scope";
 import { isSidebarNavItemActive, navPathEndFlag } from "@/lib/sidebar-nav-active";
 import { getMySupplyChainIncentiveProgress } from "@/lib/api-v1-mutations";
@@ -250,14 +251,10 @@ export const DistributorSidebar = memo(function DistributorSidebar({
   const { purchaseOrders } = usePurchaseOrders();
   const { salesOrders } = useSalesOrders();
 
-  const orgLabel = useMemo(() => {
-    if (!user) return "Distributor";
-    const distAccount = data.accounts.find(
-      (a) => a.type === "distributor" && String(a.managedByDistributorUserId ?? "") === String(user.id),
-    );
-    if (distAccount?.tradingName) return distAccount.tradingName;
-    return "Empire Wines";
-  }, [data.accounts, user]);
+  const orgLabel = useMemo(
+    () => distributorPortalAccountLabel(data.accounts, user),
+    [data.accounts, user],
+  );
 
   const pendingAccountCount = useMemo(
     () =>

@@ -126,7 +126,7 @@ export function NewPurchaseOrderDialog({
     () => activeDestinationWarehouses(data.warehouses),
     [data.warehouses],
   );
-  const [marketDestination, setMarketDestination] = useState("Toronto Main Warehouse");
+  const [marketDestination, setMarketDestination] = useState("");
   const [status, setStatus] = useState<PurchaseOrder["status"]>("draft");
   const [notes, setNotes] = useState("");
   
@@ -484,18 +484,28 @@ export function NewPurchaseOrderDialog({
             </div>
             <div className="space-y-2">
               <Label>Destination warehouse</Label>
-              <Select value={marketDestination} onValueChange={setMarketDestination}>
-                <SelectTrigger className="touch-manipulation">
-                  <SelectValue placeholder="Select warehouse" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(destinationWarehouses.length > 0 ? destinationWarehouses : [{ id: "fallback", name: "Toronto Main Warehouse", isActive: true, sortOrder: 0 }]).map((w) => (
-                    <SelectItem key={w.id} value={w.name}>
-                      {w.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {destinationWarehouses.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Add a warehouse in{" "}
+                  <Link to="/settings#warehouses" className="font-medium text-primary underline-offset-2 hover:underline">
+                    Settings → Warehouses
+                  </Link>{" "}
+                  first.
+                </p>
+              ) : (
+                <Select value={marketDestination} onValueChange={setMarketDestination}>
+                  <SelectTrigger className="touch-manipulation">
+                    <SelectValue placeholder="Select warehouse" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {destinationWarehouses.map((w) => (
+                      <SelectItem key={w.id} value={w.name}>
+                        {w.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <p className="text-xs text-muted-foreground">
                 Same locations as <span className="font-medium text-foreground">Settings → Warehouses</span>. Inventory receipts map here when the PO is marked delivered.
               </p>

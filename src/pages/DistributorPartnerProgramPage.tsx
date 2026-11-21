@@ -2,15 +2,13 @@ import { DistributorPartnerProgramView } from "@/components/distributor/Distribu
 import { DistributorSkeleton } from "@/components/skeletons";
 import { useAppData } from "@/contexts/AppDataContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { distributorPortalAccountLabel } from "@/lib/distributor-accounts";
 
 export default function DistributorPartnerProgramPage() {
   const { loading, data } = useAppData();
   const { user } = useAuth();
 
-  const distAccount = data.accounts.find(
-    (a) => a.type === "distributor" && String(a.managedByDistributorUserId ?? "") === String(user?.id ?? ""),
-  );
-  const accountName = distAccount?.tradingName || distAccount?.legalName || "Empire Wines";
+  const accountName = distributorPortalAccountLabel(data.accounts, user);
 
   if (loading) return <DistributorSkeleton />;
 

@@ -2,6 +2,7 @@ const PREFIX = {
   order: "HJX",
   quotation: "HJ-Q",
   po_acceptance: "HJ-POA",
+  buyer_po: "HJ-BPO",
   proforma: "HJ-PI",
   deposit_confirmation: "HJ-DEP",
   production_authorization: "HJ-PA",

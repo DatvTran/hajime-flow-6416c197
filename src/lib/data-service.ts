@@ -18,6 +18,7 @@ import type { AppData, OperationalSettings, TeamMember, TeamMemberPortalRole, Vi
 import type { InventoryItem, NewProductRequest, PurchaseOrder, Shipment } from "@/data/mockData";
 import { isSeedStyleSalesOrderId } from "@/lib/sales-order-utils";
 import { CONNECT_COUNTRIES } from "@/lib/connect-countries";
+import { warehouseFromApi } from "@/lib/warehouse-from-api";
 
 // Feature flag to control granular API usage - Stage 3: Always use granular
 const USE_GRANULAR_API = true;
@@ -57,26 +58,17 @@ const PORTAL_ROLES = new Set<TeamMemberPortalRole>([
 ]);
 
 function mapRowToWarehouse(row: Record<string, unknown>): Warehouse {
-  const isActive =
-    row.is_active === undefined || row.is_active === null
-      ? true
-      : Boolean(row.is_active);
-  const linkedRaw = row.linked_account_id;
-  const linkedAccountId =
-    linkedRaw != null && String(linkedRaw).trim() !== ""
-      ? String(linkedRaw).trim()
-      : undefined;
-  const tmRaw = row.linked_team_member_id;
-  const linkedTeamMemberId =
-    tmRaw != null && String(tmRaw).trim() !== "" ? String(tmRaw).trim() : undefined;
-  return {
+  return warehouseFromApi({
     id: String(row.id ?? ""),
     name: String(row.name ?? "").trim(),
-    isActive,
-    sortOrder: Number(row.sort_order ?? 0),
-    ...(linkedAccountId ? { linkedAccountId } : {}),
-    ...(linkedTeamMemberId ? { linkedTeamMemberId } : {}),
-  };
+    is_active:
+      row.is_active === undefined || row.is_active === null ? true : Boolean(row.is_active),
+    sort_order: Number(row.sort_order ?? 0),
+    kind: row.kind != null ? String(row.kind) : undefined,
+    linked_account_id: row.linked_account_id != null ? String(row.linked_account_id) : null,
+    linked_team_member_id:
+      row.linked_team_member_id != null ? String(row.linked_team_member_id) : null,
+  });
 }
 
 function mapRowToTeamMember(row: Record<string, unknown>): TeamMember {

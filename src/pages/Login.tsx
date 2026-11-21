@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { homePathForRole, type HajimeRole, useAuth } from "@/contexts/AuthContext";
 import { accounts as seedAccounts } from "@/data/mockData";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TEAM_ROSTER, RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL } from "@/data/team-roster";
 import type { TeamMemberPortalRole } from "@/types/app-data";
 import { HajimeLogo } from "@/components/HajimeLogo";
 import { cn } from "@/lib/utils";
@@ -34,26 +33,6 @@ const RETAIL_ACCOUNT_OPTIONS = seedAccounts
 const RETAIL_VENUE_OPTIONS =
   RETAIL_ACCOUNT_OPTIONS.length > 0 ? RETAIL_ACCOUNT_OPTIONS : ["The Drake Hotel"];
 
-/** Seeded HQ admin (`server/seeds/001_initial_data.mjs`). */
-const DEMO_BRAND_OPERATOR_PASSWORD = "admin123!";
-
-/** Seeded DB password for all demo retail personas (`server/seeds/001_initial_data.mjs`). */
-const DEMO_RETAIL_PASSWORD = "retail123!";
-
-/** Demo sales rep personas — migration `026_demo_sales_rep_users` + seed. */
-const DEMO_SALES_REP_PASSWORD = "admin123!";
-
-/** Demo distributor — migration `026_demo_sales_rep_users` (Metro Logistics). */
-const DEMO_DISTRIBUTOR_PASSWORD = "admin123!";
-
-/** Demo distillery — migrations `038` (Kirin) + `045` (Kosapan). */
-const DEMO_MANUFACTURER_PASSWORD = "admin123!";
-
-const DEFAULT_SALES_REP_PERSONA_ID = "tm-seed-2";
-const DEFAULT_DISTRIBUTOR_PERSONA_ID = "tm-seed-7";
-/** Default distillery login is Kosapan so HQ production requests are visible end-to-end. */
-const DEFAULT_MANUFACTURER_PERSONA_ID = "tm-kosapan-portal";
-
 function authRoleToTeamRole(r: HajimeRole): TeamMemberPortalRole | null {
   if (r === "sales_rep" || r === "retail" || r === "distributor" || r === "manufacturer") return r;
   return null;
@@ -75,9 +54,8 @@ export default function Login() {
   const { user, signIn, signOut, isLoading, error, clearError } = useAuth();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState("admin@hajime.jp");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState("Admin");
   const [role, setRole] = useState<HajimeRole>("brand_operator");
   const [retailAccount, setRetailAccount] = useState(
     () =>
@@ -85,15 +63,32 @@ export default function Login() {
         ? "The Drake Hotel"
         : RETAIL_VENUE_OPTIONS[0] ?? "The Drake Hotel",
   );
-  const [personaId, setPersonaId] = useState<string>("");
   const [step, setStep] = useState<"role" | "credentials">("role");
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const rosterForRole = useMemo(() => {
-    const tr = authRoleToTeamRole(role);
-    if (!tr) return [];
-    return TEAM_ROSTER.filter((m) => m.role === tr);
-  }, [role]);
+  // Bust stale PWA caches that still show removed demo login copy.
+  useEffect(() => {
+    if (!import.meta.env.PROD || typeof window === "undefined") return;
+    const key = "hajime_login_asset_v";
+    const ver = "2026-11-19-login-clean-8";
+    if (localStorage.getItem(key) === ver) return;
+    localStorage.setItem(key, ver);
+    void (async () => {
+      try {
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+        if (navigator.serviceWorker) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+      } catch {
+        /* ignore */
+      }
+      window.location.reload();
+    })();
+  }, []);
 
   if (user) {
     return <Navigate to={homePathForRole(user.role)} replace />;
@@ -101,57 +96,16 @@ export default function Login() {
 
   const selectRole = (r: HajimeRole) => {
     setRole(r);
-    setPersonaId("");
     clearError();
     setLocalError(null);
-    if (r === "brand_operator") {
-      setEmail("admin@hajime.jp");
-      setDisplayName("Admin");
-      setPassword(DEMO_BRAND_OPERATOR_PASSWORD);
-    }
+    setEmail("");
+    setPassword("");
     if (r === "retail") {
-      setEmail("retail@hajime.jp");
-      setDisplayName("Demo Retailer");
-      setPassword(DEMO_RETAIL_PASSWORD);
       setRetailAccount(
-        RETAIL_VENUE_OPTIONS.includes("The Drake Hotel") ? "The Drake Hotel" : RETAIL_VENUE_OPTIONS[0] ?? "The Drake Hotel",
+        RETAIL_VENUE_OPTIONS.includes("The Drake Hotel")
+          ? "The Drake Hotel"
+          : RETAIL_VENUE_OPTIONS[0] ?? "The Drake Hotel",
       );
-    }
-    if (r === "sales_rep") {
-      const m = TEAM_ROSTER.find((x) => x.id === DEFAULT_SALES_REP_PERSONA_ID);
-      if (m) {
-        setPersonaId(m.id);
-        setEmail(m.email);
-        setDisplayName(m.displayName);
-      } else {
-        setEmail("marcus.chen@hajime.jp");
-        setDisplayName("Marcus Chen");
-      }
-      setPassword(DEMO_SALES_REP_PASSWORD);
-    }
-    if (r === "distributor") {
-      const m = TEAM_ROSTER.find((x) => x.id === DEFAULT_DISTRIBUTOR_PERSONA_ID);
-      if (m) {
-        setPersonaId(m.id);
-        setEmail(m.email);
-        setDisplayName(m.displayName);
-      } else {
-        setEmail("fulfillment@metrologistics.example");
-        setDisplayName("Metro Logistics Ops");
-      }
-      setPassword(DEMO_DISTRIBUTOR_PASSWORD);
-    }
-    if (r === "manufacturer") {
-      const m = TEAM_ROSTER.find((x) => x.id === DEFAULT_MANUFACTURER_PERSONA_ID);
-      if (m) {
-        setPersonaId(m.id);
-        setEmail(m.email);
-        setDisplayName(m.displayName);
-      } else {
-        setEmail("portal@kosapan.example");
-        setDisplayName("Kosapan Distillery");
-      }
-      setPassword(DEMO_MANUFACTURER_PASSWORD);
     }
     setStep("credentials");
   };
@@ -171,7 +125,7 @@ export default function Login() {
         await signOut();
         setLocalError(
           portalRole
-            ? `This account is registered as ${signedIn.role.replace(/_/g, " ")}, not ${portalRole.replace(/_/g, " ")}. Pick the matching role tile or use the demo email for this portal.`
+            ? `This account is registered as ${signedIn.role.replace(/_/g, " ")}, not ${portalRole.replace(/_/g, " ")}. Pick the matching role tile.`
             : `This account cannot open the ${role.replace(/_/g, " ")} portal.`,
         );
         return;
@@ -279,9 +233,6 @@ export default function Login() {
                   </button>
                 ))}
               </div>
-              <p className="mt-8 text-center text-[10px] font-medium uppercase tracking-[0.28em] text-[#666666]">
-                Demo environment • No real data
-              </p>
             </div>
           )}
 
@@ -313,69 +264,7 @@ export default function Login() {
                   </Alert>
                 ) : null}
 
-                <form onSubmit={submit} className="space-y-4">
-                  {rosterForRole.length > 0 && (
-                    <div className="space-y-2">
-                      <Label htmlFor="persona" className="text-[11px] text-muted-foreground">
-                        Team persona
-                      </Label>
-                      <Select
-                        value={personaId || "custom"}
-                        onValueChange={(id) => {
-                          if (id === "custom") {
-                            setPersonaId("");
-                            return;
-                          }
-                          setPersonaId(id);
-                          const m = TEAM_ROSTER.find((x) => x.id === id);
-                          if (!m) return;
-                          setEmail(m.email);
-                          setDisplayName(m.displayName);
-                          if (m.role === "retail") {
-                            setPassword(DEMO_RETAIL_PASSWORD);
-                            const acct = RETAIL_ACCOUNT_TRADING_NAME_BY_EMAIL[m.email?.toLowerCase() || ""];
-                            if (acct) setRetailAccount(acct);
-                          }
-                          if (m.role === "sales_rep") {
-                            setPassword(DEMO_SALES_REP_PASSWORD);
-                          }
-                          if (m.role === "distributor") {
-                            setPassword(DEMO_DISTRIBUTOR_PASSWORD);
-                          }
-                          if (m.role === "manufacturer") {
-                            setPassword(DEMO_MANUFACTURER_PASSWORD);
-                          }
-                        }}
-                      >
-                        <SelectTrigger id="persona" className="h-10 touch-manipulation">
-                          <SelectValue placeholder="Choose persona…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="custom">Custom</SelectItem>
-                          {rosterForRole.map((m) => (
-                            <SelectItem key={m.id} value={m.id}>
-                              {m.displayName} ·{" "}
-                              <span className="text-muted-foreground">{m.email}</span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Label htmlFor="name" className="text-[11px] text-muted-foreground">
-                      Display name
-                    </Label>
-                    <Input
-                      id="name"
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      autoComplete="name"
-                      className="h-10 touch-manipulation"
-                    />
-                  </div>
-
+                <form onSubmit={(e) => void submit(e)} className="space-y-4">
                   {role === "retail" && (
                     <div className="space-y-2">
                       <Label htmlFor="retail-acct" className="text-[11px] text-muted-foreground">
@@ -424,40 +313,6 @@ export default function Login() {
                       required
                       className="h-10 touch-manipulation"
                     />
-                    {role === "brand_operator" ? (
-                      <p className="text-[11px] leading-relaxed text-muted-foreground">
-                        Demo HQ login: <span className="font-mono text-foreground">admin@hajime.jp</span> · password{" "}
-                        <span className="font-mono text-foreground">{DEMO_BRAND_OPERATOR_PASSWORD}</span> (from DB seed).
-                      </p>
-                    ) : null}
-                    {role === "retail" ? (
-                      <p className="text-[11px] leading-relaxed text-muted-foreground">
-                        Demo retail accounts use password <span className="font-mono text-foreground">{DEMO_RETAIL_PASSWORD}</span> after{" "}
-                        <code className="rounded bg-muted px-1 py-px font-mono text-[10px]">npm run dev:api</code> and seed. Personas (
-                        Jeff, Maria, James) share this password once seeded.
-                      </p>
-                    ) : null}
-                    {role === "sales_rep" ? (
-                      <p className="text-[11px] leading-relaxed text-muted-foreground">
-                        Use the persona email (e.g. <span className="font-mono text-foreground">marcus.chen@hajime.jp</span>), not{" "}
-                        <span className="font-mono text-foreground">admin@hajime.jp</span>. Password:{" "}
-                        <span className="font-mono text-foreground">{DEMO_SALES_REP_PASSWORD}</span> (created by DB seed or migration 026).
-                      </p>
-                    ) : null}
-                    {role === "distributor" ? (
-                      <p className="text-[11px] leading-relaxed text-muted-foreground">
-                        Demo login: <span className="font-mono text-foreground">fulfillment@metrologistics.example</span> · password{" "}
-                        <span className="font-mono text-foreground">{DEMO_DISTRIBUTOR_PASSWORD}</span> (Metro Logistics — migration 026).
-                        Do not use <span className="font-mono text-foreground">admin@hajime.jp</span>; that is Brand Operator only.
-                      </p>
-                    ) : null}
-                    {role === "manufacturer" ? (
-                      <p className="text-[11px] leading-relaxed text-muted-foreground">
-                        Demo login: <span className="font-mono text-foreground">export@kirin.example</span> · password{" "}
-                        <span className="font-mono text-foreground">{DEMO_MANUFACTURER_PASSWORD}</span> (Kirin — migration 038).
-                        Do not use <span className="font-mono text-foreground">admin@hajime.jp</span>; that is Brand Operator only.
-                      </p>
-                    ) : null}
                     <div className="flex justify-end">
                       <Link
                         to="/forgot-password"
@@ -477,10 +332,6 @@ export default function Login() {
                   </Button>
                 </form>
               </div>
-
-              <p className="mt-6 text-center text-[10px] font-medium uppercase tracking-[0.28em] text-[#666666]">
-                Demo environment • No real data
-              </p>
             </div>
           )}
         </div>

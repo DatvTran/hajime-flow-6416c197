@@ -36,6 +36,8 @@ import { Download, FileSpreadsheet } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { isHqOperatorRole } from "@/lib/hq-order-scope";
 import { HqProductCatalogView } from "@/components/hq/HqProductCatalogView";
+import { PartnerSkuPricesPanel } from "@/components/PartnerSkuPricesPanel";
+import { DistributorReceivingWarehousePanel } from "@/components/distributor/DistributorReceivingWarehousePanel";
 import { useProducts, usePurchaseOrders } from "@/contexts/AppDataContext";
 
 const STATUS_VALUES: InventoryItem["status"][] = ["available", "reserved", "damaged"];
@@ -268,6 +270,13 @@ export default function Inventory() {
         }
       />
 
+      {user.role === "distributor" ? (
+        <div className="mb-4 space-y-4">
+          <DistributorReceivingWarehousePanel className="scroll-mt-4" variant="panel" />
+          <PartnerSkuPricesPanel mode="distributor_sell_out" plain />
+        </div>
+      ) : null}
+
       {/* Role-based view indicator */}
       {isShowingFilteredView && (
         <div className="mb-4 rounded-lg border bg-info/10 p-3 text-sm text-info-foreground">
@@ -440,7 +449,7 @@ export default function Inventory() {
           </div>
           
           <div className="-mx-4 overflow-x-auto touch-pan-x px-4 sm:mx-0 sm:px-0">
-            <table className="w-full min-w-[1200px] text-sm">
+            <table className="w-full min-w-[720px] text-sm md:min-w-[960px] xl:min-w-[1200px]">
               <thead>
                 <tr className="border-b text-left">
                   <th className="pb-3 font-medium text-muted-foreground">SKU</th>

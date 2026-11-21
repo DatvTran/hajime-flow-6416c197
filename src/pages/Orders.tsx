@@ -616,93 +616,124 @@ export default function Orders() {
               />
             </div>
           </div>
-          <div className="-mx-4 overflow-x-auto touch-pan-x px-4 sm:mx-0 sm:px-0">
-            <table className="w-full min-w-[880px] text-sm">
-              <thead>
-                <tr className="border-b text-left">
-                  <th className="pb-3 font-medium text-muted-foreground">Order ID</th>
-                  <th className="pb-3 font-medium text-muted-foreground">Account</th>
-                  <th className="pb-3 font-medium text-muted-foreground">Market</th>
-                  <th className="pb-3 font-medium text-muted-foreground">SKU</th>
-                  <th className="pb-3 font-medium text-muted-foreground">Qty</th>
-                  <th className="pb-3 font-medium text-muted-foreground">Value</th>
-                  <th className="pb-3 font-medium text-muted-foreground">Sales Rep</th>
-                  <th className="pb-3 font-medium text-muted-foreground">Path</th>
-                  <th className="pb-3 font-medium text-muted-foreground">Rep OK</th>
-                  <th className="pb-3 font-medium text-muted-foreground">Approval</th>
-                  <th className="pb-3 font-medium text-muted-foreground">Status</th>
-                  <th className="pb-3 font-medium text-muted-foreground">Payment</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={12} className="py-12 text-center text-sm text-muted-foreground">
-                      No orders in this stage. Try another tab or clear search.
-                    </td>
-                  </tr>
-                ) : null}
+          {filtered.length === 0 ? (
+            <p className="py-12 text-center text-sm text-muted-foreground">
+              No orders in this stage. Try another tab or clear search.
+            </p>
+          ) : (
+            <>
+              <ul className="divide-y divide-border/50 md:hidden">
                 {filtered.map((order) => (
-                  <tr
-                    key={order.id}
-                    className={cn(
-                      "border-b last:border-0 hover:bg-muted/30 transition-colors",
-                      isDistributorPortal && "cursor-pointer",
-                    )}
-                    onClick={isDistributorPortal ? () => setSelectedOrderId(order.id) : undefined}
-                    onKeyDown={
-                      isDistributorPortal
-                        ? (e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setSelectedOrderId(order.id);
-                            }
-                          }
-                        : undefined
-                    }
-                    tabIndex={isDistributorPortal ? 0 : undefined}
-                    role={isDistributorPortal ? "button" : undefined}
-                  >
-                    <td className="py-3">
-                      <button
-                        type="button"
-                        className="font-mono text-xs font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm touch-manipulation text-left"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedOrderId(order.id);
-                        }}
-                      >
-                        {order.id}
-                      </button>
-                    </td>
-                    <td className="py-3 font-medium">{order.account ?? "Unknown account"}</td>
-                    <td className="py-3">{order.market ?? "—"}</td>
-                    <td className="py-3 font-mono text-xs">{order.sku ?? "—"}</td>
-                    <td className="py-3">{safeNumber(order.quantity)}</td>
-                    <td className="py-3">${safeNumber(order.price).toLocaleString()}</td>
-                    <td className="py-3">{order.salesRep ?? "—"}</td>
-                    <td className="py-3 max-w-[100px] truncate text-xs text-muted-foreground" title={order.orderRoutingTarget ?? ""}>
-                      {order.orderRoutingTarget ? routingTargetLabel(order.orderRoutingTarget) : "—"}
-                    </td>
-                    <td className="py-3 text-xs capitalize text-muted-foreground">
-                      {effectiveRepApprovalStatus(order, accounts)}
-                    </td>
-                    <td className="py-3">
-                      {order.status === "draft" ? (
-                        <span className="inline-flex rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium text-accent-foreground">
-                          Pending
+                  <li key={order.id}>
+                    <button
+                      type="button"
+                      className="flex w-full flex-col gap-2 px-1 py-3.5 text-left touch-manipulation active:bg-muted/40"
+                      onClick={() => setSelectedOrderId(order.id)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-mono text-xs font-medium text-primary">{order.id}</p>
+                          <p className="mt-0.5 truncate text-sm font-medium text-foreground">
+                            {order.account ?? "Unknown account"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">Market · {order.market ?? "—"}</p>
+                        </div>
+                        <StatusBadge status={order.status} />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span className="font-mono">{order.sku ?? "—"}</span>
+                        <span>{safeNumber(order.quantity)} btls</span>
+                        <span className="font-medium tabular-nums text-foreground">
+                          ${safeNumber(order.price).toLocaleString()}
                         </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="py-3"><StatusBadge status={order.status} /></td>
-                    <td className="py-3"><StatusBadge status={order.paymentStatus} /></td>
-                  </tr>
+                        <StatusBadge status={order.paymentStatus} />
+                      </div>
+                    </button>
+                  </li>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </ul>
+              <div className="hidden overflow-x-auto overscroll-x-contain touch-pan-x md:block">
+                <table className="w-full min-w-[880px] text-sm">
+                  <thead>
+                    <tr className="border-b text-left">
+                      <th className="pb-3 font-medium text-muted-foreground">Order ID</th>
+                      <th className="pb-3 font-medium text-muted-foreground">Account</th>
+                      <th className="pb-3 font-medium text-muted-foreground">Market</th>
+                      <th className="pb-3 font-medium text-muted-foreground">SKU</th>
+                      <th className="pb-3 font-medium text-muted-foreground">Qty</th>
+                      <th className="pb-3 font-medium text-muted-foreground">Value</th>
+                      <th className="pb-3 font-medium text-muted-foreground">Sales Rep</th>
+                      <th className="pb-3 font-medium text-muted-foreground">Path</th>
+                      <th className="pb-3 font-medium text-muted-foreground">Rep OK</th>
+                      <th className="pb-3 font-medium text-muted-foreground">Approval</th>
+                      <th className="pb-3 font-medium text-muted-foreground">Status</th>
+                      <th className="pb-3 font-medium text-muted-foreground">Payment</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((order) => (
+                      <tr
+                        key={order.id}
+                        className={cn(
+                          "border-b last:border-0 hover:bg-muted/30 transition-colors",
+                          isDistributorPortal && "cursor-pointer",
+                        )}
+                        onClick={isDistributorPortal ? () => setSelectedOrderId(order.id) : undefined}
+                        onKeyDown={
+                          isDistributorPortal
+                            ? (e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setSelectedOrderId(order.id);
+                                }
+                              }
+                            : undefined
+                        }
+                        tabIndex={isDistributorPortal ? 0 : undefined}
+                        role={isDistributorPortal ? "button" : undefined}
+                      >
+                        <td className="py-3">
+                          <button
+                            type="button"
+                            className="font-mono text-xs font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm touch-manipulation text-left"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedOrderId(order.id);
+                            }}
+                          >
+                            {order.id}
+                          </button>
+                        </td>
+                        <td className="py-3 font-medium">{order.account ?? "Unknown account"}</td>
+                        <td className="py-3">{order.market ?? "—"}</td>
+                        <td className="py-3 font-mono text-xs">{order.sku ?? "—"}</td>
+                        <td className="py-3">{safeNumber(order.quantity)}</td>
+                        <td className="py-3">${safeNumber(order.price).toLocaleString()}</td>
+                        <td className="py-3">{order.salesRep ?? "—"}</td>
+                        <td className="py-3 max-w-[100px] truncate text-xs text-muted-foreground" title={order.orderRoutingTarget ?? ""}>
+                          {order.orderRoutingTarget ? routingTargetLabel(order.orderRoutingTarget) : "—"}
+                        </td>
+                        <td className="py-3 text-xs capitalize text-muted-foreground">
+                          {effectiveRepApprovalStatus(order, accounts)}
+                        </td>
+                        <td className="py-3">
+                          {order.status === "draft" ? (
+                            <span className="inline-flex rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium text-accent-foreground">
+                              Pending
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="py-3"><StatusBadge status={order.status} /></td>
+                        <td className="py-3"><StatusBadge status={order.paymentStatus} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

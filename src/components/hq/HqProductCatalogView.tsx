@@ -111,9 +111,9 @@ export function HqProductCatalogView({ products, purchaseOrders, onDeleteSku }: 
               <th>{t("SKU")}</th>
               <th>{t("Product")}</th>
               <th>{t("Type")}</th>
-              <th>{t("SRP")}</th>
-              <th>{t("Sell-in")}</th>
-              <th>{t("W → retail")}</th>
+              <th>{t("MSRP ref")}</th>
+              <th>{t("List sell-in")}</th>
+              <th>{t("Suggested W→R")}</th>
               <th>{t("Landed")}</th>
               <th>{t("Net after broker")}</th>
               <th>{t("Produced by")}</th>

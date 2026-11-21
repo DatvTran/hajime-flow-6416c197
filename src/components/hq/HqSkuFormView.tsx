@@ -367,9 +367,9 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
             </HqOperatorCard>
 
             <HqOperatorCard className="hq-settings-panel">
-              <div className="hq-settings-title">{t("Canada trade pricing (CAD / bottle)")}</div>
+              <div className="hq-settings-title">{t("Trade pricing (USD / bottle)")}</div>
               <p className="mb-3 text-[12px] text-muted-foreground">
-                Internal ladder. Landed and broker stay on HQ only.{" "}
+                Catalog list defaults and MSRP reference in USD. Per-wholesaler negotiated sell-in lives on each distributor partner page. Partners convert to local currency with their FX rate. Landed and broker stay on HQ only.{" "}
                 <Link to="/brand-kit#trade-pricing" className="text-accent underline">
                   Trade pricing policy
                 </Link>
@@ -396,7 +396,7 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
                   />
                 </div>
                 <div className="hq-form-group mb-0">
-                  <label htmlFor="sku-wholesale">{t("Hajime sell-in")}</label>
+                  <label htmlFor="sku-wholesale">{t("List sell-in (default until negotiated)")}</label>
                   <input
                     id="sku-wholesale"
                     value={wholesale}
@@ -406,7 +406,7 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
                   />
                 </div>
                 <div className="hq-form-group mb-0">
-                  <label htmlFor="sku-sellout">{t("Wholesaler to retailer")}</label>
+                  <label htmlFor="sku-sellout">{t("Suggested sell-out (until partner sets)")}</label>
                   <input
                     id="sku-sellout"
                     value={sellOut}
@@ -416,7 +416,7 @@ export function HqSkuFormView({ mode, product, existingSkus, onSave, onDiscontin
                   />
                 </div>
                 <div className="hq-form-group mb-0">
-                  <label htmlFor="sku-msrp">{t("Suggested retail")}</label>
+                  <label htmlFor="sku-msrp">{t("MSRP reference (not enforced)")}</label>
                   <input
                     id="sku-msrp"
                     value={msrp}

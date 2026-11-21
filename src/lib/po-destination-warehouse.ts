@@ -1,4 +1,4 @@
-import type { Warehouse } from "@/types/app-data";
+import type { TeamMember, Warehouse } from "@/types/app-data";
 
 /** Active warehouses from Settings, ordered for dropdowns. */
 export function activeDestinationWarehouses(warehouses: Warehouse[] | undefined): Warehouse[] {
@@ -8,30 +8,47 @@ export function activeDestinationWarehouses(warehouses: Warehouse[] | undefined)
 }
 
 /**
- * Inventory adjustments use location strings that may differ slightly from Settings labels
- * (e.g. legacy rows say "Toronto Main" while Settings defaults use "Toronto Main Warehouse").
+ * Distributor-visible depots only: primary + CRM/account-linked (never peer DCs or HQ brand pool).
+ * Mirrors server `filterWarehouseOptionsForDistributor`.
  */
-const SETTINGS_NAME_TO_INVENTORY_LOCATION: Record<string, string> = {
-  "toronto main warehouse": "Toronto Main",
-};
+export function warehousesForDistributorMember(
+  warehouses: Warehouse[] | undefined,
+  member: Pick<TeamMember, "id" | "primaryWarehouseId" | "linkedAccountId"> | undefined,
+): Warehouse[] {
+  const list = activeDestinationWarehouses(warehouses);
+  if (!member?.id) return [];
+  const mid = String(member.id).trim();
+  const primary =
+    member.primaryWarehouseId != null && String(member.primaryWarehouseId).trim() !== ""
+      ? String(member.primaryWarehouseId).trim()
+      : null;
+  const accountId =
+    member.linkedAccountId != null && String(member.linkedAccountId).trim() !== ""
+      ? String(member.linkedAccountId).trim()
+      : null;
 
-export function inventoryReceivingLocationForWarehouseDisplayName(displayName: string): string {
-  const key = displayName.trim().toLowerCase();
-  return SETTINGS_NAME_TO_INVENTORY_LOCATION[key] ?? displayName.trim();
+  return list.filter((w) => {
+    const wid = String(w.id ?? "").trim();
+    if (!wid) return false;
+    if (primary && primary === wid) return true;
+    if (w.linkedTeamMemberId != null && String(w.linkedTeamMemberId).trim() === mid) return true;
+    if (
+      accountId &&
+      w.linkedAccountId != null &&
+      String(w.linkedAccountId).trim() === accountId
+    ) {
+      return true;
+    }
+    return false;
+  });
 }
 
-/** Legacy POs stored region labels instead of warehouse directory names. */
-const LEGACY_MARKET_TO_STOCK_LOCATION: Record<string, string> = {
-  Ontario: "Toronto Main",
-  Toronto: "Toronto Main",
-  Milan: "Milan Depot",
-  "Milan DC": "Milan Depot",
-  Paris: "Paris Hub",
-  NYC: "NYC Warehouse",
-};
+export function inventoryReceivingLocationForWarehouseDisplayName(displayName: string): string {
+  return displayName.trim();
+}
 
 /**
- * Resolves `PurchaseOrder.marketDestination` (warehouse name from Settings or legacy region label)
+ * Resolves `PurchaseOrder.marketDestination` (warehouse name from Settings)
  * to the inventory `warehouse` / adjustment location string.
  */
 export function resolveReceivingLocationForPo(
@@ -44,14 +61,10 @@ export function resolveReceivingLocationForPo(
   if (raw) {
     const matchDir = list.find((w) => w.name.toLowerCase() === raw.toLowerCase());
     if (matchDir) return inventoryReceivingLocationForWarehouseDisplayName(matchDir.name);
-
-    const legacy = LEGACY_MARKET_TO_STOCK_LOCATION[raw];
-    if (legacy) return legacy;
-
     return inventoryReceivingLocationForWarehouseDisplayName(raw);
   }
 
   const first = list[0];
   if (first) return inventoryReceivingLocationForWarehouseDisplayName(first.name);
-  return "Toronto Main";
+  return "";
 }

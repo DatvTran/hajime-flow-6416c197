@@ -209,14 +209,16 @@ export function PoAcceptanceDocument({
                 <th className="px-2 py-1.5 text-right font-semibold">Cases</th>
                 <th className="px-2 py-1.5 text-right font-semibold">Btls/case</th>
                 <th className="px-2 py-1.5 text-right font-semibold">Total btls</th>
-                <th className="px-2 py-1.5 text-right font-semibold">Unit (USD)</th>
-                <th className="px-2 py-1.5 text-right font-semibold">Case (USD)</th>
+                <th className="px-2 py-1.5 text-right font-semibold">FOB / case (USD)</th>
                 <th className="py-1.5 pl-2 text-right font-semibold">Line total (USD)</th>
               </tr>
             </thead>
             <tbody>
               {PO_ACCEPTANCE_SKUS.map((s) => {
                 const l = bySku.get(s.sku);
+                const caseUsd =
+                  l?.caseUsd ??
+                  (l?.unitFobUsd != null ? Number(l.unitFobUsd) * s.bottlesPerCase : undefined);
                 return (
                   <tr key={s.sku} className="border-b border-[hsl(35_14%_86%)]">
                     <td className="py-1.5 pr-2">
@@ -227,8 +229,7 @@ export function PoAcceptanceDocument({
                     <td className="px-2 py-1.5 text-right">{l ? l.cases : "—"}</td>
                     <td className="px-2 py-1.5 text-right">{s.bottlesPerCase}</td>
                     <td className="px-2 py-1.5 text-right">{l ? (l.totalBottles ?? Number(l.cases) * s.bottlesPerCase) : "—"}</td>
-                    <td className="px-2 py-1.5 text-right">{l ? usd(l.unitFobUsd) : "—"}</td>
-                    <td className="px-2 py-1.5 text-right">{l ? usd(l.caseUsd) : "—"}</td>
+                    <td className="px-2 py-1.5 text-right">{l ? usd(caseUsd) : "—"}</td>
                     <td className="py-1.5 pl-2 text-right font-medium">{l ? usd(l.lineTotalUsd) : "—"}</td>
                   </tr>
                 );
@@ -241,9 +242,9 @@ export function PoAcceptanceDocument({
           <div className="space-y-3">
             <div className="text-[hsl(24_8%_30%)] [&_p]:text-[10.5px] [&_p]:leading-relaxed">
               <p className="m-0 font-semibold uppercase tracking-[0.12em]">Case calculation</p>
+              <p className="m-0">Orders are priced per case (FOB / case).</p>
               <p className="m-0">Total bottles = cases × bottles per case.</p>
-              <p className="m-0">Case price = unit price × bottles per case.</p>
-              <p className="m-0">Line total = cases × case price.</p>
+              <p className="m-0">Line total = cases × FOB / case.</p>
             </div>
             <div className="border border-[hsl(35_14%_82%)]">
               <Field label="Required documents / special conditions ref." className="border-b-0">

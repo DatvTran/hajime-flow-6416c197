@@ -23,6 +23,10 @@ import {
   applyManufacturerNprScopeToQuery,
   applyManufacturerPoScopeToQuery,
 } from './npr-manufacturer-scope.mjs';
+import {
+  ensureWarehousesReady,
+  filterWarehouseOptionsForDistributor,
+} from './warehouses.mjs';
 
 const LIMITS = {
   products: 300,
@@ -49,6 +53,23 @@ async function scopedRows(req, fetchRows, scope) {
 
 async function fetchProducts(req, scope) {
   const limit = LIMITS.products;
+  const isDistributor = req.user?.role === Role.DISTRIBUTOR || req.user?.role === 'distributor';
+  const tenantId = req.user?.tenantId;
+
+  // Wholesaler portals always use Brand HQ catalog (platform products), not a stale org copy.
+  if (isDistributor && tenantId) {
+    try {
+      const platformRows = await platformDb('products')
+        .where({ tenant_id: tenantId })
+        .whereNull('deleted_at')
+        .orderBy('created_at', 'desc')
+        .limit(limit);
+      if (platformRows.length > 0) return platformRows.slice(0, limit);
+    } catch (err) {
+      console.warn('[bootstrap] platform catalog for distributor failed:', err?.message || err);
+    }
+  }
+
   const rows = await scopedRows(
     req,
     async (db, tid) => {
@@ -354,15 +375,26 @@ async function fetchVisitNotes(req, scope) {
 
 async function fetchWarehouses(req, scope) {
   const limit = LIMITS.warehouses;
+  const isDistributor = req.user?.role === Role.DISTRIBUTOR || req.user?.role === 'distributor';
+  const email = String(req.user?.email || '').trim().toLowerCase();
+
   const rows = await scopedRows(
     req,
     async (db, tid) => {
       if (!tid) return [];
-      return db('warehouses')
+      await ensureWarehousesReady(db, tid);
+      let list = await db('warehouses')
         .where({ tenant_id: tid })
         .orderBy('sort_order', 'asc')
         .orderBy('name', 'asc')
         .limit(limit);
+      if (isDistributor) {
+        if (!email) return [];
+        const member = await db('team_members').where({ tenant_id: tid, email }).first();
+        if (!member || member.role !== 'distributor') return [];
+        list = filterWarehouseOptionsForDistributor(list, member);
+      }
+      return list;
     },
     scope,
   );

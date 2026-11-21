@@ -296,33 +296,59 @@
   .distributor-shell {
     display: grid;
     grid-template-columns: 256px 1fr;
-    height: 100vh;
+    height: 100svh;
+    max-height: 100svh;
     overflow: hidden;
+    overscroll-behavior: none;
   }
   @media (max-width: 1023px) {
     .distributor-shell {
       display: flex;
+      flex-direction: column;
       grid-template-columns: unset;
-      height: auto;
-      min-height: 100svh;
-      overflow: visible;
+      height: 100svh;
+      max-height: 100svh;
+      overflow: hidden;
+    }
+    .distributor-shell > .main {
+      min-height: 0;
+      overflow: hidden;
+    }
+    .distributor-shell main {
+      min-height: 0;
+      overscroll-behavior-y: contain;
     }
   }
 
   /* ── Manufacturer portal shell (manufacturer-app.html .shell) ── */
-  .manufacturer-shell {
+  .manufacturer-shell,
+  .distillery-shell {
     display: grid;
     grid-template-columns: 256px 1fr;
-    height: 100vh;
+    height: 100svh;
+    max-height: 100svh;
     overflow: hidden;
+    overscroll-behavior: none;
   }
   @media (max-width: 1023px) {
-    .manufacturer-shell {
+    .manufacturer-shell,
+    .distillery-shell {
       display: flex;
+      flex-direction: column;
       grid-template-columns: unset;
-      height: auto;
-      min-height: 100svh;
-      overflow: visible;
+      height: 100svh;
+      max-height: 100svh;
+      overflow: hidden;
+    }
+    .manufacturer-shell > .main,
+    .distillery-shell > .main {
+      min-height: 0;
+      overflow: hidden;
+    }
+    .manufacturer-shell main,
+    .distillery-shell main {
+      min-height: 0;
+      overscroll-behavior-y: contain;
     }
   }
 
@@ -576,16 +602,27 @@
   .hq-operator-shell {
     display: grid;
     grid-template-columns: 258px 1fr;
-    height: 100vh;
+    height: 100svh;
+    max-height: 100svh;
     overflow: hidden;
+    overscroll-behavior: none;
   }
   @media (max-width: 1023px) {
     .hq-operator-shell {
       display: flex;
+      flex-direction: column;
       grid-template-columns: unset;
-      height: auto;
-      min-height: 100svh;
-      overflow: visible;
+      height: 100svh;
+      max-height: 100svh;
+      overflow: hidden;
+    }
+    .hq-operator-shell > .main {
+      min-height: 0;
+      overflow: hidden;
+    }
+    .hq-operator-shell main {
+      min-height: 0;
+      overscroll-behavior-y: contain;
     }
   }
 
@@ -2807,6 +2844,23 @@
     }
     .manufacturer-shell main {
       overflow: visible;
+    }
+    .hq-operator-shell {
+      display: block !important;
+      height: auto !important;
+      overflow: visible !important;
+      background: #fff !important;
+    }
+    .hq-operator-shell > aside,
+    .hq-operator-shell .topbar,
+    .hq-operator-shell .glass-header {
+      display: none !important;
+    }
+    .hq-operator-shell .main,
+    .hq-operator-shell main {
+      display: block !important;
+      height: auto !important;
+      overflow: visible !important;
     }
   }
 

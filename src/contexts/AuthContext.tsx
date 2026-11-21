@@ -79,12 +79,17 @@ function userFromAuthPayload(payload: {
   role: unknown;
   tenantId: string;
   retailAccountTradingName?: string | null;
+  distributorOrgId?: string | null;
+  distributorOrgName?: string | null;
 }): HajimeUser {
   const validatedRole = normalizeStoredRole(payload.role);
   if (!validatedRole) {
     console.error(`[Auth] Invalid role from server: ${payload.role}, defaulting to brand_operator`);
   }
   const role = validatedRole || "brand_operator";
+  const orgId = typeof payload.distributorOrgId === "string" ? payload.distributorOrgId.trim() : "";
+  const orgName =
+    typeof payload.distributorOrgName === "string" ? payload.distributorOrgName.trim() : "";
   return {
     id: payload.id,
     email: payload.email,
@@ -96,6 +101,8 @@ function userFromAuthPayload(payload: {
       role,
       payload.retailAccountTradingName ?? readRetailTradingOverride(payload.email),
     ),
+    ...(orgId ? { distributorOrgId: orgId } : {}),
+    ...(orgName ? { distributorOrgName: orgName } : {}),
   };
 }
 
@@ -119,6 +126,9 @@ export type HajimeUser = {
   tenantId: string;
   /** Retail login: which trading name orders belong to (demo ACL). */
   retailAccountTradingName?: string;
+  /** Wholesaler / sales-rep portal: registry org for crumbs and scoped data. */
+  distributorOrgId?: string;
+  distributorOrgName?: string;
 };
 
 type AuthTokens = {
@@ -131,11 +141,20 @@ export type SignInOptions = {
   retailTradingName?: string;
 };
 
+export type UpdateCredentialsInput = {
+  currentPassword: string;
+  email?: string;
+  newPassword?: string;
+  displayName?: string;
+};
+
 type AuthContextValue = {
   user: HajimeUser | null;
   isLoading: boolean;
   error: string | null;
   signIn: (email: string, password: string, opts?: SignInOptions) => Promise<HajimeUser>;
+  /** Change own login email and/or password (requires current password). */
+  updateCredentials: (input: UpdateCredentialsInput) => Promise<HajimeUser>;
   signOut: () => void;
   clearError: () => void;
 };
@@ -154,6 +173,26 @@ function getStoredTokens(): AuthTokens | null {
     // Ignore storage errors
   }
   return null;
+}
+
+/** Last signed-in profile, so the expo booth still opens on an iPad with no signal. Cleared on sign-out. */
+const LAST_USER_KEY = "hajime_last_user";
+
+function rememberUser(user: HajimeUser) {
+  try {
+    localStorage.setItem(LAST_USER_KEY, JSON.stringify(user));
+  } catch {
+    /* ignore */
+  }
+}
+
+function lastUser(): HajimeUser | null {
+  try {
+    const u = JSON.parse(localStorage.getItem(LAST_USER_KEY) || "null") as HajimeUser | null;
+    return u && typeof u.id === "string" && isRole(u.role) ? u : null;
+  } catch {
+    return null;
+  }
 }
 
 function storeTokens(tokens: AuthTokens | null) {
@@ -194,13 +233,21 @@ async function apiFetch(path: string, options: RequestInit = {}) {
     }
   }
 
-  if (response.status === 401) {
-    storeTokens(null);
-    throw new Error("Session expired. Please sign in again.");
-  }
-
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Request failed" }));
+    const error = (await response.json().catch(() => ({ error: "Request failed" }))) as {
+      error?: string;
+      code?: string;
+    };
+    // Credential checks (e.g. wrong current password) may still be 401 from older APIs —
+    // do not wipe the session for those.
+    if (
+      response.status === 401 &&
+      error.code !== "INVALID_PASSWORD" &&
+      error.code !== "INVALID_CREDENTIALS"
+    ) {
+      storeTokens(null);
+      throw new Error(error.error || "Session expired. Please sign in again.");
+    }
     throw new Error(error.error || `Request failed: ${response.status}`);
   }
 
@@ -223,6 +270,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const offlineUser = lastUser();
+      if (offlineUser && typeof navigator !== "undefined" && navigator.onLine === false) {
+        if (!cancelled) {
+          setUser(offlineUser);
+          setIsLoading(false);
+        }
+        return;
+      }
+
       const timeoutMs = 10_000;
       let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -237,7 +293,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }),
         ]);
         const userData = await response.json();
-        if (!cancelled) setUser(userFromAuthPayload(userData));
+        const next = userFromAuthPayload(userData);
+        rememberUser(next);
+        if (!cancelled) setUser(next);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.warn("[Auth] Session check failed:", err);
@@ -246,6 +304,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // which surfaced as "Invalid or expired token" on NPR fetches.
         if (/session expired|invalid or expired|sign in again/i.test(message)) {
           storeTokens(null);
+        } else if (offlineUser && !cancelled) {
+          setUser(offlineUser);
         }
       } finally {
         if (timer) clearTimeout(timer);
@@ -301,6 +361,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         persistRetailTradingOverride(nextUser.email, venue);
         nextUser = { ...nextUser, retailAccountTradingName: venue };
       }
+      rememberUser(nextUser);
       setUser(nextUser);
       return nextUser;
     } catch (err) {
@@ -348,18 +409,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
   }, []);
 
+  const updateCredentials = useCallback(async (input: UpdateCredentialsInput) => {
+    const response = await apiFetch("/api/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify({
+        currentPassword: input.currentPassword,
+        ...(input.email != null ? { email: input.email } : {}),
+        ...(input.newPassword != null ? { newPassword: input.newPassword } : {}),
+        ...(input.displayName != null ? { displayName: input.displayName } : {}),
+      }),
+    });
+    const payload = await response.json();
+    if (payload.accessToken && payload.refreshToken) {
+      storeTokens({
+        accessToken: String(payload.accessToken),
+        refreshToken: String(payload.refreshToken),
+      });
+    }
+    const next = userFromAuthPayload(payload);
+    rememberUser(next);
+    setUser(next);
+    return next;
+  }, []);
+
   const value = useMemo(
     () => ({
       user,
       isLoading,
       error,
       signIn,
+      updateCredentials,
       signOut,
       clearError,
     }),
     // signOut is stable (useCallback with no deps), omit from deps to reduce noise
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, isLoading, error, signIn, clearError]
+    [user, isLoading, error, signIn, updateCredentials, clearError]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

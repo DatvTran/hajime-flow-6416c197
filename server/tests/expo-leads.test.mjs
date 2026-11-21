@@ -23,7 +23,7 @@ const mobileEnquiry = {
   businessEmail: 'mei@gmail.com',
   mobile: '+852 9123 4567',
   businessType: 'restaurant',
-  products: ['first_press', 'second_bloom'],
+  products: ['first_press'],
   purposes: ['pricing', 'tasting'],
   submissionKey: 'abc123',
   utm: { utm_source: 'hk_expo_2026', utm_medium: 'qr', evil: 'x' },
@@ -34,7 +34,7 @@ test('validateBuyerPayload accepts the mobile enquiry with only name, email, pho
   assert.equal(parsed.ok, true);
   assert.equal(parsed.data.full_name, 'Mei');
   assert.equal(parsed.data.mobile, '+85291234567');
-  assert.equal(parsed.data.expression, 'both');
+  assert.equal(parsed.data.expression, 'first_press');
   assert.deepEqual(parsed.data.interests, ['pricing', 'tasting']);
   assert.equal(parsed.data.company_name, null);
   assert.equal(parsed.data.marketing_opt_in, false);
@@ -43,9 +43,9 @@ test('validateBuyerPayload accepts the mobile enquiry with only name, email, pho
   assert.equal(parsed.data.score, undefined);
 });
 
-test('validateBuyerPayload maps Second Bloom alone to yuzu_mint', () => {
-  const parsed = validateBuyerPayload({ ...mobileEnquiry, products: ['second_bloom'] });
-  assert.equal(parsed.data.expression, 'yuzu_mint');
+test('validateBuyerPayload no longer takes Second Bloom from the expo form', () => {
+  assert.equal(validateBuyerPayload({ ...mobileEnquiry, products: ['first_press', 'second_bloom'] }).data.expression, 'first_press');
+  assert.equal(validateBuyerPayload({ ...mobileEnquiry, products: ['second_bloom'] }).ok, false);
 });
 
 test('validateBuyerPayload rejects missing phone, products or purposes', () => {

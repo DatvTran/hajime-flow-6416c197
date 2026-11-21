@@ -850,7 +850,12 @@ export async function getWarehouses(opts?: { includeInactive?: boolean }) {
   return apiFetch(`/api/v1/warehouses${q}`);
 }
 
-export async function createWarehouse(body: { name: string }) {
+export async function createWarehouse(body: {
+  name: string;
+  kind?: "brand" | "distributor";
+  linked_account_id?: string | null;
+  linked_team_member_id?: string | null;
+}) {
   return apiFetch("/api/v1/warehouses", {
     method: "POST",
     body: JSON.stringify(body),
@@ -863,6 +868,7 @@ export async function updateWarehouse(
     name: string;
     is_active: boolean;
     sort_order: number;
+    kind: "brand" | "distributor";
     linked_account_id: string | null;
     linked_team_member_id: string | null;
   }>,
@@ -883,6 +889,14 @@ export async function updateMyPrimaryWarehouse(warehouseId: string | null) {
   return apiFetch("/api/v1/me/primary-warehouse", {
     method: "PATCH",
     body: JSON.stringify({ warehouse_id: warehouseId }),
+  });
+}
+
+/** Distributor creates their own receiving warehouse when they have none yet. */
+export async function createMyReceivingWarehouse(body: { name: string }) {
+  return apiFetch("/api/v1/me/receiving-warehouse", {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 

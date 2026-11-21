@@ -1,3 +1,4 @@
+import { assertMonthHasRoom, ensureCapacityColumns, isMonth, monthLabel } from "../lib/first-press-capacity.mjs";
 import { httpError } from "../lib/http-error.mjs";
 import {
   hashSignToken,
@@ -84,6 +85,7 @@ export async function countersignPoa(db, token, body, { ip, userAgent }) {
   const check = validateCountersign(body);
   if (!check.ok) throw httpError(422, "Please complete the highlighted fields.", { fields: check.errors });
   const v = check.value;
+  await ensureCapacityColumns(db);
 
   const result = await db.transaction(async (trx) => {
     const found = await findByToken(trx, token);
@@ -100,6 +102,18 @@ export async function countersignPoa(db, token, body, { ip, userAgent }) {
       .forUpdate()
       .first();
     if (!order || ["cancelled"].includes(order.stage)) throw httpError(409, "This order is no longer open.");
+
+    const reserve = !order.capacity_reserved_at && isMonth(order.requested_month);
+    if (reserve) {
+      const room = await assertMonthHasRoom(trx, doc.tenant_id, order);
+      if (!room.ok) {
+        throw httpError(
+          409,
+          `Production for ${monthLabel(order.requested_month)} delivery filled up before you countersigned. Please contact Hajime and we'll confirm a new month.`,
+          { code: "CAPACITY_FULL" },
+        );
+      }
+    }
 
     const now = new Date();
     const details = {
@@ -127,6 +141,7 @@ export async function countersignPoa(db, token, body, { ip, userAgent }) {
         buyer_registered_address: v.registeredAddress,
         buyer_notice_email: v.noticeEmail,
         next_action: "Issue pro forma invoice",
+        ...(reserve ? { capacity_reserved_at: now } : {}),
         updated_at: now,
       });
     if (await trx.schema.hasTable("export_order_events")) {

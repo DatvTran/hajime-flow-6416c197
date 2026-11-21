@@ -162,7 +162,7 @@ export default function SalesOpportunitiesPage() {
               No open opportunities — your territory accounts are on cadence.
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="-mx-4 overflow-x-auto touch-pan-x px-4 sm:mx-0 sm:px-0">
               <table className="w-full min-w-[720px] border-collapse text-[13px]">
                 <thead>
                   <tr className="border-b border-border/50 bg-muted/50">

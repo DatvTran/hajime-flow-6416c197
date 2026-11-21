@@ -10,8 +10,10 @@ import {
   refreshSchema,
   passwordResetRequestSchema,
   passwordResetSchema,
+  updateMeCredentialsSchema,
 } from './auth.schemas.mjs';
 import {
+  adminUpdateAuthCredentials,
   ensureSupabaseAuthUser,
   isSupabaseAuthEnabled,
   refreshSupabaseSession,
@@ -19,6 +21,7 @@ import {
   signInWithPassword,
   updatePasswordWithAccessToken,
 } from '../services/supabase-auth.mjs';
+import { resolveDistributorOrgForUser } from '../lib/distributor-organization.mjs';
 
 const router = express.Router();
 
@@ -27,6 +30,46 @@ function isDbConnectionError(err) {
   return /connection terminated|ECONNREFUSED|ECONNRESET|database unavailable|timeout exceeded|connect ETIMEDOUT/i.test(
     msg,
   );
+}
+
+/** Client-facing user payload with portal account labels for crumbs / chrome. */
+async function publicAuthUser(userRow) {
+  const role = normalizeRole(userRow.role);
+  const base = {
+    id: userRow.id,
+    email: userRow.email,
+    role: userRow.role,
+    displayName: userRow.display_name,
+    tenantId: userRow.tenant_id,
+  };
+
+  const org = await resolveDistributorOrgForUser({
+    userId: userRow.id,
+    id: userRow.id,
+    role,
+    distributorOrgId: userRow.distributor_org_id ?? null,
+    managedByDistributorUserId: userRow.managed_by_distributor_user_id ?? null,
+  });
+  if (org?.id) {
+    base.distributorOrgId = String(org.id);
+    if (org.name) base.distributorOrgName = String(org.name).trim();
+  }
+
+  if (role === 'retail' || role === 'retail_account') {
+    const tm = await db('team_members')
+      .where({
+        tenant_id: userRow.tenant_id,
+        email: String(userRow.email || '').trim().toLowerCase(),
+        role: 'retail',
+      })
+      .where('is_active', true)
+      .first();
+    if (tm?.retail_trading_name) {
+      base.retailAccountTradingName = String(tm.retail_trading_name).trim();
+    }
+  }
+
+  return base;
 }
 
 function respondDbUnavailable(res, err, label) {
@@ -425,31 +468,8 @@ router.post('/login', async (req, res) => {
       userAgent: req.headers['user-agent'],
     });
 
-    let retailAccountTradingName = null;
-    const normalizedRole = user.role;
-    if (normalizedRole === 'retail' || normalizedRole === 'retail_account') {
-      const tm = await db('team_members')
-        .where({
-          tenant_id: user.tenant_id,
-          email: String(user.email || '').trim().toLowerCase(),
-          role: 'retail',
-        })
-        .where('is_active', true)
-        .first();
-      if (tm?.retail_trading_name) {
-        retailAccountTradingName = String(tm.retail_trading_name).trim();
-      }
-    }
-
     res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        displayName: user.display_name,
-        tenantId: user.tenant_id,
-        ...(retailAccountTradingName ? { retailAccountTradingName } : {}),
-      },
+      user: await publicAuthUser(user),
       accessToken,
       refreshToken,
     });
@@ -714,23 +734,172 @@ router.get('/me', authenticateToken, async (req, res) => {
     const user = await db('users')
       .where({ id: req.user.userId })
       .whereNull('deleted_at')
-      .first(['id', 'email', 'role', 'display_name', 'tenant_id', 'last_login_at']);
+      .first([
+        'id',
+        'email',
+        'role',
+        'display_name',
+        'tenant_id',
+        'last_login_at',
+        'distributor_org_id',
+        'managed_by_distributor_user_id',
+      ]);
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
     res.json({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      displayName: user.display_name,
-      tenantId: user.tenant_id,
+      ...(await publicAuthUser(user)),
       lastLoginAt: user.last_login_at,
     });
   } catch (err) {
     console.error('Get profile error:', err);
     res.status(500).json({ error: 'Failed to get profile' });
+  }
+});
+
+/**
+ * PATCH /api/auth/me
+ * Update own login email and/or password (requires current password).
+ */
+router.patch('/me', authenticateToken, async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const result = updateMeCredentialsSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'Invalid input',
+        details: result.error.errors,
+      });
+    }
+
+    const { currentPassword, email, newPassword, displayName } = result.data;
+    const user = await db('users')
+      .where({ id: req.user.userId })
+      .whereNull('deleted_at')
+      .first();
+
+    if (!user || user.is_active === false) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    let validPassword = false;
+    if (isSupabaseAuthEnabled()) {
+      try {
+        const session = await signInWithPassword(user.email, currentPassword);
+        validPassword = Boolean(session?.accessToken);
+      } catch {
+        validPassword = false;
+      }
+      if (!validPassword && user.password_hash) {
+        validPassword = await authService.verifyPassword(user.password_hash, currentPassword);
+      }
+    } else {
+      validPassword = await authService.verifyPassword(user.password_hash, currentPassword);
+    }
+
+    if (!validPassword) {
+      // 403 (not 401): clients treat 401 as an expired session and clear tokens.
+      return res.status(403).json({ error: 'Current password is incorrect', code: 'INVALID_PASSWORD' });
+    }
+
+    const patch = { updated_at: db.fn.now() };
+    let nextEmail = String(user.email || '').toLowerCase().trim();
+
+    if (email != null) {
+      nextEmail = email.toLowerCase().trim();
+      if (nextEmail !== String(user.email || '').toLowerCase().trim()) {
+        const taken = await db('users')
+          .whereRaw('lower(email) = ?', [nextEmail])
+          .whereNull('deleted_at')
+          .whereNot({ id: user.id })
+          .first();
+        if (taken) {
+          return res.status(409).json({ error: 'That email is already in use', code: 'EMAIL_TAKEN' });
+        }
+        patch.email = nextEmail;
+      }
+    }
+
+    if (displayName != null) {
+      patch.display_name = displayName.trim();
+    }
+
+    if (newPassword) {
+      patch.password_hash = await authService.hashPassword(newPassword);
+    }
+
+    if (isSupabaseAuthEnabled() && (patch.email || newPassword)) {
+      try {
+        const updated = await adminUpdateAuthCredentials({
+          externalId: user.external_id,
+          currentEmail: user.email,
+          newEmail: patch.email || undefined,
+          newPassword: newPassword || undefined,
+        });
+        if (updated?.id && user.external_id !== updated.id) {
+          patch.external_id = updated.id;
+          patch.auth_provider = 'supabase';
+        }
+      } catch (err) {
+        console.error('[auth] Supabase credential update failed:', err);
+        return res.status(502).json({
+          error: 'Could not update login credentials with the identity provider. Try again.',
+          code: 'SUPABASE_UPDATE_FAILED',
+        });
+      }
+    }
+
+    const [updated] = await db('users')
+      .where({ id: user.id })
+      .update(patch)
+      .returning([
+        'id',
+        'email',
+        'role',
+        'display_name',
+        'tenant_id',
+        'last_login_at',
+        'distributor_org_id',
+        'managed_by_distributor_user_id',
+      ]);
+
+    await authService.logAuthEvent({
+      userId: user.id,
+      eventType: 'profile_credentials_updated',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      metadata: {
+        emailChanged: Boolean(patch.email),
+        passwordChanged: Boolean(newPassword),
+        displayNameChanged: Boolean(patch.display_name),
+      },
+    });
+
+    // Re-issue local JWT when email changed so claims stay current (Supabase keeps its session).
+    let accessToken = null;
+    let refreshToken = null;
+    if (!isSupabaseAuthEnabled() && (patch.email || newPassword)) {
+      accessToken = authService.generateAccessToken(updated);
+      refreshToken = await authService.generateRefreshToken(updated.id, {
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
+
+    res.json({
+      ...(await publicAuthUser(updated)),
+      lastLoginAt: updated.last_login_at,
+      ...(accessToken && refreshToken ? { accessToken, refreshToken } : {}),
+    });
+  } catch (err) {
+    if (isDbConnectionError(err)) return respondDbUnavailable(res, err, 'Update profile');
+    console.error('Update profile error:', err);
+    res.status(500).json({ error: 'Failed to update profile' });
   }
 });
 

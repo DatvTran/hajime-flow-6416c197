@@ -18,6 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,9 +35,20 @@ import { toast } from "@/components/ui/sonner";
 import { Link } from "react-router-dom";
 import { isDistributorAccountType } from "@/lib/distributor-accounts";
 import { isManufacturerAccountType, looksLikeManufacturerAccount } from "@/lib/manufacturer-accounts";
-import { partnerSellOutCasePrice } from "@/lib/hq-product-catalog";
-
-const SALES_REPS = ["Marcus Chen", "Sarah Kim", "Luca Moretti", "Jordan Lee"] as const;
+import {
+  getAccountSkuPrices,
+  getMySkuPrices,
+  type PartnerPricingSettings,
+  type PartnerSkuPriceRow,
+} from "@/lib/api-v1";
+import {
+  currencyForMarket,
+  netFromListAndDiscountPct,
+  partnerPriceBySku,
+  priceSourceLabel,
+  resolvePartnerCasePrice,
+} from "@/lib/partner-sku-prices";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const ORDER_STATUSES: SalesOrder["status"][] = [
   "draft",
@@ -119,21 +137,33 @@ function mergeCrmAccountChoices(
   return rows;
 }
 
-/** Stock availability indicator for sales rep order creation */
-function StockAvailability({ sku, available, requested }: { sku: string; available: number; requested: number }) {
-  const shortfall = Math.max(0, requested - available);
-  const isShort = shortfall > 0;
+/** Stock availability for case-based sell-in (inventory is tracked in bottles). */
+function StockAvailability({
+  availableBottles,
+  requestedCases,
+  caseSize,
+}: {
+  availableBottles: number;
+  requestedCases: number;
+  caseSize: number;
+}) {
+  const bpc = Math.max(1, caseSize || 12);
+  const requestedBottles = Math.max(0, requestedCases) * bpc;
+  const availableCases = Math.floor(availableBottles / bpc);
+  const shortfallCases = Math.max(0, requestedCases - availableCases);
+  const isShort = shortfallCases > 0 || availableBottles < requestedBottles;
   return (
     <div className={`rounded-md border px-3 py-2 text-xs ${isShort ? "border-destructive/60 bg-destructive/10" : "border-emerald-600/40 bg-emerald-600/10"}`}>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <span className="text-muted-foreground">Available stock:</span>
         <span className={`font-medium tabular-nums ${isShort ? "text-destructive" : "text-emerald-700"}`}>
-          {available.toLocaleString()} bottles
+          {availableCases.toLocaleString()} cases ({availableBottles.toLocaleString()} bt)
         </span>
       </div>
       {isShort ? (
         <p className="mt-1 text-destructive">
-          Short by {shortfall.toLocaleString()} bottles. Order may be backordered.
+          Short by {Math.max(shortfallCases, 1).toLocaleString()} case
+          {Math.max(shortfallCases, 1) === 1 ? "" : "s"}. Order may be backordered.
         </p>
       ) : (
         <p className="mt-1 text-emerald-700">Sufficient stock for this order.</p>
@@ -151,6 +181,15 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   const { user } = useAuth();
   const sessionRep = resolveSalesRepLabelForSession(user?.email, user?.displayName ?? "");
   const { availableBottlesForSku } = useInventory();
+  const salesRepNames = useMemo(
+    () =>
+      teamMembers
+        .filter((m) => m.role === "sales_rep" && m.isActive !== false)
+        .map((m) => m.displayName)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b)),
+    [teamMembers],
+  );
 
   const skuOptions = useMemo(
     () => products.filter((p) => p.status === "active" || p.status === "development"),
@@ -169,10 +208,13 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   const [orderDate, setOrderDate] = useState(todayISO());
   const [requestedDelivery, setRequestedDelivery] = useState(addDaysISO(14));
   const [sku, setSku] = useState("");
-  const [quantity, setQuantity] = useState("12");
+  /** Case count — sell-in is priced and entered per case; stored on the order as bottles. */
+  const [quantity, setQuantity] = useState("1");
   const [price, setPrice] = useState("");
   const [priceAuto, setPriceAuto] = useState(true);
-  const [salesRep, setSalesRep] = useState<string>(SALES_REPS[0]);
+  const [discountPct, setDiscountPct] = useState("0");
+  const [discountReason, setDiscountReason] = useState("");
+  const [salesRep, setSalesRep] = useState("");
   const [status, setStatus] = useState<SalesOrder["status"]>("draft");
   const [paymentStatus, setPaymentStatus] = useState<SalesOrder["paymentStatus"]>("pending");
   const [error, setError] = useState<string | null>(null);
@@ -180,11 +222,16 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   const [brandPath, setBrandPath] = useState<OrderRoutingTarget>("wholesaler");
   /** Wholesaler: route via rep vs direct to retail. */
   const [wholesalerPath, setWholesalerPath] = useState<"rep" | "retail">("retail");
-  const [wholesaleRep, setWholesaleRep] = useState<string>(SALES_REPS[0]);
+  const [wholesaleRep, setWholesaleRep] = useState("");
   
   // NEW: Proxy mode state
   const [isProxyMode, setIsProxyMode] = useState(false);
   const [onBehalfOfAccountId, setOnBehalfOfAccountId] = useState<string>("");
+  const [partnerPrices, setPartnerPrices] = useState<PartnerSkuPriceRow[]>([]);
+  const [partnerSettings, setPartnerSettings] = useState<PartnerPricingSettings | null>(null);
+  const [partnerSheetState, setPartnerSheetState] = useState<"idle" | "loading" | "ok" | "missing" | "error">(
+    "idle",
+  );
 
   const sessionRoleLabel = useMemo(() => {
     const r = user?.role || "brand_operator";
@@ -206,19 +253,22 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
     setOrderDate(todayISO());
     setRequestedDelivery(addDaysISO(14));
     setSku("");
-    setQuantity("12");
+    setQuantity("1");
     setPrice("");
     setPriceAuto(true);
-    setSalesRep(SALES_REPS[0]);
+    setDiscountPct("0");
+    setDiscountReason("");
+    setSalesRep(salesRepNames[0] ?? "");
     setStatus(variant === "manufacturer" ? "draft" : "draft");
     setPaymentStatus("pending");
     setError(null);
     setBrandPath("wholesaler");
     setWholesalerPath("retail");
-    setWholesaleRep(SALES_REPS[0]);
+    setWholesaleRep(salesRepNames[0] ?? "");
     // NEW: Reset proxy mode
     setIsProxyMode(false);
     setOnBehalfOfAccountId("");
+    setPartnerSheetState("idle");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, variant]);
 
@@ -394,22 +444,166 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
 
   const selectedSku = useMemo(() => skuOptions.find((p) => p.sku === sku), [sku, skuOptions]);
 
+  const selectedAccountRow = useMemo(
+    () => allAccounts.find((a) => a.tradingName === account) ?? null,
+    [allAccounts, account],
+  );
+
+  const resolvedCase = useMemo(() => {
+    if (!selectedSku) {
+      const marketCur = currencyForMarket(market);
+      return {
+        casePrice: 0,
+        source: "none",
+        currency:
+          variant === "distributor" || variant === "sales_rep"
+            ? marketCur || partnerSettings?.sellOutCurrency || selectedAccountRow?.defaultCurrency || "USD"
+            : "USD",
+      };
+    }
+    const partnerRow = partnerPriceBySku(partnerPrices, selectedSku.sku);
+    if (variant === "distributor" || variant === "sales_rep") {
+      // Country/market drives the label; only apply partner FX when it matches that currency.
+      const marketCur = currencyForMarket(market);
+      const sellOutCurrency = String(
+        marketCur ||
+          partnerSettings?.sellOutCurrency ||
+          selectedAccountRow?.defaultCurrency ||
+          "CAD",
+      ).toUpperCase();
+      const settingsCur = String(partnerSettings?.sellOutCurrency || "").toUpperCase();
+      const rateMatches = settingsCur === sellOutCurrency || sellOutCurrency === "USD";
+      const settingsForMarket = {
+        sellOutCurrency,
+        usdToLocalRate: rateMatches ? (partnerSettings?.usdToLocalRate ?? (sellOutCurrency === "USD" ? 1 : null)) : null,
+        sellInCurrency: "USD" as const,
+      };
+      return resolvePartnerCasePrice({
+        direction: "sell_out",
+        product: selectedSku,
+        partnerRow,
+        settings: settingsForMarket,
+        market,
+      });
+    }
+    if (variant === "brand" && selectedAccountRow && isDistributorAccountType(selectedAccountRow.type)) {
+      return resolvePartnerCasePrice({
+        direction: "sell_in",
+        product: selectedSku,
+        partnerRow,
+        settings: partnerSettings,
+      });
+    }
+    return resolvePartnerCasePrice({
+      direction: "sell_in",
+      product: selectedSku,
+      partnerRow: null,
+    });
+  }, [selectedSku, partnerPrices, partnerSettings, variant, selectedAccountRow, market]);
+
+  const caseQtyForPrice = Math.max(1, parseInt(quantity, 10) || 1);
+  const listTotal =
+    Number.isFinite(resolvedCase.casePrice) && resolvedCase.casePrice > 0
+      ? Math.round(caseQtyForPrice * resolvedCase.casePrice * 100) / 100
+      : 0;
+  const discountPctNum = (() => {
+    const n = parseFloat(String(discountPct).replace(/,/g, ""));
+    if (!Number.isFinite(n)) return 0;
+    return Math.min(100, Math.max(0, n));
+  })();
+  const netTotal = netFromListAndDiscountPct(listTotal, discountPctNum);
+  const salesRepPriced = variant === "sales_rep" && listTotal > 0;
+
   useEffect(() => {
-    if (!open) return;
-    const qty = Math.max(1, parseInt(quantity, 10) || 1);
-    const caseSize = Number(selectedSku?.caseSize);
-    const casePrice =
-      variant === "distributor" || variant === "sales_rep"
-        ? partnerSellOutCasePrice(selectedSku)
-        : Number(selectedSku?.wholesaleCasePrice);
-    if (!Number.isFinite(caseSize) || caseSize <= 0) return;
+    if (!open) {
+      setPartnerPrices([]);
+      setPartnerSettings(null);
+      setPartnerSheetState("idle");
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        if (variant === "distributor" || variant === "sales_rep") {
+          if (!cancelled) setPartnerSheetState("loading");
+          const res = await getMySkuPrices();
+          if (!cancelled) {
+            setPartnerPrices(res.data ?? []);
+            setPartnerSettings(res.settings ?? null);
+            setPartnerSheetState(res.accountId ? "ok" : "missing");
+          }
+          return;
+        }
+        if (variant === "brand" && selectedAccountRow && isDistributorAccountType(selectedAccountRow.type)) {
+          if (!cancelled) setPartnerSheetState("loading");
+          const res = await getAccountSkuPrices(selectedAccountRow.id);
+          if (!cancelled) {
+            setPartnerPrices(res.data ?? []);
+            setPartnerSettings(res.settings ?? null);
+            setPartnerSheetState("ok");
+          }
+          return;
+        }
+        if (!cancelled) {
+          setPartnerPrices([]);
+          setPartnerSettings(null);
+          setPartnerSheetState("idle");
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPartnerPrices([]);
+          setPartnerSettings(null);
+          const status =
+            typeof err === "object" && err && "status" in err ? Number((err as { status?: number }).status) : 0;
+          const msg = err instanceof Error ? err.message : String(err);
+          setPartnerSheetState(
+            status === 404 || /wholesale account|not linked|not found/i.test(msg) ? "missing" : "error",
+          );
+        }
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, variant, selectedAccountRow?.id]);
+
+  // Reset discount when list basis changes (SKU / cases / case price / currency).
+  useEffect(() => {
+    if (!open || variant !== "sales_rep") return;
+    setDiscountPct("0");
+    setDiscountReason("");
+  }, [open, variant, sku, quantity, resolvedCase.casePrice, resolvedCase.currency]);
+
+  useEffect(() => {
+    if (!open || !selectedSku) return;
+    if (variant === "sales_rep") {
+      if (listTotal > 0) {
+        const next = String(netTotal);
+        setPriceAuto(true);
+        setPrice((prev) => (prev === next ? prev : next));
+      }
+      return;
+    }
+    const casePrice = resolvedCase.casePrice;
     if (!Number.isFinite(casePrice) || casePrice <= 0) return;
-    const next = (qty / caseSize) * casePrice;
-    if (!Number.isFinite(next) || next <= 0) return;
+    const nextVal = Math.round(caseQtyForPrice * casePrice * 100) / 100;
+    if (!Number.isFinite(nextVal) || nextVal <= 0) return;
     if (!priceAuto && price.trim() !== "") return;
+    const next = String(nextVal);
     setPriceAuto(true);
-    setPrice(String(Math.round(next * 100) / 100));
-  }, [open, price, priceAuto, quantity, selectedSku, variant]);
+    setPrice((prev) => (prev === next ? prev : next));
+  }, [
+    open,
+    variant,
+    price,
+    priceAuto,
+    selectedSku,
+    resolvedCase.casePrice,
+    listTotal,
+    netTotal,
+    caseQtyForPrice,
+  ]);
 
   useEffect(() => {
     if (!open || variant !== "sales_rep") return;
@@ -461,28 +655,37 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       setError("Select a SKU.");
       return;
     }
-    const qty = parseInt(quantity, 10);
-    if (!Number.isFinite(qty) || qty < 1) {
-      setError("Quantity must be a whole number of at least 1.");
+    const caseQty = parseInt(quantity, 10);
+    if (!Number.isFinite(caseQty) || caseQty < 1) {
+      setError("Quantity must be a whole number of cases (at least 1).");
       return;
     }
+    const caseSize = Math.max(1, Number(selectedSku?.caseSize) || 12);
+    const qtyBottles = caseQty * caseSize;
 
-    // Stock availability check for sales reps
+    // Stock availability check for sales reps / wholesalers (inventory is bottles)
     if (variant === "sales_rep" || variant === "distributor") {
       const available = availableBottlesForSku(sku);
-      if (available < qty) {
-        setError(`Insufficient stock for ${sku}. Available: ${available.toLocaleString()} bottles. Requested: ${qty.toLocaleString()} bottles.`);
+      if (available < qtyBottles) {
+        setError(
+          `Insufficient stock for ${sku}. Available: ${Math.floor(available / caseSize).toLocaleString()} cases (${available.toLocaleString()} bt). Requested: ${caseQty.toLocaleString()} cases (${qtyBottles.toLocaleString()} bt).`,
+        );
         return;
       }
     }
-    if (!price.trim()) {
-      setError("Enter the order value (CAD).");
-      return;
-    }
-    const priceNum = parseFloat(price.replace(/,/g, ""));
-    if (!Number.isFinite(priceNum) || priceNum < 0) {
-      setError("Order value must be a number zero or greater.");
-      return;
+    let priceNum: number;
+    if (variant === "sales_rep" && listTotal > 0) {
+      priceNum = netTotal;
+    } else {
+      if (!price.trim()) {
+        setError(`Enter the order value (${resolvedCase.currency || "USD"}).`);
+        return;
+      }
+      priceNum = parseFloat(price.replace(/,/g, ""));
+      if (!Number.isFinite(priceNum) || priceNum < 0) {
+        setError("Order value must be a number zero or greater.");
+        return;
+      }
     }
 
     if (variant === "distributor" && wholesalerPath === "rep" && !wholesaleRep.trim()) {
@@ -512,6 +715,15 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       routingTarget = "manufacturer";
     }
 
+    const discountNote =
+      variant === "sales_rep" && discountPctNum > 0
+        ? [
+            `Discount: ${discountPctNum}%`,
+            discountReason.trim() ? discountReason.trim() : "volume / incentive",
+            `List ${listTotal.toLocaleString()} ${resolvedCase.currency} → net ${priceNum.toLocaleString()} ${resolvedCase.currency}`,
+          ].join(" — ")
+        : undefined;
+
     const order: SalesOrder = {
       id: nextOrderId(existingOrders),
       account: resolvedAccountForOrder,
@@ -519,7 +731,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       orderDate,
       requestedDelivery,
       sku,
-      quantity: qty,
+      quantity: qtyBottles,
       price: Math.round(priceNum * 100) / 100,
       salesRep: repLine,
       status,
@@ -529,6 +741,8 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
       repApprovalStatus: "not_required",
       assignedSalesRep,
       placedOnBehalfByRep: variant === "sales_rep",
+      notes: discountNote,
+      orderNotes: discountNote,
       // NEW: Proxy mode fields
       placedByRole: isProxyMode ? orderCreatedByFromRole(user?.role || "brand_operator") : undefined,
       onBehalfOfAccount: isProxyMode ? onBehalfOfAccountId || undefined : undefined,
@@ -550,30 +764,37 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
   };
 
   const showLifecycleDetails = variant !== "manufacturer";
+  const isMobile = useIsMobile();
   
   // NEW: Proxy mode available for brand_operator and operations
   const canUseProxyMode = user?.role === "brand_operator" || user?.role === "operations" || user?.role === "founder_admin";
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`max-h-[min(90vh,800px)] overflow-y-auto sm:max-w-2xl ${cfg.accent}`}>
-        <DialogHeader className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary" className="font-normal">
-              {cfg.badge}
-            </Badge>
-            {isProxyMode && (
-              <Badge variant="outline" className="font-normal text-amber-600 border-amber-600">
-                Proxy Mode
-              </Badge>
-            )}
-          </div>
-          <DialogTitle className="font-display text-xl">{cfg.title}</DialogTitle>
-          <DialogDescription className="text-pretty">{cfg.description}</DialogDescription>
-          {cfg.contextNote ? <p className="text-xs text-muted-foreground">{cfg.contextNote}</p> : null}
-        </DialogHeader>
+  const headerBadges = (
+    <div className="flex flex-wrap items-center gap-2">
+      <Badge variant="secondary" className="font-normal">
+        {cfg.badge}
+      </Badge>
+      {isProxyMode && (
+        <Badge variant="outline" className="font-normal text-amber-600 border-amber-600">
+          Proxy Mode
+        </Badge>
+      )}
+    </div>
+  );
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+  const formFields = (
+        <form
+          id="new-sales-order-form"
+          onSubmit={handleSubmit}
+          className={isMobile ? "flex min-h-0 flex-1 flex-col" : "space-y-6"}
+        >
+          <div
+            className={
+              isMobile
+                ? "min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-y-contain touch-pan-y px-4 pb-4 pt-2"
+                : "contents"
+            }
+          >
           {variant === "brand" ? (
             <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-4">
               <Label htmlFor="so-brand-path">Order pathway *</Label>
@@ -608,16 +829,22 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
               {wholesalerPath === "rep" ? (
                 <div className="space-y-2">
                   <Label htmlFor="so-wh-rep">Field rep *</Label>
-                  <Select value={wholesaleRep} onValueChange={setWholesaleRep}>
+                  <Select value={wholesaleRep || undefined} onValueChange={setWholesaleRep}>
                     <SelectTrigger id="so-wh-rep" className="touch-manipulation">
-                      <SelectValue />
+                      <SelectValue placeholder={salesRepNames.length ? "Select field rep" : "No sales reps yet"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {SALES_REPS.map((r) => (
-                        <SelectItem key={r} value={r}>
-                          {r}
+                      {salesRepNames.length === 0 ? (
+                        <SelectItem value="__none" disabled>
+                          No sales reps yet — invite one in CRM
                         </SelectItem>
-                      ))}
+                      ) : (
+                        salesRepNames.map((r) => (
+                          <SelectItem key={r} value={r}>
+                            {r}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -798,13 +1025,15 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
                     </SelectContent>
                   </Select>
                   <Input
+                    id="so-market-custom"
                     value={market}
                     onChange={(e) => {
                       setMarketIsCustom(true);
                       setMarket(e.target.value);
                     }}
                     placeholder="e.g. Ontario, Toronto, Milan"
-                    className={!marketIsCustom ? "hidden sm:block" : ""}
+                    className="min-h-10"
+                    aria-label="Market / region detail"
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -863,7 +1092,7 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="so-qty">Quantity (bottles) *</Label>
+                <Label htmlFor="so-qty">Quantity (cases) *</Label>
                 <Input
                   id="so-qty"
                   type="number"
@@ -873,46 +1102,143 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
                   onChange={(e) => setQuantity(e.target.value)}
                   required
                 />
-                {sku ? (
-                  <StockAvailability sku={sku} available={availableBottlesForSku(sku)} requested={Math.max(1, parseInt(quantity, 10) || 0)} />
+                {selectedSku ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    {Math.max(1, parseInt(quantity, 10) || 1) * (selectedSku.caseSize || 12)} bottles (
+                    {selectedSku.caseSize || 12} bt / case).
+                  </p>
+                ) : null}
+                {sku && selectedSku ? (
+                  <StockAvailability
+                    availableBottles={availableBottlesForSku(sku)}
+                    requestedCases={Math.max(1, parseInt(quantity, 10) || 0)}
+                    caseSize={selectedSku.caseSize || 12}
+                  />
                 ) : null}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="so-price">Order value (CAD) *</Label>
-                <Input
-                  id="so-price"
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  inputMode="decimal"
-                  value={price}
-                  onChange={(e) => {
-                    setPriceAuto(false);
-                    setPrice(e.target.value);
-                  }}
-                  placeholder="0.00"
-                  required
-                />
-                {selectedSku ? (
-                  (() => {
-                    const casePrice =
-                      variant === "distributor" || variant === "sales_rep"
-                        ? partnerSellOutCasePrice(selectedSku)
-                        : Number(selectedSku.wholesaleCasePrice);
-                    return Number.isFinite(casePrice) && casePrice > 0 ? (
-                      <p className="text-[11px] text-muted-foreground">
-                        Auto-priced from catalog: {casePrice.toLocaleString()} CAD / case ({selectedSku.caseSize} bt).
+                {variant === "sales_rep" ? (
+                  <>
+                    <Label htmlFor="so-price">Order value ({resolvedCase.currency || "USD"}) *</Label>
+                    {partnerSheetState === "missing" ? (
+                      <p className="rounded-md border border-dashed border-amber-600/40 bg-amber-50/40 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
+                        No wholesale sell-out sheet linked — ask your distributor to set prices on Inventory and confirm
+                        your CRM link to their account.
                       </p>
+                    ) : null}
+                    {partnerSheetState === "error" ? (
+                      <p className="rounded-md border border-dashed border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                        Could not load distributor sell-out prices. Try again, or enter value after HQ links your sheet.
+                      </p>
+                    ) : null}
+                    {salesRepPriced ? (
+                      <div className="space-y-3 rounded-lg border border-border/80 bg-muted/20 p-3">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                          <span className="text-muted-foreground">List total</span>
+                          <span className="font-display font-semibold tabular-nums text-foreground">
+                            {listTotal.toLocaleString()} {resolvedCase.currency}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          From {priceSourceLabel(resolvedCase.source, { forSalesRep: true })}:{" "}
+                          {resolvedCase.casePrice.toLocaleString()} {resolvedCase.currency} / case × {caseQtyForPrice}{" "}
+                          case{caseQtyForPrice === 1 ? "" : "s"}
+                          {selectedSku ? ` (${selectedSku.caseSize} bt / case)` : ""}.
+                        </p>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="so-discount">Discount %</Label>
+                            <Input
+                              id="so-discount"
+                              type="number"
+                              min={0}
+                              max={100}
+                              step={0.1}
+                              inputMode="decimal"
+                              value={discountPct}
+                              onChange={(e) => setDiscountPct(e.target.value)}
+                              className="touch-manipulation"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="so-discount-reason">Reason (volume / incentive)</Label>
+                            <Input
+                              id="so-discount-reason"
+                              value={discountReason}
+                              onChange={(e) => setDiscountReason(e.target.value)}
+                              placeholder="e.g. volume ladder, SPIF"
+                              className="touch-manipulation"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-border/60 pt-2 text-sm">
+                          <span className="font-medium text-foreground">Net order value</span>
+                          <span className="font-display text-lg font-semibold tabular-nums text-foreground">
+                            {netTotal.toLocaleString()} {resolvedCase.currency}
+                          </span>
+                        </div>
+                        <input id="so-price" type="hidden" value={netTotal} readOnly />
+                      </div>
+                    ) : (
+                      <>
+                        <Input
+                          id="so-price"
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          inputMode="decimal"
+                          value={price}
+                          onChange={(e) => {
+                            setPriceAuto(false);
+                            setPrice(e.target.value);
+                          }}
+                          placeholder="0.00"
+                          required
+                          className="touch-manipulation"
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          {selectedSku
+                            ? "Enter order value manually (no sell-out case price on this SKU yet)."
+                            : "Select a SKU to auto-price from distributor sell-out."}
+                        </p>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Label htmlFor="so-price">Order value ({resolvedCase.currency || "USD"}) *</Label>
+                    <Input
+                      id="so-price"
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      inputMode="decimal"
+                      value={price}
+                      onChange={(e) => {
+                        setPriceAuto(false);
+                        setPrice(e.target.value);
+                      }}
+                      placeholder="0.00"
+                      required
+                    />
+                    {selectedSku ? (
+                      Number.isFinite(resolvedCase.casePrice) && resolvedCase.casePrice > 0 ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          Auto-priced from {priceSourceLabel(resolvedCase.source)}:{" "}
+                          {resolvedCase.casePrice.toLocaleString()} {resolvedCase.currency} / case × {caseQtyForPrice}{" "}
+                          case{caseQtyForPrice === 1 ? "" : "s"} ({selectedSku.caseSize} bt / case).
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground">
+                          Enter order value manually (no case price set on this SKU).
+                        </p>
+                      )
                     ) : (
                       <p className="text-[11px] text-muted-foreground">
                         Enter order value manually (no case price set on this SKU).
                       </p>
-                    );
-                  })()
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">
-                    Enter order value manually (no case price set on this SKU).
-                  </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -932,16 +1258,22 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
               ) : (
                 <div className="space-y-2">
                   <Label htmlFor="so-rep">Sales rep *</Label>
-                  <Select value={salesRep} onValueChange={setSalesRep}>
+                  <Select value={salesRep || undefined} onValueChange={setSalesRep}>
                     <SelectTrigger id="so-rep" className="touch-manipulation">
-                      <SelectValue />
+                      <SelectValue placeholder={salesRepNames.length ? "Select sales rep" : "No sales reps yet"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {SALES_REPS.map((r) => (
-                        <SelectItem key={r} value={r}>
-                          {r}
+                      {salesRepNames.length === 0 ? (
+                        <SelectItem value="__none" disabled>
+                          No sales reps yet — invite one in CRM
                         </SelectItem>
-                      ))}
+                      ) : (
+                        salesRepNames.map((r) => (
+                          <SelectItem key={r} value={r}>
+                            {r}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -988,16 +1320,59 @@ export function NewSalesOrderDialog({ open, onOpenChange, existingOrders, onCrea
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
+          </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="touch-manipulation">
-              Cancel
-            </Button>
-            <Button type="submit" className="touch-manipulation">
-              {isProxyMode ? "Create Proxy Order" : cfg.submitLabel}
-            </Button>
-          </DialogFooter>
+          {isMobile ? (
+            <div className="flex shrink-0 gap-2 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="h-11 flex-1 touch-manipulation">
+                Cancel
+              </Button>
+              <Button type="submit" className="h-11 flex-1 touch-manipulation">
+                {isProxyMode ? "Create Proxy Order" : cfg.submitLabel}
+              </Button>
+            </div>
+          ) : (
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="touch-manipulation">
+                Cancel
+              </Button>
+              <Button type="submit" className="touch-manipulation">
+                {isProxyMode ? "Create Proxy Order" : cfg.submitLabel}
+              </Button>
+            </DialogFooter>
+          )}
         </form>
+  );
+
+  if (isMobile) {
+    return (
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent
+          side="bottom"
+          className={`flex h-[100svh] max-h-[100svh] w-full flex-col gap-0 overflow-hidden overscroll-none rounded-t-2xl p-0 ${cfg.accent}`}
+        >
+          <SheetHeader className="shrink-0 space-y-2 border-b border-border px-4 pb-3 pt-5 text-left">
+            {headerBadges}
+            <SheetTitle className="font-display text-xl">{cfg.title}</SheetTitle>
+            <SheetDescription className="text-pretty text-left">{cfg.description}</SheetDescription>
+            {cfg.contextNote ? <p className="text-xs text-muted-foreground">{cfg.contextNote}</p> : null}
+          </SheetHeader>
+          {formFields}
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className={`max-h-[min(90vh,800px)] overflow-y-auto sm:max-w-2xl ${cfg.accent}`}>
+        <DialogHeader className="space-y-3">
+          {headerBadges}
+          <DialogTitle className="font-display text-xl">{cfg.title}</DialogTitle>
+          <DialogDescription className="text-pretty">{cfg.description}</DialogDescription>
+          {cfg.contextNote ? <p className="text-xs text-muted-foreground">{cfg.contextNote}</p> : null}
+        </DialogHeader>
+        {formFields}
       </DialogContent>
     </Dialog>
   );

@@ -27,7 +27,15 @@ export class RouteErrorBoundary extends Component<Props, State> {
           <p className="max-w-md text-center text-sm text-muted-foreground">
             {this.state.message ?? "An unexpected error occurred while rendering this page."}
           </p>
-          <Button type="button" variant="outline" onClick={() => this.setState({ hasError: false, message: undefined })}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              // Hard reload picks up a new service-worker app shell after deploys.
+              if (typeof location !== "undefined") location.reload();
+              else this.setState({ hasError: false, message: undefined });
+            }}
+          >
             Try again
           </Button>
         </div>

@@ -51,11 +51,11 @@ export function ManufacturerShellLayout() {
   const { page } = manufacturerRouteChrome(pathname);
 
   return (
-    <div className="distillery-shell flex min-h-svh flex-col bg-background text-foreground lg:grid lg:h-svh lg:grid-cols-[256px_1fr] lg:overflow-hidden">
+    <div className="manufacturer-shell distillery-shell flex h-svh max-h-svh flex-col overflow-hidden overscroll-none bg-background text-foreground lg:grid lg:grid-cols-[256px_1fr]">
       <ManufacturerSidebar key={language} className="hidden lg:flex" />
 
-      <div className="main flex min-h-0 min-w-0 flex-1 flex-col lg:h-svh lg:overflow-hidden">
-        <header className="topbar glass-header sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 px-4 pt-[env(safe-area-inset-top)] lg:hidden">
+      <div className="main flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="topbar glass-header z-40 flex h-14 shrink-0 items-center gap-3 px-4 pt-[env(safe-area-inset-top)] lg:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button type="button" variant="ghost" size="icon" className="shrink-0 touch-manipulation" aria-label="Open menu">
@@ -71,13 +71,17 @@ export function ManufacturerShellLayout() {
             </SheetContent>
           </Sheet>
           <div className="crumbs min-w-0 flex-1 truncate font-display text-sm font-medium text-foreground/80">{orgLabel}</div>
-          <Link to="/manufacturer/purchase-orders" className="dist-btn dist-btn-accent dist-btn-sm shrink-0 no-underline">
+          <Link
+            to="/manufacturer/purchase-orders"
+            className="dist-btn dist-btn-accent dist-btn-sm shrink-0 touch-manipulation no-underline"
+            aria-label={t("Production requests")}
+          >
             <FileText className="size-3.5" strokeWidth={1.75} />
-            {t("Production requests")}
+            <span className="hidden sm:inline">{t("Production requests")}</span>
           </Link>
         </header>
 
-        <header className="topbar glass-header sticky top-0 z-30 hidden h-[54px] shrink-0 items-center justify-between gap-4 px-8 lg:flex">
+        <header className="topbar glass-header z-30 hidden h-[54px] shrink-0 items-center justify-between gap-4 px-8 lg:flex">
           <div className="crumbs text-[13px] text-muted-foreground">
             {orgLabel} › <strong className="font-medium text-foreground">{t(page)}</strong>
           </div>
@@ -100,7 +104,7 @@ export function ManufacturerShellLayout() {
           ref={mainScrollRef}
           id="pg"
           data-manufacturer-scroll
-          className="scrollbar-thin flex-1 overflow-y-auto px-[30px] pb-20 pt-[30px] lg:pb-[80px]"
+          className="scrollbar-thin min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain touch-pan-y px-4 pb-[max(5rem,env(safe-area-inset-bottom))] pt-5 sm:px-5 sm:pt-6 lg:px-[30px] lg:pb-[80px] lg:pt-[30px]"
         >
           <div className="pw mx-auto max-w-[1260px]">
             <Suspense fallback={<OperatorOutletFallback />}>

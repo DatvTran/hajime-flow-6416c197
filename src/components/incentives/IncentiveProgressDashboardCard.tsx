@@ -83,6 +83,7 @@ export function IncentiveProgressDashboardCard({ retailTradingName, activityHint
 
   const { program, totals, spifs, partner, matched, matchHint } = data;
   const rates = program.spifRates;
+  const showProgramRates = data.scope !== "sales_rep";
 
   const scopeDescription =
     matchHint ??
@@ -128,7 +129,7 @@ export function IncentiveProgressDashboardCard({ retailTradingName, activityHint
           </div>
         ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className={showProgramRates ? "grid gap-3 sm:grid-cols-2" : "grid gap-3"}>
           <div className="rounded-lg border border-border/70 bg-card/80 p-3">
             <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">SPIF payouts (you)</p>
             <p className="font-display text-xl font-semibold tabular-nums text-foreground">
@@ -136,15 +137,17 @@ export function IncentiveProgressDashboardCard({ retailTradingName, activityHint
             </p>
             <p className="text-xs text-muted-foreground">{totals.spifCount} logged line{totals.spifCount === 1 ? "" : "s"}</p>
           </div>
-          <div className="rounded-lg border border-border/70 bg-card/80 p-3">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Program rates (read-only)</p>
-            <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-              <li className="tabular-nums">On-prem ${rates.new_on_premise ?? "—"}</li>
-              <li className="tabular-nums">Off-prem ${rates.new_off_premise ?? "—"}</li>
-              <li className="tabular-nums">Reorder ${rates.reorder ?? "—"}</li>
-              <li className="tabular-nums">Tasting ${rates.tasting ?? "—"}</li>
-            </ul>
-          </div>
+          {showProgramRates ? (
+            <div className="rounded-lg border border-border/70 bg-card/80 p-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Program rates (read-only)</p>
+              <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                <li className="tabular-nums">On-prem ${rates.new_on_premise ?? "—"}</li>
+                <li className="tabular-nums">Off-prem ${rates.new_off_premise ?? "—"}</li>
+                <li className="tabular-nums">Reorder ${rates.reorder ?? "—"}</li>
+                <li className="tabular-nums">Tasting ${rates.tasting ?? "—"}</li>
+              </ul>
+            </div>
+          ) : null}
         </div>
 
         {activityHint ? (

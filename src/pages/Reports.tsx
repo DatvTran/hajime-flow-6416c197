@@ -89,11 +89,13 @@ export default function Reports() {
     if (mine.length > 0) {
       return { analyticsOrders: mine, analyticsUsesDemoRepBook: false };
     }
-    const demoBook = data.salesOrders.filter((o) => o.salesRep === ANALYTICS_DEMO_REP_BOOK);
-    if (demoBook.length > 0) {
-      return { analyticsOrders: demoBook, analyticsUsesDemoRepBook: true };
+    if (ANALYTICS_DEMO_REP_BOOK) {
+      const demoBook = data.salesOrders.filter((o) => o.salesRep === ANALYTICS_DEMO_REP_BOOK);
+      if (demoBook.length > 0) {
+        return { analyticsOrders: demoBook, analyticsUsesDemoRepBook: true };
+      }
     }
-    return { analyticsOrders: data.salesOrders, analyticsUsesDemoRepBook: false };
+    return { analyticsOrders: mine, analyticsUsesDemoRepBook: false };
   }, [data.salesOrders, isSalesRep, rep]);
 
   /** Account list for trend rows — rep’s assigned accounts plus any account name on their orders (sell-in path). */

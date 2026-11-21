@@ -1,16 +1,33 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { getExportOrder, getExportOrders, patchExportOrder, createExportOrder, type ExportOrderDto } from "@/lib/api-v1";
+import { useProducts } from "@/contexts/AppDataContext";
+import {
+  getExportOrder,
+  getExportOrders,
+  getMySkuPrices,
+  patchExportOrder,
+  createExportOrder,
+  type ExportOrderDto,
+} from "@/lib/api-v1";
 import {
   BUYER_EXPORT_DOC_TYPES,
   EXPORT_SELLER,
-  EXPORT_SKUS,
   EXPORT_STAGES,
+  formatListFobUsd,
   isBuyerExportDoc,
+  listFobCaseUsd,
+  priceLines,
+  unitFobFromCase,
   type ExportDocType,
+  type ExportSkuCode,
 } from "@/lib/export-commercial";
+import {
+  internationalOrderRowsFallback,
+  internationalOrderRowsFromCatalog,
+  type NegotiatedCaseByCatalogOrExport,
+} from "@/lib/export-catalog";
 import { EXPORT_BUYER_TERMS } from "@/lib/export-pack-copy";
 import { ExportOrderDocView } from "@/components/export/ExportOrderDocView";
 import { DistributorPage, DistributorPageHeader } from "@/components/distributor/DistributorUi";
@@ -30,32 +47,86 @@ export default function DistributorInternationalOrdersPage() {
 }
 
 function BuyerList() {
+  const { products } = useProducts();
   const [rows, setRows] = useState<ExportOrderDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
-  const [territory, setTerritory] = useState("");
-  const [destination, setDestination] = useState("");
+  const [territory, setTerritory] = useState("Hong Kong");
+  const [destination, setDestination] = useState("Hong Kong");
   const [buyerPoNo, setBuyerPoNo] = useState("");
   const [forwarderName, setForwarderName] = useState("");
-  const [casesBySku, setCasesBySku] = useState<Record<string, number>>({
-    first_press_750: 40,
-    yuzu_mint_750: 0,
-    first_press_200: 0,
-    yuzu_mint_200: 0,
-  });
+  const [casesByExportSku, setCasesByExportSku] = useState<Record<string, number>>({});
+  const [negotiatedBySku, setNegotiatedBySku] = useState<NegotiatedCaseByCatalogOrExport>({});
   const navigate = useNavigate();
+
+  const skuRows = useMemo(() => {
+    const fromCatalog = internationalOrderRowsFromCatalog(products ?? [], negotiatedBySku);
+    return fromCatalog.length > 0 ? fromCatalog : internationalOrderRowsFallback(negotiatedBySku);
+  }, [products, negotiatedBySku]);
+
+  const orderPreview = useMemo(() => {
+    const lines = skuRows
+      .map((row) => {
+        const cases = casesByExportSku[row.exportSku] ?? 0;
+        if (cases <= 0) return null;
+        return {
+          sku: row.exportSku as ExportSkuCode,
+          cases,
+          caseUsd: row.caseListUsd,
+          unitFobUsd: unitFobFromCase(row.caseListUsd, row.bottlesPerCase),
+        };
+      })
+      .filter((l): l is { sku: ExportSkuCode; cases: number; caseUsd: number; unitFobUsd: number } => l != null);
+    return priceLines(lines);
+  }, [skuRows, casesByExportSku]);
+
+  useEffect(() => {
+    setCasesByExportSku((prev) => {
+      const next: Record<string, number> = {};
+      for (const row of skuRows) {
+        next[row.exportSku] = prev[row.exportSku] ?? (row.exportSku === "first_press_750" ? 40 : 0);
+      }
+      return next;
+    });
+  }, [skuRows]);
 
   useEffect(() => {
     void getExportOrders()
-      .then((r) => setRows(r.data || []))
+      .then((r) => {
+        const next = r.data || [];
+        setRows(next);
+        if (next.length === 0) setFormOpen(true);
+      })
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    void getMySkuPrices()
+      .then((sheet) => {
+        const map: NegotiatedCaseByCatalogOrExport = {};
+        for (const row of sheet.data || []) {
+          if (row.sellInSource !== "negotiated") continue;
+          const n = Number(row.sellInCasePrice ?? row.sellInCasePriceUsd);
+          if (!(n > 0)) continue;
+          map[String(row.sku)] = n;
+        }
+        setNegotiatedBySku(map);
+      })
+      .catch(() => {
+        /* list FOB fallback */
+      });
+  }, []);
+
   const place = async () => {
-    const lines = Object.entries(casesBySku)
-      .filter(([, c]) => c > 0)
-      .map(([sku, cases]) => ({ sku, cases }));
+    // Catalog SKU + cases — server applies this distributor's negotiated sell-in × cases.
+    const lines = skuRows
+      .map((row) => {
+        const cases = casesByExportSku[row.exportSku] ?? 0;
+        if (cases <= 0) return null;
+        return { sku: row.catalogSku, cases };
+      })
+      .filter((l): l is { sku: string; cases: number } => l != null);
     if (!territory.trim()) {
       toast.error("Territory / market is required");
       return;
@@ -100,17 +171,25 @@ function BuyerList() {
         <div className="mt-4 space-y-3 rounded-xl border border-border bg-card p-5">
           <h2 className="font-display text-lg">Order from Hajime Ltd.</h2>
           <p className="text-[12px] text-muted-foreground">
-            Working {EXPORT_SELLER.workingIncoterm}. List FOB applies until Brand HQ confirms the quotation. This is not a
-            Canada retail route order.
+            Working {EXPORT_SELLER.workingIncoterm}. Your negotiated USD case sell-in × cases (list FOB if HQ has not set
+            one). First Press only — not a Canada retail route order.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label>Territory / market</Label>
-              <Input value={territory} onChange={(e) => setTerritory(e.target.value)} placeholder="Singapore" />
+              <Input
+                value={territory}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setTerritory(next);
+                  setDestination((prev) => (prev.trim() === "" || prev === territory ? next : prev));
+                }}
+                placeholder="Hong Kong"
+              />
             </div>
             <div className="space-y-1">
               <Label>Destination country</Label>
-              <Input value={destination} onChange={(e) => setDestination(e.target.value)} />
+              <Input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Hong Kong" />
             </div>
             <div className="space-y-1">
               <Label>Your PO (optional)</Label>
@@ -122,25 +201,63 @@ function BuyerList() {
             </div>
           </div>
           <div className="space-y-2">
-            {EXPORT_SKUS.map((s) => (
-              <div key={s.sku} className="flex items-center justify-between gap-3 text-[13px]">
-                <span>
-                  {s.product.replace("Hajime ", "")} {s.size}
-                  <span className="block text-[11px] text-muted-foreground">List ${s.listFobUsd} FOB / bottle</span>
-                </span>
-                <Input
-                  type="number"
-                  min={0}
-                  className="w-24"
-                  value={casesBySku[s.sku] ?? 0}
-                  onChange={(e) =>
-                    setCasesBySku((prev) => ({ ...prev, [s.sku]: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))
-                  }
-                />
+            <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-muted-foreground">
+              <span>Product (HQ catalog)</span>
+              <span className="w-[8.5rem] text-right">Cases</span>
+            </div>
+            {skuRows.map((s) => {
+              const cases = casesByExportSku[s.exportSku] ?? 0;
+              const caseList = formatListFobUsd(s.caseListUsd);
+              const lineTotal = cases > 0 ? s.caseListUsd * cases : 0;
+              const priceLabel = s.negotiated ? "Negotiated" : "List FOB";
+              return (
+                <div key={s.catalogSku} className="flex items-center justify-between gap-3 text-[13px]">
+                  <span className="min-w-0">
+                    {s.label} {s.size}
+                    <span className="block text-[11px] text-muted-foreground">
+                      <span className="font-mono">{s.catalogSku}</span>
+                      {" · "}
+                      {priceLabel} ${formatListFobUsd(s.fobPerBottle ?? s.caseListUsd / s.bottlesPerCase)}{" "}
+                      FOB / btl · ${caseList} / case ({s.bottlesPerCase} btls)
+                      {cases > 0
+                        ? ` · ${cases} cs · $${formatListFobUsd(lineTotal)}`
+                        : ""}
+                    </span>
+                  </span>
+                  <Input
+                    type="number"
+                    min={0}
+                    aria-label={`${s.label} ${s.size} cases`}
+                    className="w-24 shrink-0"
+                    value={cases}
+                    onChange={(e) =>
+                      setCasesByExportSku((prev) => ({
+                        ...prev,
+                        [s.exportSku]: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                      }))
+                    }
+                  />
+                </div>
+              );
+            })}
+            {orderPreview.subtotalUsd > 0 ? (
+              <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-[13px]">
+                <div className="flex justify-between font-semibold">
+                  <span>Order total (FOB USD)</span>
+                  <span>${orderPreview.subtotalUsd.toLocaleString()}</span>
+                </div>
+                <div className="mt-1 flex justify-between text-muted-foreground">
+                  <span>Deposit 50%</span>
+                  <span>${orderPreview.depositDueUsd.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Balance 50%</span>
+                  <span>${orderPreview.balanceDueUsd.toLocaleString()}</span>
+                </div>
               </div>
-            ))}
+            ) : null}
           </div>
-          <Button type="button" disabled={placing} onClick={() => void place()}>
+          <Button type="button" className="w-full touch-manipulation sm:w-auto" disabled={placing} onClick={() => void place()}>
             Submit order
           </Button>
         </div>
@@ -224,6 +341,8 @@ function BuyerDetail({ orderId }: { orderId: string }) {
         rawTitle
         description={`${String(order.buyerCompany)} · ${String(order.territory)} · ${stageLabel}`}
         rawDescription
+        titleClassName="text-[32px] sm:text-[36px]"
+        descriptionClassName="mt-2 max-w-[62ch] text-[16px] leading-relaxed"
         actions={
           <Button variant="outline" size="sm" asChild>
             <Link to="/distributor/international-orders">All files</Link>
@@ -231,12 +350,12 @@ function BuyerDetail({ orderId }: { orderId: string }) {
         }
       />
 
-      <ul className="mb-6 list-disc space-y-1 pl-5 text-[12px] text-muted-foreground">
+      <ul className="mb-6 list-disc space-y-2.5 pl-5 text-[16px] leading-relaxed text-muted-foreground">
         {EXPORT_BUYER_TERMS.map((t) => (
           <li key={t}>{t}</li>
         ))}
       </ul>
-      <p className="mb-4 text-[12px] text-muted-foreground">
+      <p className="mb-5 text-[18px] font-semibold leading-relaxed text-foreground sm:text-[20px]">
         Wire to {EXPORT_SELLER.bank.accountName}, {EXPORT_SELLER.bank.bankName} ({EXPORT_SELLER.bank.location}).
         Account {EXPORT_SELLER.bank.accountNumber} · Bank {EXPORT_SELLER.bank.bankCode} · Branch{" "}
         {EXPORT_SELLER.bank.branchCode} · SWIFT {EXPORT_SELLER.bank.swift}. {EXPORT_SELLER.wireFees}.
@@ -247,7 +366,7 @@ function BuyerDetail({ orderId }: { orderId: string }) {
           const issuedAt = (order.buyerDocStatus as Record<string, { issuedAt?: string | null }> | undefined)?.[k]
             ?.issuedAt;
           return (
-            <Button key={k} variant={issuedAt ? "default" : "outline"} size="sm" asChild>
+            <Button key={k} variant={issuedAt ? "default" : "outline"} size="default" asChild>
               <Link to={`/distributor/international-orders/${order.displayId}/docs/${k}`}>
                 {k.replace(/_/g, " ")}
                 {issuedAt ? " · issued" : ""}
@@ -259,19 +378,50 @@ function BuyerDetail({ orderId }: { orderId: string }) {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-3 rounded-xl border border-border bg-card p-5">
-          <h2 className="font-display text-lg">Your order</h2>
-          <p className="text-[13px]">
+          <h2 className="font-display text-xl">Your order</h2>
+          <p className="text-[16px] leading-relaxed">
             Quote {String(order.quoteNo)} · PI {String(order.piNo)}
           </p>
-          <p className="text-[13px]">
+          <ul className="space-y-2 text-[15px]">
+            {(Array.isArray(order.lines) ? order.lines : []).map((raw, i) => {
+              const l = raw as Record<string, unknown>;
+              const sku = String(l.sku ?? "");
+              const cases = Number(l.cases ?? 0);
+              const caseUsd =
+                l.caseUsd != null
+                  ? Number(l.caseUsd)
+                  : l.unitFobUsd != null
+                    ? Number(l.unitFobUsd) * Number(l.bottlesPerCase ?? 12)
+                    : listFobCaseUsd(sku);
+              const lineTotal =
+                l.lineTotalUsd != null
+                  ? Number(l.lineTotalUsd)
+                  : Math.round(caseUsd * cases * 100) / 100;
+              const label = String(l.product ?? sku);
+              const size = String(l.size ?? "");
+              return (
+                <li key={`${sku}-${i}`} className="flex justify-between gap-3 border-b border-border/60 pb-2">
+                  <span className="min-w-0">
+                    {cases} cs · {label.replace(/^Hajime\s+/i, "")} {size}
+                    <span className="block text-[13px] text-muted-foreground">
+                      ${formatListFobUsd(caseUsd)} FOB / case
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-medium">${formatListFobUsd(lineTotal)}</span>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="text-[16px] font-semibold leading-relaxed">
             Total ${Number(order.subtotalUsd ?? 0).toLocaleString()} · Deposit $
-            {Number(order.depositDueUsd ?? 0).toLocaleString()} · Balance ${Number(order.balanceDueUsd ?? 0).toLocaleString()}
+            {Number(order.depositDueUsd ?? 0).toLocaleString()} · Balance $
+            {Number(order.balanceDueUsd ?? 0).toLocaleString()}
           </p>
-          <p className="text-[13px]">Deposit status: {String(order.depositStatus)}</p>
-          <p className="text-[13px]">Balance status: {String(order.balanceStatus)}</p>
+          <p className="text-[16px] leading-relaxed">Deposit status: {String(order.depositStatus)}</p>
+          <p className="text-[16px] leading-relaxed">Balance status: {String(order.balanceStatus)}</p>
         </div>
         <div className="space-y-3 rounded-xl border border-border bg-card p-5">
-          <h2 className="font-display text-lg">Your PO &amp; forwarder</h2>
+          <h2 className="font-display text-xl">Your PO &amp; forwarder</h2>
           <div className="space-y-1">
             <Label>Buyer PO</Label>
             <Input

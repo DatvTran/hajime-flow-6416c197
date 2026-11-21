@@ -1,17 +1,24 @@
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { Bell, FileText, Search } from "lucide-react";
+import { useAppData } from "@/contexts/AppDataContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { hqRouteChrome } from "@/lib/hq-chrome";
+import { hqChromeOrgLabel, hqRouteChrome } from "@/lib/hq-chrome";
 import { HqOperatorSidebar } from "@/components/hq/HqOperatorSidebar";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { OperatorOutletFallback } from "@/components/OperatorOutletFallback";
 import { Menu } from "lucide-react";
 
+function partnerOrgIdFromPath(pathname: string): string | undefined {
+  const m = pathname.match(/^\/partners\/distributor\/([^/]+)/);
+  return m?.[1] ? decodeURIComponent(m[1]) : undefined;
+}
+
 export function HqOperatorLayout() {
   const { language, t } = useLanguage();
   const { pathname, search } = useLocation();
+  const { data } = useAppData();
   const [mobileOpen, setMobileOpen] = useState(false);
   const mainScrollRef = useRef<HTMLElement>(null);
   const prevPathRef = useRef(pathname);
@@ -35,12 +42,26 @@ export function HqOperatorLayout() {
 
   const { page } = hqRouteChrome(pathname, search);
 
+  const partnerOrgName = useMemo(() => {
+    const orgId = partnerOrgIdFromPath(pathname);
+    if (!orgId) return undefined;
+    const fromOrder = data.salesOrders.find((o) => o.distributorOrgId === orgId)?.distributorOrgName;
+    const fromAccount = data.accounts.find((a) => a.distributorOrgId === orgId)?.distributorOrgName;
+    const byId = data.accounts.find((a) => a.id === orgId);
+    return fromOrder || fromAccount || byId?.tradingName || byId?.legalName || undefined;
+  }, [data.accounts, data.salesOrders, pathname]);
+
+  const orgLabel = useMemo(
+    () => hqChromeOrgLabel(pathname, { partnerOrgName }),
+    [partnerOrgName, pathname],
+  );
+
   return (
-    <div className="hq-operator-shell flex min-h-svh flex-col bg-background text-foreground lg:grid lg:h-svh lg:grid-cols-[258px_1fr] lg:overflow-hidden">
+    <div className="hq-operator-shell flex h-svh max-h-svh flex-col overflow-hidden overscroll-none bg-background text-foreground lg:grid lg:grid-cols-[258px_1fr]">
       <HqOperatorSidebar key={language} className="hidden lg:flex" />
 
-      <div className="main flex min-h-0 min-w-0 flex-1 flex-col lg:h-svh lg:overflow-hidden">
-        <header className="topbar glass-header sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 px-4 pt-[env(safe-area-inset-top)] lg:hidden">
+      <div className="main flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="topbar glass-header z-40 flex h-14 shrink-0 items-center gap-3 px-4 pt-[env(safe-area-inset-top)] lg:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button type="button" variant="ghost" size="icon" className="shrink-0 touch-manipulation" aria-label="Open menu">
@@ -52,7 +73,7 @@ export function HqOperatorLayout() {
             </SheetContent>
           </Sheet>
           <div className="crumbs min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
-            HQ › <strong className="font-medium text-foreground">{t(page)}</strong>
+            {orgLabel} › <strong className="font-medium text-foreground">{t(page)}</strong>
           </div>
           <Link to="/export-orders" className="hq-btn hq-btn-accent hq-btn-sm shrink-0 no-underline" aria-label={t("Export orders")}>
             <FileText className="size-3.5" strokeWidth={1.75} />
@@ -60,9 +81,9 @@ export function HqOperatorLayout() {
           </Link>
         </header>
 
-        <header className="topbar glass-header sticky top-0 z-30 hidden h-[54px] shrink-0 items-center gap-3.5 px-8 lg:flex">
+        <header className="topbar glass-header z-30 hidden h-[54px] shrink-0 items-center gap-3.5 px-8 lg:flex">
           <div className="crumbs text-[13px] text-muted-foreground">
-            HQ › <strong className="font-medium text-foreground">{t(page)}</strong>
+            {orgLabel} › <strong className="font-medium text-foreground">{t(page)}</strong>
           </div>
           <div className="topbar-right ml-auto flex items-center gap-2.5">
             <button type="button" className="hq-icon-btn" aria-label={t("Search")}>
@@ -82,7 +103,7 @@ export function HqOperatorLayout() {
         <main
           ref={mainScrollRef}
           id="pg"
-          className="scrollbar-thin min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pb-20 pt-5 sm:px-6 lg:px-10 lg:pb-[80px] lg:pt-[30px]"
+          className="scrollbar-thin min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain touch-pan-y px-4 pb-[max(5rem,env(safe-area-inset-bottom))] pt-5 sm:px-6 lg:px-10 lg:pb-[80px] lg:pt-[30px]"
         >
           <div className="pw mx-auto max-w-[1320px]">
             <Suspense fallback={<OperatorOutletFallback />}>

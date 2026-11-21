@@ -2,23 +2,25 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { getExpoLead, getExpoLeads, patchExpoLead, createExportOrder } from "@/lib/api-v1";
+import { getExpoLead, getExpoLeads, patchExpoLead } from "@/lib/api-v1";
 import {
   EXPO_SCORES,
   EXPO_STATUSES,
   formatExpoLeadHeadline,
-  isImporterLead,
+  isExportLead,
   optionLabel,
   slaForScore,
   type ExpoLead,
   type ExpoLeadDetail,
 } from "@/lib/expo-leads";
 import { ConvertLeadDialog } from "@/components/expo/ConvertLeadDialog";
+import { OpenExportFileDialog } from "@/components/expo/OpenExportFileDialog";
 import { useAppData } from "@/contexts/AppDataContext";
 import { mapServerAccountRow } from "@/lib/data-service";
 import { partnerPathForOrg } from "@/lib/hq-distributor-orgs";
 import type { Account } from "@/data/mockData";
 import {
+  HqBtnLink,
   HqOperatorPage,
   HqOperatorPageHeader,
   HqOperatorPill,
@@ -94,6 +96,7 @@ function HqExpoLeadList() {
       <HqOperatorPageHeader
         title="Expo leads"
         description="Buyer registrations from the Connect QR. Score A–D after the conversation — never shown to the buyer."
+        actions={<HqBtnLink to="/expo-leads/booth">Booth</HqBtnLink>}
       />
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -200,12 +203,12 @@ function HqExpoLeadList() {
 
 function HqExpoLeadDetail({ leadId }: { leadId: string }) {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const { data: appData, updateData } = useAppData();
   const [lead, setLead] = useState<ExpoLeadDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [convertOpen, setConvertOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const reload = useCallback(async () => {
     const res = await getExpoLead(leadId);
@@ -232,7 +235,7 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
         staffUserId: user?.id,
         ...partial,
       });
-      setLead((prev) => ({ ...res.data, accountDraft: prev?.accountDraft }));
+      setLead((prev) => ({ ...res.data, accountDraft: prev?.accountDraft, exportOrders: prev?.exportOrders }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -261,6 +264,8 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
     );
   }
 
+  const linkedOrder = lead.exportOrders?.[0] ?? null;
+
   return (
     <HqOperatorPage>
       <HqOperatorPageHeader
@@ -279,39 +284,29 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
                 Create account
               </Button>
             )}
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={saving || !isImporterLead(lead.businessType)}
-              onClick={async () => {
-                if (!lead) return;
-                if (!isImporterLead(lead.businessType)) {
-                  toast.error("Only importer / distributor leads can open an export file.");
-                  return;
-                }
-                setSaving(true);
-                try {
-                  const res = await createExportOrder({
-                    expoLeadId: lead.displayId,
-                    buyerName: lead.fullName,
-                    buyerCompany: lead.companyName || lead.fullName,
-                    buyerEmail: lead.businessEmail,
-                    territory: lead.countryMarket || undefined,
-                    destinationCountry: lead.countryMarket || undefined,
-                    lines: [{ sku: "first_press_750", cases: 25 }],
-                  });
-                  toast.success("Export file opened", { description: res.data.displayId });
-                  navigate(`/export-orders/${res.data.displayId}`);
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : "Could not open file");
-                } finally {
-                  setSaving(false);
-                }
-              }}
-            >
-              Open export file
-            </Button>
+            {linkedOrder ? (
+              <Button type="button" size="sm" variant="outline" asChild>
+                <Link to={`/export-orders/${encodeURIComponent(linkedOrder.displayId)}`}>
+                  View export order {linkedOrder.displayId}
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={saving || !isExportLead(lead.businessType)}
+                onClick={() => {
+                  if (!isExportLead(lead.businessType)) {
+                    toast.error("Only importer, distributor, wholesale and duty-free leads can open an export file.");
+                    return;
+                  }
+                  setExportOpen(true);
+                }}
+              >
+                Open export file
+              </Button>
+            )}
             <Button variant="outline" size="sm" asChild>
               <Link to="/expo-leads">All leads</Link>
             </Button>
@@ -319,11 +314,14 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
         }
       />
 
-      {!isImporterLead(lead.businessType) ? (
+      {!isExportLead(lead.businessType) && !linkedOrder ? (
         <p className="mb-4 text-[13px] text-muted-foreground">
-          This contact is not an importer/distributor. Do not open an export file; create an account instead.
+          Export files are for importers, distributors, wholesale and duty-free buyers. Create an account for this
+          contact instead.
         </p>
       ) : null}
+
+      <OpenExportFileDialog open={exportOpen} onOpenChange={setExportOpen} lead={lead} />
 
       <ConvertLeadDialog
         open={convertOpen}
@@ -334,7 +332,7 @@ function HqExpoLeadDetail({ leadId }: { leadId: string }) {
           void reload().catch(() => undefined);
         }}
         onConverted={({ lead: updated, account, created }) => {
-          setLead((prev) => ({ ...updated, accountDraft: prev?.accountDraft }));
+          setLead((prev) => ({ ...updated, accountDraft: prev?.accountDraft, exportOrders: prev?.exportOrders }));
           const mapped = { ...mapServerAccountRow(account), id: String(account.id) } as Account;
           updateData((d) =>
             d.accounts.some((a) => String(a.id) === String(mapped.id))

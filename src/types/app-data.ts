@@ -83,12 +83,17 @@ export type TeamMember = {
   distributorOrgName?: string;
 };
 
-/** Brand HQ warehouse / depot locations for inventory and transfers. */
+/** Brand pool vs wholesaler receiving depot. */
+export type WarehouseKind = "brand" | "distributor";
+
+/** Brand HQ / wholesaler receiving warehouse locations for inventory and transfers. */
 export type Warehouse = {
   id: string;
   name: string;
   isActive: boolean;
   sortOrder: number;
+  /** Brand-operated pool vs wholesaler receiving DC. */
+  kind?: WarehouseKind;
   /** @deprecated Prefer linkedTeamMemberId — CRM distributor contact */
   linkedAccountId?: string;
   /** CRM contact (`team_members`) with distributor role — matches Settings → CRM. */

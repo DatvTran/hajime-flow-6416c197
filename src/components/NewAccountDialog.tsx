@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Account } from "@/data/mockData";
 import {
   Dialog,
@@ -18,9 +18,9 @@ import { nextAccountId } from "@/lib/account-ids";
 import { stripePublishableConfigured } from "@/lib/stripe-client";
 import { portalInviteUserMessage } from "@/lib/portal-invite-status";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAppData } from "@/contexts/AppDataContext";
 import { CheckCircle2, Loader2, QrCode } from "lucide-react";
 
-const SALES_REPS = ["Marcus Chen", "Sarah Kim", "Luca Moretti"] as const;
 const ACCOUNT_TYPES: Account["type"][] = ["retail", "bar", "restaurant", "hotel", "distributor", "lifestyle"];
 const DISTRIBUTOR_ACCOUNT_TYPES: Account["type"][] = ["retail", "bar", "restaurant", "hotel"];
 const ACCOUNT_STATUSES: Account["status"][] = ["active", "prospect", "inactive"];
@@ -50,8 +50,18 @@ type Props = {
 
 export function NewAccountDialog({ open, onOpenChange, accounts, onCreate, venueTypesOnly }: Props) {
   const { user } = useAuth();
+  const { data: appData } = useAppData();
   const isDistributor = user?.role === "distributor";
   const typeOptions = isDistributor || venueTypesOnly ? DISTRIBUTOR_ACCOUNT_TYPES : ACCOUNT_TYPES;
+  const salesRepNames = useMemo(
+    () =>
+      (appData.teamMembers ?? [])
+        .filter((m) => m.role === "sales_rep" && m.isActive !== false)
+        .map((m) => m.displayName)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b)),
+    [appData.teamMembers],
+  );
 
   const [step, setStep] = useState<"form" | "qr">("form");
   const [created, setCreated] = useState<Account | null>(null);
@@ -68,7 +78,7 @@ export function NewAccountDialog({ open, onOpenChange, accounts, onCreate, venue
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("Net 30");
-  const [salesOwner, setSalesOwner] = useState<(typeof SALES_REPS)[number]>(SALES_REPS[0]);
+  const [salesOwner, setSalesOwner] = useState("");
   const [status, setStatus] = useState<Account["status"]>("prospect");
   const [tagsInput, setTagsInput] = useState("");
   const [avgOrderSize, setAvgOrderSize] = useState("0");
@@ -89,12 +99,12 @@ export function NewAccountDialog({ open, onOpenChange, accounts, onCreate, venue
       setEmail("");
       setPhone("");
       setPaymentTerms("Net 30");
-      setSalesOwner(SALES_REPS[0]);
+      setSalesOwner(salesRepNames[0] ?? "");
       setStatus("prospect");
       setTagsInput("");
       setAvgOrderSize("0");
     }
-  }, [open]);
+  }, [open, salesRepNames]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,7 +161,7 @@ export function NewAccountDialog({ open, onOpenChange, accounts, onCreate, venue
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(90vh,760px)] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[min(90vh,760px)] overflow-y-auto sm:max-w-lg max-lg:left-0 max-lg:right-0 max-lg:top-auto max-lg:bottom-0 max-lg:h-[100dvh] max-lg:max-h-[100dvh] max-lg:w-full max-lg:max-w-none max-lg:translate-x-0 max-lg:translate-y-0 max-lg:rounded-t-2xl max-lg:rounded-b-none max-lg:border-x-0 max-lg:pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         {step === "form" ? (
           <>
             <DialogHeader>
@@ -280,19 +290,25 @@ export function NewAccountDialog({ open, onOpenChange, accounts, onCreate, venue
                   <div className="space-y-2">
                     <Label>Sales owner</Label>
                     <Select
-                      value={salesOwner}
-                      onValueChange={(v) => setSalesOwner(v as (typeof SALES_REPS)[number])}
+                      value={salesOwner || undefined}
+                      onValueChange={setSalesOwner}
                       disabled={submitting}
                     >
                       <SelectTrigger className="touch-manipulation">
-                        <SelectValue />
+                        <SelectValue placeholder={salesRepNames.length ? "Select sales owner" : "No sales reps yet"} />
                       </SelectTrigger>
                       <SelectContent>
-                        {SALES_REPS.map((r) => (
-                          <SelectItem key={r} value={r}>
-                            {r}
+                        {salesRepNames.length === 0 ? (
+                          <SelectItem value="__none" disabled>
+                            No sales reps yet — invite one in CRM
                           </SelectItem>
-                        ))}
+                        ) : (
+                          salesRepNames.map((r) => (
+                            <SelectItem key={r} value={r}>
+                              {r}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>

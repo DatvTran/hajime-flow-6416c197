@@ -162,3 +162,36 @@ export async function updatePasswordWithAccessToken(accessToken, newPassword) {
   const { error } = await client.auth.updateUser({ password: newPassword });
   if (error) throw error;
 }
+
+/** Admin update email and/or password for a Supabase Auth user (by external id or email). */
+export async function adminUpdateAuthCredentials({
+  externalId,
+  currentEmail,
+  newEmail,
+  newPassword,
+}) {
+  const admin = getSupabaseAdminClient();
+  let userId = externalId ? String(externalId) : null;
+  if (!userId && currentEmail) {
+    const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    const existing = list?.users?.find(
+      (u) => String(u.email || "").toLowerCase() === String(currentEmail).toLowerCase().trim(),
+    );
+    userId = existing?.id ? String(existing.id) : null;
+  }
+  if (!userId) {
+    const err = new Error("Supabase user not found for credential update");
+    err.code = "SUPABASE_USER_NOT_FOUND";
+    throw err;
+  }
+  const patch = {};
+  if (newEmail) {
+    patch.email = String(newEmail).toLowerCase().trim();
+    patch.email_confirm = true;
+  }
+  if (newPassword) patch.password = newPassword;
+  if (Object.keys(patch).length === 0) return { id: userId };
+  const { data, error } = await admin.auth.admin.updateUserById(userId, patch);
+  if (error) throw error;
+  return data?.user || { id: userId };
+}

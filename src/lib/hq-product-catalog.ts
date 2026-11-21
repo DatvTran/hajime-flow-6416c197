@@ -108,28 +108,60 @@ export function msrpPerBottle(product: Product): number | null {
   return w != null ? w * 1.25 : null;
 }
 
-export function wholesalePerBottle(product: Product): number | null {
+export function wholesalePerBottle(product: Product | null | undefined): number | null {
+  if (!product) return null;
   return perBottleFromCase(product.wholesaleCasePrice, product.caseSize);
 }
 
-export function manufacturerPerBottle(product: Product): number | null {
+export function manufacturerPerBottle(product: Product | null | undefined): number | null {
+  if (!product) return null;
   return perBottleFromCase(product.manufacturerCasePrice, product.caseSize);
 }
 
-export function distributorSellOutPerBottle(product: Product): number | null {
+export function distributorSellOutPerBottle(product: Product | null | undefined): number | null {
+  if (!product) return null;
   return perBottleFromCase(product.distributorSellOutCasePrice, product.caseSize);
 }
 
-export function brokerPerBottle(product: Product): number {
+export function brokerPerBottle(product: Product | null | undefined): number {
+  if (!product) return 0;
   const n = Number(product.brokerCommissionPerBottle);
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-/** Case price a distributor / retailer portal should charge (sell-out), not Hajime sell-in. */
-export function partnerSellOutCasePrice(product: Product): number {
+/**
+ * Case price a distributor / retailer portal should charge (sell-out), not Hajime sell-in.
+ * Prefer partner override when set; else catalog suggested sell-out; else list sell-in.
+ */
+export function partnerSellOutCasePrice(
+  product: Product | null | undefined,
+  partnerSellOutOverride?: number | null,
+): number {
+  if (!product) return 0;
+  const override = Number(partnerSellOutOverride);
+  if (Number.isFinite(override) && override > 0) return override;
   const sellOut = Number(product.distributorSellOutCasePrice);
   if (Number.isFinite(sellOut) && sellOut > 0) return sellOut;
   return Number(product.wholesaleCasePrice) || 0;
+}
+
+/** Negotiated HQ→partner sell-in, else catalog list wholesale. */
+export function partnerSellInCasePrice(
+  product: Product | null | undefined,
+  negotiatedSellIn?: number | null,
+): number {
+  if (!product) return 0;
+  const negotiated = Number(negotiatedSellIn);
+  const wholesale = Number(product.wholesaleCasePrice) || 0;
+  const caseSize = Math.max(1, Number(product.caseSize) || 12);
+  if (Number.isFinite(negotiated) && negotiated > 0) {
+    // Export partners store FOB USD / bottle; case = FOB × bottles when value is well below wholesale case list.
+    if (wholesale > 0 && negotiated < wholesale * 0.35) {
+      return Math.round(negotiated * caseSize * 100) / 100;
+    }
+    return negotiated;
+  }
+  return wholesale;
 }
 
 /** @deprecated Use msrpPerBottle */

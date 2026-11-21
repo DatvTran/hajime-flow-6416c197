@@ -27,16 +27,20 @@ const PAGE_TITLE = "Hajime Trade Enquiries";
 /** Contact link from the Drink Hajime WhatsApp QR; breaks if the QR is reset in WhatsApp. */
 const WHATSAPP_URL = "https://wa.me/qr/DIXQDR63EM7TF1";
 
+const PRODUCT_IDS: string[] = CONNECT_PRODUCTS.map((p) => p.id);
+const DEFAULT_PRODUCTS = PRODUCT_IDS.length === 1 ? PRODUCT_IDS : [];
+
 function loadChoices(): Choices {
   try {
     const s = JSON.parse(sessionStorage.getItem(CONNECT_CHOICES_KEY) || "{}");
+    const products = Array.isArray(s.products) ? s.products.filter((id: unknown) => PRODUCT_IDS.includes(String(id))) : [];
     return {
       business: typeof s.business === "string" ? s.business : null,
-      products: Array.isArray(s.products) ? s.products : [],
+      products: products.length ? products : DEFAULT_PRODUCTS,
       purposes: Array.isArray(s.purposes) ? s.purposes : [],
     };
   } catch {
-    return { business: null, products: [], purposes: [] };
+    return { business: null, products: DEFAULT_PRODUCTS, purposes: [] };
   }
 }
 
@@ -270,7 +274,7 @@ export default function ConnectPage() {
     } catch {
       /* private mode */
     }
-    setChoices({ business: null, products: [], purposes: [] });
+    setChoices({ business: null, products: DEFAULT_PRODUCTS, purposes: [] });
     setName("");
     setEmail("");
     setPhone("");
@@ -357,14 +361,14 @@ export default function ConnectPage() {
               Pick your beverage
             </h1>
             <p id="connect-help-products" className={helperCls}>
-              Choose one or both.
+              {PRODUCT_IDS.length > 1 ? "Choose one or both." : "Now pouring at the expo."}
             </p>
             <fieldset
               aria-describedby="connect-help-products connect-err-products"
               className="m-0 min-w-0 border-0 p-0"
             >
               <legend className={srOnlyLegend}>Beverage</legend>
-              <div className="grid grid-cols-2 gap-3">
+              <div className={cn("grid gap-3", PRODUCT_IDS.length > 1 ? "grid-cols-2" : "mx-auto w-full max-w-[240px] grid-cols-1")}>
                 {CONNECT_PRODUCTS.map((p) => (
                   <ProductCard
                     key={p.id}

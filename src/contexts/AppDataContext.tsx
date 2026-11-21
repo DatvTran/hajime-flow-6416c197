@@ -127,11 +127,11 @@ function catalogProductApiPayload(merged: Product): {
   unit_size: string;
   metadata: Record<string, unknown>;
 } {
-  const wholesale = merged.wholesaleCasePrice ?? 0;
-  const msrp = merged.msrpCasePrice ?? 0;
-  const manufacturer = merged.manufacturerCasePrice ?? 0;
-  const sellOut = merged.distributorSellOutCasePrice ?? 0;
-  const broker = merged.brokerCommissionPerBottle ?? 0;
+  const wholesale = merged?.wholesaleCasePrice ?? 0;
+  const msrp = merged?.msrpCasePrice ?? 0;
+  const manufacturer = merged?.manufacturerCasePrice ?? 0;
+  const sellOut = merged?.distributorSellOutCasePrice ?? 0;
+  const broker = merged?.brokerCommissionPerBottle ?? 0;
   return {
     sku: merged.sku,
     name: merged.name,

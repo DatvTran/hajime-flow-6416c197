@@ -478,7 +478,7 @@ if (fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
       etag: true,
       lastModified: true,
       setHeaders(res, filePath) {
-        if (filePath.endsWith('.html')) {
+        if (filePath.endsWith('.html') || /[\\/](sw\.js|workbox-[^\\/]+\.js|manifest\.webmanifest)$/.test(filePath)) {
           res.setHeader('Cache-Control', 'no-cache, must-revalidate');
         }
       },

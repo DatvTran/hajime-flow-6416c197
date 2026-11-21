@@ -27,6 +27,12 @@ export async function findDistributorOrgById(knex, id) {
   return knex('distributor_organizations').where({ id, is_active: true }).first();
 }
 
+/** Include inactive rows (demo deactivate / soft-hide) so linked logins can still place export orders. */
+export async function findDistributorOrgByIdAny(knex, id) {
+  if (!id) return null;
+  return knex('distributor_organizations').where({ id }).first();
+}
+
 /**
  * Resolve which isolated DB this login should use.
  * @returns {Promise<import('knex').Knex>} platform or distributor connection
@@ -47,7 +53,9 @@ export async function resolveDistributorOrgForUser(reqUser) {
   if (!reqUser) return null;
 
   if (reqUser.distributorOrgId) {
-    const org = await findDistributorOrgById(platformDb, reqUser.distributorOrgId);
+    const org =
+      (await findDistributorOrgById(platformDb, reqUser.distributorOrgId)) ||
+      (await findDistributorOrgByIdAny(platformDb, reqUser.distributorOrgId));
     if (org) return org;
   }
 
@@ -62,14 +70,18 @@ export async function resolveDistributorOrgForUser(reqUser) {
   if (!user) return null;
 
   if (user.distributor_org_id) {
-    const org = await findDistributorOrgById(platformDb, user.distributor_org_id);
+    const org =
+      (await findDistributorOrgById(platformDb, user.distributor_org_id)) ||
+      (await findDistributorOrgByIdAny(platformDb, user.distributor_org_id));
     if (org) return org;
   }
 
   if (user.role === 'distributor') {
-    const owned = await platformDb('distributor_organizations')
-      .where({ owner_user_id: user.id, is_active: true })
-      .first();
+    const owned =
+      (await platformDb('distributor_organizations')
+        .where({ owner_user_id: user.id, is_active: true })
+        .first()) ||
+      (await platformDb('distributor_organizations').where({ owner_user_id: user.id }).first());
     if (owned) return owned;
   }
 
@@ -78,16 +90,75 @@ export async function resolveDistributorOrgForUser(reqUser) {
     if (distUserId) {
       const distUser = await platformDb('users').where({ id: distUserId }).first();
       if (distUser?.distributor_org_id) {
-        return findDistributorOrgById(platformDb, distUser.distributor_org_id);
+        return (
+          (await findDistributorOrgById(platformDb, distUser.distributor_org_id)) ||
+          (await findDistributorOrgByIdAny(platformDb, distUser.distributor_org_id))
+        );
       }
-      const owned = await platformDb('distributor_organizations')
-        .where({ owner_user_id: distUserId, is_active: true })
-        .first();
+      const owned =
+        (await platformDb('distributor_organizations')
+          .where({ owner_user_id: distUserId, is_active: true })
+          .first()) ||
+        (await platformDb('distributor_organizations').where({ owner_user_id: distUserId }).first());
       if (owned) return owned;
     }
   }
 
   return null;
+}
+
+/**
+ * Ensure a distributor portal login has a registry org for export files / DB routing.
+ * Reuses owned/linked rows (including inactive); otherwise provisions a new org.
+ */
+export async function ensurePortalDistributorOrg(reqUser) {
+  const existing = await resolveDistributorOrgForUser(reqUser);
+  const userId = reqUser?.userId ?? reqUser?.id;
+  if (existing) {
+    if (userId && String(reqUser.distributorOrgId || '') !== String(existing.id)) {
+      await platformDb('users')
+        .where({ id: userId })
+        .update({
+          distributor_org_id: existing.id,
+          updated_at: platformDb.fn.now(),
+        });
+    }
+    return existing;
+  }
+
+  if (!userId || String(reqUser?.role || '') !== 'distributor') {
+    return null;
+  }
+
+  const name =
+    String(reqUser.displayName || '').trim() ||
+    String(reqUser.email || '').trim() ||
+    'Distributor';
+
+  try {
+    return await createDistributorOrganization({
+      name,
+      slug: name,
+      ownerUserId: Number(userId),
+      platformTenantId: reqUser.tenantId || null,
+    });
+  } catch (err) {
+    if (err?.status === 409) {
+      // Slug collision — attach to existing registry row when possible.
+      const slug = slugify(name);
+      const bySlug = await platformDb('distributor_organizations').where({ slug }).first();
+      if (bySlug) {
+        await platformDb('users')
+          .where({ id: userId })
+          .update({
+            distributor_org_id: bySlug.id,
+            updated_at: platformDb.fn.now(),
+          });
+        return bySlug;
+      }
+    }
+    throw err;
+  }
 }
 
 /**

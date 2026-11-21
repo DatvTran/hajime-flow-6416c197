@@ -297,6 +297,19 @@ export function SalesRepLayout() {
     return filterAccountsForSalesRep(accounts, user, teamMembers);
   }, [accounts, teamMembers, user]);
 
+  const orgLabel = useMemo(() => {
+    const fromSession = user?.distributorOrgName?.trim();
+    if (fromSession) return fromSession;
+    const fromOrg = myAccounts.map((a) => a.distributorOrgName?.trim()).find(Boolean);
+    if (fromOrg) return fromOrg;
+    const wholesaler = accounts.find(
+      (a) =>
+        (a.type === "distributor" || a.type === "wholesaler") &&
+        myAccounts.some((r) => String(r.distributorOrgId ?? "") === String(a.distributorOrgId ?? "") && a.distributorOrgId),
+    );
+    return wholesaler?.tradingName || wholesaler?.legalName || null;
+  }, [accounts, myAccounts, user?.distributorOrgName]);
+
   const pipelineCount = useMemo(
     () => computeSalesRepOpportunities(accounts, salesOrders, rep).length,
     [accounts, salesOrders, rep],
@@ -309,6 +322,7 @@ export function SalesRepLayout() {
 
   const { section, page } = salesRepRouteChrome(pathname, search);
   const initials = user ? userInitials(user.displayName) : "?";
+  const crumbOrg = orgLabel || t(section);
 
   const logoBlock = (
     <Link to="/sales" className="flex items-center gap-2.5 px-4 py-5 no-underline" onClick={() => setMobileOpen(false)}>
@@ -353,13 +367,13 @@ export function SalesRepLayout() {
   );
 
   return (
-    <div className="flex min-h-svh bg-background text-foreground">
-      <aside className="relative hidden w-[256px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex lg:h-svh lg:overflow-hidden">
+    <div className="flex h-svh max-h-svh overflow-hidden overscroll-none bg-background text-foreground">
+      <aside className="relative hidden h-full w-[256px] shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
         <div className="shrink-0 border-b border-sidebar-border">{logoBlock}</div>
         <div className="px-2.5 pt-3.5">
           <SalesRepQuotaPill repName={rep} />
         </div>
-        <nav className="flex flex-1 flex-col overflow-y-auto pb-3 text-sm" aria-label="Sales rep">
+        <nav className="flex flex-1 flex-col overflow-y-auto overscroll-contain pb-3 text-sm" aria-label="Sales rep">
           <SalesRepSidebarNav
             key={language}
             accountCount={myAccounts.length}
@@ -370,21 +384,21 @@ export function SalesRepLayout() {
         {userBlock}
       </aside>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:h-svh lg:overflow-hidden">
-        <header className="glass-header sticky top-0 z-40 flex h-14 items-center gap-3 px-4 pt-[env(safe-area-inset-top)] lg:hidden">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="glass-header z-40 flex h-14 shrink-0 items-center gap-3 px-4 pt-[env(safe-area-inset-top)] lg:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button type="button" variant="ghost" size="icon" className="shrink-0 touch-manipulation" aria-label="Open menu">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[288px] border-sidebar-border bg-sidebar p-0 text-sidebar-foreground">
+            <SheetContent side="left" className="w-[288px] max-w-[85vw] border-sidebar-border bg-sidebar p-0 text-sidebar-foreground">
               <div className="flex h-full flex-col overflow-hidden">
                 <div className="shrink-0 border-b border-sidebar-border">{logoBlock}</div>
                 <div className="px-2.5 pt-3.5">
                   <SalesRepQuotaPill repName={rep} />
                 </div>
-                <nav className="flex flex-1 flex-col overflow-y-auto pb-4 text-sm" aria-label="Sales menu">
+                <nav className="flex flex-1 flex-col overflow-y-auto overscroll-contain pb-4 text-sm" aria-label="Sales menu">
                   <SalesRepSidebarNav
                     key={language}
                     accountCount={myAccounts.length}
@@ -406,9 +420,9 @@ export function SalesRepLayout() {
           </Button>
         </header>
 
-        <header className="glass-header sticky top-0 z-30 hidden h-[54px] shrink-0 items-center justify-between gap-4 px-8 lg:flex">
+        <header className="glass-header z-30 hidden h-[54px] shrink-0 items-center justify-between gap-4 px-8 lg:flex">
           <div className="text-[13px] text-muted-foreground">
-            {t(section)} › <strong className="font-medium text-foreground">{t(page)}</strong>
+            {crumbOrg} › <strong className="font-medium text-foreground">{t(page)}</strong>
           </div>
           <div className="flex items-center gap-2.5">
             <Button variant="outline" size="sm" className="h-[30px] text-xs" asChild>
@@ -424,13 +438,13 @@ export function SalesRepLayout() {
         </header>
 
         <div className="shrink-0 border-b border-border/40 px-4 py-2.5 text-[13px] text-muted-foreground lg:hidden">
-          {t(section)} › <strong className="font-medium text-foreground">{t(page)}</strong>
+          {crumbOrg} › <strong className="font-medium text-foreground">{t(page)}</strong>
         </div>
 
         <main
           ref={mainScrollRef}
           data-sales-rep-scroll
-          className="scrollbar-thin mx-auto w-full max-w-[1260px] flex-1 overflow-y-auto px-[30px] pb-20 pt-[30px] lg:px-10 lg:pb-[80px]"
+          className="scrollbar-thin mx-auto min-h-0 w-full min-w-0 max-w-[1260px] flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain touch-pan-y px-4 pb-[max(5rem,env(safe-area-inset-bottom))] pt-5 sm:px-5 sm:pt-6 lg:px-10 lg:pb-[80px] lg:pt-[30px]"
         >
           <Suspense fallback={<OperatorOutletFallback />}>
             <Outlet key={language} />

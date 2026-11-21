@@ -21,7 +21,7 @@ export function OperatorTopBar() {
   return (
     <header
       className={cn(
-        "glass-header sticky top-0 z-30 grid h-14 shrink-0 items-center gap-3 px-4 pt-[env(safe-area-inset-top)] sm:px-7",
+        "glass-header z-30 grid h-14 shrink-0 items-center gap-3 px-4 pt-[env(safe-area-inset-top)] sm:px-7",
         isMobile ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_minmax(12rem,360px)_minmax(0,1fr)]",
       )}
     >

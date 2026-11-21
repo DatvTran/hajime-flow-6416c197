@@ -77,6 +77,12 @@ import { ensureRetailAccountForTeamMember } from '../lib/retail-account-provisio
 import { attachPortalUserIds } from '../lib/team-member-enrich.mjs';
 import { applyHqWholesaleOrdersScope } from '../lib/hq-order-scope.mjs';
 import {
+  buildPartnerSkuPriceSheet,
+  resolveWholesaleAccountIdForUser,
+  upsertPartnerPricingSettings,
+  upsertPartnerSkuPrices,
+} from '../lib/partner-sku-prices.mjs';
+import {
   loadLicenseeApplicationContext,
   submitLicenseeApplication,
   LICENSEE_STEPS,
@@ -92,6 +98,12 @@ import {
 } from '../lib/hq-global-view.mjs';
 import { buildAppBootstrapPayload } from '../lib/app-bootstrap.mjs';
 import { attachSalesOrderItems } from '../lib/sales-order-items.mjs';
+import {
+  canDistributorSelectWarehouse,
+  ensureWarehousesReady,
+  filterWarehouseOptionsForDistributor,
+  normalizeWarehouseKind,
+} from '../lib/warehouses.mjs';
 import { rateLimiters } from '../middleware/security.mjs';
 import {
   canManageExpoLeads,
@@ -106,8 +118,10 @@ import {
   validateLeadAccountBody,
 } from '../lib/expo-leads.mjs';
 import { countersignPoa, loadPoaForSigning } from '../services/po-acceptance.mjs';
+import { loadBuyerPoForSigning, signBuyerPo } from '../services/buyer-po.mjs';
 import { sendTradePackEmail, clientBaseUrl } from '../services/export-notify.mjs';
-import { canManageExportOrders } from '../lib/export-orders.mjs';
+import { canManageExportOrders, ensureExportOrdersTable } from '../lib/export-orders.mjs';
+import { createBoothFile } from '../lib/expo-booth.mjs';
 import exportOrdersRouter from './export-orders.mjs';
 import {
   applyPortalOrdersScope,
@@ -318,6 +332,36 @@ router.post('/po-acceptance/:token/accept', rateLimiters.poAcceptanceSign, async
   }
 });
 
+router.get('/buyer-po/:token', rateLimiters.poAcceptanceView, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const data = await loadBuyerPoForSigning(platformDb, req.params.token);
+    if (!data) return res.status(404).json({ error: 'This signing link is not valid.' });
+    res.json({ data });
+  } catch (err) {
+    console.error('[API v1] buyer-po view:', err);
+    res.status(500).json({ error: 'Could not load the document' });
+  }
+});
+
+router.post('/buyer-po/:token/sign', rateLimiters.poAcceptanceSign, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    if (String(req.body?.fax ?? '').trim()) {
+      return res.status(400).json({ error: 'Could not sign this document' });
+    }
+    const data = await signBuyerPo(platformDb, req.params.token, req.body || {}, {
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+    res.json({ data });
+  } catch (err) {
+    const status = err.status || 500;
+    if (status >= 500) console.error('[API v1] buyer-po sign:', err);
+    res.status(status).json({ error: status >= 500 ? 'Could not sign the document' : err.message, ...(err.payload || {}) });
+  }
+});
+
 // Apply auth to all routes
 router.use(authenticateToken);
 router.use(attachDistributorDatabase);
@@ -396,6 +440,40 @@ function requireExpoLeadsHq(req, res) {
   return true;
 }
 
+router.post('/expo-leads/booth', async (req, res) => {
+  try {
+    if (!canManageExpoLeads(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = platformDb;
+    if (!(await ensureExpoLeadsTable(db)) || !(await ensureExportOrdersTable(db))) {
+      return res.status(503).json({ error: 'Booth capture is not available yet' });
+    }
+    const { lead, order, priced } = await createBoothFile(db, {
+      tenantId,
+      staffUserId: req.user?.userId ?? null,
+      body: req.body || {},
+    });
+    res.status(201).json({
+      data: {
+        lead: serializeExpoLead(lead),
+        order: {
+          id: String(order.id),
+          displayId: order.display_id,
+          subtotalUsd: priced.subtotalUsd,
+          depositDueUsd: priced.depositDueUsd,
+          balanceDueUsd: priced.balanceDueUsd,
+          depositStatus: order.deposit_status,
+        },
+      },
+    });
+  } catch (err) {
+    const status = err.status || 500;
+    if (status >= 500) console.error('[API v1] expo-leads booth:', err);
+    res.status(status).json({ error: status >= 500 ? 'Could not save this buyer' : err.message, ...(err.payload || {}) });
+  }
+});
+
 router.get('/expo-leads', async (req, res) => {
   try {
     if (!requireExpoLeadsHq(req, res)) return;
@@ -455,7 +533,24 @@ router.get('/expo-leads/:id', async (req, res) => {
       })
       .first();
     if (!row) return res.status(404).json({ error: 'Lead not found' });
-    res.json({ data: { ...serializeExpoLead(row), accountDraft: accountDraftFromLead(row) } });
+    const exportOrders = (await db.schema.hasTable('export_orders'))
+      ? await db('export_orders')
+          .where({ tenant_id: tenantId, expo_lead_id: row.id })
+          .whereNot('stage', 'cancelled')
+          .orderBy('created_at', 'desc')
+          .select('display_id', 'stage', 'created_at')
+      : [];
+    res.json({
+      data: {
+        ...serializeExpoLead(row),
+        accountDraft: accountDraftFromLead(row),
+        exportOrders: exportOrders.map((o) => ({
+          displayId: o.display_id,
+          stage: o.stage,
+          createdAt: o.created_at ? new Date(o.created_at).toISOString() : null,
+        })),
+      },
+    });
   } catch (err) {
     console.error('[API v1] expo-leads get:', err);
     res.status(500).json({ error: 'Failed to load lead' });
@@ -1987,6 +2082,140 @@ router.post('/accounts/:id/send-portal-invite', requirePermission(Permission.ACC
   } catch (err) {
     console.error('[API v1] Error sending distributor portal invite:', err);
     res.status(500).json({ error: 'Failed to send setup invite' });
+  }
+});
+
+// GET /api/v1/accounts/:id/sku-prices — negotiated sell-in (USD) + partner sell-out (local)
+router.get('/accounts/:id/sku-prices', requirePermission(Permission.ACCOUNTS_READ), async (req, res) => {
+  try {
+    const loc = await resolveEntityWrite(req, req.params.id);
+    if (!loc) return res.status(404).json({ error: 'Account not found' });
+    const { db, id, tenantId } = loc;
+    const account = await db('accounts').where({ id, tenant_id: tenantId }).whereNull('deleted_at').first();
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+    if (String(account.type || '').trim() !== 'distributor') {
+      return res.status(400).json({ error: 'SKU prices are for distributor accounts.' });
+    }
+    const role = req.user?.role;
+    if (role === 'distributor') {
+      const mine = await resolveWholesaleAccountIdForUser(db, tenantId, req.user);
+      if (!mine || String(mine) !== String(id)) {
+        return res.status(403).json({ error: 'Not your wholesale account.' });
+      }
+    } else if (!hasPermission(role, Permission.ACCOUNTS_WRITE) && !hasPermission(role, Permission.SETTINGS_WRITE)) {
+      if (role !== 'brand_operator' && role !== 'founder_admin' && role !== 'operations') {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    }
+    const sheet = await buildPartnerSkuPriceSheet(db, tenantId, id);
+    res.json(sheet);
+  } catch (err) {
+    console.error('[API v1] Error fetching sku prices:', err);
+    res.status(500).json({ error: 'Failed to fetch SKU prices' });
+  }
+});
+
+// PUT /api/v1/accounts/:id/sku-prices — HQ sell-in (USD) and/or partner sell-out + FX settings
+router.put(
+  '/accounts/:id/sku-prices',
+  requireAnyPermission(Permission.ACCOUNTS_WRITE, Permission.INVENTORY_WRITE),
+  async (req, res) => {
+  try {
+    const loc = await resolveEntityWrite(req, req.params.id);
+    if (!loc) return res.status(404).json({ error: 'Account not found' });
+    const { db, id, tenantId } = loc;
+    const account = await db('accounts').where({ id, tenant_id: tenantId }).whereNull('deleted_at').first();
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+    if (String(account.type || '').trim() !== 'distributor') {
+      return res.status(400).json({ error: 'SKU prices are for distributor accounts.' });
+    }
+
+    const role = req.user?.role;
+    const rows = Array.isArray(req.body?.prices) ? req.body.prices : Array.isArray(req.body) ? req.body : [];
+    let fields = 'both';
+    let sellOutCurrency = null;
+    if (role === 'distributor') {
+      const mine = await resolveWholesaleAccountIdForUser(db, tenantId, req.user);
+      if (!mine || String(mine) !== String(id)) {
+        return res.status(403).json({ error: 'Not your wholesale account.' });
+      }
+      fields = 'sell_out';
+      if (req.body?.settings) {
+        const settings = await upsertPartnerPricingSettings(db, tenantId, id, req.body.settings);
+        sellOutCurrency = settings.sellOutCurrency;
+      }
+    } else if (role === 'brand_operator' || role === 'founder_admin' || role === 'operations') {
+      fields = req.body?.fields === 'sell_out' ? 'sell_out' : 'sell_in';
+      // HQ may seed partner FX settings (ops / invite); sell-out amounts still partner-owned.
+      if (req.body?.settings) {
+        const settings = await upsertPartnerPricingSettings(db, tenantId, id, req.body.settings);
+        sellOutCurrency = settings.sellOutCurrency;
+      }
+    } else {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    await upsertPartnerSkuPrices(db, tenantId, id, rows, fields, sellOutCurrency);
+    const sheet = await buildPartnerSkuPriceSheet(db, tenantId, id);
+    res.json(sheet);
+  } catch (err) {
+    if (err?.status === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error('[API v1] Error saving sku prices:', err);
+    res.status(500).json({ error: 'Failed to save SKU prices' });
+  }
+});
+
+// GET /api/v1/me/sku-prices — distributor / sales-rep wholesale account price sheet
+router.get('/me/sku-prices', requireAnyPermission(Permission.ACCOUNTS_READ, Permission.ORDERS_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    const db = getDb();
+    const accountId = await resolveWholesaleAccountIdForUser(db, tenantId, req.user);
+    if (!accountId) {
+      return res.status(404).json({ error: 'No wholesale account linked to this login.' });
+    }
+    const sheet = await buildPartnerSkuPriceSheet(db, tenantId, accountId);
+    res.json(sheet);
+  } catch (err) {
+    console.error('[API v1] Error fetching my sku prices:', err);
+    res.status(500).json({ error: 'Failed to fetch SKU prices' });
+  }
+});
+
+// PUT /api/v1/me/sku-prices — distributor updates sell-out + FX settings
+router.put(
+  '/me/sku-prices',
+  requireAnyPermission(Permission.ACCOUNTS_WRITE, Permission.INVENTORY_WRITE),
+  async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+    if (req.user?.role !== 'distributor') {
+      return res.status(403).json({ error: 'Only distributors update their sell-out here.' });
+    }
+    const db = getDb();
+    const accountId = await resolveWholesaleAccountIdForUser(db, tenantId, req.user);
+    if (!accountId) {
+      return res.status(404).json({ error: 'No wholesale account linked to this login.' });
+    }
+    let sellOutCurrency = null;
+    if (req.body?.settings) {
+      const settings = await upsertPartnerPricingSettings(db, tenantId, accountId, req.body.settings);
+      sellOutCurrency = settings.sellOutCurrency;
+    }
+    const rows = Array.isArray(req.body?.prices) ? req.body.prices : Array.isArray(req.body) ? req.body : [];
+    await upsertPartnerSkuPrices(db, tenantId, accountId, rows, 'sell_out', sellOutCurrency);
+    const sheet = await buildPartnerSkuPriceSheet(db, tenantId, accountId);
+    res.json(sheet);
+  } catch (err) {
+    if (err?.status === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error('[API v1] Error saving my sku prices:', err);
+    res.status(500).json({ error: 'Failed to save SKU prices' });
   }
 });
 
@@ -8240,32 +8469,9 @@ router.patch('/opportunities/:id/status', requirePermission(Permission.ACCOUNTS_
 
 // ===== WAREHOUSES (Settings — inventory locations) =====
 
+/** Ensure schema (kind) + purge demo depots on this request DB (platform or distributor). */
 async function ensureDefaultWarehouses(tenantId) {
-  const row = await getDb('warehouses').where({ tenant_id: tenantId }).count('* as c').first();
-  const n = Number(row?.c ?? 0);
-  if (n > 0) return;
-  const now = new Date();
-  const ts = Date.now();
-  await getDb('warehouses').insert([
-    {
-      id: `wh-${ts}-toronto`,
-      tenant_id: tenantId,
-      name: 'Toronto Main Warehouse',
-      is_active: true,
-      sort_order: 0,
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: `wh-${ts}-milan`,
-      tenant_id: tenantId,
-      name: 'Milan Depot',
-      is_active: true,
-      sort_order: 1,
-      created_at: now,
-      updated_at: now,
-    },
-  ]);
+  await ensureWarehousesReady(getDb(), tenantId);
 }
 
 // GET /api/v1/warehouses
@@ -8294,7 +8500,18 @@ router.get('/warehouses', requirePermission(Permission.SETTINGS_READ), async (re
       q = q.where('is_active', true);
     }
 
-    const rows = await q.orderBy('sort_order', 'asc').orderBy('name', 'asc');
+    let rows = await q.orderBy('sort_order', 'asc').orderBy('name', 'asc');
+
+    // Distributors only see their own receiving depot(s), never peer DCs or HQ brand pool.
+    if (req.user.role === 'distributor') {
+      const email = String(req.user.email || '').trim().toLowerCase();
+      const member = await getDb('team_members').where({ tenant_id: tenantId, email }).first();
+      if (!member || member.role !== 'distributor') {
+        return res.json({ data: [] });
+      }
+      rows = filterWarehouseOptionsForDistributor(rows, member);
+    }
+
     res.json({ data: rows });
   } catch (err) {
     console.error('[API v1] Error fetching warehouses:', err);
@@ -8315,6 +8532,33 @@ router.post('/warehouses', requirePermission(Permission.SETTINGS_WRITE), async (
       return res.status(400).json({ error: 'name is required' });
     }
 
+    const kind = normalizeWarehouseKind(req.body?.kind, 'brand');
+    const linkedAccountRaw = req.body?.linked_account_id ?? req.body?.linkedAccountId;
+    const linkedAccountId =
+      linkedAccountRaw === null || linkedAccountRaw === undefined || linkedAccountRaw === ''
+        ? null
+        : String(linkedAccountRaw).trim() || null;
+    const linkedTmRaw = req.body?.linked_team_member_id ?? req.body?.linkedTeamMemberId;
+    const hasLinkedTm =
+      Object.prototype.hasOwnProperty.call(req.body || {}, 'linked_team_member_id') ||
+      Object.prototype.hasOwnProperty.call(req.body || {}, 'linkedTeamMemberId');
+    const linkedTeamMemberId = !hasLinkedTm
+      ? undefined
+      : linkedTmRaw === null || linkedTmRaw === ''
+        ? null
+        : String(linkedTmRaw).trim() || null;
+
+    if (linkedTeamMemberId) {
+      const tm = await getDb('team_members')
+        .where({ id: linkedTeamMemberId, tenant_id: tenantId })
+        .first();
+      if (!tm || tm.role !== 'distributor') {
+        return res.status(400).json({
+          error: 'linked_team_member_id must be an active distributor CRM contact.',
+        });
+      }
+    }
+
     const existing = await getDb('warehouses')
       .where({ tenant_id: tenantId })
       .whereRaw('lower(trim(name)) = ?', [name.toLowerCase()])
@@ -8328,23 +8572,39 @@ router.post('/warehouses', requirePermission(Permission.SETTINGS_WRITE), async (
 
     const id = `wh-${Date.now()}`;
     const now = new Date();
-    const [created] = await getDb('warehouses')
-      .insert({
-        id,
-        tenant_id: tenantId,
-        name,
-        is_active: true,
-        sort_order: sortOrder,
-        created_at: now,
-        updated_at: now,
-      })
-      .returning('*');
+
+    let created;
+    await getDb().transaction(async (trx) => {
+      const [row] = await trx('warehouses')
+        .insert({
+          id,
+          tenant_id: tenantId,
+          name,
+          kind,
+          is_active: true,
+          sort_order: sortOrder,
+          linked_account_id: linkedAccountId,
+          created_at: now,
+          updated_at: now,
+        })
+        .returning('*');
+      created = row;
+
+      if (linkedTeamMemberId) {
+        await setDistributorReceivingWarehouse(trx, tenantId, linkedTeamMemberId, id);
+        created = await trx('warehouses').where({ id, tenant_id: tenantId }).first();
+      }
+    });
 
     res.status(201).json({ data: created });
   } catch (err) {
     console.error('[API v1] Error creating warehouse:', err);
     if (err.code === '23505') {
       return res.status(409).json({ error: 'A warehouse with this name already exists.' });
+    }
+    const st = err.status || 500;
+    if (st === 404 || st === 400) {
+      return res.status(st).json({ error: err.message });
     }
     res.status(500).json({ error: 'Failed to create warehouse' });
   }
@@ -8385,6 +8645,9 @@ router.patch('/warehouses/:id', requirePermission(Permission.SETTINGS_WRITE), as
     if (updates.name !== undefined) snake.name = updates.name;
     if (updates.is_active !== undefined) snake.is_active = Boolean(updates.is_active);
     if (updates.sort_order !== undefined) snake.sort_order = Number(updates.sort_order);
+    if (updates.kind !== undefined) {
+      snake.kind = normalizeWarehouseKind(updates.kind, 'brand');
+    }
     if (updates.linked_account_id !== undefined) {
       const v = updates.linked_account_id;
       snake.linked_account_id =
@@ -8461,7 +8724,7 @@ router.patch('/warehouses/:id', requirePermission(Permission.SETTINGS_WRITE), as
 
 /**
  * GET /api/v1/me/warehouse-options
- * Active warehouses for tenants — distributors (and others with inventory read) can pick a receiving depot without SETTINGS_READ.
+ * Active warehouses distributors may pick as receiving depot (brand pool + own / account-linked).
  */
 router.get('/me/warehouse-options', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
   try {
@@ -8474,11 +8737,157 @@ router.get('/me/warehouse-options', requirePermission(Permission.INVENTORY_READ)
       .where({ tenant_id: tenantId, is_active: true })
       .orderBy('sort_order', 'asc')
       .orderBy('name', 'asc')
-      .select('id', 'name', 'sort_order');
-    res.json({ data: rows });
+      .select(
+        'id',
+        'name',
+        'sort_order',
+        'kind',
+        'linked_account_id',
+        'linked_team_member_id',
+        'is_active',
+      );
+
+    if (req.user.role === 'distributor') {
+      const email = String(req.user.email || '').trim().toLowerCase();
+      const member = await getDb('team_members').where({ tenant_id: tenantId, email }).first();
+      if (!member || member.role !== 'distributor') {
+        return res.json({ data: [] });
+      }
+      const scoped = filterWarehouseOptionsForDistributor(rows, member);
+      return res.json({
+        data: scoped.map((w) => ({
+          id: w.id,
+          name: w.name,
+          sort_order: w.sort_order,
+          kind: normalizeWarehouseKind(w.kind),
+        })),
+      });
+    }
+
+    res.json({
+      data: rows.map((w) => ({
+        id: w.id,
+        name: w.name,
+        sort_order: w.sort_order,
+        kind: normalizeWarehouseKind(w.kind),
+      })),
+    });
   } catch (err) {
     console.error('[API v1] Error listing warehouse options:', err);
     res.status(500).json({ error: 'Failed to load warehouses' });
+  }
+});
+
+/**
+ * POST /api/v1/me/receiving-warehouse
+ * Distributor creates (or reclaims by name) their receiving warehouse and sets it primary.
+ */
+router.post('/me/receiving-warehouse', requirePermission(Permission.INVENTORY_READ), async (req, res) => {
+  try {
+    const tenantId = getTenantId(req, res);
+    if (!tenantId) return;
+
+    if (req.user.role !== 'distributor') {
+      return res.status(403).json({
+        error: 'Only distributor portal users can create a receiving warehouse.',
+      });
+    }
+
+    const name = String(req.body?.name ?? '').trim();
+    if (!name) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+
+    await ensureDefaultWarehouses(tenantId);
+
+    const email = String(req.user.email || '').trim().toLowerCase();
+    const member = await getDb('team_members').where({ tenant_id: tenantId, email }).first();
+    if (!member || member.role !== 'distributor') {
+      return res.status(404).json({
+        error: 'No distributor CRM contact matches this login email.',
+      });
+    }
+
+    const accountId =
+      member.linked_account_id != null && String(member.linked_account_id).trim() !== ''
+        ? String(member.linked_account_id).trim()
+        : null;
+
+    const now = new Date();
+    let created;
+
+    await getDb().transaction(async (trx) => {
+      // Always reassign: detach any previous receiving warehouse for this distributor.
+      await trx('warehouses')
+        .where({ tenant_id: tenantId, linked_team_member_id: member.id })
+        .update({ linked_team_member_id: null, updated_at: now });
+      await setDistributorReceivingWarehouse(trx, tenantId, member.id, null);
+
+      const existing = await trx('warehouses')
+        .where({ tenant_id: tenantId })
+        .whereRaw('lower(trim(name)) = ?', [name.toLowerCase()])
+        .first();
+
+      if (existing) {
+        // Reclaim same-name row as this distributor's active receiving DC.
+        await trx('warehouses')
+          .where({ id: existing.id, tenant_id: tenantId })
+          .update({
+            name,
+            kind: 'distributor',
+            is_active: true,
+            linked_account_id: accountId,
+            updated_at: now,
+          });
+        await setDistributorReceivingWarehouse(trx, tenantId, member.id, existing.id);
+        created = await trx('warehouses').where({ id: existing.id, tenant_id: tenantId }).first();
+        return;
+      }
+
+      const maxSort = await trx('warehouses').where({ tenant_id: tenantId }).max('sort_order as m').first();
+      const sortOrder = Number(maxSort?.m ?? -1) + 1;
+      const id = `wh-${Date.now()}`;
+      const [row] = await trx('warehouses')
+        .insert({
+          id,
+          tenant_id: tenantId,
+          name,
+          kind: 'distributor',
+          is_active: true,
+          sort_order: sortOrder,
+          linked_account_id: accountId,
+          created_at: now,
+          updated_at: now,
+        })
+        .returning('*');
+      created = row;
+      await setDistributorReceivingWarehouse(trx, tenantId, member.id, id);
+      created = await trx('warehouses').where({ id, tenant_id: tenantId }).first();
+    });
+
+    const updated = await getDb('team_members').where({ id: member.id, tenant_id: tenantId }).first();
+    const warehouseRows = await getDb('warehouses')
+      .where({ tenant_id: tenantId })
+      .orderBy('sort_order', 'asc')
+      .orderBy('name', 'asc');
+
+    res.status(201).json({
+      data: {
+        warehouse: created,
+        team_member: updated,
+        warehouses: warehouseRows,
+      },
+    });
+  } catch (err) {
+    console.error('[API v1] Error creating receiving warehouse:', err);
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A warehouse with this name already exists.' });
+    }
+    const st = err.status || 500;
+    if (st === 404 || st === 400) {
+      return res.status(st).json({ error: err.message });
+    }
+    res.status(500).json({ error: 'Failed to create receiving warehouse' });
   }
 });
 
@@ -8638,6 +9047,18 @@ router.patch('/me/primary-warehouse', requirePermission(Permission.INVENTORY_REA
       return res.status(404).json({
         error: 'No distributor CRM contact matches this login email.',
       });
+    }
+
+    if (wid) {
+      const target = await getDb('warehouses').where({ id: wid, tenant_id: tenantId }).first();
+      if (!target) {
+        return res.status(404).json({ error: 'Warehouse not found' });
+      }
+      if (!canDistributorSelectWarehouse(target, member)) {
+        return res.status(403).json({
+          error: 'That warehouse belongs to another partner. Choose a brand depot or your own receiving warehouse.',
+        });
+      }
     }
 
     try {

@@ -25,8 +25,13 @@ export async function resolveDistributorUserIdForSalesRep(db, tenantId, salesRep
 
   if (email) {
     const tm = await findTeamMemberByEmail(db, tenantId, email);
-    if (tm?.role === 'sales_rep' && tm.managed_by_user_id != null) {
-      return Number(tm.managed_by_user_id);
+    if (tm?.role === 'sales_rep') {
+      if (tm.managed_by_user_id != null) {
+        return Number(tm.managed_by_user_id);
+      }
+      if (tm.managed_by_distributor_user_id != null) {
+        return Number(tm.managed_by_distributor_user_id);
+      }
     }
   }
 

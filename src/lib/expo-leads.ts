@@ -130,7 +130,13 @@ export type LeadAccountDraft = {
   notes: string;
 };
 
-export type ExpoLeadDetail = ExpoLead & { accountDraft?: LeadAccountDraft };
+export type ExpoLeadExportOrder = { displayId: string; stage: string; createdAt: string | null };
+
+export type ExpoLeadDetail = ExpoLead & {
+  accountDraft?: LeadAccountDraft;
+  /** Live (not cancelled) export orders opened from this lead, newest first. */
+  exportOrders?: ExpoLeadExportOrder[];
+};
 
 export type ExpoLeadPublicSubmit = {
   displayId: string;
@@ -162,9 +168,23 @@ export function businessHeadline(businessType: string | null | undefined): strin
   return labelOf(EXPO_BUSINESS_TYPES, businessType);
 }
 
-/** Leads that may be converted into an export file. */
-export function isImporterLead(businessType: string | null | undefined): boolean {
-  return businessType === "importer_distributor" || businessType === "importer";
+/** Leads that may be converted into an export file. Keep in sync with EXPORT_LEAD_TYPES in server/lib/export-orders.mjs. */
+export const EXPORT_LEAD_TYPES = ["importer", "importer_distributor", "wholesale", "duty_free"] as const;
+
+export function isExportLead(businessType: string | null | undefined): boolean {
+  return (EXPORT_LEAD_TYPES as readonly string[]).includes(businessType ?? "");
+}
+
+/** Keep in sync with TRIAL_ORDER_CASES and leadStarterLines in server/lib/export-orders.mjs. */
+export const TRIAL_ORDER_CASES = 40;
+
+/** Starting lines for a lead's export file: First Press in the sizes they picked, one trial order split evenly. */
+export function leadStarterLines(bottleFormat: string | null | undefined): { sku: string; cases: number }[] {
+  const format = String(bottleFormat ?? "");
+  const skus = format === "both" ? ["first_press_750", "first_press_200"] : format === "200ml" ? ["first_press_200"] : ["first_press_750"];
+  const base = Math.floor(TRIAL_ORDER_CASES / skus.length);
+  const extra = TRIAL_ORDER_CASES - base * skus.length;
+  return skus.map((sku, i) => ({ sku, cases: base + (i < extra ? 1 : 0) }));
 }
 
 export function volumeHeadline(volume: string | null | undefined): string {

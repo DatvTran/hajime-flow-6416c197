@@ -10,7 +10,8 @@ import { EXPORT_BUYER_TERMS } from "@/lib/export-pack-copy";
 import { Button } from "@/components/ui/button";
 import { HajimeLogo } from "@/components/HajimeLogo";
 import { PoAcceptanceDocument } from "@/components/export/PoAcceptanceDocument";
-import { poaStatusLabel, type PoaSummary } from "@/lib/po-acceptance-terms";
+import { BuyerPurchaseOrderDocument } from "@/components/export/BuyerPurchaseOrderDocument";
+import { buyerPoStatusLabel, poaStatusLabel, type BuyerPoSummary, type PoaSummary } from "@/lib/po-acceptance-terms";
 
 type Line = {
   sku: string;
@@ -18,6 +19,7 @@ type Line = {
   size?: string;
   cases?: number;
   unitFobUsd?: number;
+  caseUsd?: number;
   lineTotalUsd?: number;
   bottlesPerCase?: number;
 };
@@ -39,6 +41,32 @@ export function ExportOrderDocView({
   const issuedAt =
     (order.issuedDocs as Record<string, { issuedAt?: string }> | undefined)?.[doc]?.issuedAt ||
     (order.buyerDocStatus as Record<string, { issuedAt?: string }> | undefined)?.[doc]?.issuedAt;
+
+  if (doc === "buyer_po") {
+    const bpo = (order.buyerPo as BuyerPoSummary | null | undefined) ?? null;
+    return (
+      <div className="mx-auto max-w-[860px] px-4 py-6 print:max-w-none print:px-0 print:py-0">
+        <style>{`
+          @media print {
+            .export-doc-chrome { display: none !important; }
+            body { background: #fff !important; }
+          }
+        `}</style>
+        <div className="export-doc-chrome mb-4 flex flex-wrap items-center justify-between gap-2">
+          <Link to={backTo} className="text-sm text-accent underline-offset-2 hover:underline">
+            Back to file
+          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">{buyerPoStatusLabel(bpo)}</span>
+            <Button type="button" variant="outline" size="sm" onClick={() => window.print()}>
+              Print / Save PDF
+            </Button>
+          </div>
+        </div>
+        <BuyerPurchaseOrderDocument order={order} bpo={bpo} showAudit={Boolean(onIssue)} />
+      </div>
+    );
+  }
 
   if (doc === "po_acceptance") {
     const poa = (order.poAcceptance as PoaSummary | null | undefined) ?? null;
@@ -120,7 +148,7 @@ export function ExportOrderDocView({
             <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground">Buyer</h2>
             <p className="font-medium">{String(order.buyerCompany)}</p>
             <p>{String(order.buyerName)}</p>
-            <p>{String(order.buyerAddress || "—")}</p>
+            <p className="whitespace-pre-line">{String(order.buyerAddress || "—")}</p>
             <p>{String(order.buyerEmail || "—")}</p>
             <p>
               {String(order.territory)}
@@ -142,27 +170,35 @@ export function ExportOrderDocView({
                 <th className="py-1.5">Product</th>
                 <th className="py-1.5">Size</th>
                 <th className="py-1.5">Cases</th>
-                <th className="py-1.5">FOB / btl</th>
+                <th className="py-1.5">FOB / case</th>
                 <th className="py-1.5">Line USD</th>
               </tr>
             </thead>
             <tbody>
-              {lines.map((l) => (
-                <tr key={l.sku} className="border-b border-border/60">
-                  <td className="py-1.5">{l.product || l.sku}</td>
-                  <td className="py-1.5">{l.size}</td>
-                  <td className="py-1.5">{l.cases}</td>
-                  <td className="py-1.5">{l.unitFobUsd != null ? `$${l.unitFobUsd}` : "—"}</td>
-                  <td className="py-1.5">{l.lineTotalUsd != null ? `$${Number(l.lineTotalUsd).toLocaleString()}` : "—"}</td>
-                </tr>
-              ))}
+              {lines.map((l) => {
+                const caseUsd =
+                  l.caseUsd != null
+                    ? Number(l.caseUsd)
+                    : l.unitFobUsd != null && l.bottlesPerCase
+                      ? Number(l.unitFobUsd) * Number(l.bottlesPerCase)
+                      : null;
+                return (
+                  <tr key={l.sku} className="border-b border-border/60">
+                    <td className="py-1.5">{l.product || l.sku}</td>
+                    <td className="py-1.5">{l.size}</td>
+                    <td className="py-1.5">{l.cases}</td>
+                    <td className="py-1.5">{caseUsd != null ? `$${money(caseUsd)}` : "—"}</td>
+                    <td className="py-1.5">{l.lineTotalUsd != null ? `$${money(l.lineTotalUsd)}` : "—"}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ) : null}
 
         <p className="mb-4 font-medium">
-          Subtotal ${Number(order.subtotalUsd ?? 0).toLocaleString()} · Deposit due $
-          {Number(order.depositDueUsd ?? 0).toLocaleString()} · Balance ${Number(order.balanceDueUsd ?? 0).toLocaleString()}
+          Subtotal ${money(order.subtotalUsd)} · Deposit due ${money(order.depositDueUsd)} · Balance $
+          {money(order.balanceDueUsd)}
         </p>
 
         {docCopy(doc, order)}
@@ -178,6 +214,10 @@ export function ExportOrderDocView({
       </article>
     </div>
   );
+}
+
+function money(n: unknown): string {
+  return Number(n ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function showWire(doc: ExportDocType): boolean {
@@ -216,8 +256,8 @@ function docCopy(doc: ExportDocType, order: ExportOrderDto) {
   if (doc === "quotation") {
     return (
       <p>
-        This quotation is issued by Hajime Ltd. for the territory named above. Volume bands apply to 750 ml cases. 200 ml
-        is quoted at list and is not 1:1 with 750 ml tiers. Valid {String(order.quoteValidUntil || "as stated on issue")}.
+        This quotation is issued by Hajime Ltd. for the territory named above. One FOB price per case. No volume
+        discount. Valid {String(order.quoteValidUntil || "as stated on issue")}.
       </p>
     );
   }

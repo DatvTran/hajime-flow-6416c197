@@ -23,11 +23,15 @@ import {
   EXPORT_STAGES,
   canAuthorizeProduction,
   canReleaseShipment,
+  caseFobFromUnit,
   requiredChecklistReady,
   priceLines,
+  skuMeta,
+  unitFobFromCase,
   type DepositStatus,
   type ExportSkuCode,
 } from "@/lib/export-commercial";
+import { INTERNATIONAL_ORDER_SKUS } from "@/lib/export-catalog";
 import {
   HqBtnLink,
   HqOperatorPage,
@@ -41,6 +45,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "@/components/ui/sonner";
 import { HqPoAcceptancePanel } from "@/components/export/HqPoAcceptancePanel";
+import { HqBuyerPoPanel } from "@/components/export/HqBuyerPoPanel";
 import { cn } from "@/lib/utils";
 
 function canHq(role: string | undefined) {
@@ -56,6 +61,8 @@ export default function HqExportOrdersPage() {
 }
 
 function ExportOrderList() {
+  const { user } = useAuth();
+  const booth = user?.role === "brand_operator" || user?.role === "founder_admin" || user?.role === "operations";
   const [rows, setRows] = useState<ExportOrderDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,25 +112,28 @@ function ExportOrderList() {
         title="International orders"
         description="Hajime Ltd. (Hong Kong) seller file. Distributors place orders in their portal; those files appear here already linked. Expo / HQ can still open a file when the buyer is not in the portal yet."
         actions={
-          <HqBtnLink to="/brand-kit" variant="outline">
-            Brand kit
-          </HqBtnLink>
+          <div className="flex flex-wrap gap-2">
+            {booth ? <HqBtnLink to="/expo-leads/booth">Booth</HqBtnLink> : null}
+            <HqBtnLink to="/brand-kit" variant="outline">
+              Brand kit
+            </HqBtnLink>
+          </div>
         }
       />
       <p className="mb-4 text-[12px] text-muted-foreground">
         {EXPORT_SELLER.workingIncoterm}. {EXPORT_SELLER.incotermNote} Floor prices stay on this HQ screen only.
       </p>
 
-      <div className="mb-6 flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-4">
-        <div className="space-y-1">
+      <div className="mb-6 flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-2">
+        <div className="w-full min-w-0 space-y-1 sm:w-auto">
           <Label>Buyer company</Label>
-          <Input value={company} onChange={(e) => setCompany(e.target.value)} className="w-56" />
+          <Input value={company} onChange={(e) => setCompany(e.target.value)} className="w-full sm:w-56" />
         </div>
-        <div className="space-y-1">
+        <div className="w-full min-w-0 space-y-1 sm:w-auto">
           <Label>Territory</Label>
-          <Input value={territory} onChange={(e) => setTerritory(e.target.value)} className="w-44" />
+          <Input value={territory} onChange={(e) => setTerritory(e.target.value)} className="w-full sm:w-44" />
         </div>
-        <Button type="button" onClick={() => void create()}>
+        <Button type="button" className="w-full touch-manipulation sm:w-auto" onClick={() => void create()}>
           New commercial file
         </Button>
       </div>
@@ -141,8 +151,8 @@ function ExportOrderList() {
           / the form above.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full text-left text-[13px]">
+        <div className="-mx-4 overflow-x-auto touch-pan-x rounded-xl border border-border px-4 sm:mx-0 sm:px-0">
+          <table className="w-full min-w-[640px] text-left text-[13px]">
             <thead className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2">File</th>
@@ -184,20 +194,30 @@ function ExportOrderList() {
   );
 }
 
-function lineCases(order: ExportOrderDto): { sku: ExportSkuCode; cases: number; unitFobUsd?: number }[] {
+function lineCases(order: ExportOrderDto): {
+  sku: ExportSkuCode;
+  cases: number;
+  unitFobUsd?: number;
+  caseUsd?: number;
+}[] {
   const lines = Array.isArray(order.lines) ? order.lines : [];
-  return lines.map((l: { sku: string; cases: number; unitFobUsd?: number }) => ({
+  return lines.map((l: { sku: string; cases: number; unitFobUsd?: number; caseUsd?: number }) => ({
     sku: l.sku as ExportSkuCode,
     cases: Number(l.cases) || 0,
     unitFobUsd: l.unitFobUsd,
+    caseUsd: l.caseUsd,
   }));
 }
 
 function ExportOrderDetail({ orderId }: { orderId: string }) {
+  const { user } = useAuth();
+  const canApproveFloor = user?.role === "founder_admin" || user?.role === "brand_operator";
   const [order, setOrder] = useState<ExportOrderDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [optionalOpen, setOptionalOpen] = useState(false);
+  const [floorReason, setFloorReason] = useState("");
+  const [unitDraft, setUnitDraft] = useState<Partial<Record<ExportSkuCode, number>>>({});
 
   const load = useCallback(async () => {
     try {
@@ -213,6 +233,11 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!order || window.location.hash !== "#record-deposit") return;
+    document.getElementById("record-deposit")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [order]);
+
   const act = async (path: string, body: Record<string, unknown> = {}, method: "POST" | "PATCH" = "POST") => {
     if (!order) return;
     setSaving(true);
@@ -220,8 +245,17 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
       const res = await postExportOrderAction(String(order.displayId), path, body, method);
       setOrder(res.data);
       toast.success("Updated");
+      return true;
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Action failed");
+      const msg = e instanceof Error ? e.message : "Action failed";
+      toast.error(
+        msg.includes("record_payment")
+          ? "Record the deposit after the buyer countersigns and the pro forma is issued."
+          : msg === "BELOW_INTERNAL_FLOOR"
+            ? "Under the floor. A founder or brand operator approves the price below, then issue the quotation."
+            : msg,
+      );
+      return false;
     } finally {
       setSaving(false);
     }
@@ -241,11 +275,32 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
     }
   };
 
-  const setLine = (sku: ExportSkuCode, cases: number) => {
+  const setLine = (sku: ExportSkuCode, cases: number, unitFobUsd?: number, caseUsd?: number) => {
     if (!order) return;
-    const current = lineCases(order).filter((l) => l.sku !== sku);
-    if (cases > 0) current.push({ sku, cases });
+    const all = lineCases(order);
+    const prev = all.find((l) => l.sku === sku);
+    const current = all.filter((l) => l.sku !== sku);
+    const unit = unitFobUsd ?? unitDraft[sku] ?? prev?.unitFobUsd;
+    const casePrice = caseUsd ?? prev?.caseUsd;
+    if (cases > 0) {
+      current.push({
+        sku,
+        cases,
+        ...(unit != null ? { unitFobUsd: unit } : {}),
+        ...(casePrice != null ? { caseUsd: casePrice } : {}),
+      });
+    }
     void save({ lines: current });
+  };
+
+  const setCaseFob = (sku: ExportSkuCode, raw: string) => {
+    const caseUsd = Number(raw);
+    const meta = skuMeta(sku);
+    if (!meta || raw.trim() === "" || !Number.isFinite(caseUsd) || caseUsd < 0) return;
+    const unit = unitFobFromCase(caseUsd, meta.bottlesPerCase);
+    setUnitDraft((d) => ({ ...d, [sku]: unit }));
+    const line = order ? lineCases(order).find((l) => l.sku === sku) : undefined;
+    if (line && line.cases > 0 && line.caseUsd !== caseUsd) setLine(sku, line.cases, unit, caseUsd);
   };
 
   if (!order && !error) {
@@ -294,6 +349,7 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
 
   const docs = [
     ["quotation", "Quotation"],
+    ["buyer_po", "Purchase order"],
     ["po_acceptance", "PO acceptance"],
     ["proforma", "Pro forma"],
     ["deposit", "Deposit"],
@@ -310,17 +366,50 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
         description={`${order.buyerCompany} · ${order.territory} · ${EXPORT_SELLER.paymentSummary}${order.origin === "portal" ? " · From portal" : ""}`}
         rawDescription
         actions={
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/export-orders">All files</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {order.expoLeadId ? (
+              <Button variant="outline" size="sm" asChild>
+                <Link to={`/expo-leads/${encodeURIComponent(String(order.expoLeadId))}`}>Expo lead</Link>
+              </Button>
+            ) : null}
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/export-orders">All files</Link>
+            </Button>
+          </div>
         }
       />
 
       {priced.lines.some((l) => l.belowFloor) ? (
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>
-            Unit FOB is below the internal floor. Buyer PDFs must not show floor or cost. Pricing outside approved tier
-            needs a commercial approver.
+            <p>
+              Unit FOB is below the internal floor. The quotation can be issued once a founder or brand operator approves
+              this price. Changing a price or case count afterwards needs a new approval. Buyer PDFs never show the floor
+              or cost.
+            </p>
+            {canApproveFloor ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Input
+                  className="h-9 w-72 max-w-full bg-background"
+                  placeholder="Reason, e.g. Expo trial for first order"
+                  value={floorReason}
+                  aria-label="Reason for approving a below-floor price"
+                  onChange={(e) => setFloorReason(e.target.value)}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={saving || !floorReason.trim()}
+                  onClick={() =>
+                    void act("exceptions", { kind: "below_floor_approved", reason: floorReason.trim() }).then((ok) => {
+                      if (ok) setFloorReason("");
+                    })
+                  }
+                >
+                  Approve below-floor price
+                </Button>
+              </div>
+            ) : null}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -361,6 +450,7 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
           Issue PI
         </Button>
         <Button
+          id="record-deposit"
           type="button"
           size="sm"
           variant="outline"
@@ -447,26 +537,68 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
         </div>
 
         <div className="space-y-3 rounded-xl border border-border bg-card p-5">
-          <h2 className="font-display text-lg">FOB lines (USD)</h2>
-          {EXPORT_SKUS.map((s) => {
+          <h2 className="font-display text-lg">FOB lines (USD / case)</h2>
+          {order.origin === "portal" ? (
+            <p className="text-[12px] text-muted-foreground">
+              Case USD = negotiated FOB / bottle × bottles / case (list FOB if unset). Line = Case × cases. Edit Case
+              USD here to override on this file only.
+            </p>
+          ) : null}
+          <div className="hidden grid-cols-[minmax(0,1fr)_96px_80px] items-end gap-2 text-[11px] uppercase tracking-wide text-muted-foreground sm:grid">
+            <span>Product</span>
+            <span>Case USD</span>
+            <span>Cases</span>
+          </div>
+          {/* First Press only until Second Bloom / Yuzu cost is confirmed. */}
+          {EXPORT_SKUS.filter((s) => (INTERNATIONAL_ORDER_SKUS as readonly string[]).includes(s.sku)).map((s) => {
             const line = priced.lines.find((l) => l.sku === s.sku);
+            const unit = line?.unitFobUsd ?? unitDraft[s.sku] ?? s.listFobUsd;
+            const caseUsd = line?.caseUsd ?? caseFobFromUnit(unit, s.bottlesPerCase);
+            const name = `${s.product.replace("Hajime ", "")} ${s.size}`;
             return (
-              <div key={s.sku} className="flex items-center justify-between gap-2 text-[13px]">
-                <span className="min-w-0 flex-1">
-                  {s.product.replace("Hajime ", "")} {s.size}
+              <div
+                key={s.sku}
+                className="grid grid-cols-2 items-center gap-2 text-[13px] sm:grid-cols-[minmax(0,1fr)_96px_80px]"
+              >
+                <span className="col-span-2 min-w-0 sm:col-span-1">
+                  {name}
                   <span className="block text-[11px] text-muted-foreground">
-                    Target {s.listFobUsd} · floor {s.floorFobUsd} (HQ only)
+                    {s.bottlesPerCase} btls/case
+                    {line ? ` · Line $${line.lineTotalUsd.toLocaleString()}` : ""}
                   </span>
                 </span>
-                <Input
+                <div className="space-y-1 sm:contents">
+                  <Label className="text-[11px] uppercase tracking-wide text-muted-foreground sm:hidden">Case USD</Label>
+                  <Input
                   type="number"
-                  className="w-20"
-                  defaultValue={line?.cases ?? 0}
-                  onBlur={(e) => setLine(s.sku, Number(e.target.value) || 0)}
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  aria-label={`Case FOB for ${name}`}
+                  key={`case-${s.sku}-${caseUsd}`}
+                  defaultValue={caseUsd.toFixed(2)}
+                  disabled={saving || Boolean(order.depositFrozen)}
+                  onBlur={(e) => setCaseFob(s.sku, e.target.value)}
                 />
+                </div>
+                <div className="space-y-1 sm:contents">
+                  <Label className="text-[11px] uppercase tracking-wide text-muted-foreground sm:hidden">Cases</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    aria-label={`Cases of ${name}`}
+                    key={`cases-${s.sku}-${line?.cases ?? 0}`}
+                    defaultValue={line?.cases ?? 0}
+                    disabled={saving || Boolean(order.depositFrozen)}
+                    onBlur={(e) => setLine(s.sku, Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                  />
+                </div>
               </div>
             );
           })}
+          {order.depositFrozen ? (
+            <p className="text-[11px] text-muted-foreground">Case prices and quantities are locked once the pro forma is issued.</p>
+          ) : null}
           <p className="text-[13px]">
             Subtotal ${priced.subtotalUsd.toLocaleString()} · Deposit ${priced.depositDueUsd.toLocaleString()} · Balance $
             {priced.balanceDueUsd.toLocaleString()} · {priced.cases750} cases 750 ml
@@ -531,6 +663,10 @@ function ExportOrderDetail({ orderId }: { orderId: string }) {
             {relOk ? "Release conditions met" : "Release blocked until balance, checklist, named FOB"}
           </HqOperatorPill>
         </div>
+      </div>
+
+      <div id="buyer-po" className="scroll-mt-4">
+        <HqBuyerPoPanel order={order} onOrder={setOrder} />
       </div>
 
       <div id="po-acceptance" className="scroll-mt-4">

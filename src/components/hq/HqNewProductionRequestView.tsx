@@ -81,7 +81,7 @@ export function HqNewProductionRequestView({
   const [quantity, setQuantity] = useState("1200");
   const [packagingInstructions, setPackagingInstructions] = useState("Standard 12-bottle case");
   const [labelVersion, setLabelVersion] = useState("v3.1");
-  const [marketDestination, setMarketDestination] = useState("Toronto Main Warehouse");
+  const [marketDestination, setMarketDestination] = useState("");
   const [status, setStatus] = useState<PurchaseOrder["status"]>("approved");
   const [notes, setNotes] = useState("");
   const [selectedDistributorId, setSelectedDistributorId] = useState(distributorAccountId || "");
@@ -512,10 +512,8 @@ export function HqNewProductionRequestView({
                   disabled={submitting}
                   className="hq-form-select"
                 >
-                  {(destinationWarehouses.length > 0
-                    ? destinationWarehouses
-                    : [{ id: "fallback", name: "Toronto Main Warehouse", isActive: true, sortOrder: 0 }]
-                  ).map((w) => (
+                  <option value="">{t("Select warehouse")}</option>
+                  {destinationWarehouses.map((w) => (
                     <option key={w.id} value={w.name}>
                       {w.name}
                     </option>

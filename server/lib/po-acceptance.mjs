@@ -9,6 +9,17 @@ export const PO_ACCEPTANCE_SELLER = {
   registeredAddress: "21/F, CMA Building, 64 Connaught Road, Central, Hong Kong",
 };
 
+/** Must match BUYER_PO_TERMS_VERSION in src/lib/po-acceptance-terms.ts. */
+export const BUYER_PO_TERMS_VERSION = "BPO Rev. 3 Nov 2026";
+
+/** Must match BUYER_PO_TERMS in src/lib/po-acceptance-terms.ts. */
+export const BUYER_PO_TERMS = [
+  "Buyer offers to purchase the goods listed above from Hajime Ltd. at the quoted prices, on the delivery rule and window shown.",
+  "Amounts are in USD. Buyer pays a 50% deposit against Hajime Ltd.'s pro forma invoice, and the remaining 50% before the goods are released for shipment.",
+  "This order becomes binding when Hajime Ltd. issues its purchase order acceptance and Buyer countersigns it. The acceptance and its conditions govern this order.",
+  "Buyer confirms it holds, or will appoint, the licensed importer of record for the destination market.",
+];
+
 export const SIGN_LINK_TTL_DAYS = 30;
 export const INCOTERM_RULES = ["FOB", "FCA"];
 
@@ -105,10 +116,10 @@ export function serializePoaDoc(doc, { includeSnapshot = true, includeAudit = fa
   };
 }
 
-export async function latestPoaDoc(db, tenantId, orderId) {
+export async function latestPoaDoc(db, tenantId, orderId, docType = "po_acceptance") {
   if (!(await db.schema.hasTable("export_documents"))) return null;
   return db("export_documents")
-    .where({ tenant_id: tenantId, export_order_id: orderId, doc_type: "po_acceptance" })
+    .where({ tenant_id: tenantId, export_order_id: orderId, doc_type: docType })
     .orderBy("revision", "desc")
     .first();
 }
@@ -120,6 +131,7 @@ export function poaIssueGaps(order, pricedLineCount) {
   if (!INCOTERM_RULES.includes(String(order.incoterm_rule || ""))) gaps.push("Incoterms rule (FOB or FCA)");
   if (!String(order.fob_named_point || "").trim()) gaps.push("named port or place");
   if (!String(order.delivery_window || "").trim()) gaps.push("delivery window / lead time");
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(order.requested_month || ""))) gaps.push("requested delivery month");
   if (!String(order.buyer_notice_email || order.buyer_email || "").trim()) gaps.push("buyer email");
   return gaps;
 }
@@ -145,4 +157,16 @@ export function validateCountersign(body = {}) {
   if (!v.signatoryTitle) errors.signatoryTitle = "Enter your title.";
   if (body.authority !== true) errors.authority = "Confirm you are authorised to sign.";
   return { ok: Object.keys(errors).length === 0, value: v, errors };
+}
+
+/** Countersign fields, the buyer's own optional PO reference, initials agreeing the prices, and the delivery month. */
+export function validateBuyerPoSign(body = {}) {
+  const check = validateCountersign(body);
+  const buyerPoRef = String(body.buyerPoRef ?? "").trim().slice(0, 64);
+  const priceInitials = String(body.priceInitials ?? "").trim().slice(0, 12);
+  const requestedMonth = String(body.requestedMonth ?? "").trim();
+  const errors = { ...check.errors };
+  if (!priceInitials) errors.priceInitials = "Initial to agree the prices.";
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth)) errors.requestedMonth = "Choose when you need the goods.";
+  return { ok: Object.keys(errors).length === 0, value: { ...check.value, buyerPoRef, priceInitials, requestedMonth }, errors };
 }

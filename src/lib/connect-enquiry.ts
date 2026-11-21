@@ -10,9 +10,9 @@ export const CONNECT_BUSINESS: ConnectOption[] = [
   { id: "other", label: "Other" },
 ];
 
+/** Second Bloom is off the expo until its cost is confirmed. Keep in sync with PRODUCT_IDS in server/lib/expo-leads.mjs. */
 export const CONNECT_PRODUCTS = [
   { id: "first_press", name: "First Press", desc: "Coffee Rhum", img: "/connect-img/first_press.jpg" },
-  { id: "second_bloom", name: "Second Bloom", desc: "Yuzu Mint Rhum", img: "/connect-img/second_bloom.jpg" },
 ] as const;
 
 export const CONNECT_PURPOSES: ConnectOption[] = [

@@ -695,7 +695,7 @@ export default function SalesRepHomePage() {
           </Link>
         </div>
         <div className="overflow-hidden rounded-[14px] border border-border/70 bg-card shadow-[var(--shadow-soft)]">
-          <div className="overflow-x-auto">
+          <div className="-mx-4 overflow-x-auto touch-pan-x px-4 sm:mx-0 sm:px-0">
             <table className="w-full min-w-[640px] border-collapse text-[13px]">
               <thead>
                 <tr className="border-b border-border/50 bg-muted/50">

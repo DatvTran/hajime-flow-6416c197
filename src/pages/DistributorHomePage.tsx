@@ -5,10 +5,9 @@ import {
 } from "@/lib/distributor-fulfillment-links";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/StatusBadge";
 import { DistributorPartnerHero } from "@/components/distributor/DistributorPartnerHero";
+import { DistributorReceivingWarehousePanel } from "@/components/distributor/DistributorReceivingWarehousePanel";
 import {
   DistributorAlertBar,
   DistributorCard,
@@ -25,9 +24,6 @@ import { useShipmentsAutoRefresh } from "@/hooks/useShipmentsAutoRefresh";
 import { useAuth } from "@/contexts/AuthContext";
 import { computeInventorySummary, visibleDerivedAlerts } from "@/lib/hajime-metrics";
 import { shipmentLineContentsLabel } from "@/lib/order-lines";
-import { getMyWarehouseOptions, updateMyPrimaryWarehouse } from "@/lib/api-v1-mutations";
-import type { Warehouse } from "@/types/app-data";
-import { toast } from "@/components/ui/sonner";
 import { DistributorSkeleton } from "@/components/skeletons";
 import {
   AlertTriangle,
@@ -42,21 +38,6 @@ import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { portalTimeGreeting } from "@/lib/i18n-portal";
 import { DistributorDeliveryScheduleView } from "@/components/distributor/DistributorDeliveryScheduleView";
-
-function warehousesFromApiRows(rows: Record<string, unknown>[]): Warehouse[] {
-  return rows.map((row) => {
-    const lt = row.linked_team_member_id;
-    const la = row.linked_account_id;
-    return {
-      id: String(row.id ?? ""),
-      name: String(row.name ?? "").trim(),
-      isActive: row.is_active !== false,
-      sortOrder: Number(row.sort_order ?? 0),
-      ...(lt ? { linkedTeamMemberId: String(lt) } : {}),
-      ...(la ? { linkedAccountId: String(la) } : {}),
-    };
-  });
-}
 
 function greetingName(displayName: string): string {
   const first = displayName.trim().split(/\s+/)[0];
@@ -87,11 +68,9 @@ export default function DistributorHomePage() {
   const { t, language } = useLanguage();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { data, loading, updateData, refreshTeamMembers, refreshShipments } = useAppData();
+  const { data, loading, refreshShipments } = useAppData();
   const { purchaseOrders } = usePurchaseOrders();
   const { salesOrders } = useSalesOrders();
-  const [warehouseOptions, setWarehouseOptions] = useState<{ id: string; name: string }[]>([]);
-  const [primarySaving, setPrimarySaving] = useState(false);
   const [urgentDismissed, setUrgentDismissed] = useState(false);
 
   const inv = useMemo(() => computeInventorySummary(data.inventory, data.purchaseOrders), [data.inventory, data.purchaseOrders]);
@@ -144,33 +123,8 @@ export default function DistributorHomePage() {
   const urgentOrder = awaitingFulfillment[0];
   const urgentAlert = alerts.find((a) => a.severity === "high") ?? alerts[0];
 
-  const myCrmRow = useMemo(() => {
-    const em = user?.email?.trim().toLowerCase();
-    if (!em) return undefined;
-    return (data.teamMembers ?? []).find((m) => m.email?.toLowerCase() === em);
-  }, [data.teamMembers, user?.email]);
-
-  const selectedPrimaryWarehouseId = myCrmRow?.primaryWarehouseId ?? "";
-
   const stableRefreshShipments = useCallback(() => refreshShipments(), [refreshShipments]);
   useShipmentsAutoRefresh(stableRefreshShipments, !loading);
-
-  useEffect(() => {
-    if (user?.role !== "distributor") return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = (await getMyWarehouseOptions()) as { data?: { id: string; name: string }[] };
-        const rows = Array.isArray(res.data) ? res.data : [];
-        if (!cancelled) setWarehouseOptions(rows);
-      } catch {
-        if (!cancelled) setWarehouseOptions([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.role]);
 
   useEffect(() => {
     const el = document.querySelector("[data-distributor-scroll]");
@@ -179,37 +133,6 @@ export default function DistributorHomePage() {
     const target = document.getElementById(id);
     if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [loading]);
-
-  const onPrimaryWarehouseChange = async (warehouseId: string) => {
-    if (user?.role !== "distributor") return;
-    const next = warehouseId === "__none__" ? null : warehouseId;
-    setPrimarySaving(true);
-    try {
-      const res = (await updateMyPrimaryWarehouse(next)) as {
-        data?: { team_member?: Record<string, unknown>; warehouses?: Record<string, unknown>[] };
-      };
-      const payload = res.data;
-      if (payload?.warehouses?.length) {
-        updateData((d) => ({
-          ...d,
-          warehouses: warehousesFromApiRows(payload.warehouses ?? []),
-        }));
-      }
-      await refreshTeamMembers();
-      await refreshShipments();
-      toast.success(next ? "Receiving warehouse updated" : "Receiving warehouse cleared", {
-        description: next
-          ? "Your depot selection is saved and visible to Hajime HQ."
-          : "You can pick a depot again anytime.",
-      });
-    } catch (e) {
-      toast.error("Could not save warehouse", {
-        description: e instanceof Error ? e.message : "Try again.",
-      });
-    } finally {
-      setPrimarySaving(false);
-    }
-  };
 
   if (loading) {
     return <DistributorSkeleton />;
@@ -317,37 +240,7 @@ export default function DistributorHomePage() {
         <DistributorPartnerHero />
       </div>
 
-      {user?.role === "distributor" ? (
-        <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-soft)]">
-          <div className="mb-3 flex items-center gap-2">
-            <Warehouse className="size-5 text-accent" strokeWidth={1.5} />
-            <h3 className="font-display text-base font-semibold">{t("Your receiving warehouse")}</h3>
-          </div>
-          <p className="mb-3 text-sm text-muted-foreground">
-            {t("Choose which Hajime depot you operate from — HQ uses this to route inbound stock and shipments.")}
-          </p>
-          <div className="max-w-md space-y-2">
-            <Label htmlFor="dist-primary-wh">{t("Primary depot")}</Label>
-            <Select
-              value={selectedPrimaryWarehouseId || "__none__"}
-              onValueChange={(v) => void onPrimaryWarehouseChange(v)}
-              disabled={primarySaving || warehouseOptions.length === 0}
-            >
-              <SelectTrigger id="dist-primary-wh" className="touch-manipulation">
-                <SelectValue placeholder={warehouseOptions.length === 0 ? t("Loading depots…") : t("Select depot")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">{t("None selected")}</SelectItem>
-                {warehouseOptions.map((w) => (
-                  <SelectItem key={w.id} value={w.id}>
-                    {w.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      ) : null}
+      <DistributorReceivingWarehousePanel variant="card" />
 
       <DistributorTwoCol>
         <DistributorCard>
@@ -425,7 +318,7 @@ export default function DistributorHomePage() {
       <div id="active-shipments" className="scroll-mt-6 space-y-3.5">
         <DistributorSectionHead title="Active shipments" linkLabel="All shipments →" linkTo="/distributor/shipments" />
         <DistributorCard>
-          <div className="overflow-x-auto">
+          <div className="-mx-4 overflow-x-auto touch-pan-x px-4 sm:mx-0 sm:px-0">
             <table className="dist-data-table w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-border/50 bg-muted/50">

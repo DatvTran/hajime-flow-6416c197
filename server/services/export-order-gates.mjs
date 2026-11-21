@@ -1,4 +1,4 @@
-import { asJsonObject, requiredChecklistReady } from "../lib/export-orders.mjs";
+import { asJsonObject, priceExportLines, requiredChecklistReady } from "../lib/export-orders.mjs";
 
 export function fobTerminalNamed(point) {
   const s = String(point || "").trim();
@@ -48,18 +48,51 @@ export function assertReleaseGate(order, payments, checklist, exception) {
     : { ok: false, code: "RELEASE_BLOCKED", failures };
 }
 
+/** Latest payment or release exception. Below-floor price approvals are matched separately and never count here. */
 export async function latestException(trx, tenantId, orderId) {
-  const row = await trx("export_order_events")
+  const rows = await trx("export_order_events")
     .where({
       tenant_id: tenantId,
       export_order_id: orderId,
       event_type: "exception_approved",
     })
-    .orderBy("occurred_at", "desc")
-    .first();
-  if (!row) return null;
-  const detail = typeof row.detail === "string" ? JSON.parse(row.detail) : row.detail || {};
-  return { kind: detail.kind, ...detail };
+    .orderBy("occurred_at", "desc");
+  for (const row of rows || []) {
+    const detail = typeof row.detail === "string" ? JSON.parse(row.detail) : row.detail || {};
+    if (detail.kind !== "below_floor_approved") return { kind: detail.kind, ...detail };
+  }
+  return null;
+}
+
+export async function latestExceptionOfKind(trx, tenantId, orderId, kind) {
+  if (!(await trx.schema.hasTable("export_order_events"))) return null;
+  const rows = await trx("export_order_events")
+    .where({
+      tenant_id: tenantId,
+      export_order_id: orderId,
+      event_type: "exception_approved",
+    })
+    .orderBy("occurred_at", "desc");
+  for (const row of rows || []) {
+    const detail = typeof row.detail === "string" ? JSON.parse(row.detail) : row.detail || {};
+    if (detail.kind === kind) return { ...detail, kind };
+  }
+  return null;
+}
+
+/** Priced lines reduced to sku, cases and unit price, so an approval can be matched to the exact quote it approved. */
+export function floorLinesKey(lines) {
+  return priceExportLines(lines)
+    .lines.map((l) => `${l.sku}:${l.cases}:${l.unitFobUsd}`)
+    .sort()
+    .join("|");
+}
+
+/** A below-floor approval only counts while the lines still match the snapshot taken when it was approved. */
+export function matchingFloorApproval(exception, lines) {
+  if (exception?.kind !== "below_floor_approved") return null;
+  if (!exception.lines || exception.lines !== floorLinesKey(lines)) return null;
+  return exception;
 }
 
 export async function loadPayments(trx, tenantId, orderId) {

@@ -1,4 +1,4 @@
-import type { PoaSummary } from "@/lib/po-acceptance-terms";
+import type { BuyerPoSummary, PoaSummary } from "@/lib/po-acceptance-terms";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 
@@ -29,8 +29,8 @@ export class PoaApiError extends Error {
   }
 }
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}/api/v1/po-acceptance/${path}`, {
+async function call<T>(path: string, init?: RequestInit, base = "po-acceptance"): Promise<T> {
+  const res = await fetch(`${API_URL}/api/v1/${base}/${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
     cache: "no-store",
@@ -49,4 +49,24 @@ export function countersignPoa(
   body: PoaCountersignFields & { authority: boolean; fax?: string },
 ): Promise<PoaSigningView> {
   return call(`${encodeURIComponent(token)}/accept`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export type BuyerPoSignFields = PoaCountersignFields & { buyerPoRef: string; priceInitials: string; requestedMonth: string };
+
+export type BuyerPoSigningView = BuyerPoSummary & {
+  displayId: string;
+  replacedBy: { docNumber: string; revision: number } | null;
+  prefill: Partial<BuyerPoSignFields> | null;
+  deliveryMonths?: { month: string; available: boolean }[];
+};
+
+export function getBuyerPoForSigning(token: string): Promise<BuyerPoSigningView> {
+  return call(encodeURIComponent(token), undefined, "buyer-po");
+}
+
+export function signBuyerPo(
+  token: string,
+  body: BuyerPoSignFields & { authority: boolean; fax?: string },
+): Promise<BuyerPoSigningView> {
+  return call(`${encodeURIComponent(token)}/sign`, { method: "POST", body: JSON.stringify(body) }, "buyer-po");
 }

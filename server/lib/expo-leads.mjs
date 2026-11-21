@@ -20,7 +20,8 @@ export const BUSINESS_TYPES = [
 export const EXPRESSIONS = ['first_press', 'yuzu_mint', 'both'];
 
 /** Product ids picked on the mobile Connect flow; stored in `expression`. */
-export const PRODUCT_IDS = ['first_press', 'second_bloom'];
+/** Products the expo enquiry form offers. Second Bloom is off until its cost is confirmed; keep in sync with CONNECT_PRODUCTS. */
+export const PRODUCT_IDS = ['first_press'];
 
 export const ENQUIRY_PURPOSES = ['pricing', 'tasting', 'distribution'];
 
@@ -311,60 +312,65 @@ export function validateInternalPatch(body) {
   return { ok: true, patch };
 }
 
-export async function insertExpoLead(db, tenantId, buyer) {
-  const now = new Date();
-  return db.transaction(async (trx) => {
-    await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [`expo_leads:${tenantId}:${buyer.event_code}`]);
-    const hasConnectCols = await trx.schema.hasColumn('expo_leads', 'submission_key');
-    if (hasConnectCols && buyer.submission_key) {
-      const existing = await trx('expo_leads')
-        .where({ tenant_id: tenantId, submission_key: buyer.submission_key })
-        .first();
-      if (existing) return existing;
-    }
-    const agg = await trx('expo_leads')
-      .where({ tenant_id: tenantId, event_code: buyer.event_code })
-      .max('seq as max')
+/** Insert one lead on an existing transaction so the booth can save the order with it. */
+export async function writeExpoLead(trx, tenantId, buyer, now = new Date()) {
+  await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [`expo_leads:${tenantId}:${buyer.event_code}`]);
+  const hasConnectCols = await trx.schema.hasColumn('expo_leads', 'submission_key');
+  if (hasConnectCols && buyer.submission_key) {
+    const existing = await trx('expo_leads')
+      .where({ tenant_id: tenantId, submission_key: buyer.submission_key })
       .first();
-    const seq = Number(agg?.max ?? 0) + 1;
-    const displayId = `${buyer.event_code}-${String(seq).padStart(3, '0')}`;
-    const payload = {
-        tenant_id: tenantId,
-        event_code: buyer.event_code,
-        seq,
-        display_id: displayId,
-        full_name: buyer.full_name,
-        company_name: buyer.company_name,
-        job_title: buyer.job_title,
-        business_email: buyer.business_email,
-        mobile: buyer.mobile,
-        country_market: buyer.country_market,
-        company_website: buyer.company_website,
-        business_type: buyer.business_type,
-        expression: buyer.expression,
-        interests: JSON.stringify(buyer.interests ?? []),
-        bottle_format: buyer.bottle_format,
-        volume: buyer.volume,
-        territory: buyer.territory,
-        timing: buyer.timing,
-        message: buyer.message,
-        consent_at: now,
-        submitted_at: now,
-        met_at: now,
-        status: 'new',
-    };
-    if (await trx.schema.hasColumn('expo_leads', 'capture_ip')) {
-      payload.capture_ip = buyer.capture_ip || null;
-    }
-    if (hasConnectCols) {
-      payload.marketing_opt_in = Boolean(buyer.marketing_opt_in);
-      payload.submission_key = buyer.submission_key || null;
-      payload.utm = buyer.utm ? JSON.stringify(buyer.utm) : null;
-      payload.form_version = buyer.form_version || null;
-    }
-    const [row] = await trx('expo_leads').insert(payload).returning('*');
-    return row;
-  });
+    if (existing) return existing;
+  }
+  const agg = await trx('expo_leads')
+    .where({ tenant_id: tenantId, event_code: buyer.event_code })
+    .max('seq as max')
+    .first();
+  const seq = Number(agg?.max ?? 0) + 1;
+  const displayId = `${buyer.event_code}-${String(seq).padStart(3, '0')}`;
+  const payload = {
+    tenant_id: tenantId,
+    event_code: buyer.event_code,
+    seq,
+    display_id: displayId,
+    full_name: buyer.full_name,
+    company_name: buyer.company_name,
+    job_title: buyer.job_title,
+    business_email: buyer.business_email,
+    mobile: buyer.mobile,
+    country_market: buyer.country_market,
+    company_website: buyer.company_website,
+    business_type: buyer.business_type,
+    expression: buyer.expression,
+    interests: JSON.stringify(buyer.interests ?? []),
+    bottle_format: buyer.bottle_format,
+    volume: buyer.volume,
+    territory: buyer.territory,
+    timing: buyer.timing,
+    message: buyer.message,
+    consent_at: now,
+    submitted_at: now,
+    met_at: now,
+    status: 'new',
+  };
+  if (await trx.schema.hasColumn('expo_leads', 'capture_ip')) {
+    payload.capture_ip = buyer.capture_ip || null;
+  }
+  if (buyer.staff_user_id != null && (await trx.schema.hasColumn('expo_leads', 'staff_user_id'))) {
+    payload.staff_user_id = buyer.staff_user_id;
+  }
+  if (hasConnectCols) {
+    payload.marketing_opt_in = Boolean(buyer.marketing_opt_in);
+    payload.submission_key = buyer.submission_key || null;
+    payload.utm = buyer.utm ? JSON.stringify(buyer.utm) : null;
+    payload.form_version = buyer.form_version || null;
+  }
+  const [row] = await trx('expo_leads').insert(payload).returning('*');
+  return row;
+}
+
+export async function insertExpoLead(db, tenantId, buyer) {
+  return db.transaction((trx) => writeExpoLead(trx, tenantId, buyer));
 }
 
 export const LEAD_ACCOUNT_TYPES = ['retail', 'bar', 'restaurant', 'hotel', 'distributor', 'lifestyle'];

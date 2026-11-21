@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Copy, Loader2, Mail } from "lucide-react";
 import { HqBtnLink, HqOperatorPill } from "@/components/hq/HqOperatorUi";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
-import { postExportOrderAction, rotatePoaLink, type ExportOrderDto } from "@/lib/api-v1";
+import {
+  getFirstPressCapacity,
+  postExportOrderAction,
+  rotatePoaLink,
+  type ExportOrderDto,
+  type FirstPressCapacityMonth,
+} from "@/lib/api-v1";
+import { firstPressMl, isMonth, litresLabel, monthLabel, productionMonth } from "@/lib/first-press-capacity";
 import { poaDate, type PoaSummary } from "@/lib/po-acceptance-terms";
 
 const TITLE_KEY = "hajime.poa.sellerTitle";
@@ -26,6 +33,7 @@ function issueGaps(order: ExportOrderDto): string[] {
   if (!["FOB", "FCA"].includes(String(order.incotermRule || ""))) gaps.push("Incoterms rule");
   if (!String(order.fobNamedPoint || "").trim()) gaps.push("named port or place");
   if (!String(order.deliveryWindow || "").trim()) gaps.push("delivery window");
+  if (!isMonth(order.requestedMonth)) gaps.push("requested delivery month");
   if (!String(order.buyerNoticeEmail || order.buyerEmail || "").trim()) gaps.push("buyer email");
   return gaps;
 }
@@ -77,6 +85,75 @@ function TextField({
         }}
       />
       {hint ? <p className="text-[11px] text-muted-foreground">{hint}</p> : null}
+    </div>
+  );
+}
+
+function RequestedMonthField({
+  order,
+  saving,
+  save,
+}: {
+  order: ExportOrderDto;
+  saving: boolean;
+  save: (patch: Record<string, unknown>) => Promise<void> | void;
+}) {
+  const [months, setMonths] = useState<FirstPressCapacityMonth[] | null>(null);
+  const current = isMonth(order.requestedMonth) ? order.requestedMonth : "";
+  const reserved = Boolean(order.capacityReservedAt);
+  const lines = Array.isArray(order.lines) ? (order.lines as { sku?: string; cases?: number }[]) : [];
+  const orderMl = firstPressMl(lines);
+  const displayId = String(order.displayId);
+
+  useEffect(() => {
+    if (reserved) return;
+    let live = true;
+    getFirstPressCapacity(displayId)
+      .then((r) => live && setMonths(r.data))
+      .catch(() => live && setMonths([]));
+    return () => {
+      live = false;
+    };
+  }, [displayId, reserved, orderMl]);
+
+  if (reserved && current) {
+    return (
+      <div className="space-y-1">
+        <Label>Requested delivery</Label>
+        <p className="rounded-md border border-[hsl(142_35%_70%)] bg-[hsl(142_40%_97%)] px-3 py-2 text-sm">
+          {monthLabel(current)} · reserved for production in {monthLabel(productionMonth(current))}
+        </p>
+        <p className="text-[11px] text-muted-foreground">Locked once the buyer countersigned. Cancel and re-book to change it.</p>
+      </div>
+    );
+  }
+
+  const options = months ?? [];
+  const listed = options.some((m) => m.deliveryMonth === current);
+  const picked = options.find((m) => m.deliveryMonth === current);
+  return (
+    <div className="space-y-1">
+      <Label htmlFor="poa-requested-month">Requested delivery month</Label>
+      <select
+        id="poa-requested-month"
+        className="flex h-10 w-full rounded-md border bg-background px-3 text-sm"
+        value={current}
+        disabled={saving || months == null}
+        onChange={(e) => void save({ requestedMonth: e.target.value })}
+      >
+        <option value="">Select</option>
+        {current && !listed ? <option value={current}>{monthLabel(current)}</option> : null}
+        {options.map((m) => (
+          <option key={m.deliveryMonth} value={m.deliveryMonth}>
+            {monthLabel(m.deliveryMonth)} · {m.leftLitres.toLocaleString("en-US")} L left{orderMl > m.leftMl ? " (too full)" : ""}
+          </option>
+        ))}
+      </select>
+      <p className={orderMl > (picked?.leftMl ?? Infinity) ? "text-[11px] text-[hsl(0_68%_40%)]" : "text-[11px] text-muted-foreground"}>
+        {picked && orderMl > picked.leftMl
+          ? `This order needs ${litresLabel(orderMl)}; ${monthLabel(current)} has ${picked.leftLitres.toLocaleString("en-US")} L left. The PO acceptance can't be issued for it.`
+          : `This order needs ${litresLabel(orderMl)} of First Press, bottled the month before. Litres are reserved when the buyer countersigns.`}
+      </p>
     </div>
   );
 }
@@ -264,6 +341,7 @@ export function HqPoAcceptancePanel({
               onSave={(v) => void save({ fobNamedPoint: v })}
             />
           </div>
+          <RequestedMonthField order={order} saving={saving} save={save} />
           <TextField
             label="Delivery window / lead time"
             value={order.deliveryWindow}

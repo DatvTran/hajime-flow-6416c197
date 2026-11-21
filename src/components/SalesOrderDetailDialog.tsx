@@ -143,7 +143,7 @@ export function SalesOrderDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(90vh,720px)] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[min(90vh,720px)] overflow-y-auto overscroll-y-contain sm:max-w-lg max-lg:left-0 max-lg:right-0 max-lg:top-auto max-lg:bottom-0 max-lg:h-[100svh] max-lg:max-h-[100svh] max-lg:w-full max-lg:max-w-none max-lg:translate-x-0 max-lg:translate-y-0 max-lg:rounded-t-2xl max-lg:rounded-b-none max-lg:border-x-0 max-lg:pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         {order ? (
           <>
             <DialogHeader>

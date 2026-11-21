@@ -61,10 +61,17 @@ test("orderTotals adds other charges and splits 50/50", () => {
 });
 
 test("poaIssueGaps lists what blocks issuing", () => {
-  assert.deepEqual(poaIssueGaps({}, 0).length, 5);
+  assert.deepEqual(poaIssueGaps({}, 0).length, 6);
+  assert.ok(poaIssueGaps({}, 0).includes("requested delivery month"));
   assert.deepEqual(
     poaIssueGaps(
-      { incoterm_rule: "FOB", fob_named_point: "Laem Chabang", delivery_window: "8 weeks", buyer_email: "a@b.co" },
+      {
+        incoterm_rule: "FOB",
+        fob_named_point: "Laem Chabang",
+        delivery_window: "8 weeks",
+        requested_month: "2027-01",
+        buyer_email: "a@b.co",
+      },
       1,
     ),
     [],

@@ -123,6 +123,47 @@ export type PoaSummary = {
   snapshot?: Record<string, unknown>;
 };
 
+/** Must match BUYER_PO_TERMS_VERSION in server/lib/po-acceptance.mjs. */
+export const BUYER_PO_TERMS_VERSION = "BPO Rev. 3 Nov 2026";
+
+export const BUYER_PO_TERMS: string[] = [
+  "Buyer offers to purchase the goods listed above from Hajime Ltd. at the quoted prices, on the delivery rule and window shown.",
+  "Amounts are in USD. Buyer pays a 50% deposit against Hajime Ltd.'s pro forma invoice, and the remaining 50% before the goods are released for shipment.",
+  "This order becomes binding when Hajime Ltd. issues its purchase order acceptance and Buyer countersigns it. The acceptance and its conditions govern this order.",
+  "Buyer confirms it holds, or will appoint, the licensed importer of record for the destination market.",
+];
+
+export type BuyerPoSummary = Omit<PoaSummary, "seller" | "buyerSignature"> & {
+  seller: { legalName: string; registrationNo: string; registeredAddress: string };
+  buyerSignature: {
+    name: string;
+    title: string;
+    signedAt: string;
+    details: {
+      legalName?: string;
+      registrationNo?: string;
+      registeredAddress?: string;
+      noticeEmail?: string;
+      buyerPoRef?: string;
+      priceInitials?: string;
+      priceAgreedTotalUsd?: number | null;
+      requestedMonth?: string;
+    };
+    ip?: string | null;
+    userAgent?: string | null;
+  } | null;
+};
+
+export function buyerPoStatusLabel(bpo: BuyerPoSummary | null | undefined): string {
+  if (!bpo || bpo.status === "draft") return "Not sent yet";
+  if (bpo.status === "signed" && bpo.buyerSignature) {
+    return `Signed by ${bpo.buyerSignature.name} on ${poaDate(bpo.buyerSignature.signedAt)}`;
+  }
+  if (bpo.status === "expired") return `${bpo.docNumber} · signing link expired`;
+  if (bpo.status === "replaced") return `${bpo.docNumber} · replaced by a newer revision`;
+  return `${bpo.docNumber} · awaiting buyer signature`;
+}
+
 export function poaDate(v: unknown): string {
   if (!v) return "N/A";
   const d = new Date(String(v));

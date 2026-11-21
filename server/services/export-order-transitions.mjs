@@ -5,11 +5,28 @@ import {
   asJsonObject,
   priceExportLines,
 } from "../lib/export-orders.mjs";
-import { assertDepositGate, assertReleaseGate, latestException, loadPayments } from "./export-order-gates.mjs";
+import {
+  assertDepositGate,
+  assertReleaseGate,
+  floorLinesKey,
+  latestException,
+  latestExceptionOfKind,
+  loadPayments,
+  matchingFloorApproval,
+} from "./export-order-gates.mjs";
 import { assertLinesAboveFloor } from "./pricing.mjs";
 import { issueDocument } from "./export-issue-document.mjs";
 import { createProductionPoForExport } from "./export-production-po.mjs";
 import {
+  assertMonthHasRoom,
+  capacityShortfall,
+  firstPressMl,
+  firstPressUsedMl,
+  hktMonth,
+  lockCapacity,
+} from "../lib/first-press-capacity.mjs";
+import {
+  BUYER_PO_TERMS_VERSION,
   PO_ACCEPTANCE_SELLER,
   PO_ACCEPTANCE_TERMS_VERSION,
   asPayload,
@@ -43,6 +60,11 @@ function parseLines(order) {
     }
   }
   return [];
+}
+
+async function floorApproval(trx, tenantId, order, lines) {
+  const exception = await latestExceptionOfKind(trx, tenantId, order.id, "below_floor_approved");
+  return matchingFloorApproval(exception, lines);
 }
 
 async function appendEvent(trx, { tenantId, orderId, eventType, fromState, toState, action, detail, actor }) {
@@ -86,7 +108,7 @@ const TRANSITIONS = {
     async guard({ trx, tenantId, order }) {
       const lines = parseLines(order);
       if (!lines.length) return { ok: false, code: "NO_LINES" };
-      return assertLinesAboveFloor(trx, tenantId, lines, null);
+      return assertLinesAboveFloor(trx, tenantId, lines, await floorApproval(trx, tenantId, order, lines));
     },
     async effect({ trx, order, actor }) {
       const docs = await stampIssued(trx, order, "quotation", actor);
@@ -100,11 +122,52 @@ const TRANSITIONS = {
     to: "02_quotation",
     actors: HQ,
     async guard({ trx, tenantId, order }) {
-      return assertLinesAboveFloor(trx, tenantId, parseLines(order), null);
+      const lines = parseLines(order);
+      return assertLinesAboveFloor(trx, tenantId, lines, await floorApproval(trx, tenantId, order, lines));
     },
     async effect({ trx, order, actor }) {
       const docs = await stampIssued(trx, order, "quotation", actor);
       return { orderPatch: docs, detail: { revision: true } };
+    },
+  },
+  issue_buyer_po: {
+    from: ["02_quotation"],
+    to: "02_quotation",
+    actors: HQ,
+    async guard({ trx, tenantId, order }) {
+      if (!asJsonObject(order.issued_docs).quotation) {
+        return { ok: false, code: "Issue the quotation before sending the purchase order." };
+      }
+      const lines = parseLines(order);
+      if (!lines.length) return { ok: false, code: "NO_LINES" };
+      if (!String(order.buyer_notice_email || order.buyer_email || "").trim()) {
+        return { ok: false, code: "Add the buyer email before sending the purchase order." };
+      }
+      return assertLinesAboveFloor(trx, tenantId, lines, await floorApproval(trx, tenantId, order, lines));
+    },
+    async effect({ trx, order, actor }) {
+      const docs = await stampIssued(trx, order, "buyer_po", actor);
+      const orderPatch = { issued_docs: docs.issued_docs, checklist: docs.checklist };
+      if (!docs.doc) return { orderPatch };
+      const signToken = newSignToken();
+      await trx("export_documents")
+        .where({ id: docs.doc.id })
+        .update({
+          sign_token_hash: hashSignToken(signToken),
+          sign_token_expires_at: signLinkExpiry(),
+          seller_notice_email: String(actor.email || "").trim().toLowerCase() || null,
+          terms_version: BUYER_PO_TERMS_VERSION,
+          content_hash: poaContentHash({
+            payload: asPayload(docs.doc.payload),
+            termsVersion: BUYER_PO_TERMS_VERSION,
+            seller: PO_ACCEPTANCE_SELLER,
+          }),
+        });
+      return {
+        orderPatch: { ...orderPatch, next_action: "Buyer to sign the purchase order" },
+        detail: { doc: docs.doc.doc_number, revision: docs.doc.revision },
+        secret: { signToken, docNumber: docs.doc.doc_number, revision: docs.doc.revision },
+      };
     },
   },
   record_buyer_po: {
@@ -124,7 +187,7 @@ const TRANSITIONS = {
     from: ["03_buyer_po", "04_po_acceptance"],
     to: "04_po_acceptance",
     actors: HQ,
-    async guard({ order, payload }) {
+    async guard({ trx, tenantId, order, payload }) {
       const pack = priceExportLines(parseLines(order));
       const gaps = poaIssueGaps(order, pack.lines.length);
       if (gaps.length) {
@@ -132,6 +195,10 @@ const TRANSITIONS = {
       }
       const sellerTitle = String(payload.sellerTitle || "").trim().slice(0, 255);
       if (!sellerTitle) return { ok: false, code: "Enter your title to sign for Hajime Ltd.", gaps: ["seller title"] };
+      if (!order.capacity_reserved_at) {
+        const room = await assertMonthHasRoom(trx, tenantId, order);
+        if (!room.ok) return room;
+      }
       return { ok: true, pack, sellerTitle };
     },
     async effect({ trx, tenantId, order, actor, guard }) {
@@ -294,6 +361,14 @@ const TRANSITIONS = {
       if (!gate.ok) return gate;
       if (!String(order.manufacturer_id || "").trim() && !String(order.manufacturer_name || "").trim()) {
         return { ok: false, code: "Pick a distillery from Network before authorizing production" };
+      }
+      const orderMl = firstPressMl(order.lines);
+      if (orderMl > 0 && !order.capacity_reserved_at) {
+        await lockCapacity(trx, tenantId);
+        const month = hktMonth(new Date());
+        const usedMl = await firstPressUsedMl(trx, tenantId, month, { excludeOrderId: order.id });
+        const shortfall = capacityShortfall(orderMl, usedMl, month);
+        if (shortfall) return { ok: false, code: shortfall };
       }
       return { ok: true };
     },
@@ -549,6 +624,14 @@ export async function approveException({ tenantId, orderId, actor, kind, reason,
   return db.transaction(async (trx) => {
     const order = await trx("export_orders").where({ id: orderId, tenant_id: tenantId }).forUpdate().first();
     if (!order) throw httpError(404, "Export order not found");
+    const detail = { kind, reason, shortfall, approved_by: actor.userId };
+    if (kind === "below_floor_approved") {
+      const lines = parseLines(order);
+      if (!priceExportLines(lines).lines.some((l) => l.belowFloor)) {
+        throw httpError(400, "No line on this file is below the floor.");
+      }
+      detail.lines = floorLinesKey(lines);
+    }
     await appendEvent(trx, {
       tenantId,
       orderId,
@@ -556,7 +639,7 @@ export async function approveException({ tenantId, orderId, actor, kind, reason,
       fromState: order.stage,
       toState: order.stage,
       action: "exception",
-      detail: { kind, reason, shortfall, approved_by: actor.userId },
+      detail,
       actor,
     });
     return order;

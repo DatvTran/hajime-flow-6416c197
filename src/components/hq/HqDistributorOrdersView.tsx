@@ -57,12 +57,15 @@ export function HqDistributorOrdersView({ orders }: Props) {
         rawTitle
         description={
           <>
-            Pallet orders placed by distributors to HQ. Retail and sales-rep orders are handled downstream by each
-            distributor — see{" "}
+            Domestic pallet sell-in to HQ finished goods. International FOB files are under{" "}
+            <Link to="/export-orders" className="hq-sec-link font-medium text-accent underline-offset-2 hover:underline">
+              Export orders
+            </Link>
+            . Downstream retail / rep activity is under{" "}
             <Link to="/accounts?view=sales" className="hq-sec-link font-medium text-accent underline-offset-2 hover:underline">
               {t("Distributor sales")}
-            </Link>{" "}
-            for that visibility.
+            </Link>
+            .
           </>
         }
         rawDescription
@@ -113,8 +116,28 @@ export function HqDistributorOrdersView({ orders }: Props) {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-muted-foreground">
-                  {t("No distributor orders match your filters.")}
+                <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                  {orders.length === 0 ? (
+                    <div className="mx-auto max-w-md space-y-2 text-[13px] leading-relaxed">
+                      <p className="font-medium text-foreground">No wholesale pallet orders yet</p>
+                      <p>
+                        This list is domestic sell-in from distributors to HQ finished goods — not international FOB
+                        files.
+                      </p>
+                      <p>
+                        Portal / export quotations live under{" "}
+                        <Link
+                          to="/export-orders"
+                          className="font-medium text-accent underline-offset-2 hover:underline"
+                        >
+                          Export orders
+                        </Link>
+                        .
+                      </p>
+                    </div>
+                  ) : (
+                    t("No distributor orders match your filters.")
+                  )}
                 </td>
               </tr>
             ) : (

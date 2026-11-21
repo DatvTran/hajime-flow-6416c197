@@ -1,5 +1,6 @@
 import type { Account, InventoryItem, SalesOrder } from "@/data/mockData";
 import type { AppData } from "@/types/app-data";
+import { isDistributorAccountType } from "@/lib/distributor-accounts";
 import { isRetailChannelOrder } from "@/lib/hajime-metrics";
 
 export const HQ_OPERATOR_ROLES = new Set([
@@ -33,7 +34,7 @@ export function isWholesaleSellInOrder(order: SalesOrder, accounts: Account[]): 
   if (order.distributorOrgId) return false;
   const acc = accountForOrder(order, accounts);
   if (!acc) return false;
-  return acc.type === "distributor";
+  return isDistributorAccountType(acc.type);
 }
 
 /** Retail & on-premise orders inside a wholesaler's isolated database. */

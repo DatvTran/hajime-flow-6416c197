@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { RetailSkeleton } from "@/components/skeletons";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { MobileTableScroll } from "@/components/MobileTableScroll";
 import { Button } from "@/components/ui/button";
 import {
   AlertTriangle,
@@ -423,47 +424,74 @@ export default function RetailHomePage() {
           {recent.length === 0 ? (
             <p className="px-4 py-10 text-center text-[13px] text-muted-foreground">No orders yet.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="border-border/50 hover:bg-transparent">
-                  <TableHead className="bg-muted/50 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                    Order
-                  </TableHead>
-                  <TableHead className="bg-muted/50 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                    Items
-                  </TableHead>
-                  <TableHead className="bg-muted/50 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                    Total
-                  </TableHead>
-                  <TableHead className="bg-muted/50 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                    Status
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              <ul className="divide-y divide-border/40 md:hidden">
                 {recent.map((o) => (
-                  <TableRow
-                    key={o.id}
-                    className="cursor-pointer border-border/40"
-                    onClick={() => navigate(`/retail/orders/${encodeURIComponent(o.id)}`)}
-                  >
-                    <TableCell className="align-middle">
-                      <div className="font-mono text-xs font-medium">{retailOrderDisplayId(o.id)}</div>
-                      <div className="text-[11px] text-muted-foreground">Placed {o.orderDate}</div>
-                    </TableCell>
-                    <TableCell className="max-w-[280px] align-middle text-[13px] text-muted-foreground">
-                      {primaryLineSummary(o)}
-                    </TableCell>
-                    <TableCell className="align-middle font-mono text-[13px] font-medium tabular-nums">
-                      ${formatMoney(o.price)}
-                    </TableCell>
-                    <TableCell className="align-middle">
-                      <OrderRowPill status={o.status} />
-                    </TableCell>
-                  </TableRow>
+                  <li key={o.id}>
+                    <button
+                      type="button"
+                      className="flex w-full flex-col gap-2 px-4 py-3.5 text-left touch-manipulation active:bg-muted/40"
+                      onClick={() => navigate(`/retail/orders/${encodeURIComponent(o.id)}`)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-mono text-xs font-medium">{retailOrderDisplayId(o.id)}</p>
+                          <p className="text-[11px] text-muted-foreground">Placed {o.orderDate}</p>
+                        </div>
+                        <OrderRowPill status={o.status} />
+                      </div>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">{primaryLineSummary(o)}</p>
+                      <span className="font-mono text-[13px] font-medium tabular-nums">${formatMoney(o.price)}</span>
+                    </button>
+                  </li>
                 ))}
-              </TableBody>
-            </Table>
+              </ul>
+              <div className="hidden md:block">
+                <MobileTableScroll>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-border/50 hover:bg-transparent">
+                        <TableHead className="bg-muted/50 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                          Order
+                        </TableHead>
+                        <TableHead className="bg-muted/50 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                          Items
+                        </TableHead>
+                        <TableHead className="bg-muted/50 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                          Total
+                        </TableHead>
+                        <TableHead className="bg-muted/50 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                          Status
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {recent.map((o) => (
+                        <TableRow
+                          key={o.id}
+                          className="cursor-pointer border-border/40"
+                          onClick={() => navigate(`/retail/orders/${encodeURIComponent(o.id)}`)}
+                        >
+                          <TableCell className="align-middle">
+                            <div className="font-mono text-xs font-medium">{retailOrderDisplayId(o.id)}</div>
+                            <div className="text-[11px] text-muted-foreground">Placed {o.orderDate}</div>
+                          </TableCell>
+                          <TableCell className="max-w-[280px] align-middle text-[13px] text-muted-foreground">
+                            {primaryLineSummary(o)}
+                          </TableCell>
+                          <TableCell className="align-middle font-mono text-[13px] font-medium tabular-nums">
+                            ${formatMoney(o.price)}
+                          </TableCell>
+                          <TableCell className="align-middle">
+                            <OrderRowPill status={o.status} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </MobileTableScroll>
+              </div>
+            </>
           )}
         </div>
       </section>

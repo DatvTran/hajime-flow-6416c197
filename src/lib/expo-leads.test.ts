@@ -1,45 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { formatExpoLeadHeadline } from "@/lib/expo-leads";
-import { expoConnectFormUrl } from "@/lib/expo-connect-url";
-import { internationalPhone } from "@/lib/connect-enquiry";
+import { leadStarterLines } from "./expo-leads";
+import { leadStarterLines as serverStarterLines } from "../../server/lib/export-orders.mjs";
 
-describe("formatExpoLeadHeadline", () => {
-  it("matches the Singapore distributor example", () => {
-    expect(
-      formatExpoLeadHeadline({
-        score: "A",
-        countryMarket: "Singapore",
-        businessType: "importer_distributor",
-        expression: "both",
-        volume: "100_249",
-      }),
-    ).toBe("A PRIORITY — Singapore — Distributor — Both SKUs — 100–249 cases — Follow up within 24 hours");
+describe("leadStarterLines", () => {
+  it("matches the server for every bottle format", () => {
+    for (const format of ["750ml", "200ml", "both", null, ""]) {
+      expect(leadStarterLines(format)).toEqual(serverStarterLines({ bottle_format: format }));
+    }
   });
 
-  it("skips market and volume for mobile enquiries that never ask them", () => {
-    expect(
-      formatExpoLeadHeadline({
-        score: null,
-        countryMarket: null,
-        businessType: "restaurant",
-        expression: "yuzu_mint",
-        volume: null,
-      }),
-    ).toBe("UNSCORED — Restaurant — Second Bloom — Score after the conversation");
-  });
-});
-
-describe("internationalPhone", () => {
-  it("joins the picked dial code unless a full number was pasted", () => {
-    expect(internationalPhone("+852", "9123 4567")).toBe("+85291234567");
-    expect(internationalPhone("+44", "07700 900123")).toBe("+447700900123");
-    expect(internationalPhone("+852", "+1 (415) 555-0100")).toBe("+14155550100");
-    expect(internationalPhone("+852", "0081 3 1234 5678")).toBe("+81312345678");
-  });
-});
-
-describe("expoConnectFormUrl", () => {
-  it("points at the public supply form", () => {
-    expect(expoConnectFormUrl("HK26")).toBe("https://supply.drinkhajime.jp/connect?event=HK26");
+  it("splits one 40-case trial order", () => {
+    expect(leadStarterLines("both")).toEqual([
+      { sku: "first_press_750", cases: 20 },
+      { sku: "first_press_200", cases: 20 },
+    ]);
+    expect(leadStarterLines(null)).toEqual([{ sku: "first_press_750", cases: 40 }]);
   });
 });

@@ -66,3 +66,16 @@ export const passwordResetSchema = z.object({
   token: z.string(),
   newPassword: z.string().min(8),
 });
+
+/** Authenticated user updates own login email and/or password. */
+export const updateMeCredentialsSchema = z
+  .object({
+    currentPassword: z.string().min(1),
+    email: z.string().email().optional(),
+    newPassword: z.string().min(8).optional(),
+    displayName: z.string().min(1).max(120).optional(),
+  })
+  .strict()
+  .refine((v) => v.email != null || v.newPassword != null || v.displayName != null, {
+    message: 'Provide email, newPassword, and/or displayName to update',
+  });

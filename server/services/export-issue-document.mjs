@@ -4,6 +4,7 @@ import { serializeExportOrder } from "../lib/export-orders.mjs";
 const SERIES = {
   quotation: "quotation",
   po_acceptance: "po_acceptance",
+  buyer_po: "buyer_po",
   proforma: "proforma",
   deposit: "deposit_confirmation",
   production_auth: "production_authorization",

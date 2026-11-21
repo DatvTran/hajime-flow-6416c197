@@ -1,6 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { InventoryItem } from "@/data/mockData";
-import { useProducts } from "@/contexts/AppDataContext";
+import { useAppData, useProducts } from "@/contexts/AppDataContext";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  activeDestinationWarehouses,
+  warehousesForDistributorMember,
+} from "@/lib/po-destination-warehouse";
 import {
   Dialog,
   DialogContent,
@@ -17,8 +22,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { nextInventoryId } from "@/lib/inventory-ids";
 import { Link } from "react-router-dom";
-
-const WAREHOUSES = ["Toronto Main", "Milan Depot", "Production", "Toronto Main Warehouse"] as const;
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -37,13 +40,25 @@ type Props = {
 
 export function ReceiveStockDialog({ open, onOpenChange, existingItems, onReceive }: Props) {
   const { products } = useProducts();
+  const { data } = useAppData();
+  const { user } = useAuth();
+  const warehouseOptions = useMemo(() => {
+    if (user?.role === "distributor") {
+      const em = user.email?.trim().toLowerCase();
+      const member = em
+        ? (data.teamMembers ?? []).find((m) => m.email?.toLowerCase() === em)
+        : undefined;
+      return warehousesForDistributorMember(data.warehouses, member).map((w) => w.name);
+    }
+    return activeDestinationWarehouses(data.warehouses).map((w) => w.name);
+  }, [data.warehouses, data.teamMembers, user?.email, user?.role]);
   /** Rows added in this open session before parent re-renders — keeps INV-### unique for rapid “Receive & add line”. */
   const sessionAddsRef = useRef<InventoryItem[]>([]);
   const [sku, setSku] = useState("");
   const [batchLot, setBatchLot] = useState("");
   const [productionDate, setProductionDate] = useState(todayISO());
-  const [quantityBottles, setQuantityBottles] = useState("1200");
-  const [warehouse, setWarehouse] = useState<(typeof WAREHOUSES)[number]>("Toronto Main");
+  const [quantityCases, setQuantityCases] = useState("100");
+  const [warehouse, setWarehouse] = useState("");
   const [status, setStatus] = useState<InventoryItem["status"]>("available");
   const [labelVersion, setLabelVersion] = useState("v3.1");
   const [notes, setNotes] = useState("");
@@ -56,27 +71,32 @@ export function ReceiveStockDialog({ open, onOpenChange, existingItems, onReceiv
     setSku(products[0]?.sku ?? "");
     setBatchLot(randomBatchLot());
     setProductionDate(todayISO());
-    setQuantityBottles("1200");
-    setWarehouse("Toronto Main");
+    setQuantityCases("100");
+    setWarehouse(warehouseOptions[0] ?? "");
     setStatus("available");
     setLabelVersion("v3.1");
     setNotes("");
-  }, [open, products]);
+  }, [open, products, warehouseOptions]);
 
   const resetFormForAnotherLine = () => {
     setBatchLot(randomBatchLot());
     setProductionDate(todayISO());
-    setQuantityBottles("1200");
+    setQuantityCases("100");
     setNotes("");
   };
 
-  const derivedCases = selectedProduct
-    ? Math.floor(Math.max(0, Number(quantityBottles) || 0) / selectedProduct.caseSize)
-    : 0;
+  const caseSize = Math.max(1, selectedProduct?.caseSize ?? 12);
+  const derivedBottles = Math.max(0, Math.round(Number(quantityCases) || 0)) * caseSize;
 
   const commitReceive = (closeAfter: boolean) => {
     if (!selectedProduct) {
       toast.error("Select a product SKU");
+      return;
+    }
+    if (!warehouse.trim()) {
+      toast.error("Select a warehouse", {
+        description: "Add a warehouse in Settings first.",
+      });
       return;
     }
     const batch = batchLot.trim();
@@ -84,8 +104,8 @@ export function ReceiveStockDialog({ open, onOpenChange, existingItems, onReceiv
       toast.error("Batch / lot is required");
       return;
     }
-    const bottles = Math.max(1, Math.round(Number(quantityBottles) || 0));
-    const cases = Math.max(0, Math.floor(bottles / selectedProduct.caseSize));
+    const cases = Math.max(1, Math.round(Number(quantityCases) || 0));
+    const bottles = cases * Math.max(1, selectedProduct.caseSize);
     const productName = `${selectedProduct.name} ${selectedProduct.size}`.replace(/\s+/g, " ").trim();
 
     const combined = [...existingItems, ...sessionAddsRef.current];
@@ -105,10 +125,14 @@ export function ReceiveStockDialog({ open, onOpenChange, existingItems, onReceiv
     sessionAddsRef.current = [...sessionAddsRef.current, item];
     onReceive(item);
     if (closeAfter) {
-      toast.success("Stock received", { description: `${item.id} · ${bottles.toLocaleString()} bottles` });
+      toast.success("Stock received", {
+        description: `${item.id} · ${cases.toLocaleString()} cases (${bottles.toLocaleString()} bottles)`,
+      });
       onOpenChange(false);
     } else {
-      toast.success("Line added", { description: `${item.id} · ${bottles.toLocaleString()} bottles — add another or close` });
+      toast.success("Line added", {
+        description: `${item.id} · ${cases.toLocaleString()} cases — add another or close`,
+      });
       resetFormForAnotherLine();
     }
   };
@@ -135,6 +159,22 @@ export function ReceiveStockDialog({ open, onOpenChange, existingItems, onReceiv
               Settings → Product catalog
             </Link>
             .
+          </p>
+        ) : warehouseOptions.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {user?.role === "distributor" ? (
+              <>
+                Add your receiving warehouse on the Dashboard or Inventory page before receiving stock.
+              </>
+            ) : (
+              <>
+                Add a warehouse in{" "}
+                <Link to="/settings#warehouses" className="font-medium text-primary underline-offset-2 hover:underline">
+                  Settings → Warehouses
+                </Link>{" "}
+                before receiving stock.
+              </>
+            )}
           </p>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -163,32 +203,32 @@ export function ReceiveStockDialog({ open, onOpenChange, existingItems, onReceiv
                 <Input id="rs-prod" type="date" value={productionDate} onChange={(e) => setProductionDate(e.target.value)} className="touch-manipulation" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="rs-qty">Quantity (bottles) *</Label>
+                <Label htmlFor="rs-qty">Quantity (cases) *</Label>
                 <Input
                   id="rs-qty"
                   type="number"
                   min={1}
                   step={1}
-                  value={quantityBottles}
-                  onChange={(e) => setQuantityBottles(e.target.value)}
+                  value={quantityCases}
+                  onChange={(e) => setQuantityCases(e.target.value)}
                   className="touch-manipulation"
                 />
               </div>
             </div>
             {selectedProduct ? (
               <p className="text-xs text-muted-foreground">
-                Cases (derived): <strong className="text-foreground">{derivedCases.toLocaleString()}</strong> at {selectedProduct.caseSize}{" "}
-                bottles/case
+                Bottles (derived): <strong className="text-foreground">{derivedBottles.toLocaleString()}</strong> at{" "}
+                {selectedProduct.caseSize} bottles/case
               </p>
             ) : null}
             <div className="space-y-2">
               <Label>Warehouse *</Label>
-              <Select value={warehouse} onValueChange={(v) => setWarehouse(v as (typeof WAREHOUSES)[number])}>
+              <Select value={warehouse} onValueChange={setWarehouse}>
                 <SelectTrigger className="touch-manipulation">
-                  <SelectValue />
+                  <SelectValue placeholder="Select warehouse" />
                 </SelectTrigger>
                 <SelectContent>
-                  {WAREHOUSES.map((w) => (
+                  {warehouseOptions.map((w) => (
                     <SelectItem key={w} value={w}>
                       {w}
                     </SelectItem>
@@ -227,12 +267,12 @@ export function ReceiveStockDialog({ open, onOpenChange, existingItems, onReceiv
                 type="button"
                 variant="outline"
                 className="touch-manipulation"
-                disabled={products.length === 0}
+                disabled={products.length === 0 || warehouseOptions.length === 0}
                 onClick={() => commitReceive(true)}
               >
                 Receive
               </Button>
-              <Button type="submit" className="touch-manipulation" disabled={products.length === 0}>
+              <Button type="submit" className="touch-manipulation" disabled={products.length === 0 || warehouseOptions.length === 0}>
                 Receive & add line
               </Button>
             </DialogFooter>

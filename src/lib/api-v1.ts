@@ -139,6 +139,71 @@ export function updateAccount(id: string, data: Partial<Account>): Promise<{ dat
   });
 }
 
+// ===== PARTNER SKU PRICES (negotiated sell-in / partner sell-out) =====
+
+export type PartnerPricingSettings = {
+  sellOutCurrency: string;
+  usdToLocalRate: number | null;
+  sellInCurrency: "USD";
+};
+
+export type PartnerSkuPriceRow = {
+  sku: string;
+  name: string | null;
+  caseSize: number;
+  sellInCasePrice: number | null;
+  /** Alias — negotiated / list sell-in is always USD. */
+  sellInCasePriceUsd?: number | null;
+  sellOutCasePrice: number | null;
+  listSellInCasePrice: number | null;
+  suggestedSellOutCasePrice: number | null;
+  /** Sell-in USD × FX rate (local). */
+  purchaseCostLocal?: number | null;
+  /** Sell-out currency (partner local). */
+  currency: string;
+  sellInCurrency?: "USD";
+  usdToLocalRate?: number | null;
+  sellInSource: "negotiated" | "list_default";
+  sellOutSource: "partner" | "catalog_suggestion";
+  updatedAt: string | null;
+};
+
+export type PartnerSkuPricesResponse = {
+  data: PartnerSkuPriceRow[];
+  accountId: string;
+  settings?: PartnerPricingSettings;
+};
+
+export function getAccountSkuPrices(accountId: string): Promise<PartnerSkuPricesResponse> {
+  return apiFetch(`/api/v1/accounts/${encodeURIComponent(accountId)}/sku-prices`);
+}
+
+export function putAccountSkuPrices(
+  accountId: string,
+  prices: Array<{ sku: string; sellInCasePrice?: number | null; sellOutCasePrice?: number | null }>,
+  fields?: "sell_in" | "sell_out",
+  settings?: { sellOutCurrency?: string; usdToLocalRate?: number | null },
+): Promise<PartnerSkuPricesResponse> {
+  return apiFetch(`/api/v1/accounts/${encodeURIComponent(accountId)}/sku-prices`, {
+    method: "PUT",
+    body: JSON.stringify({ prices, fields, settings }),
+  });
+}
+
+export function getMySkuPrices(): Promise<PartnerSkuPricesResponse> {
+  return apiFetch("/api/v1/me/sku-prices");
+}
+
+export function putMySkuPrices(
+  prices: Array<{ sku: string; sellOutCasePrice?: number | null }>,
+  settings?: { sellOutCurrency?: string; usdToLocalRate?: number | null },
+): Promise<PartnerSkuPricesResponse> {
+  return apiFetch("/api/v1/me/sku-prices", {
+    method: "PUT",
+    body: JSON.stringify({ prices, settings }),
+  });
+}
+
 // ===== SALES ORDERS =====
 
 export interface OrderItem {
@@ -747,6 +812,26 @@ export function patchExpoLead(
   }) as Promise<{ data: import("@/lib/expo-leads").ExpoLead }>;
 }
 
+export type BoothSaveResult = {
+  lead: { id: string; displayId: string };
+  order: {
+    id: string;
+    displayId: string;
+    subtotalUsd: number;
+    depositDueUsd: number;
+    balanceDueUsd: number;
+    depositStatus: string;
+  };
+};
+
+/** One save: the Expo lead and the quotation-stage export order. The deposit stays pending. */
+export function saveBoothLead(body: Record<string, unknown>): Promise<{ data: BoothSaveResult }> {
+  return apiFetch("/api/v1/expo-leads/booth", {
+    method: "POST",
+    body: JSON.stringify(body),
+  }) as Promise<{ data: BoothSaveResult }>;
+}
+
 export type ExportOrderDto = Record<string, unknown> & {
   id: string;
   displayId: string;
@@ -771,7 +856,9 @@ export function getExportOrder(id: string): Promise<{ data: ExportOrderDto }> {
   return apiFetch(`/api/v1/export-orders/${encodeURIComponent(id)}`);
 }
 
-export function createExportOrder(body: Record<string, unknown>): Promise<{ data: ExportOrderDto }> {
+export function createExportOrder(
+  body: Record<string, unknown>,
+): Promise<{ data: ExportOrderDto; existing?: boolean }> {
   return apiFetch("/api/v1/export-orders", { method: "POST", body: JSON.stringify(body) });
 }
 
@@ -814,6 +901,41 @@ export function rotatePoaLink(
     method: "POST",
     body: JSON.stringify({ email }),
   });
+}
+
+type EmailResult = { sent?: boolean; logged?: boolean; skipped?: boolean } | null;
+
+/** Generate the purchase order from the quotation and email the buyer a signing link. */
+export function sendBuyerPo(id: string): Promise<{ data: ExportOrderDto; url: string | null; email?: EmailResult }> {
+  return apiFetch(`/api/v1/export-orders/${encodeURIComponent(id)}/buyer-po/send`, { method: "POST", body: "{}" });
+}
+
+/** New signing link for the current purchase order; the previous link stops working. */
+export function rotateBuyerPoLink(
+  id: string,
+  email: boolean,
+): Promise<{ data: ExportOrderDto; url: string; expiresAt: string; email?: EmailResult }> {
+  return apiFetch(`/api/v1/export-orders/${encodeURIComponent(id)}/buyer-po/link`, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export type FirstPressCapacityMonth = {
+  deliveryMonth: string;
+  productionMonth: string;
+  capacityLitres: number;
+  usedLitres: number;
+  leftLitres: number;
+  leftMl: number;
+  leftCases750: number;
+  leftCases200: number;
+};
+
+/** Upcoming delivery months with First Press litres left; excludeOrder leaves one order's own booking out. */
+export function getFirstPressCapacity(excludeOrder?: string): Promise<{ data: FirstPressCapacityMonth[] }> {
+  const q = excludeOrder ? `?excludeOrder=${encodeURIComponent(excludeOrder)}` : "";
+  return apiFetch(`/api/v1/export-orders/capacity${q}`) as Promise<{ data: FirstPressCapacityMonth[] }>;
 }
 
 export function sendTradePack(body: {

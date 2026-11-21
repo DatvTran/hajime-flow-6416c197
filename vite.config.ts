@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import { VitePWA } from "vite-plugin-pwa";
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -64,7 +65,58 @@ export default defineConfig({
       },
     },
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    // The booth runs offline on an iPad at expos: the app shell is precached; /api is never cached.
+    VitePWA({
+      registerType: "autoUpdate",
+      injectRegister: false,
+      includeAssets: ["favicon.ico", "favicon.png", "apple-touch-icon.png", "hajime-logo.png"],
+      manifest: {
+        name: "Hajime",
+        short_name: "Hajime",
+        description: "Hajime B2B operations — orders, inventory, expo booth",
+        start_url: "/expo-leads/booth",
+        scope: "/",
+        display: "standalone",
+        background_color: "#0a0a0a",
+        theme_color: "#1a1d24",
+        icons: [
+          { src: "/favicon.png", sizes: "192x192", type: "image/png" },
+          { src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+        ],
+      },
+      workbox: {
+        // Do not precache index.html — stale HTML pins old hashed bundles (demo login copy).
+        globPatterns: ["**/*.{js,css,ico,png,svg,jpg,woff,woff2,ttf}"],
+        globIgnores: ["**/boot.js"],
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        navigateFallback: "/index.html",
+        navigateFallbackDenylist: [/^\/api\//, /^\/health/],
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === "navigate",
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "hajime-pages",
+              networkTimeoutSeconds: 4,
+            },
+          },
+          {
+            urlPattern: /\/boot\.js/,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "hajime-boot",
+              networkTimeoutSeconds: 4,
+            },
+          },
+        ],
+      },
+    }),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

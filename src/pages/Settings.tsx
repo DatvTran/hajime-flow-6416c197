@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Account } from "@/data/mockData";
-import type { Warehouse } from "@/types/app-data";
+import type { Warehouse, WarehouseKind } from "@/types/app-data";
 import { CSVImportButton } from "@/components/CSVImportButton";
 import {
   createWarehouse,
@@ -71,9 +71,11 @@ export default function SettingsPage() {
   const [dbHealthDetail, setDbHealthDetail] = useState<string | null>(null);
   const [warehouseDialogOpen, setWarehouseDialogOpen] = useState(false);
   const [newWarehouseName, setNewWarehouseName] = useState("");
+  const [newWarehouseKind, setNewWarehouseKind] = useState<WarehouseKind>("brand");
   const [editWarehouseOpen, setEditWarehouseOpen] = useState(false);
   const [editWarehouse, setEditWarehouse] = useState<Warehouse | null>(null);
   const [editWarehouseName, setEditWarehouseName] = useState("");
+  const [editWarehouseKind, setEditWarehouseKind] = useState<WarehouseKind>("brand");
   const [editWarehouseSortOrder, setEditWarehouseSortOrder] = useState("0");
   const [editWarehouseActive, setEditWarehouseActive] = useState(true);
   const [editWarehouseLinkedAccountId, setEditWarehouseLinkedAccountId] = useState(WH_LINK_NONE);
@@ -226,12 +228,13 @@ export default function SettingsPage() {
       return;
     }
     try {
-      const res = await createWarehouse({ name });
+      const res = await createWarehouse({ name, kind: newWarehouseKind });
       const row = res.data as {
         id: string;
         name: string;
         is_active?: boolean;
         sort_order?: number;
+        kind?: string;
       };
       const w = warehouseFromApi(row);
       updateData((d) => ({
@@ -241,6 +244,7 @@ export default function SettingsPage() {
         ),
       }));
       setNewWarehouseName("");
+      setNewWarehouseKind("brand");
       setWarehouseDialogOpen(false);
       toast.success("Warehouse saved", { description: `${w.name} — saved to server` });
     } catch (err) {
@@ -270,6 +274,7 @@ export default function SettingsPage() {
   const openEditWarehouse = (w: Warehouse) => {
     setEditWarehouse(w);
     setEditWarehouseName(w.name);
+    setEditWarehouseKind(w.kind === "distributor" ? "distributor" : "brand");
     setEditWarehouseSortOrder(String(w.sortOrder ?? 0));
     setEditWarehouseActive(w.isActive !== false);
     setEditWarehouseLinkedAccountId(
@@ -302,6 +307,7 @@ export default function SettingsPage() {
 
       const res = await updateWarehouse(editWarehouse.id, {
         name,
+        kind: editWarehouseKind,
         is_active: editWarehouseActive,
         sort_order: sort,
         linked_account_id,
@@ -313,6 +319,7 @@ export default function SettingsPage() {
         name: string;
         is_active?: boolean;
         sort_order?: number;
+        kind?: string;
         linked_account_id?: string | null;
         linked_team_member_id?: string | null;
       };
@@ -454,9 +461,27 @@ export default function SettingsPage() {
                     id="wh-name"
                     value={newWarehouseName}
                     onChange={(e) => setNewWarehouseName(e.target.value)}
-                    placeholder="e.g. Toronto Main Warehouse"
+                    placeholder="e.g. Metro Hong Kong DC"
                     className="touch-manipulation"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="wh-kind">Kind</Label>
+                  <Select
+                    value={newWarehouseKind}
+                    onValueChange={(v) => setNewWarehouseKind(v === "distributor" ? "distributor" : "brand")}
+                  >
+                    <SelectTrigger id="wh-kind" className="touch-manipulation">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="brand">Brand</SelectItem>
+                      <SelectItem value="distributor">Distributor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Brand = HQ pool. Distributor = wholesaler receiving warehouse.
+                  </p>
                 </div>
               </div>
               <DialogFooter className="gap-2 sm:gap-0">
@@ -492,9 +517,24 @@ export default function SettingsPage() {
                     id="wh-edit-name"
                     value={editWarehouseName}
                     onChange={(e) => setEditWarehouseName(e.target.value)}
-                    placeholder="e.g. Toronto Main Warehouse"
+                    placeholder="e.g. Metro Hong Kong DC"
                     className="touch-manipulation"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="wh-edit-kind">Kind</Label>
+                  <Select
+                    value={editWarehouseKind}
+                    onValueChange={(v) => setEditWarehouseKind(v === "distributor" ? "distributor" : "brand")}
+                  >
+                    <SelectTrigger id="wh-edit-kind" className="touch-manipulation">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="brand">Brand</SelectItem>
+                      <SelectItem value="distributor">Distributor</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="wh-edit-sort">Sort order</Label>
@@ -586,7 +626,7 @@ export default function SettingsPage() {
 
           {warehousesSorted.length === 0 ? (
             <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
-              No warehouses yet. Defaults are created on first load (Toronto Main Warehouse, Milan Depot) once the server migration has run.
+              No warehouses yet. Add brand or distributor receiving locations with Add Warehouse.
             </p>
           ) : (
             <ul className="divide-y rounded-lg border border-border/80">
@@ -610,7 +650,12 @@ export default function SettingsPage() {
                   className={`flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${w.isActive === false ? "bg-muted/30 opacity-80" : ""}`}
                 >
                   <div className="min-w-0">
-                    <p className="font-medium">{w.name}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium">{w.name}</p>
+                      <Badge variant="secondary" className="font-normal capitalize">
+                        {w.kind === "distributor" ? "distributor" : "brand"}
+                      </Badge>
+                    </div>
                     {receivingByPrimary.length > 0 ? (
                       <p className="text-xs text-muted-foreground">
                         Receiving distributors:{" "}

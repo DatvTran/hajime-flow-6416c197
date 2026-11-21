@@ -423,8 +423,8 @@ export default function Dashboard() {
               </div>
             </div>
             <Select value={marketFilter} onValueChange={(v) => setMarketFilter(v as typeof marketFilter)}>
-              <SelectTrigger className="h-9 w-[160px] touch-manipulation border-border/60 bg-background/80">
-                <Globe className="mr-2 h-3.5 w-3.5 opacity-60" />
+              <SelectTrigger className="h-9 w-full min-w-0 touch-manipulation border-border/60 bg-background/80 sm:w-[160px]">
+                <Globe className="mr-2 h-3.5 w-3.5 shrink-0 opacity-60" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -436,7 +436,7 @@ export default function Dashboard() {
               </SelectContent>
             </Select>
             <Select value={String(rangeDays)} onValueChange={(v) => setRangeDays(Number(v) as 7 | 30 | 90)}>
-              <SelectTrigger className="h-9 w-[130px] touch-manipulation border-border/60 bg-background/80">
+              <SelectTrigger className="h-9 w-full min-w-0 touch-manipulation border-border/60 bg-background/80 sm:w-[130px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -448,7 +448,7 @@ export default function Dashboard() {
           </div>
 
           <div className="flex flex-1 flex-wrap items-center gap-2 lg:max-w-xl lg:justify-end">
-            <div className="relative min-w-[200px] flex-1">
+            <div className="relative min-w-0 flex-1 sm:min-w-[200px]">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={search}
